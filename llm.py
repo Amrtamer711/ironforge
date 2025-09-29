@@ -119,6 +119,21 @@ IMPORTANT: Use natural language in messages - say 'Sales Person' not 'sales_pers
     return action
 
 
+def _validate_powerpoint_file(file_path: Path) -> bool:
+    """Validate that uploaded file is actually a PowerPoint presentation."""
+    try:
+        from pptx import Presentation
+        # Try to open as PowerPoint - this will fail if not a valid PPTX
+        pres = Presentation(str(file_path))
+        # Basic validation: must have at least 1 slide
+        if len(pres.slides) < 1:
+            return False
+        return True
+    except Exception as e:
+        config.logger.warning(f"[VALIDATION] PowerPoint validation failed: {e}")
+        return False
+
+
 async def _download_slack_file(file_info: Dict[str, Any]) -> Path:
     url = file_info.get("url_private_download") or file_info.get("url_private")
     if not url:
@@ -187,6 +202,20 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             if f.get("filetype") == "pptx" or f.get("mimetype", "").endswith("powerpoint") or f.get("name", "").lower().endswith(".pptx"):
                 try:
                     pptx_file = await _download_slack_file(f)
+
+                    # Validate it's actually a PowerPoint file
+                    if not _validate_powerpoint_file(pptx_file):
+                        logger.error(f"Invalid PowerPoint file: {f.get('name')}")
+                        try:
+                            os.unlink(pptx_file)
+                        except:
+                            pass
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            text=config.markdown_to_slack("❌ **Error:** The uploaded file is not a valid PowerPoint presentation. Please upload a .pptx file.")
+                        )
+                        return
+
                     break
                 except Exception as e:
                     logger.error(f"Failed to download PPT file: {e}")
@@ -628,10 +657,17 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** Location key is required."))
                     return
 
-                # Check if location already exists
+                # Check if location already exists (filesystem + cache check for security)
+                # SECURITY FIX: Previous vulnerability allowed duplicate locations when cache was stale
+                # Now we check both filesystem (authoritative) and cache (fallback) to prevent bypass
+                location_dir = config.TEMPLATES_DIR / location_key
                 mapping = config.get_location_mapping()
-                if location_key in mapping:
+
+                # Dual check: filesystem (primary) + cache (secondary) to prevent bypass
+                if location_dir.exists() or location_key in mapping:
                     await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    if location_dir.exists():
+                        logger.warning(f"[SECURITY] Duplicate location attempt blocked - filesystem check: {location_key}")
                     await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(f"⚠️ Location `{location_key}` already exists. Please use a different key."))
                     return
                 
@@ -655,6 +691,10 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     spot_str = spot_str.rstrip('s"').rstrip('sec').rstrip('seconds').strip()
                     try:
                         spot_duration = int(spot_str)
+                        if spot_duration <= 0:
+                            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(f"❌ **Error:** Spot duration must be greater than 0 seconds. Got: {spot_duration}"))
+                            return
                     except ValueError:
                         await config.slack_client.chat_delete(channel=channel, ts=status_ts)
                         await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(f"❌ **Error:** Invalid spot duration '{spot_duration}'. Please provide a number in seconds (e.g., 10, 12, 16)."))
@@ -667,6 +707,10 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     loop_str = loop_str.rstrip('s"').rstrip('sec').rstrip('seconds').strip()
                     try:
                         loop_duration = int(loop_str)
+                        if loop_duration <= 0:
+                            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(f"❌ **Error:** Loop duration must be greater than 0 seconds. Got: {loop_duration}"))
+                            return
                     except ValueError:
                         await config.slack_client.chat_delete(channel=channel, ts=status_ts)
                         await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(f"❌ **Error:** Invalid loop duration '{loop_duration}'. Please provide a number in seconds (e.g., 96, 100)."))
