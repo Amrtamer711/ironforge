@@ -306,13 +306,18 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
 
     available_names = ", ".join(config.available_location_names())
     
-    # Get static locations for the prompt
+    # Get static and digital locations for the prompt
     static_locations = []
+    digital_locations = []
     for key, meta in config.LOCATION_METADATA.items():
+        display_name = meta.get('display_name', key)
         if meta.get('display_type', '').lower() == 'static':
-            static_locations.append(f"{key} ({meta.get('display_name', key)})")
-    
+            static_locations.append(f"{display_name} ({key})")
+        elif meta.get('display_type', '').lower() == 'digital':
+            digital_locations.append(f"{display_name} ({key})")
+
     static_list = ", ".join(static_locations) if static_locations else "None"
+    digital_list = ", ".join(digital_locations) if digital_locations else "None"
 
     prompt = (
         f"You are a sales proposal bot for BackLite Media. You help create financial proposals for digital advertising locations.\n"
@@ -321,24 +326,44 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"1. SEPARATE PACKAGE (default): Each location gets its own proposal slide, multiple durations/rates allowed per location\n"
         f"2. COMBINED PACKAGE: All locations in ONE proposal slide, single duration per location, one combined net rate\n\n"
         
-        f"AVAILABLE LOCATIONS: {available_names}\n"
-        f"STATIC LOCATIONS (require production fee instead of upload fee): {static_list}\n\n"
+        f"LOCATION TYPES - CRITICAL TO UNDERSTAND:\n\n"
+        f"🔴 DIGITAL LOCATIONS (LED screens with rotating ads):\n"
+        f"   Features: Multiple advertisers share screen time, ads rotate in loops\n"
+        f"   Fee Structure: NET RATE + PRE-CONFIGURED UPLOAD FEE (automatically added)\n"
+        f"   Examples: {digital_list}\n"
+        f"   Upload Fee: System automatically adds the correct upload fee for each digital location\n\n"
+
+        f"🔵 STATIC LOCATIONS (Traditional billboards, prints, physical displays):\n"
+        f"   Features: Single advertiser has exclusive display, no rotation\n"
+        f"   Fee Structure: NET RATE + PRODUCTION FEE (must be collected from user)\n"
+        f"   Examples: {static_list}\n"
+        f"   Production Fee: REQUIRED - ask user for production fee amount (e.g., 'AED 5,000')\n\n"
+
+        f"CRITICAL RULES:\n"
+        f"- DIGITAL = Upload fee (automatic) | STATIC = Production fee (ask user)\n"
+        f"- NEVER ask for production fee on digital locations\n"
+        f"- NEVER skip production fee on static locations\n"
+        f"- If user mentions 'upload fee' for static locations, correct them to 'production fee'\n\n"
         
         f"REQUIRED INFORMATION:\n"
         f"For SEPARATE PACKAGE (each location):\n"
-        f"1. Location (must be one of the available locations)\n"
+        f"1. Location (must be from digital or static list above)\n"
         f"2. Start Date\n"
         f"3. Duration Options (multiple allowed)\n"
         f"4. Net Rates for EACH duration\n"
-        f"5. Production Fee (required ONLY for static locations, e.g., 'AED 5,000')\n"
+        f"5. Fees - CHECK LOCATION TYPE:\n"
+        f"   • DIGITAL locations: NO FEE NEEDED (upload fee auto-added)\n"
+        f"   • STATIC locations: ASK for production fee (e.g., 'AED 5,000')\n"
         f"6. Client Name (required)\n"
         f"7. Submitted By (optional - defaults to current user)\n\n"
         f"For COMBINED PACKAGE:\n"
-        f"1. All Locations\n"
+        f"1. All Locations (mix of digital/static allowed)\n"
         f"2. Start Date for EACH location\n"
         f"3. ONE Duration per location\n"
         f"4. ONE Combined Net Rate for entire package\n"
-        f"5. Production Fee for EACH static location (if any)\n"
+        f"5. Fees - CHECK EACH LOCATION TYPE:\n"
+        f"   • DIGITAL locations: NO FEE NEEDED (upload fees auto-added)\n"
+        f"   • STATIC locations: ASK for production fee for EACH static location\n"
         f"6. Client Name (required)\n"
         f"7. Submitted By (optional - defaults to current user)\n\n"
         
@@ -409,9 +434,11 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"- Format all rates as 'AED X,XXX,XXX'\n"
         f"- Parse 'mil' or 'million' as 000,000 (e.g., '2 mil' = 'AED 2,000,000')\n"
         f"- Number of spots defaults to 1 if not specified\n"
-        f"- For STATIC locations: MUST collect production fee (replaces upload fee)\n"
-        f"- For DIGITAL locations: Use the pre-configured upload fee\n"
-        f"- In COMBINED packages with both static and digital: collect production fees for static only\n"
+        f"FEE COLLECTION RULES (CRITICAL):\n"
+        f"- DIGITAL locations: NEVER ask for fees - upload fees are automatic\n"
+        f"- STATIC locations: ALWAYS ask for production fee - it's mandatory\n"
+        f"- Mixed packages: Ask production fees only for static locations\n"
+        f"- If confused about location type, check the lists above\n"
         f"- ALWAYS collect client name - it's required for tracking"
     )
 
