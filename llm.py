@@ -123,12 +123,21 @@ IMPORTANT: Use natural language in messages - say 'Sales Person' not 'sales_pers
 def _validate_powerpoint_file(file_path: Path) -> bool:
     """Validate that uploaded file is actually a PowerPoint presentation."""
     try:
+        # Check if file exists first
+        if not file_path.exists():
+            config.logger.error(f"[VALIDATION] File does not exist: {file_path}")
+            return False
+
+        config.logger.info(f"[VALIDATION] Validating PowerPoint file: {file_path} (size: {file_path.stat().st_size} bytes)")
+
         # Try to open as PowerPoint - this will fail if not a valid PPTX
         pres = Presentation(str(file_path))
         # Basic validation: must have at least 1 slide
         if len(pres.slides) < 1:
             config.logger.warning(f"[VALIDATION] PowerPoint file has no slides: {file_path}")
             return False
+
+        config.logger.info(f"[VALIDATION] PowerPoint validation successful: {len(pres.slides)} slides")
         return True
     except Exception as e:
         config.logger.warning(f"[VALIDATION] PowerPoint validation failed: {e}")
@@ -144,12 +153,25 @@ async def _download_slack_file(file_info: Dict[str, Any]) -> Path:
     import tempfile
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
     tmp.close()
+
+    config.logger.info(f"[DOWNLOAD] Downloading file to: {tmp.name}")
+
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=headers) as resp:
             resp.raise_for_status()
+            content = await resp.read()
+            config.logger.info(f"[DOWNLOAD] Downloaded {len(content)} bytes")
             with open(tmp.name, "wb") as f:
-                f.write(await resp.read())
-    return Path(tmp.name)
+                f.write(content)
+
+    # Verify file was written
+    file_path = Path(tmp.name)
+    if file_path.exists():
+        config.logger.info(f"[DOWNLOAD] File successfully written: {file_path} (size: {file_path.stat().st_size} bytes)")
+    else:
+        config.logger.error(f"[DOWNLOAD] File not found after write: {file_path}")
+
+    return file_path
 
 
 async def _persist_location_upload(location_key: str, pptx_path: Path, metadata_text: str) -> None:
