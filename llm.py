@@ -128,7 +128,27 @@ def _validate_powerpoint_file(file_path: Path) -> bool:
             config.logger.error(f"[VALIDATION] File does not exist: {file_path}")
             return False
 
-        config.logger.info(f"[VALIDATION] Validating PowerPoint file: {file_path} (size: {file_path.stat().st_size} bytes)")
+        file_size = file_path.stat().st_size
+        config.logger.info(f"[VALIDATION] Validating PowerPoint file: {file_path} (size: {file_size} bytes)")
+
+        # Quick sanity checks before invoking python-pptx
+        if file_size <= 0:
+            config.logger.warning(f"[VALIDATION] PowerPoint file is empty: {file_path}")
+            return False
+
+        # PPTX files are ZIP packages starting with 'PK\x03\x04'
+        try:
+            with open(file_path, 'rb') as fp:
+                magic = fp.read(4)
+            if magic != b'PK\x03\x04':
+                config.logger.warning(
+                    f"[VALIDATION] File does not look like a PPTX (ZIP signature missing). "
+                    f"Likely an HTML error/permission issue from Slack. Path: {file_path}"
+                )
+                return False
+        except Exception as e:
+            config.logger.warning(f"[VALIDATION] Failed to read file header for {file_path}: {e}")
+            return False
 
         # Try to open as PowerPoint - this will fail if not a valid PPTX
         pres = Presentation(str(file_path))
@@ -159,6 +179,8 @@ async def _download_slack_file(file_info: Dict[str, Any]) -> Path:
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=headers) as resp:
             resp.raise_for_status()
+            content_type = resp.headers.get('Content-Type', '')
+            config.logger.info(f"[DOWNLOAD] HTTP {resp.status}, Content-Type: {content_type}")
             content = await resp.read()
             config.logger.info(f"[DOWNLOAD] Downloaded {len(content)} bytes")
             with open(tmp.name, "wb") as f:
