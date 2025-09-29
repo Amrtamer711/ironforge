@@ -339,7 +339,61 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 )
             )
             return
-    
+
+    # Check for location deletion confirmation
+    if user_input.strip().lower().startswith("confirm delete ") and config.is_admin(user_id):
+        location_key = user_input.strip().lower().replace("confirm delete ", "").strip()
+
+        if location_key in config.LOCATION_METADATA:
+            location_dir = config.TEMPLATES_DIR / location_key
+            display_name = config.LOCATION_METADATA[location_key].get('display_name', location_key)
+
+            try:
+                # Delete the location directory and all its contents
+                import shutil
+                if location_dir.exists():
+                    shutil.rmtree(location_dir)
+                    logger.info(f"[LOCATION_DELETE] Deleted location directory: {location_dir}")
+
+                # Refresh templates to remove from cache
+                config.refresh_templates()
+
+                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                await config.slack_client.chat_postMessage(
+                    channel=channel,
+                    text=config.markdown_to_slack(
+                        f"✅ **Location `{location_key}` successfully deleted**\n\n"
+                        f"📍 **Removed:** {display_name}\n"
+                        f"🗑️ **Files deleted:** PowerPoint template and metadata\n"
+                        f"🔄 **Templates refreshed:** Location no longer available for proposals"
+                    )
+                )
+                return
+            except Exception as e:
+                logger.error(f"[LOCATION_DELETE] Failed to delete location {location_key}: {e}")
+                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                await config.slack_client.chat_postMessage(
+                    channel=channel,
+                    text=config.markdown_to_slack(f"❌ **Error:** Failed to delete location `{location_key}`. Please try again or check server logs.")
+                )
+                return
+        else:
+            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+            await config.slack_client.chat_postMessage(
+                channel=channel,
+                text=config.markdown_to_slack(f"❌ **Error:** Location `{location_key}` not found. Deletion cancelled.")
+            )
+            return
+
+    # Handle cancellation
+    if user_input.strip().lower() == "cancel" and config.is_admin(user_id):
+        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+        await config.slack_client.chat_postMessage(
+            channel=channel,
+            text=config.markdown_to_slack("✅ **Operation cancelled.**")
+        )
+        return
+
     # Clean up old pending additions (older than 10 minutes)
     cutoff = datetime.now() - timedelta(minutes=10)
     expired_users = [
@@ -463,6 +517,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"  2. Once validated, admin is prompted to upload the PPT file\n"
         f"  3. If next message doesn't contain a PPT file, the addition is cancelled\n"
         f"  4. Location is saved and available immediately\n"
+        f"- You can DELETE locations (admin only): Requires double confirmation to prevent accidents\n"
         f"- You can REFRESH templates to reload available locations\n"
         f"- You can LIST available locations\n"
         f"- You can EXPORT the backend database to Excel when user asks for 'excel backend' or similar (admin only)\n"
@@ -593,6 +648,18 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             }
         },
         {"type": "function", "name": "list_locations", "description": "List the currently available locations to the user", "parameters": {"type": "object", "properties": {}}},
+        {
+            "type": "function",
+            "name": "delete_location",
+            "description": "Delete an existing location (admin only, requires confirmation)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location_key": {"type": "string", "description": "The location key or display name to delete"}
+                },
+                "required": ["location_key"]
+            }
+        },
         {"type": "function", "name": "export_proposals_to_excel", "description": "Export all proposals from the backend database to Excel and send to user", "parameters": {"type": "object", "properties": {}}},
         {"type": "function", "name": "get_proposals_stats", "description": "Get summary statistics of proposals from the database", "parameters": {"type": "object", "properties": {}}}
     ]
@@ -876,6 +943,71 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 else:
                     listing = "\n".join(f"• {n}" for n in names)
                     await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(f"📍 **Current locations:**\n{listing}"))
+
+            elif msg.name == "delete_location":
+                # Admin permission gate
+                if not config.is_admin(user_id):
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** You need admin privileges to delete locations."))
+                    return
+
+                args = json.loads(msg.arguments)
+                location_input = args.get("location_key", "").strip()
+
+                if not location_input:
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** Please specify which location to delete."))
+                    return
+
+                # Find the actual location key - check if it's a display name or direct key
+                location_key = None
+                display_name = None
+
+                # First try direct key match
+                if location_input.lower().replace(" ", "_") in config.LOCATION_METADATA:
+                    location_key = location_input.lower().replace(" ", "_")
+                    display_name = config.LOCATION_METADATA[location_key].get('display_name', location_key)
+                else:
+                    # Try to match by display name
+                    for key, meta in config.LOCATION_METADATA.items():
+                        if meta.get('display_name', '').lower() == location_input.lower():
+                            location_key = key
+                            display_name = meta.get('display_name', key)
+                            break
+
+                if not location_key:
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    available = ", ".join(config.available_location_names())
+                    await config.slack_client.chat_postMessage(
+                        channel=channel,
+                        text=config.markdown_to_slack(f"❌ **Error:** Location '{location_input}' not found.\n\n**Available locations:** {available}")
+                    )
+                    return
+
+                # Double confirmation - show location details and ask for confirmation
+                location_dir = config.TEMPLATES_DIR / location_key
+                meta = config.LOCATION_METADATA[location_key]
+
+                confirmation_text = (
+                    f"⚠️ **CONFIRM LOCATION DELETION**\n\n"
+                    f"📍 **Location:** {display_name} (`{location_key}`)\n"
+                    f"📊 **Type:** {meta.get('display_type', 'Unknown')}\n"
+                    f"📐 **Size:** {meta.get('height')} x {meta.get('width')}\n"
+                    f"🎯 **Series:** {meta.get('series', 'Unknown')}\n\n"
+                    f"🚨 **WARNING:** This will permanently delete:\n"
+                    f"• PowerPoint template file\n"
+                    f"• Location metadata\n"
+                    f"• Remove location from all future proposals\n\n"
+                    f"❓ **To confirm deletion, reply with:** `confirm delete {location_key}`\n"
+                    f"❓ **To cancel, reply with:** `cancel` or ignore this message"
+                )
+
+                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                await config.slack_client.chat_postMessage(
+                    channel=channel,
+                    text=config.markdown_to_slack(confirmation_text)
+                )
+                return
             
             elif msg.name == "export_proposals_to_excel":
                 # Admin permission gate
