@@ -225,21 +225,6 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             if f.get("filetype") == "pptx" or f.get("mimetype", "").endswith("powerpoint") or f.get("name", "").lower().endswith(".pptx"):
                 try:
                     pptx_file = await _download_slack_file(f)
-
-                    # Validate it's actually a PowerPoint file
-                    if not _validate_powerpoint_file(pptx_file):
-                        logger.error(f"Invalid PowerPoint file: {f.get('name')}")
-                        try:
-                            os.unlink(pptx_file)
-                        except:
-                            pass
-                        await config.slack_client.chat_postMessage(
-                            channel=channel,
-                            text=config.markdown_to_slack("❌ **Error:** The uploaded file is not a valid PowerPoint presentation. Please upload a .pptx file.")
-                        )
-                        return
-
-                    break
                 except Exception as e:
                     logger.error(f"Failed to download PPT file: {e}")
                     await config.slack_client.chat_postMessage(
@@ -247,6 +232,21 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         text=config.markdown_to_slack("❌ **Error:** Failed to download the PowerPoint file. Please try again.")
                     )
                     return
+
+                # Validate it's actually a PowerPoint file (separate from download errors)
+                if not _validate_powerpoint_file(pptx_file):
+                    logger.error(f"Invalid PowerPoint file: {f.get('name')}")
+                    try:
+                        os.unlink(pptx_file)
+                    except:
+                        pass
+                    await config.slack_client.chat_postMessage(
+                        channel=channel,
+                        text=config.markdown_to_slack("❌ **Error:** The uploaded file is not a valid PowerPoint presentation. Please upload a .pptx file.")
+                    )
+                    return
+
+                break
         
         if pptx_file:
             # Build metadata.txt content matching exact format of existing files
