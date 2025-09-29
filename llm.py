@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import aiohttp
 from datetime import datetime, timedelta
+from pptx import Presentation
 
 import config
 import db
@@ -122,11 +123,11 @@ IMPORTANT: Use natural language in messages - say 'Sales Person' not 'sales_pers
 def _validate_powerpoint_file(file_path: Path) -> bool:
     """Validate that uploaded file is actually a PowerPoint presentation."""
     try:
-        from pptx import Presentation
         # Try to open as PowerPoint - this will fail if not a valid PPTX
         pres = Presentation(str(file_path))
         # Basic validation: must have at least 1 slide
         if len(pres.slides) < 1:
+            config.logger.warning(f"[VALIDATION] PowerPoint file has no slides: {file_path}")
             return False
         return True
     except Exception as e:
