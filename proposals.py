@@ -54,18 +54,18 @@ def _extract_pages_from_pdf(pdf_path: str, pages: List[int]) -> str:
 
 
 
-def _get_digital_location_info(proposals_data: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Find the first digital location in the proposals and return its info for intro/outro slides."""
+def _get_location_info_for_intro_outro(proposals_data: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Find a suitable location for intro/outro slides based on series."""
     logger = config.logger
-    
-    logger.info(f"[INTRO_OUTRO] 🔍 Searching for digital location from {len(proposals_data)} proposals")
-    
-    # First, look for digital locations
+
+    logger.info(f"[INTRO_OUTRO] 🔍 Searching for suitable location from {len(proposals_data)} proposals")
+
+    # First, look for locations with "The Landmark Series"
     mapping = config.get_location_mapping()
     for idx, proposal in enumerate(proposals_data):
         location = proposal.get("location", "").lower().strip()
         logger.info(f"[INTRO_OUTRO] Checking proposal {idx+1}: location='{location}'")
-        
+
         # Get the actual key from display name or direct match
         matched_key = config.get_location_key_from_display_name(location)
         if not matched_key:
@@ -74,29 +74,29 @@ def _get_digital_location_info(proposals_data: List[Dict[str, Any]]) -> Optional
                 if key in location or location in key:
                     matched_key = key
                     break
-        
+
         if matched_key:
             location_meta = config.LOCATION_METADATA.get(matched_key, {})
-            display_type = location_meta.get('display_type', 'Digital')
+            display_type = location_meta.get('display_type', 'Unknown')
             series = location_meta.get('series', '')
             display_name = location_meta.get('display_name', matched_key)
-            
+
             logger.info(f"[INTRO_OUTRO] Found location: '{display_name}' (key: {matched_key})")
             logger.info(f"[INTRO_OUTRO]   - Display Type: {display_type}")
-            logger.info(f"[INTRO_OUTRO]   - Series: {series}")
-            
-            if display_type == 'Digital':
-                logger.info(f"[INTRO_OUTRO] ✅ DIGITAL LOCATION FOUND! Using '{display_name}' for intro/outro")
-                logger.info(f"[INTRO_OUTRO] 📂 Series: '{series}'")
+            logger.info(f"[INTRO_OUTRO]   - Series: '{series}'")
+
+            if series == 'The Landmark Series':
+                logger.info(f"[INTRO_OUTRO] ✅ LANDMARK SERIES FOUND! Using '{display_name}' for intro/outro")
                 return {
                     'key': matched_key,
                     'series': series,
                     'template_path': str(config.TEMPLATES_DIR / mapping[matched_key]),
-                    'metadata': location_meta
+                    'metadata': location_meta,
+                    'is_landmark': True
                 }
-    
-    # If no digital location found, use the first location from proposals
-    logger.info(f"[INTRO_OUTRO] ❌ No digital location found in proposals")
+
+    # If no Landmark Series found, use the first location from proposals
+    logger.info(f"[INTRO_OUTRO] ❌ No Landmark Series location found in proposals")
     
     if proposals_data:
         first_location = proposals_data[0].get("location", "").lower().strip()
@@ -121,13 +121,13 @@ def _get_digital_location_info(proposals_data: List[Dict[str, Any]]) -> Optional
             logger.info(f"[INTRO_OUTRO]   - Display Type: {display_type}")
             logger.info(f"[INTRO_OUTRO]   - Series: {series}")
 
-            # Mark as non-digital for rest.pdf usage
+            # Mark as non-landmark for rest.pdf usage
             return {
                 'key': matched_key,
                 'series': series,
                 'template_path': str(config.TEMPLATES_DIR / mapping[matched_key]),
                 'metadata': location_meta,
-                'is_non_digital': True  # Flag to use rest.pdf
+                'is_non_landmark': True  # Flag to use rest.pdf
             }
     
     logger.info(f"[INTRO_OUTRO] ⚠️ No suitable location found for intro/outro")
@@ -249,7 +249,7 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
     pdf_files: List[str] = []
     
     # Check if we'll have intro/outro slides
-    intro_outro_info = _get_digital_location_info(validated_proposals)
+    intro_outro_info = _get_location_info_for_intro_outro(validated_proposals)
 
     for idx, proposal in enumerate(validated_proposals):
         src = config.TEMPLATES_DIR / proposal["filename"]
@@ -304,15 +304,17 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
         pdf_path = None
         
         # Map series to PDF filenames
-        is_non_digital = intro_outro_info.get('is_non_digital', False)
+        is_landmark = intro_outro_info.get('is_landmark', False)
+        is_non_landmark = intro_outro_info.get('is_non_landmark', False)
 
-        if is_non_digital:
-            # Use rest.pdf for non-digital locations (static locations)
-            pdf_path = intro_outro_dir / "rest.pdf"
-            logger.info(f"[COMBINED] 🏢 NON-DIGITAL LOCATIONS DETECTED! Using rest.pdf...")
-        elif 'Landmark' in series:
+        if is_landmark or series == 'The Landmark Series':
+            # Use landmark_series.pdf for The Landmark Series
             pdf_path = intro_outro_dir / "landmark_series.pdf"
             logger.info(f"[COMBINED] 🏆 LANDMARK SERIES DETECTED! Looking for pre-made PDF...")
+        elif is_non_landmark:
+            # Use rest.pdf for non-Landmark Series locations
+            pdf_path = intro_outro_dir / "rest.pdf"
+            logger.info(f"[COMBINED] 🏢 NON-LANDMARK LOCATIONS DETECTED! Using rest.pdf...")
         elif 'Digital Icons' in series:
             pdf_path = intro_outro_dir / "digital_icons.pdf"
             logger.info(f"[COMBINED] 💎 DIGITAL ICONS SERIES DETECTED! Looking for pre-made PDF...")
