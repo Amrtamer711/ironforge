@@ -116,15 +116,18 @@ def _get_digital_location_info(proposals_data: List[Dict[str, Any]]) -> Optional
             series = location_meta.get('series', '')
             display_name = location_meta.get('display_name', matched_key)
             display_type = location_meta.get('display_type', 'Unknown')
-            
+
             logger.info(f"[INTRO_OUTRO] 🎯 Using first location: '{display_name}' (key: {matched_key})")
             logger.info(f"[INTRO_OUTRO]   - Display Type: {display_type}")
             logger.info(f"[INTRO_OUTRO]   - Series: {series}")
+
+            # Mark as non-digital for rest.pdf usage
             return {
                 'key': matched_key,
                 'series': series,
                 'template_path': str(config.TEMPLATES_DIR / mapping[matched_key]),
-                'metadata': location_meta
+                'metadata': location_meta,
+                'is_non_digital': True  # Flag to use rest.pdf
             }
     
     logger.info(f"[INTRO_OUTRO] ⚠️ No suitable location found for intro/outro")
@@ -301,7 +304,13 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
         pdf_path = None
         
         # Map series to PDF filenames
-        if 'Landmark' in series:
+        is_non_digital = intro_outro_info.get('is_non_digital', False)
+
+        if is_non_digital:
+            # Use rest.pdf for non-digital locations (static locations)
+            pdf_path = intro_outro_dir / "rest.pdf"
+            logger.info(f"[COMBINED] 🏢 NON-DIGITAL LOCATIONS DETECTED! Using rest.pdf...")
+        elif 'Landmark' in series:
             pdf_path = intro_outro_dir / "landmark_series.pdf"
             logger.info(f"[COMBINED] 🏆 LANDMARK SERIES DETECTED! Looking for pre-made PDF...")
         elif 'Digital Icons' in series:
