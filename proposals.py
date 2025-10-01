@@ -447,7 +447,7 @@ async def process_proposals(
     # Check if we'll have intro/outro slides for multiple proposals
     intro_outro_info = None
     if len(proposals_data) > 1:
-        intro_outro_info = _get_digital_location_info(proposals_data)
+        intro_outro_info = _get_location_info_for_intro_outro(proposals_data)
 
     # Process all proposals in parallel for better performance
     async def process_single_proposal(idx: int, proposal: dict):
