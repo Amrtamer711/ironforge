@@ -420,6 +420,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
 
     prompt = (
         f"You are a sales proposal bot for BackLite Media. You help create financial proposals for digital advertising locations.\n"
+        f"Today's date is: {datetime.now().strftime('%B %d, %Y')} ({datetime.now().strftime('%A')})\n"
+        f"Use this date to understand relative dates like 'tomorrow', 'next week', 'next month', etc.\n\n"
         f"You can handle SINGLE or MULTIPLE location proposals in one request.\n\n"
         f"PACKAGE TYPES:\n"
         f"1. SEPARATE PACKAGE (default): Each location gets its own proposal slide, multiple durations/rates allowed per location\n"
