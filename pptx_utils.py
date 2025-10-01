@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import List, Tuple
+from datetime import datetime
 
 from pptx import Presentation
 from pptx.util import Inches, Pt
@@ -9,6 +10,53 @@ from pptx.oxml.xmlchemy import OxmlElement
 from pptx.oxml.ns import qn
 
 import config
+
+
+def format_date_for_display(date_str: str) -> str:
+    """Convert various date formats to 'Xth Month YYYY' format (e.g., '5th November 2025')."""
+    if not date_str:
+        return date_str
+
+    # Try to parse the date in various formats
+    date_obj = None
+    formats_to_try = [
+        '%Y-%m-%d',  # 2025-11-05
+        '%d/%m/%Y',  # 05/11/2025
+        '%m/%d/%Y',  # 11/05/2025
+        '%d-%m-%Y',  # 05-11-2025
+        '%Y/%m/%d',  # 2025/11/05
+        '%d %B %Y',  # 5 November 2025
+        '%d %b %Y',  # 5 Nov 2025
+        '%B %d, %Y',  # November 5, 2025
+        '%b %d, %Y',  # Nov 5, 2025
+    ]
+
+    for fmt in formats_to_try:
+        try:
+            date_obj = datetime.strptime(date_str.strip(), fmt)
+            break
+        except ValueError:
+            continue
+
+    # If we couldn't parse it, check if it already looks like the target format
+    if date_obj is None:
+        # Check if it already has the ordinal suffix (1st, 2nd, 3rd, etc.)
+        if any(suffix in date_str.lower() for suffix in ['st ', 'nd ', 'rd ', 'th ']):
+            return date_str  # Already in good format
+        return date_str  # Return as-is if we can't parse it
+
+    # Format with ordinal suffix
+    day = date_obj.day
+    if day in [1, 21, 31]:
+        suffix = "st"
+    elif day in [2, 22]:
+        suffix = "nd"
+    elif day in [3, 23]:
+        suffix = "rd"
+    else:
+        suffix = "th"
+
+    return f"{day}{suffix} {date_obj.strftime('%B %Y')}"
 
 
 def add_location_text_with_colored_sov(paragraph, location_text: str, scale: float) -> None:
@@ -228,7 +276,7 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     col2_width = table_width - col1_width
 
     location_name = financial_data["location"]
-    start_date = financial_data["start_date"]
+    start_date = format_date_for_display(financial_data["start_date"])
     durations = financial_data["durations"]
     net_rates = financial_data["net_rates"]
     spots = int(financial_data.get("spots", 1))
@@ -515,10 +563,10 @@ def create_combined_financial_proposal_slide(slide, proposals_data: list, combin
         spots = int(proposal.get("spots", 1))
         production_fee_str = proposal.get("production_fee")
         logger.info(f"[CREATE_COMBINED] Processing location {idx + 1}: '{loc_name}' with {spots} spots")
-        
+
         location_text = build_location_text(loc_name, spots)
         locations.append(location_text)
-        start_dates.append(proposal["start_date"])
+        start_dates.append(format_date_for_display(proposal["start_date"]))
         durations.append(proposal["durations"][0] if proposal["durations"] else "2 Weeks")
         
         # Check if location is static
