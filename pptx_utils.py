@@ -8,7 +8,6 @@ from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN, MSO_VERTICAL_ANCHOR
 from pptx.oxml.xmlchemy import OxmlElement
 from pptx.oxml.ns import qn
-
 import config
 
 

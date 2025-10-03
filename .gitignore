@@ -26,6 +26,7 @@ Thumbs.db
 
 # Data folder (templates, config, etc.)
 data/
+data_remote/
 
 # Generated proposals
 *.pdf
