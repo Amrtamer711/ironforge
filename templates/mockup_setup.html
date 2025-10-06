@@ -479,6 +479,24 @@
           <div class="form-group">
             <label for="creative-photo">Upload Creative/Ad Image</label>
             <input type="file" id="creative-photo" accept="image/*">
+            <small style="color: #6c757d; display: block; margin-top: 5px;">Upload your own creative image</small>
+          </div>
+
+          <div style="text-align: center; margin: 20px 0; color: #6c757d; font-weight: 500;">
+            — OR —
+          </div>
+
+          <div class="form-group">
+            <label for="ai-creative-prompt">AI-Generated Creative (Describe what you want)</label>
+            <textarea
+              id="ai-creative-prompt"
+              placeholder="e.g., luxury watch ad with gold typography on dark background, professional and elegant"
+              rows="3"
+              style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 4px; font-family: inherit; resize: vertical;"
+            ></textarea>
+            <small style="color: #6c757d; display: block; margin-top: 5px;">
+              💡 The AI will generate a billboard creative based on your description (no upload needed)
+            </small>
           </div>
 
           <div class="button-group">
@@ -1433,16 +1451,28 @@
       const locationKey = document.getElementById('generate-location').value;
       const subfolder = document.getElementById('generate-subfolder').value;
       const creativeFile = document.getElementById('creative-photo').files[0];
+      const aiPrompt = document.getElementById('ai-creative-prompt').value.trim();
 
-      if (!locationKey || !creativeFile) {
-        showMessage('Please select location and creative image', 'error');
+      if (!locationKey) {
+        showMessage('Please select a location', 'error');
+        return;
+      }
+
+      if (!creativeFile && !aiPrompt) {
+        showMessage('Please either upload a creative image OR provide an AI prompt', 'error');
         return;
       }
 
       const formData = new FormData();
       formData.append('location_key', locationKey);
       formData.append('subfolder', subfolder);
-      formData.append('creative', creativeFile);
+
+      // If AI prompt is provided, use AI mode (ignore uploaded file)
+      if (aiPrompt) {
+        formData.append('ai_prompt', aiPrompt);
+      } else {
+        formData.append('creative', creativeFile);
+      }
 
       document.getElementById('loading').classList.add('active');
       document.getElementById('generate-btn').disabled = true;
@@ -1492,9 +1522,17 @@
     // Event listeners
     document.getElementById('setup-location').addEventListener('change', loadPhotoList);
 
-    document.getElementById('creative-photo').addEventListener('change', function() {
-      document.getElementById('generate-btn').disabled = !this.files[0];
-    });
+    // Update generate button state when either upload or AI prompt changes
+    function updateGenerateButtonState() {
+      const hasFile = document.getElementById('creative-photo').files.length > 0;
+      const hasPrompt = document.getElementById('ai-creative-prompt').value.trim().length > 0;
+      const hasLocation = document.getElementById('generate-location').value !== '';
+      document.getElementById('generate-btn').disabled = !hasLocation || (!hasFile && !hasPrompt);
+    }
+
+    document.getElementById('creative-photo').addEventListener('change', updateGenerateButtonState);
+    document.getElementById('ai-creative-prompt').addEventListener('input', updateGenerateButtonState);
+    document.getElementById('generate-location').addEventListener('change', updateGenerateButtonState);
 
     // Initialize
     loadLocations();

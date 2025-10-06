@@ -352,24 +352,46 @@ async def delete_mockup_photo(location_key: str, photo_filename: str):
 async def generate_mockup_api(
     location_key: str = Form(...),
     subfolder: str = Form("all"),
-    creative: UploadFile = File(...)
+    ai_prompt: Optional[str] = Form(None),
+    creative: Optional[UploadFile] = File(None)
 ):
-    """Generate a mockup by warping creative onto billboard"""
+    """Generate a mockup by warping creative onto billboard (upload or AI-generated)"""
     import tempfile
     import mockup_generator
     from pathlib import Path
+
+    creative_path = None
 
     try:
         # Validate location
         if location_key not in config.LOCATION_METADATA:
             raise HTTPException(status_code=400, detail=f"Invalid location: {location_key}")
 
-        # Save creative to temp file
-        creative_data = await creative.read()
-        creative_temp = tempfile.NamedTemporaryFile(delete=False, suffix=Path(creative.filename).suffix)
-        creative_temp.write(creative_data)
-        creative_temp.close()
-        creative_path = Path(creative_temp.name)
+        # Determine mode: AI generation or upload
+        if ai_prompt:
+            # AI MODE: Generate creative using AI
+            logger.info(f"[MOCKUP API] Generating AI creative with prompt: {ai_prompt[:100]}...")
+
+            creative_path = await mockup_generator.generate_ai_creative(
+                prompt=f"Billboard advertisement creative: {ai_prompt}. Professional, high-quality, suitable for outdoor advertising.",
+                size="1792x1024"
+            )
+
+            if not creative_path:
+                raise HTTPException(status_code=500, detail="Failed to generate AI creative")
+
+        elif creative:
+            # UPLOAD MODE: Use uploaded creative
+            logger.info(f"[MOCKUP API] Using uploaded creative: {creative.filename}")
+
+            creative_data = await creative.read()
+            creative_temp = tempfile.NamedTemporaryFile(delete=False, suffix=Path(creative.filename).suffix)
+            creative_temp.write(creative_data)
+            creative_temp.close()
+            creative_path = Path(creative_temp.name)
+
+        else:
+            raise HTTPException(status_code=400, detail="Either ai_prompt or creative file must be provided")
 
         # Generate mockup (pass as list) with subfolder
         result_path = mockup_generator.generate_mockup(location_key, [creative_path], subfolder=subfolder)
