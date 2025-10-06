@@ -786,9 +786,9 @@
       }
 
       // Dilate (expand) the mask to extend green region outward
-      // This creates a wider margin and smoother boundary
+      // This pushes the boundary further out to avoid green showing
       const dilatedMask = new Uint8Array(width * height);
-      const expandPixels = 8; // Expand by 8 pixels for wider coverage
+      const expandPixels = 12; // Expand by 12 pixels for extra coverage
 
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
@@ -814,34 +814,61 @@
         }
       }
 
-      // Find the bounding box of the dilated region for smoother corners
-      let minX = width, maxX = 0, minY = height, maxY = 0;
+      // Find contour points on the OUTSIDE edge of dilated region
+      // This preserves the quadrilateral shape while being further out
+      const contourPoints = [];
 
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          if (dilatedMask[y * width + x] === 255) {
-            minX = Math.min(minX, x);
-            maxX = Math.max(maxX, x);
-            minY = Math.min(minY, y);
-            maxY = Math.max(maxY, y);
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          const idx = y * width + x;
+          if (dilatedMask[idx] === 0) {  // Non-dilated pixel
+            // Check 8-connected neighbors for dilated pixels
+            const hasDilatedNeighbor =
+              dilatedMask[idx - 1] === 255 ||                    // left
+              dilatedMask[idx + 1] === 255 ||                    // right
+              dilatedMask[idx - width] === 255 ||                // top
+              dilatedMask[idx + width] === 255 ||                // bottom
+              dilatedMask[idx - width - 1] === 255 ||            // top-left
+              dilatedMask[idx - width + 1] === 255 ||            // top-right
+              dilatedMask[idx + width - 1] === 255 ||            // bottom-left
+              dilatedMask[idx + width + 1] === 255;              // bottom-right
+
+            if (hasDilatedNeighbor) {
+              contourPoints.push([x, y]);
+            }
           }
         }
       }
 
-      // Add extra padding for smoother edges
-      const padding = 3;
-      minX = Math.max(0, minX - padding);
-      maxX = Math.min(width - 1, maxX + padding);
-      minY = Math.max(0, minY - padding);
-      maxY = Math.min(height - 1, maxY + padding);
+      console.log(`[Green Screen] Found ${contourPoints.length} contour points on dilated boundary`);
 
-      console.log(`[Green Screen] Bounding box: (${minX}, ${minY}) to (${maxX}, ${maxY})`);
+      if (contourPoints.length < 4) {
+        console.log('[Green Screen] ❌ Not enough contour points (need at least 4)');
+        return null;
+      }
 
-      // Find the 4 corner points from the dilated bounding box
-      const topLeft = [minX, minY];
-      const topRight = [maxX, minY];
-      const bottomRight = [maxX, maxY];
-      const bottomLeft = [minX, maxY];
+      // Find the 4 extreme corner points from the contour
+      // This finds the actual quadrilateral corners, not a bounding box
+      let topLeft = contourPoints[0];
+      let topRight = contourPoints[0];
+      let bottomRight = contourPoints[0];
+      let bottomLeft = contourPoints[0];
+
+      for (const pt of contourPoints) {
+        const [x, y] = pt;
+
+        // Top-left: minimize x + y
+        if (x + y < topLeft[0] + topLeft[1]) topLeft = pt;
+
+        // Top-right: maximize x - y
+        if (x - y > topRight[0] - topRight[1]) topRight = pt;
+
+        // Bottom-right: maximize x + y
+        if (x + y > bottomRight[0] + bottomRight[1]) bottomRight = pt;
+
+        // Bottom-left: minimize x - y
+        if (x - y < bottomLeft[0] - bottomLeft[1]) bottomLeft = pt;
+      }
 
       console.log(`[Green Screen] ✓ Detected corners:`, {
         topLeft, topRight, bottomRight, bottomLeft
