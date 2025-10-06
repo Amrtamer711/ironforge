@@ -4,8 +4,9 @@ import subprocess
 import shutil
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
 import config
 from llm import main_llm_loop
@@ -183,7 +184,13 @@ async def slack_events(request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    import os
+    environment = os.getenv("ENVIRONMENT", "development")
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "environment": environment
+    }
 
 
 @app.get("/metrics")
@@ -224,4 +231,163 @@ async def metrics():
             "templates_cached": len(config.get_location_mapping()),
         },
         "timestamp": datetime.now().isoformat()
-    } 
+    }
+
+
+# Mockup Generator Routes
+@app.get("/mockup")
+async def mockup_setup_page():
+    """Serve the mockup setup/generate interface"""
+    from pathlib import Path
+    html_path = Path(__file__).parent / "templates" / "mockup_setup.html"
+    if not html_path.exists():
+        raise HTTPException(status_code=404, detail="Mockup setup page not found")
+    return HTMLResponse(content=html_path.read_text())
+
+
+@app.get("/api/mockup/locations")
+async def get_mockup_locations():
+    """Get list of available locations for mockup"""
+    locations = []
+    for key, meta in config.LOCATION_METADATA.items():
+        locations.append({
+            "key": key,
+            "name": meta.get("display_name", key.title())
+        })
+    return {"locations": sorted(locations, key=lambda x: x["name"])}
+
+
+@app.post("/api/mockup/save-frame")
+async def save_mockup_frame(
+    location_key: str = Form(...),
+    frames_data: str = Form(...),
+    photo: UploadFile = File(...)
+):
+    """Save a billboard photo with multiple frame coordinates"""
+    import json
+    import db
+    import mockup_generator
+
+    try:
+        # Parse frames data (list of frames, each frame is list of 4 points)
+        frames = json.loads(frames_data)
+        if not isinstance(frames, list) or len(frames) == 0:
+            raise HTTPException(status_code=400, detail="frames_data must be a non-empty list of frames")
+
+        # Validate each frame has 4 points
+        for i, frame in enumerate(frames):
+            if not isinstance(frame, list) or len(frame) != 4:
+                raise HTTPException(status_code=400, detail=f"Frame {i} must have exactly 4 corner points")
+
+        # Validate location
+        if location_key not in config.LOCATION_METADATA:
+            raise HTTPException(status_code=400, detail=f"Invalid location: {location_key}")
+
+        # Read photo data
+        photo_data = await photo.read()
+
+        # Save photo to disk
+        photo_path = mockup_generator.save_location_photo(location_key, photo.filename, photo_data)
+
+        # Save all frames to database
+        db.save_mockup_frame(location_key, photo.filename, frames)
+
+        logger.info(f"[MOCKUP API] Saved {len(frames)} frame(s) for {location_key}/{photo.filename}")
+
+        return {"success": True, "photo": photo.filename, "frames_count": len(frames)}
+
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid frames_data JSON")
+    except Exception as e:
+        logger.error(f"[MOCKUP API] Error saving frames: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/mockup/photos/{location_key}")
+async def list_mockup_photos(location_key: str):
+    """List all photos for a location"""
+    import db
+
+    try:
+        photos = db.list_mockup_photos(location_key)
+        return {"photos": photos}
+    except Exception as e:
+        logger.error(f"[MOCKUP API] Error listing photos: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/mockup/photo/{location_key}/{photo_filename}")
+async def get_mockup_photo(location_key: str, photo_filename: str):
+    """Get a specific photo file"""
+    import mockup_generator
+
+    photo_path = mockup_generator.get_location_photos_dir(location_key) / photo_filename
+    if not photo_path.exists():
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    return FileResponse(photo_path)
+
+
+@app.delete("/api/mockup/photo/{location_key}/{photo_filename}")
+async def delete_mockup_photo(location_key: str, photo_filename: str):
+    """Delete a photo and its frame"""
+    import mockup_generator
+
+    try:
+        success = mockup_generator.delete_location_photo(location_key, photo_filename)
+        if success:
+            return {"success": True}
+        else:
+            raise HTTPException(status_code=500, detail="Failed to delete photo")
+    except Exception as e:
+        logger.error(f"[MOCKUP API] Error deleting photo: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/mockup/generate")
+async def generate_mockup_api(
+    location_key: str = Form(...),
+    creative: UploadFile = File(...)
+):
+    """Generate a mockup by warping creative onto billboard"""
+    import tempfile
+    import mockup_generator
+    from pathlib import Path
+
+    try:
+        # Validate location
+        if location_key not in config.LOCATION_METADATA:
+            raise HTTPException(status_code=400, detail=f"Invalid location: {location_key}")
+
+        # Save creative to temp file
+        creative_data = await creative.read()
+        creative_temp = tempfile.NamedTemporaryFile(delete=False, suffix=Path(creative.filename).suffix)
+        creative_temp.write(creative_data)
+        creative_temp.close()
+        creative_path = Path(creative_temp.name)
+
+        # Generate mockup
+        result_path = mockup_generator.generate_mockup(location_key, creative_path)
+
+        if not result_path:
+            raise HTTPException(status_code=500, detail="Failed to generate mockup")
+
+        # Return the image
+        return FileResponse(
+            result_path,
+            media_type="image/jpeg",
+            filename=f"mockup_{location_key}.jpg"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[MOCKUP API] Error generating mockup: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # Cleanup temp creative file
+        try:
+            if creative_path and creative_path.exists():
+                creative_path.unlink()
+        except:
+            pass 
