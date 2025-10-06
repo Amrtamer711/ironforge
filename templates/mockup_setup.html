@@ -393,6 +393,9 @@
               <input type="color" id="greenscreen-color" value="#1CFF1C" style="width: 60px; height: 40px; border: 2px solid #dee2e6; border-radius: 4px; cursor: pointer;">
               <input type="text" id="greenscreen-color-hex" value="#1CFF1C" placeholder="#1CFF1C" style="flex: 1; padding: 8px; border: 1px solid #dee2e6; border-radius: 4px; font-family: monospace;">
             </div>
+            <small style="color: #6c757d; display: block; margin-top: -5px; margin-bottom: 10px;">
+              💡 <strong>Tip:</strong> Hold Shift and click on the green screen in the preview to auto-detect and set the exact color
+            </small>
             <label for="color-tolerance" style="display: block; margin-bottom: 5px;">
               <strong>Color Tolerance:</strong> <span id="tolerance-value">40</span>
               <small style="color: #6c757d;">(lower = stricter, higher = more forgiving)</small>
@@ -937,6 +940,36 @@
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
+
+      // Shift+Click to detect color at clicked point
+      if (e.shiftKey) {
+        // Check if click is inside image
+        if (x < drawX || y < drawY || x > drawX + drawW || y > drawY + drawH) return;
+
+        // Get pixel color from image
+        const ix = Math.floor((x - drawX) / scale);
+        const iy = Math.floor((y - drawY) / scale);
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = previewImg.width;
+        tempCanvas.height = previewImg.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(previewImg, 0, 0);
+        const imageData = tempCtx.getImageData(ix, iy, 1, 1);
+        const r = imageData.data[0];
+        const g = imageData.data[1];
+        const b = imageData.data[2];
+        const hex = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+
+        console.log(`[Color Picker] Clicked at (${ix}, ${iy}): RGB(${r}, ${g}, ${b}) = ${hex}`);
+
+        // Optionally set it as the target color
+        document.getElementById('greenscreen-color').value = hex;
+        document.getElementById('greenscreen-color-hex').value = hex;
+
+        showMessage(`Color detected: ${hex} (RGB: ${r}, ${g}, ${b})`, 'success');
+        return;
+      }
 
       // Check if clicking on a corner (highest priority)
       const corner = getClickedCorner(x, y);
