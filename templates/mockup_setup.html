@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mockup Frame Setup</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      opacity: 0.9;
+      font-size: 16px;
+    }
+
+    .mode-toggle {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      padding: 20px;
+      background: #f8f9fa;
+      border-bottom: 2px solid #e9ecef;
+    }
+
+    .mode-btn {
+      padding: 12px 30px;
+      border: 2px solid #667eea;
+      background: white;
+      color: #667eea;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .mode-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+
+    .mode-btn.active {
+      background: #667eea;
+      color: white;
+    }
+
+    .content {
+      padding: 30px;
+    }
+
+    .section {
+      display: none;
+    }
+
+    .section.active {
+      display: block;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .form-group select,
+    .form-group input[type="file"] {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      font-size: 15px;
+      transition: border-color 0.3s;
+    }
+
+    .form-group select:focus,
+    .form-group input[type="file"]:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .canvas-container {
+      margin-top: 20px;
+      text-align: center;
+      position: relative;
+    }
+
+    #canvas {
+      max-width: 100%;
+      height: auto;
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      cursor: crosshair;
+      background: #f8f9fa;
+    }
+
+    .hint {
+      margin-top: 15px;
+      padding: 15px;
+      background: #e7f3ff;
+      border-left: 4px solid #2196F3;
+      border-radius: 4px;
+      color: #0c5091;
+      font-size: 14px;
+    }
+
+    .btn {
+      padding: 12px 30px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-right: 10px;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #5a6268;
+    }
+
+    .btn-danger {
+      background: #dc3545;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #c82333;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .button-group {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .photo-list {
+      margin-top: 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 20px;
+    }
+
+    .photo-card {
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      overflow: hidden;
+      transition: transform 0.3s;
+    }
+
+    .photo-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+    }
+
+    .photo-card img {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+    }
+
+    .photo-card-info {
+      padding: 15px;
+      background: #f8f9fa;
+    }
+
+    .photo-card-info h4 {
+      margin-bottom: 8px;
+      color: #333;
+      font-size: 14px;
+      word-break: break-all;
+    }
+
+    .photo-card-info button {
+      width: 100%;
+      margin-top: 8px;
+    }
+
+    .message {
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .message.success {
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+      display: block;
+    }
+
+    .message.error {
+      background: #f8d7da;
+      border: 1px solid #f5c6cb;
+      color: #721c24;
+      display: block;
+    }
+
+    .creative-upload {
+      margin-top: 20px;
+    }
+
+    .mockup-result {
+      margin-top: 20px;
+      text-align: center;
+    }
+
+    .mockup-result img {
+      max-width: 100%;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 40px;
+    }
+
+    .loading.active {
+      display: block;
+    }
+
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Billboard Mockup Manager</h1>
+      <p>Configure billboard frames and generate mockups</p>
+    </div>
+
+    <div class="mode-toggle">
+      <button class="mode-btn active" onclick="switchMode('setup')">Setup Mode</button>
+      <button class="mode-btn" onclick="switchMode('generate')">Generate Mode</button>
+    </div>
+
+    <div class="content">
+      <div id="message" class="message"></div>
+
+      <!-- Setup Mode -->
+      <div id="setup-section" class="section active">
+        <h2 style="margin-bottom: 20px;">Setup Billboard Frames</h2>
+
+        <div class="form-group">
+          <label for="setup-location">Select Location</label>
+          <select id="setup-location">
+            <option value="">-- Select a location --</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="billboard-photo">Upload Billboard Photo</label>
+          <input type="file" id="billboard-photo" accept="image/*">
+        </div>
+
+        <div class="canvas-container">
+          <canvas id="canvas" width="1200" height="800"></canvas>
+          <div class="hint" id="setup-hint">
+            1. Select a location above<br>
+            2. Upload a billboard photo<br>
+            3. Click 4 corners of the billboard screen to define the frame<br>
+            4. Click "Save Frame" to store the configuration
+          </div>
+        </div>
+
+        <div class="button-group">
+          <button class="btn btn-primary" id="add-frame-btn" onclick="addFrame()" disabled>Add Frame</button>
+          <button class="btn btn-secondary" onclick="resetCurrentFrame()">Reset Current Frame</button>
+          <button class="btn btn-primary" id="save-all-btn" onclick="saveAllFrames()" disabled>Save All Frames</button>
+          <button class="btn btn-danger" onclick="clearAllFrames()">Clear All Frames</button>
+        </div>
+        <div id="frames-info" style="margin-top: 15px; padding: 10px; background: #e7f3ff; border-radius: 4px; display: none;">
+          <strong>Frames configured: <span id="frame-count">0</span></strong>
+        </div>
+
+        <h3 style="margin-top: 40px; margin-bottom: 15px;">Existing Photos</h3>
+        <div id="photo-list" class="photo-list"></div>
+      </div>
+
+      <!-- Generate Mode -->
+      <div id="generate-section" class="section">
+        <h2 style="margin-bottom: 20px;">Generate Mockup</h2>
+
+        <div class="form-group">
+          <label for="generate-location">Select Location</label>
+          <select id="generate-location">
+            <option value="">-- Select a location --</option>
+          </select>
+        </div>
+
+        <div class="creative-upload">
+          <div class="form-group">
+            <label for="creative-photo">Upload Creative/Ad Image</label>
+            <input type="file" id="creative-photo" accept="image/*">
+          </div>
+
+          <div class="button-group">
+            <button class="btn btn-primary" onclick="generateMockup()" id="generate-btn" disabled>Generate Mockup</button>
+          </div>
+        </div>
+
+        <div id="loading" class="loading">
+          <div class="spinner"></div>
+          <p>Generating mockup...</p>
+        </div>
+
+        <div id="mockup-result" class="mockup-result"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    let currentMode = 'setup';
+    let previewImg = null;
+    let currentPhoto = null;
+    let currentPoints = [];  // Points for current frame being drawn
+    let allFrames = [];       // All completed frames [[x,y,x,y,x,y,x,y], ...]
+    let locations = [];
+
+    // Canvas state
+    let imgNaturalW = 0, imgNaturalH = 0;
+    let drawX = 0, drawY = 0, drawW = 0, drawH = 0;
+    let scale = 1;
+
+    // Load locations
+    async function loadLocations() {
+      try {
+        const response = await fetch('/api/mockup/locations');
+        const data = await response.json();
+        locations = data.locations || [];
+
+        const setupSelect = document.getElementById('setup-location');
+        const generateSelect = document.getElementById('generate-location');
+
+        setupSelect.innerHTML = '<option value="">-- Select a location --</option>';
+        generateSelect.innerHTML = '<option value="">-- Select a location --</option>';
+
+        locations.forEach(loc => {
+          setupSelect.innerHTML += `<option value="${loc.key}">${loc.name}</option>`;
+          generateSelect.innerHTML += `<option value="${loc.key}">${loc.name}</option>`;
+        });
+      } catch (err) {
+        showMessage('Failed to load locations', 'error');
+      }
+    }
+
+    // Switch between modes
+    function switchMode(mode) {
+      currentMode = mode;
+
+      document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+
+      document.querySelectorAll('.section').forEach(section => section.classList.remove('active'));
+
+      if (mode === 'setup') {
+        document.getElementById('setup-section').classList.add('active');
+        loadPhotoList();
+      } else {
+        document.getElementById('generate-section').classList.add('active');
+      }
+    }
+
+    // Canvas drawing functions
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#f8f9fa';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function drawPreview() {
+      clearCanvas();
+      if (!previewImg) return;
+
+      ctx.drawImage(previewImg, drawX, drawY, drawW, drawH);
+
+      // Draw all completed frames in green
+      allFrames.forEach(framePoints => {
+        ctx.strokeStyle = '#28a745';
+        ctx.fillStyle = '#28a745';
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.3;
+
+        ctx.beginPath();
+        for (let i = 0; i < framePoints.length; i++) {
+          const cx = drawX + framePoints[i][0] * scale;
+          const cy = drawY + framePoints[i][1] * scale;
+          if (i === 0) ctx.moveTo(cx, cy);
+          else ctx.lineTo(cx, cy);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.stroke();
+
+        // Draw corner points
+        framePoints.forEach(pt => {
+          const cx = drawX + pt[0] * scale;
+          const cy = drawY + pt[1] * scale;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 6, 0, 2 * Math.PI);
+          ctx.fill();
+        });
+      });
+
+      // Draw current frame being edited in red/orange
+      if (currentPoints.length > 0) {
+        ctx.fillStyle = '#ff3b30';
+        ctx.strokeStyle = '#ff9500';
+        ctx.lineWidth = 3;
+
+        // Draw lines
+        ctx.beginPath();
+        currentPoints.forEach((pt, i) => {
+          const cx = drawX + pt[0] * scale;
+          const cy = drawY + pt[1] * scale;
+          if (i === 0) ctx.moveTo(cx, cy);
+          else ctx.lineTo(cx, cy);
+        });
+        if (currentPoints.length > 1) ctx.stroke();
+
+        // Draw points
+        currentPoints.forEach(pt => {
+          const cx = drawX + pt[0] * scale;
+          const cy = drawY + pt[1] * scale;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 8, 0, 2 * Math.PI);
+          ctx.fill();
+        });
+      }
+    }
+
+    function fitImageIntoCanvas(imgW, imgH) {
+      const s = Math.min(canvas.width / imgW, canvas.height / imgH);
+      const w = Math.round(imgW * s);
+      const h = Math.round(imgH * s);
+      const x = Math.round((canvas.width - w) / 2);
+      const y = Math.round((canvas.height - h) / 2);
+      return { x, y, w, h, s };
+    }
+
+    // Handle photo upload
+    document.getElementById('billboard-photo').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      currentPhoto = file;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+          previewImg = img;
+          imgNaturalW = img.width;
+          imgNaturalH = img.height;
+
+          const fit = fitImageIntoCanvas(imgNaturalW, imgNaturalH);
+          drawX = fit.x;
+          drawY = fit.y;
+          drawW = fit.w;
+          drawH = fit.h;
+          scale = fit.s;
+
+          points = [];
+          drawPreview();
+
+          document.getElementById('setup-hint').innerHTML =
+            'Click 4 corners of the billboard screen to define the frame';
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Handle canvas clicks
+    canvas.addEventListener('click', function(e) {
+      if (currentMode !== 'setup' || !previewImg || currentPoints.length >= 4) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Check if click is inside image
+      if (x < drawX || y < drawY || x > drawX + drawW || y > drawY + drawH) return;
+
+      // Convert to image coordinates
+      const ix = (x - drawX) / scale;
+      const iy = (y - drawY) / scale;
+
+      currentPoints.push([Math.round(ix), Math.round(iy)]);
+      drawPreview();
+
+      if (currentPoints.length === 4) {
+        document.getElementById('add-frame-btn').disabled = false;
+        document.getElementById('setup-hint').innerHTML =
+          '✓ 4 corners selected! Click "Add Frame" to save this frame, or "Save All Frames" if done.';
+      } else {
+        document.getElementById('setup-hint').innerHTML =
+          `Point ${currentPoints.length}/4 selected. Click ${4 - currentPoints.length} more corner(s).`;
+      }
+    });
+
+    // Add current frame to allFrames
+    function addFrame() {
+      if (currentPoints.length !== 4) {
+        showMessage('Please select 4 corner points', 'error');
+        return;
+      }
+
+      allFrames.push([...currentPoints]);
+      currentPoints = [];
+      document.getElementById('add-frame-btn').disabled = true;
+      document.getElementById('save-all-btn').disabled = false;
+      document.getElementById('frames-info').style.display = 'block';
+      document.getElementById('frame-count').textContent = allFrames.length;
+
+      document.getElementById('setup-hint').innerHTML =
+        `✓ Frame ${allFrames.length} added! Click 4 corners for another frame, or "Save All Frames" when done.`;
+
+      drawPreview();
+    }
+
+    // Reset current frame
+    function resetCurrentFrame() {
+      currentPoints = [];
+      drawPreview();
+      document.getElementById('add-frame-btn').disabled = true;
+      if (previewImg) {
+        if (allFrames.length > 0) {
+          document.getElementById('setup-hint').innerHTML =
+            `${allFrames.length} frame(s) saved. Click 4 corners for another frame, or "Save All Frames" when done.`;
+        } else {
+          document.getElementById('setup-hint').innerHTML =
+            'Click 4 corners of a billboard screen to define a frame';
+        }
+      }
+    }
+
+    // Clear all frames
+    function clearAllFrames() {
+      if (allFrames.length === 0 && currentPoints.length === 0) return;
+      if (!confirm('Clear all frames? This will reset your work.')) return;
+
+      allFrames = [];
+      currentPoints = [];
+      document.getElementById('add-frame-btn').disabled = true;
+      document.getElementById('save-all-btn').disabled = true;
+      document.getElementById('frames-info').style.display = 'none';
+      document.getElementById('frame-count').textContent = '0';
+      drawPreview();
+
+      if (previewImg) {
+        document.getElementById('setup-hint').innerHTML =
+          'Click 4 corners of the billboard screen to define the frame';
+      }
+    }
+
+    // Save all frames
+    async function saveAllFrames() {
+      const locationKey = document.getElementById('setup-location').value;
+      if (!locationKey) {
+        showMessage('Please select a location', 'error');
+        return;
+      }
+
+      // Add current frame if it has 4 points
+      if (currentPoints.length === 4) {
+        allFrames.push([...currentPoints]);
+        currentPoints = [];
+      }
+
+      if (allFrames.length === 0) {
+        showMessage('Please add at least one frame', 'error');
+        return;
+      }
+
+      if (!currentPhoto) {
+        showMessage('Please upload a photo', 'error');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('location_key', locationKey);
+      formData.append('photo', currentPhoto);
+      formData.append('frames_data', JSON.stringify(allFrames));
+
+      try {
+        const response = await fetch('/api/mockup/save-frame', {
+          method: 'POST',
+          body: formData
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+          showMessage(`Saved ${allFrames.length} frame(s) successfully!`, 'success');
+          clearAllFrames();
+          document.getElementById('billboard-photo').value = '';
+          previewImg = null;
+          currentPhoto = null;
+          loadPhotoList();
+        } else {
+          showMessage(result.error || 'Failed to save frames', 'error');
+        }
+      } catch (err) {
+        showMessage('Network error: ' + err.message, 'error');
+      }
+    }
+
+    // Load photo list
+    async function loadPhotoList() {
+      const locationKey = document.getElementById('setup-location').value;
+      if (!locationKey) {
+        document.getElementById('photo-list').innerHTML = '';
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/mockup/photos/${locationKey}`);
+        const data = await response.json();
+
+        const photoList = document.getElementById('photo-list');
+        if (!data.photos || data.photos.length === 0) {
+          photoList.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: #6c757d;">No photos configured for this location yet.</p>';
+          return;
+        }
+
+        photoList.innerHTML = data.photos.map(photo => `
+          <div class="photo-card">
+            <img src="/api/mockup/photo/${locationKey}/${photo}" alt="${photo}">
+            <div class="photo-card-info">
+              <h4>${photo}</h4>
+              <button class="btn btn-danger btn-sm" onclick="deletePhoto('${locationKey}', '${photo}')">Delete</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        showMessage('Failed to load photos', 'error');
+      }
+    }
+
+    // Delete photo
+    async function deletePhoto(locationKey, photoFilename) {
+      if (!confirm(`Delete ${photoFilename}?`)) return;
+
+      try {
+        const response = await fetch(`/api/mockup/photo/${locationKey}/${photoFilename}`, {
+          method: 'DELETE'
+        });
+
+        if (response.ok) {
+          showMessage('Photo deleted successfully', 'success');
+          loadPhotoList();
+        } else {
+          const result = await response.json();
+          showMessage(result.error || 'Failed to delete photo', 'error');
+        }
+      } catch (err) {
+        showMessage('Network error: ' + err.message, 'error');
+      }
+    }
+
+    // Generate mockup
+    async function generateMockup() {
+      const locationKey = document.getElementById('generate-location').value;
+      const creativeFile = document.getElementById('creative-photo').files[0];
+
+      if (!locationKey || !creativeFile) {
+        showMessage('Please select location and creative image', 'error');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('location_key', locationKey);
+      formData.append('creative', creativeFile);
+
+      document.getElementById('loading').classList.add('active');
+      document.getElementById('generate-btn').disabled = true;
+      document.getElementById('mockup-result').innerHTML = '';
+
+      try {
+        const response = await fetch('/api/mockup/generate', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+
+          document.getElementById('mockup-result').innerHTML = `
+            <h3 style="margin-bottom: 15px;">Generated Mockup</h3>
+            <img src="${url}" alt="Generated Mockup">
+            <div style="margin-top: 15px;">
+              <a href="${url}" download="mockup.jpg" class="btn btn-primary">Download Mockup</a>
+            </div>
+          `;
+          showMessage('Mockup generated successfully!', 'success');
+        } else {
+          const result = await response.json();
+          showMessage(result.error || 'Failed to generate mockup', 'error');
+        }
+      } catch (err) {
+        showMessage('Network error: ' + err.message, 'error');
+      } finally {
+        document.getElementById('loading').classList.remove('active');
+        document.getElementById('generate-btn').disabled = false;
+      }
+    }
+
+    // Show message
+    function showMessage(text, type) {
+      const messageEl = document.getElementById('message');
+      messageEl.textContent = text;
+      messageEl.className = `message ${type}`;
+
+      setTimeout(() => {
+        messageEl.className = 'message';
+      }, 5000);
+    }
+
+    // Event listeners
+    document.getElementById('setup-location').addEventListener('change', loadPhotoList);
+
+    document.getElementById('creative-photo').addEventListener('change', function() {
+      document.getElementById('generate-btn').disabled = !this.files[0];
+    });
+
+    // Initialize
+    loadLocations();
+  </script>
+</body>
+</html>
