@@ -7,13 +7,25 @@ import logging
 
 logger = logging.getLogger("proposal-bot")
 
-# Use /data/ in production, local path in development
+# Use environment-specific database paths
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
 if os.path.exists("/data/"):
-    DB_PATH = Path("/data/proposals.db")
-    logger.info("[DB] Using production database at /data/proposals.db")
+    # Production or test on Render
+    if ENVIRONMENT == "test":
+        DB_PATH = Path("/data/proposals_test.db")
+        logger.info("[DB] Using TEST database at /data/proposals_test.db")
+    else:
+        DB_PATH = Path("/data/proposals.db")
+        logger.info("[DB] Using production database at /data/proposals.db")
 else:
-    DB_PATH = Path(__file__).parent / "proposals.db"
-    logger.info(f"[DB] Using development database at {DB_PATH}")
+    # Local development
+    if ENVIRONMENT == "test":
+        DB_PATH = Path(__file__).parent / "proposals_test.db"
+        logger.info(f"[DB] Using local TEST database at {DB_PATH}")
+    else:
+        DB_PATH = Path(__file__).parent / "proposals.db"
+        logger.info(f"[DB] Using local development database at {DB_PATH}")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS proposals_log (
@@ -24,6 +36,16 @@ CREATE TABLE IF NOT EXISTS proposals_log (
     package_type TEXT NOT NULL,
     locations TEXT NOT NULL,
     total_amount TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS mockup_frames (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    location_key TEXT NOT NULL,
+    photo_filename TEXT NOT NULL,
+    frames_data TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    created_by TEXT,
+    UNIQUE(location_key, photo_filename)
 );
 """
 
@@ -169,6 +191,68 @@ def get_proposals_summary() -> dict:
             ]
         }
         
+    finally:
+        conn.close()
+
+
+def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list, created_by: Optional[str] = None) -> None:
+    """Save frame coordinates for a location photo. frames_data is a list of frame point arrays."""
+    import json
+    conn = _connect()
+    try:
+        conn.execute("BEGIN")
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO mockup_frames (location_key, photo_filename, frames_data, created_at, created_by)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (location_key, photo_filename, json.dumps(frames_data), datetime.now().isoformat(), created_by),
+        )
+        conn.execute("COMMIT")
+    finally:
+        conn.close()
+
+
+def get_mockup_frames(location_key: str, photo_filename: str) -> Optional[list]:
+    """Get all frame coordinates for a specific location photo. Returns list of frames."""
+    import json
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT frames_data FROM mockup_frames WHERE location_key = ? AND photo_filename = ?",
+            (location_key, photo_filename)
+        )
+        row = cursor.fetchone()
+        return json.loads(row[0]) if row else None
+    finally:
+        conn.close()
+
+
+def list_mockup_photos(location_key: str) -> list:
+    """List all photos with frames for a location."""
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT photo_filename FROM mockup_frames WHERE location_key = ?",
+            (location_key,)
+        )
+        return [row[0] for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def delete_mockup_frame(location_key: str, photo_filename: str) -> None:
+    """Delete a mockup frame."""
+    conn = _connect()
+    try:
+        conn.execute("BEGIN")
+        conn.execute(
+            "DELETE FROM mockup_frames WHERE location_key = ? AND photo_filename = ?",
+            (location_key, photo_filename)
+        )
+        conn.execute("COMMIT")
     finally:
         conn.close()
 
