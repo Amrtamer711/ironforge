@@ -375,7 +375,7 @@ async def generate_mockup_api(
 
             creative_path = await mockup_generator.generate_ai_creative(
                 prompt=f"Billboard advertisement creative: {ai_prompt}. Professional, high-quality, suitable for outdoor advertising.",
-                size="1792x1024"
+                size="1536x1024"  # Landscape format for billboards
             )
 
             if not creative_path:
