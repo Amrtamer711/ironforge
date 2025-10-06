@@ -669,8 +669,11 @@
           const s = max === 0 ? 0 : delta / max;
           const v = max / 255;
 
-          // Check if it's green (hue 60-180, saturation >40%, value >20%)
-          if (h >= 60 && h <= 180 && s > 0.4 && v > 0.2) {
+          // Check if it's green (optimized for bright greens like #1CFF1C)
+          // Hue: 90-150 (pure green range)
+          // Saturation: >50% (vivid, not pale)
+          // Value: >30% (bright enough)
+          if (h >= 90 && h <= 150 && s > 0.5 && v > 0.3) {
             greenPixelCount++;
             if (x < minX) minX = x;
             if (x > maxX) maxX = x;
