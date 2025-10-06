@@ -66,16 +66,25 @@ def warp_creative_to_billboard(
         borderValue=(0, 0, 0)
     )
 
-    # Create mask for the billboard area
+    # Create mask for the billboard area with anti-aliased edges
     mask = np.zeros(billboard_image.shape[:2], dtype=np.uint8)
     cv2.fillConvexPoly(mask, dst_pts.astype(int), 255)
-    mask_inv = cv2.bitwise_not(mask)
 
-    # Mask out the billboard area from the background
-    bg_masked = cv2.bitwise_and(billboard_image, billboard_image, mask=mask_inv)
+    # Apply morphological operations for smoother edges
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
-    # Combine background and warped creative
-    result = cv2.add(bg_masked, warped)
+    # Apply Gaussian blur to the mask for smooth anti-aliased blending
+    mask_float = mask.astype(np.float32) / 255.0
+    mask_float = cv2.GaussianBlur(mask_float, (15, 15), 0)
+    mask_float = np.clip(mask_float, 0, 1)
+
+    # Convert to 3-channel mask for alpha blending
+    mask_3ch = np.stack([mask_float] * 3, axis=-1)
+
+    # Alpha blend warped creative with billboard using smooth mask
+    result = (billboard_image.astype(np.float32) * (1 - mask_3ch) +
+              warped.astype(np.float32) * mask_3ch).astype(np.uint8)
 
     return result
 
