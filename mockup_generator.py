@@ -56,8 +56,15 @@ def warp_creative_to_billboard(
     # Get perspective transform matrix
     H = cv2.getPerspectiveTransform(src_pts, dst_pts)
 
-    # Warp creative to billboard perspective
-    warped = cv2.warpPerspective(creative_image, H, (billboard_image.shape[1], billboard_image.shape[0]))
+    # Warp creative to billboard perspective with high-quality interpolation
+    warped = cv2.warpPerspective(
+        creative_image,
+        H,
+        (billboard_image.shape[1], billboard_image.shape[0]),
+        flags=cv2.INTER_LANCZOS4,  # High-quality interpolation for smooth edges
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=(0, 0, 0)
+    )
 
     # Create mask for the billboard area
     mask = np.zeros(billboard_image.shape[:2], dtype=np.uint8)
