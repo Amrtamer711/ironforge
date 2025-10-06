@@ -369,8 +369,8 @@ async def generate_mockup_api(
         creative_temp.close()
         creative_path = Path(creative_temp.name)
 
-        # Generate mockup
-        result_path = mockup_generator.generate_mockup(location_key, creative_path)
+        # Generate mockup (pass as list)
+        result_path = mockup_generator.generate_mockup(location_key, [creative_path])
 
         if not result_path:
             raise HTTPException(status_code=500, detail="Failed to generate mockup")
