@@ -405,6 +405,15 @@
           <strong>Frames configured: <span id="frame-count">0</span></strong>
         </div>
 
+        <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 2px dashed #dee2e6;">
+          <h3 style="margin-top: 0; margin-bottom: 15px;">Test Preview</h3>
+          <p style="color: #6c757d; margin-bottom: 15px;">Upload a test creative to see how it looks on the billboard (won't be saved)</p>
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <input type="file" id="test-creative" accept="image/*" style="flex: 1;">
+            <button class="btn btn-secondary" onclick="clearTestPreview()">Clear Preview</button>
+          </div>
+        </div>
+
         <h3 style="margin-top: 40px; margin-bottom: 15px;">Existing Photos</h3>
         <div id="photo-list" class="photo-list"></div>
       </div>
@@ -451,6 +460,7 @@
     let currentPoints = [];  // Points for current frame being drawn
     let allFrames = [];       // All completed frames [[x,y,x,y,x,y,x,y], ...]
     let locations = [];
+    let testCreativeImg = null; // Test creative for preview
 
     // Canvas state
     let imgNaturalW = 0, imgNaturalH = 0;
@@ -503,11 +513,48 @@
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
+    function applyPerspectiveTransform(creative, points, canvasCtx) {
+      // Simple perspective transform using canvas transform matrix
+      // This is a basic implementation - for production use a proper perspective library
+      const [tl, tr, br, bl] = points.map(pt => [drawX + pt[0] * scale, drawY + pt[1] * scale]);
+
+      // Calculate the transformation
+      canvasCtx.save();
+      canvasCtx.beginPath();
+      canvasCtx.moveTo(tl[0], tl[1]);
+      canvasCtx.lineTo(tr[0], tr[1]);
+      canvasCtx.lineTo(br[0], br[1]);
+      canvasCtx.lineTo(bl[0], bl[1]);
+      canvasCtx.closePath();
+      canvasCtx.clip();
+
+      // Draw creative stretched to fit the quadrilateral (simplified)
+      const minX = Math.min(tl[0], tr[0], br[0], bl[0]);
+      const minY = Math.min(tl[1], tr[1], br[1], bl[1]);
+      const maxX = Math.max(tl[0], tr[0], br[0], bl[0]);
+      const maxY = Math.max(tl[1], tr[1], br[1], bl[1]);
+
+      canvasCtx.globalAlpha = 0.8;
+      canvasCtx.drawImage(creative, minX, minY, maxX - minX, maxY - minY);
+      canvasCtx.globalAlpha = 1.0;
+      canvasCtx.restore();
+    }
+
     function drawPreview() {
       clearCanvas();
       if (!previewImg) return;
 
       ctx.drawImage(previewImg, drawX, drawY, drawW, drawH);
+
+      // If test creative is loaded, show it on current frame or all frames
+      if (testCreativeImg) {
+        const framesToPreview = currentPoints.length === 4 ? [currentPoints] : allFrames;
+        framesToPreview.forEach(framePoints => {
+          if (framePoints.length === 4) {
+            applyPerspectiveTransform(testCreativeImg, framePoints, ctx);
+          }
+        });
+      }
 
       // Draw all completed frames with grey fill and dashed edges with hard corners
       allFrames.forEach((framePoints, frameIndex) => {
@@ -943,6 +990,32 @@
         '✓ Frame drawn! Drag corners to adjust, or drag inside to move. Click "Add Frame" to save.';
     });
 
+    // Handle test creative upload
+    document.getElementById('test-creative').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+          testCreativeImg = img;
+          drawPreview();
+          showMessage('Test creative loaded! It will appear on your frames.', 'success');
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Clear test preview
+    function clearTestPreview() {
+      testCreativeImg = null;
+      document.getElementById('test-creative').value = '';
+      drawPreview();
+      showMessage('Test preview cleared', 'success');
+    }
+
     // Add current frame to allFrames
     function addFrame() {
       if (currentPoints.length !== 4) {
@@ -958,7 +1031,7 @@
       document.getElementById('frame-count').textContent = allFrames.length;
 
       document.getElementById('setup-hint').innerHTML =
-        `✓ Frame ${allFrames.length} added! Click 4 corners for another frame, or "Save All Frames" when done.`;
+        `✓ Frame ${allFrames.length} added! Draw another box for more frames, or "Save All Frames" when done.`;
 
       drawPreview();
     }
