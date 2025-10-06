@@ -263,6 +263,7 @@ async def get_mockup_locations():
 @app.post("/api/mockup/save-frame")
 async def save_mockup_frame(
     location_key: str = Form(...),
+    subfolder: str = Form("all"),
     frames_data: str = Form(...),
     photo: UploadFile = File(...)
 ):
@@ -289,15 +290,15 @@ async def save_mockup_frame(
         # Read photo data
         photo_data = await photo.read()
 
-        # Save photo to disk
-        photo_path = mockup_generator.save_location_photo(location_key, photo.filename, photo_data)
+        # Save photo to disk in subfolder
+        photo_path = mockup_generator.save_location_photo(location_key, photo.filename, photo_data, subfolder)
 
         # Save all frames to database
-        db.save_mockup_frame(location_key, photo.filename, frames)
+        db.save_mockup_frame(location_key, photo.filename, frames, subfolder=subfolder)
 
-        logger.info(f"[MOCKUP API] Saved {len(frames)} frame(s) for {location_key}/{photo.filename}")
+        logger.info(f"[MOCKUP API] Saved {len(frames)} frame(s) for {location_key}/{subfolder}/{photo.filename}")
 
-        return {"success": True, "photo": photo.filename, "frames_count": len(frames)}
+        return {"success": True, "photo": photo.filename, "subfolder": subfolder, "frames_count": len(frames)}
 
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid frames_data JSON")
@@ -350,6 +351,7 @@ async def delete_mockup_photo(location_key: str, photo_filename: str):
 @app.post("/api/mockup/generate")
 async def generate_mockup_api(
     location_key: str = Form(...),
+    subfolder: str = Form("all"),
     creative: UploadFile = File(...)
 ):
     """Generate a mockup by warping creative onto billboard"""
@@ -369,8 +371,8 @@ async def generate_mockup_api(
         creative_temp.close()
         creative_path = Path(creative_temp.name)
 
-        # Generate mockup (pass as list)
-        result_path = mockup_generator.generate_mockup(location_key, [creative_path])
+        # Generate mockup (pass as list) with subfolder
+        result_path = mockup_generator.generate_mockup(location_key, [creative_path], subfolder=subfolder)
 
         if not result_path:
             raise HTTPException(status_code=500, detail="Failed to generate mockup")
@@ -379,7 +381,7 @@ async def generate_mockup_api(
         return FileResponse(
             result_path,
             media_type="image/jpeg",
-            filename=f"mockup_{location_key}.jpg"
+            filename=f"mockup_{location_key}_{subfolder}.jpg"
         )
 
     except HTTPException:

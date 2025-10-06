@@ -369,6 +369,18 @@
         </div>
 
         <div class="form-group">
+          <label for="setup-subfolder">Billboard Variation</label>
+          <select id="setup-subfolder">
+            <option value="all">All (Default)</option>
+            <option value="gold">Gold</option>
+            <option value="silver">Silver</option>
+            <option value="night">Night</option>
+            <option value="day">Day</option>
+          </select>
+          <small style="color: #6c757d; display: block; margin-top: 5px;">Organize photos by variation (e.g., gold frame, night lighting)</small>
+        </div>
+
+        <div class="form-group">
           <label for="billboard-photo">Upload Billboard Photo</label>
           <input type="file" id="billboard-photo" accept="image/*">
         </div>
@@ -449,6 +461,17 @@
           <label for="generate-location">Select Location</label>
           <select id="generate-location">
             <option value="">-- Select a location --</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="generate-subfolder">Billboard Variation</label>
+          <select id="generate-subfolder">
+            <option value="all">All (Default)</option>
+            <option value="gold">Gold</option>
+            <option value="silver">Silver</option>
+            <option value="night">Night</option>
+            <option value="day">Day</option>
           </select>
         </div>
 
@@ -1300,6 +1323,8 @@
     // Save all frames
     async function saveAllFrames() {
       const locationKey = document.getElementById('setup-location').value;
+      const subfolder = document.getElementById('setup-subfolder').value;
+
       if (!locationKey) {
         showMessage('Please select a location', 'error');
         return;
@@ -1323,6 +1348,7 @@
 
       const formData = new FormData();
       formData.append('location_key', locationKey);
+      formData.append('subfolder', subfolder);
       formData.append('photo', currentPhoto);
       formData.append('frames_data', JSON.stringify(allFrames));
 
@@ -1405,6 +1431,7 @@
     // Generate mockup
     async function generateMockup() {
       const locationKey = document.getElementById('generate-location').value;
+      const subfolder = document.getElementById('generate-subfolder').value;
       const creativeFile = document.getElementById('creative-photo').files[0];
 
       if (!locationKey || !creativeFile) {
@@ -1414,6 +1441,7 @@
 
       const formData = new FormData();
       formData.append('location_key', locationKey);
+      formData.append('subfolder', subfolder);
       formData.append('creative', creativeFile);
 
       document.getElementById('loading').classList.add('active');

@@ -89,26 +89,26 @@ def warp_creative_to_billboard(
     return result
 
 
-def get_location_photos_dir(location_key: str) -> Path:
-    """Get the directory for a location's mockup photos."""
-    return MOCKUPS_DIR / location_key
+def get_location_photos_dir(location_key: str, subfolder: str = "all") -> Path:
+    """Get the directory for a location's mockup photos in a specific subfolder."""
+    return MOCKUPS_DIR / location_key / subfolder
 
 
-def save_location_photo(location_key: str, photo_filename: str, photo_data: bytes) -> Path:
-    """Save a location photo to disk."""
-    location_dir = get_location_photos_dir(location_key)
+def save_location_photo(location_key: str, photo_filename: str, photo_data: bytes, subfolder: str = "all") -> Path:
+    """Save a location photo to disk in a specific subfolder."""
+    location_dir = get_location_photos_dir(location_key, subfolder)
     location_dir.mkdir(parents=True, exist_ok=True)
 
     photo_path = location_dir / photo_filename
     photo_path.write_bytes(photo_data)
 
-    logger.info(f"[MOCKUP] Saved photo for location '{location_key}': {photo_path}")
+    logger.info(f"[MOCKUP] Saved photo for location '{location_key}/{subfolder}': {photo_path}")
     return photo_path
 
 
-def list_location_photos(location_key: str) -> List[str]:
-    """List all photo files for a location."""
-    location_dir = get_location_photos_dir(location_key)
+def list_location_photos(location_key: str, subfolder: str = "all") -> List[str]:
+    """List all photo files for a location in a specific subfolder."""
+    location_dir = get_location_photos_dir(location_key, subfolder)
     if not location_dir.exists():
         return []
 
@@ -120,25 +120,25 @@ def list_location_photos(location_key: str) -> List[str]:
     return sorted(photos)
 
 
-def get_random_location_photo(location_key: str) -> Optional[Tuple[str, Path]]:
-    """Get a random photo for a location that has a frame configured."""
+def get_random_location_photo(location_key: str, subfolder: str = "all") -> Optional[Tuple[str, str, Path]]:
+    """Get a random photo for a location that has a frame configured. Returns (photo_filename, subfolder, photo_path)."""
     # Get photos with frames from database
-    photos_with_frames = db.list_mockup_photos(location_key)
+    photos_with_frames = db.list_mockup_photos(location_key, subfolder)
 
     if not photos_with_frames:
-        logger.warning(f"[MOCKUP] No photos with frames found for location '{location_key}'")
+        logger.warning(f"[MOCKUP] No photos with frames found for location '{location_key}/{subfolder}'")
         return None
 
     # Pick a random photo
     photo_filename = random.choice(photos_with_frames)
-    photo_path = get_location_photos_dir(location_key) / photo_filename
+    photo_path = get_location_photos_dir(location_key, subfolder) / photo_filename
 
     if not photo_path.exists():
         logger.error(f"[MOCKUP] Photo file not found: {photo_path}")
         return None
 
-    logger.info(f"[MOCKUP] Selected random photo for '{location_key}': {photo_filename}")
-    return photo_filename, photo_path
+    logger.info(f"[MOCKUP] Selected random photo for '{location_key}/{subfolder}': {photo_filename}")
+    return photo_filename, subfolder, photo_path
 
 
 async def generate_ai_creative(prompt: str, size: str = "1024x1024") -> Optional[Path]:
@@ -206,7 +206,8 @@ def generate_mockup(
     location_key: str,
     creative_images: List[Path],
     output_path: Optional[Path] = None,
-    specific_photo: Optional[str] = None
+    specific_photo: Optional[str] = None,
+    subfolder: str = "all"
 ) -> Optional[Path]:
     """
     Generate a mockup by warping creatives onto a location billboard.
@@ -216,29 +217,30 @@ def generate_mockup(
         creative_images: List of creative/ad image paths (1 image = duplicate across frames, N images = 1 per frame)
         output_path: Optional output path (generates temp file if not provided)
         specific_photo: Optional specific photo filename to use (random if not provided)
+        subfolder: Subfolder within location (default: "all")
 
     Returns:
         Path to the generated mockup image, or None if failed
     """
-    logger.info(f"[MOCKUP] Generating mockup for location '{location_key}' with {len(creative_images)} creative(s)")
+    logger.info(f"[MOCKUP] Generating mockup for location '{location_key}/{subfolder}' with {len(creative_images)} creative(s)")
 
     # Get billboard photo
     if specific_photo:
         photo_filename = specific_photo
-        photo_path = get_location_photos_dir(location_key) / photo_filename
+        photo_path = get_location_photos_dir(location_key, subfolder) / photo_filename
         if not photo_path.exists():
             logger.error(f"[MOCKUP] Specific photo not found: {photo_path}")
             return None
     else:
-        result = get_random_location_photo(location_key)
+        result = get_random_location_photo(location_key, subfolder)
         if not result:
             return None
-        photo_filename, photo_path = result
+        photo_filename, subfolder, photo_path = result
 
     # Get all frame coordinates (list of frames)
-    frames_data = db.get_mockup_frames(location_key, photo_filename)
+    frames_data = db.get_mockup_frames(location_key, photo_filename, subfolder)
     if not frames_data:
-        logger.error(f"[MOCKUP] No frame coordinates found for '{location_key}/{photo_filename}'")
+        logger.error(f"[MOCKUP] No frame coordinates found for '{location_key}/{subfolder}/{photo_filename}'")
         return None
 
     num_frames = len(frames_data)
@@ -304,18 +306,18 @@ def generate_mockup(
         return None
 
 
-def delete_location_photo(location_key: str, photo_filename: str) -> bool:
+def delete_location_photo(location_key: str, photo_filename: str, subfolder: str = "all") -> bool:
     """Delete a location photo and its frame data."""
     try:
         # Delete from database
-        db.delete_mockup_frame(location_key, photo_filename)
+        db.delete_mockup_frame(location_key, photo_filename, subfolder)
 
         # Delete file
-        photo_path = get_location_photos_dir(location_key) / photo_filename
+        photo_path = get_location_photos_dir(location_key, subfolder) / photo_filename
         if photo_path.exists():
             photo_path.unlink()
 
-        logger.info(f"[MOCKUP] Deleted photo '{photo_filename}' for location '{location_key}'")
+        logger.info(f"[MOCKUP] Deleted photo '{photo_filename}' for location '{location_key}/{subfolder}'")
         return True
     except Exception as e:
         logger.error(f"[MOCKUP] Error deleting photo: {e}")

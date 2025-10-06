@@ -41,11 +41,12 @@ CREATE TABLE IF NOT EXISTS proposals_log (
 CREATE TABLE IF NOT EXISTS mockup_frames (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     location_key TEXT NOT NULL,
+    subfolder TEXT NOT NULL DEFAULT 'all',
     photo_filename TEXT NOT NULL,
     frames_data TEXT NOT NULL,
     created_at TEXT NOT NULL,
     created_by TEXT,
-    UNIQUE(location_key, photo_filename)
+    UNIQUE(location_key, subfolder, photo_filename)
 );
 """
 
@@ -194,33 +195,33 @@ def get_proposals_summary() -> dict:
         conn.close()
 
 
-def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list, created_by: Optional[str] = None) -> None:
-    """Save frame coordinates for a location photo. frames_data is a list of frame point arrays."""
+def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list, created_by: Optional[str] = None, subfolder: str = "all") -> None:
+    """Save frame coordinates for a location photo in a subfolder. frames_data is a list of frame point arrays."""
     import json
     conn = _connect()
     try:
         conn.execute("BEGIN")
         conn.execute(
             """
-            INSERT OR REPLACE INTO mockup_frames (location_key, photo_filename, frames_data, created_at, created_by)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO mockup_frames (location_key, subfolder, photo_filename, frames_data, created_at, created_by)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (location_key, photo_filename, json.dumps(frames_data), datetime.now().isoformat(), created_by),
+            (location_key, subfolder, photo_filename, json.dumps(frames_data), datetime.now().isoformat(), created_by),
         )
         conn.execute("COMMIT")
     finally:
         conn.close()
 
 
-def get_mockup_frames(location_key: str, photo_filename: str) -> Optional[list]:
-    """Get all frame coordinates for a specific location photo. Returns list of frames."""
+def get_mockup_frames(location_key: str, photo_filename: str, subfolder: str = "all") -> Optional[list]:
+    """Get all frame coordinates for a specific location photo in a subfolder. Returns list of frames."""
     import json
     conn = _connect()
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT frames_data FROM mockup_frames WHERE location_key = ? AND photo_filename = ?",
-            (location_key, photo_filename)
+            "SELECT frames_data FROM mockup_frames WHERE location_key = ? AND subfolder = ? AND photo_filename = ?",
+            (location_key, subfolder, photo_filename)
         )
         row = cursor.fetchone()
         return json.loads(row[0]) if row else None
@@ -228,13 +229,27 @@ def get_mockup_frames(location_key: str, photo_filename: str) -> Optional[list]:
         conn.close()
 
 
-def list_mockup_photos(location_key: str) -> list:
-    """List all photos with frames for a location."""
+def list_mockup_photos(location_key: str, subfolder: str = "all") -> list:
+    """List all photos with frames for a location in a specific subfolder."""
     conn = _connect()
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT photo_filename FROM mockup_frames WHERE location_key = ?",
+            "SELECT photo_filename FROM mockup_frames WHERE location_key = ? AND subfolder = ?",
+            (location_key, subfolder)
+        )
+        return [row[0] for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def list_mockup_subfolders(location_key: str) -> list:
+    """List all subfolders for a location."""
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT DISTINCT subfolder FROM mockup_frames WHERE location_key = ? ORDER BY subfolder",
             (location_key,)
         )
         return [row[0] for row in cursor.fetchall()]
@@ -242,14 +257,14 @@ def list_mockup_photos(location_key: str) -> list:
         conn.close()
 
 
-def delete_mockup_frame(location_key: str, photo_filename: str) -> None:
+def delete_mockup_frame(location_key: str, photo_filename: str, subfolder: str = "all") -> None:
     """Delete a mockup frame."""
     conn = _connect()
     try:
         conn.execute("BEGIN")
         conn.execute(
-            "DELETE FROM mockup_frames WHERE location_key = ? AND photo_filename = ?",
-            (location_key, photo_filename)
+            "DELETE FROM mockup_frames WHERE location_key = ? AND subfolder = ? AND photo_filename = ?",
+            (location_key, subfolder, photo_filename)
         )
         conn.execute("COMMIT")
     finally:
