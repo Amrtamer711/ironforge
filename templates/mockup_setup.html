@@ -636,14 +636,14 @@
       return { x, y, w, h, s };
     }
 
-    // Detect green screen and extract frame coordinates
+    // Detect green screen and extract actual corner coordinates (handles perspective/angled billboards)
     function detectGreenScreen(imageData) {
       const data = imageData.data;
       const width = imageData.width;
       const height = imageData.height;
 
-      // Find green pixels (HSV: 60-180 hue, >40% saturation, >20% value)
-      let minX = width, minY = height, maxX = 0, maxY = 0;
+      // Create binary mask of green pixels
+      const mask = new Uint8Array(width * height);
       let greenPixelCount = 0;
 
       for (let y = 0; y < height; y++) {
@@ -658,7 +658,10 @@
           const min = Math.min(r, g, b);
           const delta = max - min;
 
-          if (delta === 0) continue;
+          if (delta === 0) {
+            mask[y * width + x] = 0;
+            continue;
+          }
 
           let h = 0;
           if (max === r) h = ((g - b) / delta) % 6;
@@ -670,28 +673,64 @@
           const v = max / 255;
 
           // Check if it's green (optimized for bright greens like #1CFF1C)
-          // Hue: 90-150 (pure green range)
-          // Saturation: >50% (vivid, not pale)
-          // Value: >30% (bright enough)
           if (h >= 90 && h <= 150 && s > 0.5 && v > 0.3) {
+            mask[y * width + x] = 255;
             greenPixelCount++;
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
+          } else {
+            mask[y * width + x] = 0;
           }
         }
       }
 
-      if (greenPixelCount < 1000) return null; // Not enough green pixels
+      if (greenPixelCount < 1000) return null;
 
-      // Return bounding box corners
-      return [
-        [minX, minY],         // top-left
-        [maxX, minY],         // top-right
-        [maxX, maxY],         // bottom-right
-        [minX, maxY]          // bottom-left
-      ];
+      // Find contour points (edge pixels of green region)
+      const contourPoints = [];
+
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          const idx = y * width + x;
+          if (mask[idx] === 255) {
+            // Check if it's on the edge (has non-green neighbor)
+            const hasNonGreenNeighbor =
+              mask[idx - 1] === 0 ||           // left
+              mask[idx + 1] === 0 ||           // right
+              mask[idx - width] === 0 ||       // top
+              mask[idx + width] === 0;         // bottom
+
+            if (hasNonGreenNeighbor) {
+              contourPoints.push([x, y]);
+            }
+          }
+        }
+      }
+
+      if (contourPoints.length < 4) return null;
+
+      // Find the 4 extreme corner points from the contour
+      // These formulas find corners even on angled/perspective quadrilaterals
+      let topLeft = contourPoints[0];
+      let topRight = contourPoints[0];
+      let bottomRight = contourPoints[0];
+      let bottomLeft = contourPoints[0];
+
+      for (const pt of contourPoints) {
+        const [x, y] = pt;
+
+        // Top-left: minimize x + y
+        if (x + y < topLeft[0] + topLeft[1]) topLeft = pt;
+
+        // Top-right: maximize x - y
+        if (x - y > topRight[0] - topRight[1]) topRight = pt;
+
+        // Bottom-right: maximize x + y
+        if (x + y > bottomRight[0] + bottomRight[1]) bottomRight = pt;
+
+        // Bottom-left: minimize x - y (or maximize y - x)
+        if (x - y < bottomLeft[0] - bottomLeft[1]) bottomLeft = pt;
+      }
+
+      return [topLeft, topRight, bottomRight, bottomLeft];
     }
 
     // Handle photo upload
