@@ -712,11 +712,12 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         {
             "type": "function",
             "name": "generate_mockup",
-            "description": "Generate a billboard mockup. User can upload image(s) OR provide a text prompt for AI generation. System randomly selects billboard photo and warps creative(s) onto it. Supports multiple frames: 1 creative = duplicate across all, N creatives = match to N frames.",
+            "description": "Generate a billboard mockup. User can upload image(s) OR provide a text prompt for AI generation. System randomly selects billboard photo and warps creative(s) onto it. Supports multiple frames: 1 creative = duplicate across all, N creatives = match to N frames. Billboard variations (gold, silver, night, day) can be specified if available.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "location": {"type": "string", "description": "The location name (e.g., 'Dubai Gateway', 'The Landmark', 'oryx')"},
+                    "location": {"type": "string", "description": "The location name only (e.g., 'Dubai Gateway', 'The Landmark', 'oryx')"},
+                    "variation": {"type": "string", "description": "Optional billboard variation: 'gold', 'silver', 'night', or 'day'. System will check if this variation exists for the location.", "enum": ["gold", "silver", "night", "day"]},
                     "ai_prompt": {"type": "string", "description": "Optional: AI prompt to generate creative using DALL-E instead of uploading. Example: 'A luxury watch advertisement with gold accents and elegant typography'"}
                 },
                 "required": ["location"]
@@ -1156,6 +1157,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 # Parse the location from arguments
                 args = json.loads(msg.arguments)
                 location_name = args.get("location", "").strip()
+                variation = args.get("variation", "").strip().lower()  # Get variation param
                 ai_prompt = args.get("ai_prompt", "").strip()
 
                 # Convert display name to location key
@@ -1172,30 +1174,30 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     )
                     return
 
-                # Extract subfolder from location query (check for variations like "gold", "silver", "night", "day")
+                # Handle variation/subfolder selection
                 import mockup_generator
                 import db
 
                 subfolder = "all"
                 subfolder_note = ""
-                available_subfolders = db.list_mockup_subfolders(location_key)
 
-                # Remove 'all' from available subfolders for matching
-                special_subfolders = [s for s in available_subfolders if s != "all"]
+                if variation:
+                    # User explicitly requested a variation
+                    available_subfolders = db.list_mockup_subfolders(location_key)
 
-                # Check if user mentioned any special subfolder in their query
-                location_query_lower = location_name.lower()
-                for sf in special_subfolders:
-                    if sf.lower() in location_query_lower:
-                        # Check if this subfolder has photos
-                        photos_in_subfolder = mockup_generator.list_location_photos(location_key, sf)
-                        if photos_in_subfolder:
-                            subfolder = sf
-                            logger.info(f"[MOCKUP] Detected subfolder '{sf}' from query: {location_name}")
-                            break
+                    if variation not in available_subfolders:
+                        # Variation folder doesn't exist at all
+                        subfolder_note = f"\n\n_Note: '{variation}' variation not found for {location_name}. Using default version._"
+                        logger.info(f"[MOCKUP] Variation '{variation}' not found in subfolders: {available_subfolders}")
+                    else:
+                        # Variation exists, check if it has photos
+                        photos_in_variation = mockup_generator.list_location_photos(location_key, variation)
+                        if photos_in_variation:
+                            subfolder = variation
+                            logger.info(f"[MOCKUP] Using variation '{variation}' for {location_name}")
                         else:
-                            subfolder_note = f"\n\n_Note: '{sf}' variation requested but not available for this location. Using default version._"
-                            logger.info(f"[MOCKUP] Subfolder '{sf}' requested but has no photos, falling back to 'all'")
+                            subfolder_note = f"\n\n_Note: '{variation}' variation exists but has no photos for {location_name}. Using default version._"
+                            logger.info(f"[MOCKUP] Variation '{variation}' has no photos, falling back to 'all'")
 
                 # Check if location has any mockup photos configured in the selected subfolder
                 photos = mockup_generator.list_location_photos(location_key, subfolder)
