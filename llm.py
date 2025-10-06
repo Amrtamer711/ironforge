@@ -224,10 +224,13 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
     )
     status_ts = status_message.get("ts")
     
-    # Check if user has a pending location addition and uploaded a PPT
+    # Check if user has a pending location addition or mockup request and uploaded a file
     # Also check for file_share events which Slack sometimes uses
     has_files = slack_event and ("files" in slack_event or (slack_event.get("subtype") == "file_share"))
-    
+
+    # Note: Mockup generation is now handled in one step within the tool handler
+    # No need for pending state - users must upload image WITH request or provide AI prompt
+
     if user_id in pending_location_additions and has_files:
         pending_data = pending_location_additions[user_id]
         logger.info(f"[LOCATION_ADD] Found pending location for user {user_id}: {pending_data['location_key']}")
@@ -524,7 +527,28 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"- You can LIST available locations\n"
         f"- You can EXPORT the backend database to Excel when user asks for 'excel backend' or similar (admin only)\n"
         f"- You can GET STATISTICS about proposals generated\n"
-        f"- You can EDIT tasks (for task management workflows)\n\n"
+        f"- You can EDIT tasks (for task management workflows)\n"
+        f"- You can GENERATE MOCKUPS: Create billboard mockups with uploaded or AI-generated creatives:\n"
+        f"  TWO MODES (everything must be in ONE message):\n"
+        f"  A) USER UPLOAD MODE (requires image attachment):\n"
+        f"     1. User UPLOADS image(s) WITH mockup request in same message\n"
+        f"     2. System detects images and generates mockup immediately\n"
+        f"     3. Supports multiple frames: 1 image = duplicate across all, N images = match to N frames\n"
+        f"     IMPORTANT: No AI prompt = requires image upload WITH request\n"
+        f"  B) AI GENERATION MODE (NO upload needed):\n"
+        f"     1. User provides location AND creative description in request\n"
+        f"     2. System generates creative using gpt-image-1 model (NO upload needed)\n"
+        f"     3. System applies AI creative to billboard and returns mockup\n"
+        f"     IMPORTANT: If description provided = AI mode, ignore any uploaded images\n"
+        f"  Decision Logic:\n"
+        f"  - Has creative description? → Use AI mode (ignore uploads)\n"
+        f"  - No description but has upload? → Use upload mode\n"
+        f"  - No description and no upload? → ERROR\n"
+        f"  Examples:\n"
+        f"  - [uploads creative.jpg] + 'mockup for Dubai Gateway' → uses uploaded image\n"
+        f"  - 'mockup for Oryx with luxury watch ad, gold and elegant' → AI generates creative (no upload needed)\n"
+        f"  - 'mockup for Gateway' (no upload, no description) → ERROR: missing creative\n"
+        f"  Keywords: 'mockup', 'mock up', 'billboard preview', 'show my ad on'\n\n"
         
         f"IMPORTANT:\n"
         f"- Use get_separate_proposals for individual location proposals with multiple duration/rate options\n"
@@ -663,7 +687,20 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             }
         },
         {"type": "function", "name": "export_proposals_to_excel", "description": "Export all proposals from the backend database to Excel and send to user", "parameters": {"type": "object", "properties": {}}},
-        {"type": "function", "name": "get_proposals_stats", "description": "Get summary statistics of proposals from the database", "parameters": {"type": "object", "properties": {}}}
+        {"type": "function", "name": "get_proposals_stats", "description": "Get summary statistics of proposals from the database", "parameters": {"type": "object", "properties": {}}},
+        {
+            "type": "function",
+            "name": "generate_mockup",
+            "description": "Generate a billboard mockup. User can upload image(s) OR provide a text prompt for AI generation. System randomly selects billboard photo and warps creative(s) onto it. Supports multiple frames: 1 creative = duplicate across all, N creatives = match to N frames.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {"type": "string", "description": "The location name (e.g., 'Dubai Gateway', 'The Landmark', 'oryx')"},
+                    "ai_prompt": {"type": "string", "description": "Optional: AI prompt to generate creative using DALL-E instead of uploading. Example: 'A luxury watch advertisement with gold accents and elegant typography'"}
+                },
+                "required": ["location"]
+            }
+        }
     ]
 
     try:
@@ -1063,17 +1100,17 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 logger.info("[STATS] User requested proposals statistics")
                 try:
                     stats = db.get_proposals_summary()
-                    
+
                     # Format the statistics message
                     message = "📊 **Proposals Database Summary**\n\n"
                     message += f"**Total Proposals:** {stats['total_proposals']}\n\n"
-                    
+
                     if stats['by_package_type']:
                         message += "**By Package Type:**\n"
                         for pkg_type, count in stats['by_package_type'].items():
                             message += f"• {pkg_type.title()}: {count}\n"
                         message += "\n"
-                    
+
                     if stats['recent_proposals']:
                         message += "**Recent Proposals:**\n"
                         for proposal in stats['recent_proposals']:
@@ -1081,19 +1118,207 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                             message += f"• {proposal['client']} - {proposal['locations']} ({date_str})\n"
                     else:
                         message += "_No proposals generated yet._"
-                    
+
                     await config.slack_client.chat_delete(channel=channel, ts=status_ts)
                     await config.slack_client.chat_postMessage(
                         channel=channel,
                         text=config.markdown_to_slack(message)
                     )
-                    
+
                 except Exception as e:
                     logger.error(f"[STATS] Error: {e}", exc_info=True)
+
+            elif msg.name == "generate_mockup":
+                # Handle mockup generation with AI or user upload
+                logger.info("[MOCKUP] User requested mockup generation")
+
+                # Parse the location from arguments
+                args = json.loads(msg.arguments)
+                location_name = args.get("location", "").strip()
+                ai_prompt = args.get("ai_prompt", "").strip()
+
+                # Convert display name to location key
+                location_key = config.get_location_key_from_display_name(location_name)
+                if not location_key:
+                    location_key = location_name.lower().replace(" ", "_")
+
+                # Validate location exists
+                if location_key not in config.LOCATION_METADATA:
                     await config.slack_client.chat_delete(channel=channel, ts=status_ts)
                     await config.slack_client.chat_postMessage(
                         channel=channel,
-                        text=config.markdown_to_slack("❌ **Error:** Failed to retrieve statistics. Please try again.")
+                        text=config.markdown_to_slack(f"❌ **Error:** Location '{location_name}' not found. Please choose from available locations.")
+                    )
+                    return
+
+                # Check if location has any mockup photos configured
+                import mockup_generator
+                photos = mockup_generator.list_location_photos(location_key)
+                if not photos:
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await config.slack_client.chat_postMessage(
+                        channel=channel,
+                        text=config.markdown_to_slack(
+                            f"❌ **Error:** No billboard photos configured for '{location_name}'.\n\n"
+                            f"Ask an admin to set up mockup frames at http://localhost:3000/mockup"
+                        )
+                    )
+                    return
+
+                # Check if user uploaded image(s) with the request
+                has_images = False
+                uploaded_creatives = []
+
+                if slack_event and ("files" in slack_event or slack_event.get("subtype") == "file_share"):
+                    files = slack_event.get("files", [])
+                    if not files and slack_event.get("subtype") == "file_share" and "file" in slack_event:
+                        files = [slack_event["file"]]
+
+                    # Look for image files
+                    for f in files:
+                        filetype = f.get("filetype", "")
+                        mimetype = f.get("mimetype", "")
+                        filename = f.get("name", "").lower()
+
+                        if (filetype in ["jpg", "jpeg", "png", "gif", "bmp"] or
+                            mimetype.startswith("image/") or
+                            any(filename.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp"])):
+                            try:
+                                creative_file = await _download_slack_file(f)
+                                uploaded_creatives.append(creative_file)
+                                has_images = True
+                                logger.info(f"[MOCKUP] Found uploaded image: {f.get('name')}")
+                            except Exception as e:
+                                logger.error(f"[MOCKUP] Failed to download image: {e}")
+
+                # Determine mode based on what user provided
+                if ai_prompt:
+                    # AI MODE: User provided a description for AI generation
+                    await config.slack_client.chat_update(
+                        channel=channel,
+                        ts=status_ts,
+                        text="⏳ _Generating AI creative and mockup..._"
+                    )
+
+                    try:
+                        # Generate creative using gpt-image-1
+                        ai_creative_path = await mockup_generator.generate_ai_creative(
+                            prompt=f"Billboard advertisement creative: {ai_prompt}. Professional, high-quality, suitable for outdoor advertising.",
+                            size="1792x1024"
+                        )
+
+                        if not ai_creative_path:
+                            raise Exception("Failed to generate AI creative")
+
+                        # Generate mockup
+                        result_path = mockup_generator.generate_mockup(
+                            location_key,
+                            [ai_creative_path]
+                        )
+
+                        if not result_path:
+                            raise Exception("Failed to generate mockup")
+
+                        # Delete status and upload mockup
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        await config.slack_client.files_upload_v2(
+                            channel=channel,
+                            file=str(result_path),
+                            filename=f"ai_mockup_{location_key}.jpg",
+                            initial_comment=config.markdown_to_slack(
+                                f"🎨 **AI-Generated Billboard Mockup**\n\n"
+                                f"📍 Location: {location_name}\n"
+                                f"✨ Prompt: {ai_prompt}\n"
+                                f"🤖 Creative generated by gpt-image-1"
+                            )
+                        )
+
+                        # Cleanup
+                        try:
+                            os.unlink(ai_creative_path)
+                            os.unlink(result_path)
+                        except:
+                            pass
+
+                    except Exception as e:
+                        logger.error(f"[MOCKUP] Error generating AI mockup: {e}", exc_info=True)
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            text=config.markdown_to_slack(f"❌ **Error:** Failed to generate AI mockup. {str(e)}")
+                        )
+
+                elif has_images:
+                    # IMAGE UPLOAD MODE: User uploaded image(s) with their request
+                    logger.info(f"[MOCKUP] Processing {len(uploaded_creatives)} uploaded image(s)")
+
+                    await config.slack_client.chat_update(
+                        channel=channel,
+                        ts=status_ts,
+                        text="⏳ _Generating mockup from uploaded image(s)..._"
+                    )
+
+                    try:
+                        result_path = mockup_generator.generate_mockup(
+                            location_key,
+                            uploaded_creatives
+                        )
+
+                        if not result_path:
+                            raise Exception("Failed to generate mockup")
+
+                        # Delete status and upload mockup
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        await config.slack_client.files_upload_v2(
+                            channel=channel,
+                            file=str(result_path),
+                            filename=f"mockup_{location_key}.jpg",
+                            initial_comment=config.markdown_to_slack(
+                                f"🎨 **Billboard Mockup Generated**\n\n"
+                                f"📍 Location: {location_name}\n"
+                                f"🖼️ Creative(s): {len(uploaded_creatives)} image(s)\n"
+                                f"✨ Your creative has been applied to a billboard photo."
+                            )
+                        )
+
+                        # Cleanup
+                        try:
+                            for creative_file in uploaded_creatives:
+                                os.unlink(creative_file)
+                            os.unlink(result_path)
+                        except:
+                            pass
+
+                    except Exception as e:
+                        logger.error(f"[MOCKUP] Error generating mockup from upload: {e}", exc_info=True)
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            text=config.markdown_to_slack(f"❌ **Error:** Failed to generate mockup. {str(e)}")
+                        )
+
+                        # Cleanup
+                        try:
+                            for creative_file in uploaded_creatives:
+                                os.unlink(creative_file)
+                        except:
+                            pass
+
+                else:
+                    # NO AI PROMPT, NO IMAGE UPLOADED: Error - user should have uploaded with request
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await config.slack_client.chat_postMessage(
+                        channel=channel,
+                        text=config.markdown_to_slack(
+                            f"❌ **Sorry!** You need to provide a creative for the mockup.\n\n"
+                            f"**Two ways to generate mockups:**\n\n"
+                            f"1️⃣ **Upload Your Image:** Attach your creative when you send the request\n"
+                            f"   Example: [Upload creative.jpg] + \"mockup for {location_name}\"\n\n"
+                            f"2️⃣ **AI Generation (No upload needed):** Describe what you want\n"
+                            f"   Example: \"mockup for {location_name} with luxury watch ad, gold and elegant typography\"\n"
+                            f"   The AI will generate the creative for you!\n\n"
+                            f"Please try again with either an image attachment OR a creative description!"
+                        )
                     )
 
         else:
