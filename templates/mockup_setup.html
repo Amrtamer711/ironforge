@@ -548,9 +548,12 @@
       reader.readAsDataURL(file);
     });
 
-    // Handle canvas clicks
-    canvas.addEventListener('click', function(e) {
-      if (currentMode !== 'setup' || !previewImg || currentPoints.length >= 4) return;
+    // Handle canvas drag for drawing boxes
+    let isDrawing = false;
+    let startX, startY;
+
+    canvas.addEventListener('mousedown', function(e) {
+      if (currentMode !== 'setup' || !previewImg) return;
 
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -559,21 +562,59 @@
       // Check if click is inside image
       if (x < drawX || y < drawY || x > drawX + drawW || y > drawY + drawH) return;
 
-      // Convert to image coordinates
-      const ix = (x - drawX) / scale;
-      const iy = (y - drawY) / scale;
+      isDrawing = true;
+      startX = x;
+      startY = y;
+    });
 
-      currentPoints.push([Math.round(ix), Math.round(iy)]);
+    canvas.addEventListener('mousemove', function(e) {
+      if (!isDrawing || currentMode !== 'setup' || !previewImg) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Draw preview of current box
       drawPreview();
 
-      if (currentPoints.length === 4) {
-        document.getElementById('add-frame-btn').disabled = false;
-        document.getElementById('setup-hint').innerHTML =
-          '✓ 4 corners selected! Click "Add Frame" to save this frame, or "Save All Frames" if done.';
-      } else {
-        document.getElementById('setup-hint').innerHTML =
-          `Point ${currentPoints.length}/4 selected. Click ${4 - currentPoints.length} more corner(s).`;
-      }
+      const ctx = canvas.getContext('2d');
+      ctx.strokeStyle = '#ff9500';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 5]);
+
+      const width = x - startX;
+      const height = y - startY;
+      ctx.strokeRect(startX, startY, width, height);
+      ctx.setLineDash([]);
+    });
+
+    canvas.addEventListener('mouseup', function(e) {
+      if (!isDrawing || currentMode !== 'setup' || !previewImg) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const endX = e.clientX - rect.left;
+      const endY = e.clientY - rect.top;
+
+      // Convert to image coordinates
+      const topLeftX = (Math.min(startX, endX) - drawX) / scale;
+      const topLeftY = (Math.min(startY, endY) - drawY) / scale;
+      const bottomRightX = (Math.max(startX, endX) - drawX) / scale;
+      const bottomRightY = (Math.max(startY, endY) - drawY) / scale;
+
+      // Create 4 corner points from box (clockwise from top-left)
+      currentPoints = [
+        [Math.round(topLeftX), Math.round(topLeftY)],           // top-left
+        [Math.round(bottomRightX), Math.round(topLeftY)],       // top-right
+        [Math.round(bottomRightX), Math.round(bottomRightY)],   // bottom-right
+        [Math.round(topLeftX), Math.round(bottomRightY)]        // bottom-left
+      ];
+
+      isDrawing = false;
+      drawPreview();
+
+      document.getElementById('add-frame-btn').disabled = false;
+      document.getElementById('setup-hint').innerHTML =
+        '✓ Frame drawn! Click "Add Frame" to save this frame, or draw another box to replace it.';
     });
 
     // Add current frame to allFrames
@@ -604,10 +645,10 @@
       if (previewImg) {
         if (allFrames.length > 0) {
           document.getElementById('setup-hint').innerHTML =
-            `${allFrames.length} frame(s) saved. Click 4 corners for another frame, or "Save All Frames" when done.`;
+            `${allFrames.length} frame(s) saved. Draw another box for another frame, or "Save All Frames" when done.`;
         } else {
           document.getElementById('setup-hint').innerHTML =
-            'Click 4 corners of a billboard screen to define a frame';
+            'Click and drag to draw a box around the billboard screen';
         }
       }
     }
@@ -627,7 +668,7 @@
 
       if (previewImg) {
         document.getElementById('setup-hint').innerHTML =
-          'Click 4 corners of the billboard screen to define the frame';
+          'Click and drag to draw a box around the billboard screen';
       }
     }
 
