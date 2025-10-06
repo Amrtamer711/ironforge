@@ -451,14 +451,16 @@
 
       ctx.drawImage(previewImg, drawX, drawY, drawW, drawH);
 
-      // Draw all completed frames with grey fill and bold edges
+      // Draw all completed frames with grey fill and dashed edges with hard corners
       allFrames.forEach((framePoints, frameIndex) => {
         const isSelected = selectedFrameIndex === frameIndex;
 
         ctx.fillStyle = 'rgba(128, 128, 128, 0.3)'; // Grey semi-transparent fill
         ctx.strokeStyle = isSelected ? '#667eea' : '#333'; // Blue if selected, dark grey otherwise
         ctx.lineWidth = isSelected ? 4 : 3; // Thicker, bolder lines
-        ctx.setLineDash([]); // Solid lines, no dashes
+        ctx.setLineDash([8, 4]); // Dashed lines
+        ctx.lineCap = 'butt'; // Sharp/hard corners (not rounded)
+        ctx.lineJoin = 'miter'; // Sharp corner joins
 
         ctx.beginPath();
         for (let i = 0; i < framePoints.length; i++) {
@@ -470,12 +472,13 @@
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
+        ctx.setLineDash([]); // Reset dash
 
-        // Draw small corner markers for precision
+        // Draw small square corner markers for precision
         framePoints.forEach((pt, ptIndex) => {
           const cx = drawX + pt[0] * scale;
           const cy = drawY + pt[1] * scale;
-          const markerSize = 6;
+          const markerSize = 8;
 
           ctx.fillStyle = isSelected ? '#667eea' : '#333';
 
@@ -489,7 +492,9 @@
         ctx.fillStyle = 'rgba(128, 128, 128, 0.3)'; // Grey semi-transparent fill
         ctx.strokeStyle = '#667eea'; // Blue outline for current editing
         ctx.lineWidth = 4; // Thick, bold line
-        ctx.setLineDash([]); // Solid line
+        ctx.setLineDash([8, 4]); // Dashed line
+        ctx.lineCap = 'butt'; // Sharp/hard corners
+        ctx.lineJoin = 'miter'; // Sharp corner joins
 
         ctx.beginPath();
         currentPoints.forEach((pt, i) => {
@@ -503,12 +508,13 @@
           ctx.fill();
         }
         ctx.stroke();
+        ctx.setLineDash([]); // Reset dash
 
-        // Draw small corner markers
+        // Draw small square corner markers
         currentPoints.forEach(pt => {
           const cx = drawX + pt[0] * scale;
           const cy = drawY + pt[1] * scale;
-          const markerSize = 6;
+          const markerSize = 8;
 
           ctx.fillStyle = '#667eea';
           ctx.fillRect(cx - markerSize/2, cy - markerSize/2, markerSize, markerSize);
@@ -731,10 +737,14 @@
         const height = y - startY;
         ctx.fillRect(startX, startY, width, height);
 
-        // Draw solid bold outline
+        // Draw dashed outline with hard corners
         ctx.strokeStyle = '#667eea';
         ctx.lineWidth = 4;
+        ctx.setLineDash([8, 4]);
+        ctx.lineCap = 'butt';
+        ctx.lineJoin = 'miter';
         ctx.strokeRect(startX, startY, width, height);
+        ctx.setLineDash([]);
         return;
       }
 
