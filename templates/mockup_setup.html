@@ -786,16 +786,14 @@
       }
 
       // Dilate (expand) the mask to extend green region outward
-      // This pushes the boundary further out to avoid green showing
       const dilatedMask = new Uint8Array(width * height);
-      const expandPixels = 12; // Expand by 12 pixels for extra coverage
+      const expandPixels = 6; // Reduced base expansion
 
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
           const idx = y * width + x;
           let hasGreenNearby = false;
 
-          // Check square region around pixel
           for (let dy = -expandPixels; dy <= expandPixels; dy++) {
             for (let dx = -expandPixels; dx <= expandPixels; dx++) {
               const ny = y + dy;
@@ -815,23 +813,21 @@
       }
 
       // Find contour points on the OUTSIDE edge of dilated region
-      // This preserves the quadrilateral shape while being further out
       const contourPoints = [];
 
       for (let y = 1; y < height - 1; y++) {
         for (let x = 1; x < width - 1; x++) {
           const idx = y * width + x;
-          if (dilatedMask[idx] === 0) {  // Non-dilated pixel
-            // Check 8-connected neighbors for dilated pixels
+          if (dilatedMask[idx] === 0) {
             const hasDilatedNeighbor =
-              dilatedMask[idx - 1] === 255 ||                    // left
-              dilatedMask[idx + 1] === 255 ||                    // right
-              dilatedMask[idx - width] === 255 ||                // top
-              dilatedMask[idx + width] === 255 ||                // bottom
-              dilatedMask[idx - width - 1] === 255 ||            // top-left
-              dilatedMask[idx - width + 1] === 255 ||            // top-right
-              dilatedMask[idx + width - 1] === 255 ||            // bottom-left
-              dilatedMask[idx + width + 1] === 255;              // bottom-right
+              dilatedMask[idx - 1] === 255 ||
+              dilatedMask[idx + 1] === 255 ||
+              dilatedMask[idx - width] === 255 ||
+              dilatedMask[idx + width] === 255 ||
+              dilatedMask[idx - width - 1] === 255 ||
+              dilatedMask[idx - width + 1] === 255 ||
+              dilatedMask[idx + width - 1] === 255 ||
+              dilatedMask[idx + width + 1] === 255;
 
             if (hasDilatedNeighbor) {
               contourPoints.push([x, y]);
@@ -840,15 +836,14 @@
         }
       }
 
-      console.log(`[Green Screen] Found ${contourPoints.length} contour points on dilated boundary`);
+      console.log(`[Green Screen] Found ${contourPoints.length} contour points`);
 
       if (contourPoints.length < 4) {
-        console.log('[Green Screen] ❌ Not enough contour points (need at least 4)');
+        console.log('[Green Screen] ❌ Not enough contour points');
         return null;
       }
 
-      // Find the 4 extreme corner points from the contour
-      // This finds the actual quadrilateral corners, not a bounding box
+      // Find the 4 extreme corner points
       let topLeft = contourPoints[0];
       let topRight = contourPoints[0];
       let bottomRight = contourPoints[0];
@@ -856,23 +851,53 @@
 
       for (const pt of contourPoints) {
         const [x, y] = pt;
-
-        // Top-left: minimize x + y
         if (x + y < topLeft[0] + topLeft[1]) topLeft = pt;
-
-        // Top-right: maximize x - y
         if (x - y > topRight[0] - topRight[1]) topRight = pt;
-
-        // Bottom-right: maximize x + y
         if (x + y > bottomRight[0] + bottomRight[1]) bottomRight = pt;
-
-        // Bottom-left: minimize x - y
         if (x - y < bottomLeft[0] - bottomLeft[1]) bottomLeft = pt;
       }
 
-      console.log(`[Green Screen] ✓ Detected corners:`, {
-        topLeft, topRight, bottomRight, bottomLeft
-      });
+      // Apply perspective-aware adaptive padding
+      const topWidth = Math.abs(topRight[0] - topLeft[0]);
+      const bottomWidth = Math.abs(bottomRight[0] - bottomLeft[0]);
+      const leftHeight = Math.abs(bottomLeft[1] - topLeft[1]);
+      const rightHeight = Math.abs(bottomRight[1] - topRight[1]);
+
+      const widthRatio = topWidth / bottomWidth;
+      const heightRatio = leftHeight / rightHeight;
+
+      console.log(`[Green Screen] Perspective - Width ratio: ${widthRatio.toFixed(2)}, Height ratio: ${heightRatio.toFixed(2)}`);
+
+      // Adaptive padding based on perspective distortion
+      if (widthRatio > 1.1) {
+        // Top wider: bottom recedes, push bottom out more
+        const extra = Math.floor((widthRatio - 1) * 8);
+        bottomLeft[1] = Math.min(height - 1, bottomLeft[1] + extra);
+        bottomRight[1] = Math.min(height - 1, bottomRight[1] + extra);
+        console.log(`[Green Screen] +${extra}px bottom (top wider)`);
+      } else if (widthRatio < 0.9) {
+        // Bottom wider: top recedes, push top out more
+        const extra = Math.floor((1 / widthRatio - 1) * 8);
+        topLeft[1] = Math.max(0, topLeft[1] - extra);
+        topRight[1] = Math.max(0, topRight[1] - extra);
+        console.log(`[Green Screen] +${extra}px top (bottom wider)`);
+      }
+
+      if (heightRatio > 1.1) {
+        // Left taller: right recedes, push right out more
+        const extra = Math.floor((heightRatio - 1) * 8);
+        topRight[0] = Math.min(width - 1, topRight[0] + extra);
+        bottomRight[0] = Math.min(width - 1, bottomRight[0] + extra);
+        console.log(`[Green Screen] +${extra}px right (left taller)`);
+      } else if (heightRatio < 0.9) {
+        // Right taller: left recedes, push left out more
+        const extra = Math.floor((1 / heightRatio - 1) * 8);
+        topLeft[0] = Math.max(0, topLeft[0] - extra);
+        bottomLeft[0] = Math.max(0, bottomLeft[0] - extra);
+        console.log(`[Green Screen] +${extra}px left (right taller)`);
+      }
+
+      console.log(`[Green Screen] ✓ Corners:`, {topLeft, topRight, bottomRight, bottomLeft});
 
       return [topLeft, topRight, bottomRight, bottomLeft];
     }
