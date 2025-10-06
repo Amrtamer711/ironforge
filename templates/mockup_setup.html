@@ -785,21 +785,22 @@
         return null;
       }
 
-      // Find contour points (edge pixels of green region)
+      // Find contour points (pixels just OUTSIDE the green region)
+      // This ensures the frame border is outside the green screen, not cutting into it
       const contourPoints = [];
 
       for (let y = 1; y < height - 1; y++) {
         for (let x = 1; x < width - 1; x++) {
           const idx = y * width + x;
-          if (mask[idx] === 255) {
-            // Check if it's on the edge (has non-green neighbor)
-            const hasNonGreenNeighbor =
-              mask[idx - 1] === 0 ||           // left
-              mask[idx + 1] === 0 ||           // right
-              mask[idx - width] === 0 ||       // top
-              mask[idx + width] === 0;         // bottom
+          if (mask[idx] === 0) {  // Non-green pixel
+            // Check if it borders a green pixel (making it the outer edge)
+            const hasGreenNeighbor =
+              mask[idx - 1] === 255 ||           // left
+              mask[idx + 1] === 255 ||           // right
+              mask[idx - width] === 255 ||       // top
+              mask[idx + width] === 255;         // bottom
 
-            if (hasNonGreenNeighbor) {
+            if (hasGreenNeighbor) {
               contourPoints.push([x, y]);
             }
           }
