@@ -64,9 +64,8 @@ def _connect() -> sqlite3.Connection:
 def init_db() -> None:
     conn = _connect()
     try:
-        conn.execute("BEGIN")
-        conn.execute(SCHEMA)
-        conn.execute("COMMIT")
+        # executescript allows multiple SQL statements
+        conn.executescript(SCHEMA)
     finally:
         conn.close()
 
