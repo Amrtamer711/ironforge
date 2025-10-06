@@ -401,6 +401,10 @@
               <small style="color: #6c757d;">(lower = stricter, higher = more forgiving)</small>
             </label>
             <input type="range" id="color-tolerance" min="10" max="100" value="40" style="width: 100%;">
+
+            <button type="button" id="detect-greenscreen-btn" class="btn btn-primary" style="width: 100%; margin-top: 15px;" disabled>
+              🔍 Detect Green Screen Now
+            </button>
           </div>
         </div>
 
@@ -512,6 +516,10 @@
     document.getElementById('greenscreen-toggle').addEventListener('change', function(e) {
       const colorPickerSection = document.getElementById('color-picker-section');
       colorPickerSection.style.display = e.target.checked ? 'block' : 'none';
+
+      // Enable/disable detect button based on toggle and if image is loaded
+      const detectBtn = document.getElementById('detect-greenscreen-btn');
+      detectBtn.disabled = !e.target.checked || !previewImg;
     });
 
     // Sync color picker and hex input
@@ -529,6 +537,37 @@
     // Update tolerance value display
     document.getElementById('color-tolerance').addEventListener('input', function(e) {
       document.getElementById('tolerance-value').textContent = e.target.value;
+    });
+
+    // Manual detect green screen button
+    document.getElementById('detect-greenscreen-btn').addEventListener('click', function() {
+      if (!previewImg) return;
+
+      // Draw image to a temp canvas for pixel analysis
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = previewImg.width;
+      tempCanvas.height = previewImg.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.drawImage(previewImg, 0, 0);
+      const imageData = tempCtx.getImageData(0, 0, previewImg.width, previewImg.height);
+
+      console.log('[Green Screen] Starting manual detection...');
+      const detectedFrame = detectGreenScreen(imageData);
+      if (detectedFrame) {
+        currentPoints = detectedFrame;
+        document.getElementById('add-frame-btn').disabled = false;
+        document.getElementById('setup-hint').innerHTML =
+          '✓ Green screen detected! Frame auto-configured. Drag corners to adjust or click "Add Frame" to save.';
+        console.log('[Green Screen] ✓ Detection successful!');
+        showMessage('Green screen detected successfully!', 'success');
+      } else {
+        document.getElementById('setup-hint').innerHTML =
+          '❌ No green screen detected. Check console (F12) for details, try adjusting tolerance, or draw frame manually.';
+        console.log('[Green Screen] ❌ Detection failed - see details above');
+        showMessage('No green screen detected. Check console for details.', 'error');
+      }
+
+      drawPreview();
     });
 
     // Switch between modes
@@ -827,29 +866,11 @@
 
           currentPoints = [];
 
-          // Check if green screen detection is enabled
+          // Enable detect button when image is loaded
           if (document.getElementById('greenscreen-toggle').checked) {
-            // Draw image to a temp canvas for pixel analysis
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = img.width;
-            tempCanvas.height = img.height;
-            const tempCtx = tempCanvas.getContext('2d');
-            tempCtx.drawImage(img, 0, 0);
-            const imageData = tempCtx.getImageData(0, 0, img.width, img.height);
-
-            console.log('[Green Screen] Starting detection...');
-            const detectedFrame = detectGreenScreen(imageData);
-            if (detectedFrame) {
-              currentPoints = detectedFrame;
-              document.getElementById('add-frame-btn').disabled = false;
-              document.getElementById('setup-hint').innerHTML =
-                '✓ Green screen detected! Frame auto-configured. Drag corners to adjust or click "Add Frame" to save.';
-              console.log('[Green Screen] ✓ Detection successful!');
-            } else {
-              document.getElementById('setup-hint').innerHTML =
-                '❌ No green screen detected. Check console (F12) for details, try adjusting tolerance, or draw frame manually.';
-              console.log('[Green Screen] ❌ Detection failed - see details above');
-            }
+            document.getElementById('detect-greenscreen-btn').disabled = false;
+            document.getElementById('setup-hint').innerHTML =
+              'Click "Detect Green Screen Now" button to find the frame, or draw manually';
           } else {
             document.getElementById('setup-hint').innerHTML =
               'Click and drag to draw a box around the billboard screen';
