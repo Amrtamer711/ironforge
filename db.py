@@ -67,8 +67,68 @@ def init_db() -> None:
     try:
         # executescript allows multiple SQL statements
         conn.executescript(SCHEMA)
+
+        # Run migrations
+        _migrate_add_subfolder_column(conn)
     finally:
         conn.close()
+
+
+def _migrate_add_subfolder_column(conn: sqlite3.Connection) -> None:
+    """Migration: Add subfolder column to mockup_frames if it doesn't exist"""
+    try:
+        # Check if subfolder column exists
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(mockup_frames)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if 'subfolder' not in columns:
+            logger.info("[DB MIGRATION] Adding 'subfolder' column to mockup_frames table")
+
+            # Add subfolder column with default 'all'
+            conn.execute("ALTER TABLE mockup_frames ADD COLUMN subfolder TEXT NOT NULL DEFAULT 'all'")
+
+            # Drop the old unique constraint and create new one with subfolder
+            # SQLite doesn't support DROP CONSTRAINT, so we need to recreate the table
+            conn.execute("BEGIN")
+
+            # Create temporary table with new schema
+            conn.execute("""
+                CREATE TABLE mockup_frames_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    location_key TEXT NOT NULL,
+                    subfolder TEXT NOT NULL DEFAULT 'all',
+                    photo_filename TEXT NOT NULL,
+                    frames_data TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    created_by TEXT,
+                    UNIQUE(location_key, subfolder, photo_filename)
+                )
+            """)
+
+            # Copy data from old table
+            conn.execute("""
+                INSERT INTO mockup_frames_new
+                SELECT id, location_key, subfolder, photo_filename, frames_data, created_at, created_by
+                FROM mockup_frames
+            """)
+
+            # Drop old table and rename new one
+            conn.execute("DROP TABLE mockup_frames")
+            conn.execute("ALTER TABLE mockup_frames_new RENAME TO mockup_frames")
+
+            conn.execute("COMMIT")
+
+            logger.info("[DB MIGRATION] Successfully added 'subfolder' column and updated unique constraint")
+        else:
+            logger.debug("[DB MIGRATION] 'subfolder' column already exists, skipping migration")
+
+    except Exception as e:
+        logger.error(f"[DB MIGRATION] Error adding subfolder column: {e}", exc_info=True)
+        try:
+            conn.execute("ROLLBACK")
+        except:
+            pass
 
 
 def log_proposal(
