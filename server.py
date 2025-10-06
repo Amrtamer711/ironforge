@@ -15,6 +15,9 @@ from font_utils import install_custom_fonts
 # Install custom fonts on startup
 install_custom_fonts()
 
+# Load location templates
+config.refresh_templates()
+
 # Check LibreOffice installation
 logger = config.logger
 logger.info("[STARTUP] Checking LibreOffice installation...")
