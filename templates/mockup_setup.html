@@ -451,14 +451,14 @@
 
       ctx.drawImage(previewImg, drawX, drawY, drawW, drawH);
 
-      // Draw all completed frames with grey fill and dashed outline
+      // Draw all completed frames with grey fill and bold edges
       allFrames.forEach((framePoints, frameIndex) => {
         const isSelected = selectedFrameIndex === frameIndex;
 
         ctx.fillStyle = 'rgba(128, 128, 128, 0.3)'; // Grey semi-transparent fill
-        ctx.strokeStyle = isSelected ? '#667eea' : '#6c757d'; // Blue if selected, grey otherwise
-        ctx.lineWidth = isSelected ? 3 : 2;
-        ctx.setLineDash([8, 4]); // Dashed line
+        ctx.strokeStyle = isSelected ? '#667eea' : '#333'; // Blue if selected, dark grey otherwise
+        ctx.lineWidth = isSelected ? 4 : 3; // Thicker, bolder lines
+        ctx.setLineDash([]); // Solid lines, no dashes
 
         ctx.beginPath();
         for (let i = 0; i < framePoints.length; i++) {
@@ -470,22 +470,17 @@
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
-        ctx.setLineDash([]); // Reset dash
 
-        // Draw corner handles (larger if selected)
+        // Draw small corner markers for precision
         framePoints.forEach((pt, ptIndex) => {
           const cx = drawX + pt[0] * scale;
           const cy = drawY + pt[1] * scale;
-          const handleSize = isSelected ? 10 : 7;
+          const markerSize = 6;
 
-          ctx.fillStyle = isSelected ? '#667eea' : '#6c757d';
-          ctx.strokeStyle = '#fff';
-          ctx.lineWidth = 2;
+          ctx.fillStyle = isSelected ? '#667eea' : '#333';
 
-          ctx.beginPath();
-          ctx.arc(cx, cy, handleSize, 0, 2 * Math.PI);
-          ctx.fill();
-          ctx.stroke();
+          // Draw small square marker at corner
+          ctx.fillRect(cx - markerSize/2, cy - markerSize/2, markerSize, markerSize);
         });
       });
 
@@ -493,8 +488,8 @@
       if (currentPoints.length > 0) {
         ctx.fillStyle = 'rgba(128, 128, 128, 0.3)'; // Grey semi-transparent fill
         ctx.strokeStyle = '#667eea'; // Blue outline for current editing
-        ctx.lineWidth = 3;
-        ctx.setLineDash([8, 4]);
+        ctx.lineWidth = 4; // Thick, bold line
+        ctx.setLineDash([]); // Solid line
 
         ctx.beginPath();
         currentPoints.forEach((pt, i) => {
@@ -508,19 +503,15 @@
           ctx.fill();
         }
         ctx.stroke();
-        ctx.setLineDash([]);
 
-        // Draw corner handles
+        // Draw small corner markers
         currentPoints.forEach(pt => {
           const cx = drawX + pt[0] * scale;
           const cy = drawY + pt[1] * scale;
+          const markerSize = 6;
+
           ctx.fillStyle = '#667eea';
-          ctx.strokeStyle = '#fff';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(cx, cy, 10, 0, 2 * Math.PI);
-          ctx.fill();
-          ctx.stroke();
+          ctx.fillRect(cx - markerSize/2, cy - markerSize/2, markerSize, markerSize);
         });
       }
     }
@@ -740,12 +731,10 @@
         const height = y - startY;
         ctx.fillRect(startX, startY, width, height);
 
-        // Draw dashed outline
+        // Draw solid bold outline
         ctx.strokeStyle = '#667eea';
-        ctx.lineWidth = 3;
-        ctx.setLineDash([10, 5]);
+        ctx.lineWidth = 4;
         ctx.strokeRect(startX, startY, width, height);
-        ctx.setLineDash([]);
         return;
       }
 
