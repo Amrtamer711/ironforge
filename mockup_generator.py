@@ -144,8 +144,8 @@ def get_random_location_photo(location_key: str, subfolder: str = "all") -> Opti
 async def generate_ai_creative(prompt: str, size: str = "1024x1024") -> Optional[Path]:
     """Generate a creative using OpenAI gpt-image-1 API."""
     import tempfile
-    import aiohttp
     import base64
+    from openai import AsyncOpenAI
 
     logger.info(f"[AI_CREATIVE] Generating image from prompt: {prompt[:100]}...")
 
@@ -155,47 +155,28 @@ async def generate_ai_creative(prompt: str, size: str = "1024x1024") -> Optional
         return None
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://api.openai.com/v1/images/generations",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {api_key}"
-                },
-                json={
-                    "model": "gpt-image-1",
-                    "prompt": prompt,
-                    "n": 1,
-                    "size": size,
-                    "quality": "high",
-                    "response_format": "b64_json"
-                }
-            ) as resp:
-                if resp.status != 200:
-                    error_text = await resp.text()
-                    logger.error(f"[AI_CREATIVE] API error: {error_text}")
-                    return None
+        client = AsyncOpenAI(api_key=api_key)
 
-                data = await resp.json()
+        # Generate image
+        img = await client.images.generate(
+            model="gpt-image-1",
+            prompt=prompt,
+            n=1,
+            size=size
+        )
 
-                # Extract base64 image data
-                b64_image = data["data"][0]["b64_json"]
-                image_data = base64.b64decode(b64_image)
+        # Extract base64 image data (automatically returned by gpt-image-1)
+        b64_image = img.data[0].b64_json
+        image_data = base64.b64decode(b64_image)
 
-                # Save to temp file
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-                temp_file.write(image_data)
-                temp_file.close()
+        # Save to temp file
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        temp_file.write(image_data)
+        temp_file.close()
 
-                logger.info(f"[AI_CREATIVE] Generated image saved to: {temp_file.name}")
+        logger.info(f"[AI_CREATIVE] Generated image saved to: {temp_file.name}")
 
-                # Log usage stats if available
-                if "usage" in data:
-                    usage = data["usage"]
-                    logger.info(f"[AI_CREATIVE] Token usage - Total: {usage.get('total_tokens')}, "
-                               f"Input: {usage.get('input_tokens')}, Output: {usage.get('output_tokens')}")
-
-                return Path(temp_file.name)
+        return Path(temp_file.name)
 
     except Exception as e:
         logger.error(f"[AI_CREATIVE] Error generating image: {e}", exc_info=True)
