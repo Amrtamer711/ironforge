@@ -526,6 +526,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"═══════════════════════════════════════════════════════════════════\n"
         f"🎨 MOCKUP GENERATION\n"
         f"═══════════════════════════════════════════════════════════════════\n\n"
+        f"MOCKUP SETUP WEBSITE: {os.getenv('RENDER_EXTERNAL_URL', 'http://localhost:3000')}/mockup\n"
+        f"(Share this URL when users ask about setting up mockup frames or uploading billboard photos)\n\n"
         f"You can GENERATE MOCKUPS: Create billboard mockups with uploaded or AI-generated creatives:\n"
         f"  TWO MODES (everything must be in ONE message):\n"
         f"  A) USER UPLOAD MODE (requires image attachment):\n"
@@ -1175,11 +1177,12 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 photos = mockup_generator.list_location_photos(location_key)
                 if not photos:
                     await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    mockup_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:3000") + "/mockup"
                     await config.slack_client.chat_postMessage(
                         channel=channel,
                         text=config.markdown_to_slack(
                             f"❌ **Error:** No billboard photos configured for '{location_name}'.\n\n"
-                            f"Ask an admin to set up mockup frames at http://localhost:3000/mockup"
+                            f"Ask an admin to set up mockup frames at {mockup_url}"
                         )
                     )
                     return
