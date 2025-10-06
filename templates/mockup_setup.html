@@ -491,8 +491,8 @@
 
       // Draw current frame being edited
       if (currentPoints.length > 0) {
-        ctx.fillStyle = 'rgba(255, 153, 0, 0.3)'; // Orange semi-transparent fill
-        ctx.strokeStyle = '#ff9500';
+        ctx.fillStyle = 'rgba(128, 128, 128, 0.3)'; // Grey semi-transparent fill
+        ctx.strokeStyle = '#667eea'; // Blue outline for current editing
         ctx.lineWidth = 3;
         ctx.setLineDash([8, 4]);
 
@@ -514,7 +514,7 @@
         currentPoints.forEach(pt => {
           const cx = drawX + pt[0] * scale;
           const cy = drawY + pt[1] * scale;
-          ctx.fillStyle = '#ff9500';
+          ctx.fillStyle = '#667eea';
           ctx.strokeStyle = '#fff';
           ctx.lineWidth = 2;
           ctx.beginPath();
@@ -569,10 +569,13 @@
     // Handle canvas drag for drawing boxes and editing corners
     let isDrawing = false;
     let isDraggingCorner = false;
+    let isDraggingFrame = false;
     let dragFrameIndex = -1;
     let dragPointIndex = -1;
     let selectedFrameIndex = -1;
     let startX, startY;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
 
     function getClickedCorner(x, y) {
       const hitRadius = 15;
@@ -603,6 +606,38 @@
       return null;
     }
 
+    function isPointInFrame(x, y, framePoints) {
+      // Check if point is inside polygon using ray casting
+      const imgX = (x - drawX) / scale;
+      const imgY = (y - drawY) / scale;
+
+      let inside = false;
+      for (let i = 0, j = framePoints.length - 1; i < framePoints.length; j = i++) {
+        const xi = framePoints[i][0], yi = framePoints[i][1];
+        const xj = framePoints[j][0], yj = framePoints[j][1];
+
+        const intersect = ((yi > imgY) !== (yj > imgY))
+            && (imgX < (xj - xi) * (imgY - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    function getHoveredFrame(x, y) {
+      // Check current frame first
+      if (currentPoints.length === 4 && isPointInFrame(x, y, currentPoints)) {
+        return -1;
+      }
+
+      // Check all saved frames
+      for (let fi = allFrames.length - 1; fi >= 0; fi--) {
+        if (isPointInFrame(x, y, allFrames[fi])) {
+          return fi;
+        }
+      }
+      return null;
+    }
+
     canvas.addEventListener('mousedown', function(e) {
       if (currentMode !== 'setup' || !previewImg) return;
 
@@ -610,7 +645,7 @@
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      // Check if clicking on a corner
+      // Check if clicking on a corner (highest priority)
       const corner = getClickedCorner(x, y);
       if (corner) {
         isDraggingCorner = true;
@@ -619,6 +654,19 @@
         if (dragFrameIndex >= 0) {
           selectedFrameIndex = dragFrameIndex;
         }
+        drawPreview();
+        return;
+      }
+
+      // Check if clicking inside a frame (to drag entire frame)
+      const hoveredFrame = getHoveredFrame(x, y);
+      if (hoveredFrame !== null) {
+        isDraggingFrame = true;
+        dragFrameIndex = hoveredFrame;
+        selectedFrameIndex = hoveredFrame;
+        startX = x;
+        startY = y;
+        canvas.style.cursor = 'move';
         drawPreview();
         return;
       }
@@ -656,6 +704,31 @@
         return;
       }
 
+      // Dragging entire frame
+      if (isDraggingFrame) {
+        const deltaX = (x - startX) / scale;
+        const deltaY = (y - startY) / scale;
+
+        if (dragFrameIndex === -1) {
+          // Move current frame
+          currentPoints = currentPoints.map(pt => [
+            Math.round(pt[0] + deltaX),
+            Math.round(pt[1] + deltaY)
+          ]);
+        } else {
+          // Move saved frame
+          allFrames[dragFrameIndex] = allFrames[dragFrameIndex].map(pt => [
+            Math.round(pt[0] + deltaX),
+            Math.round(pt[1] + deltaY)
+          ]);
+        }
+
+        startX = x;
+        startY = y;
+        drawPreview();
+        return;
+      }
+
       // Drawing new box
       if (isDrawing) {
         drawPreview();
@@ -668,11 +741,24 @@
         ctx.fillRect(startX, startY, width, height);
 
         // Draw dashed outline
-        ctx.strokeStyle = '#ff9500';
+        ctx.strokeStyle = '#667eea';
         ctx.lineWidth = 3;
         ctx.setLineDash([10, 5]);
         ctx.strokeRect(startX, startY, width, height);
         ctx.setLineDash([]);
+        return;
+      }
+
+      // Update cursor based on hover state
+      const hoveredFrame = getHoveredFrame(x, y);
+      const hoveredCorner = getClickedCorner(x, y);
+
+      if (hoveredCorner) {
+        canvas.style.cursor = 'pointer';
+      } else if (hoveredFrame !== null) {
+        canvas.style.cursor = 'move';
+      } else {
+        canvas.style.cursor = 'crosshair';
       }
     });
 
@@ -683,6 +769,15 @@
         isDraggingCorner = false;
         dragFrameIndex = -1;
         dragPointIndex = -1;
+        canvas.style.cursor = 'crosshair';
+        drawPreview();
+        return;
+      }
+
+      if (isDraggingFrame) {
+        isDraggingFrame = false;
+        dragFrameIndex = -1;
+        canvas.style.cursor = 'crosshair';
         drawPreview();
         return;
       }
@@ -710,7 +805,7 @@
 
       document.getElementById('add-frame-btn').disabled = false;
       document.getElementById('setup-hint').innerHTML =
-        '✓ Frame drawn! Drag corners to adjust shape. Click "Add Frame" to save.';
+        '✓ Frame drawn! Drag corners to adjust, or drag inside to move. Click "Add Frame" to save.';
     });
 
     // Add current frame to allFrames
