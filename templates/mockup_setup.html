@@ -373,16 +373,28 @@
           <input type="file" id="billboard-photo" accept="image/*">
         </div>
 
-        <div class="form-group" style="display: flex; align-items: center; gap: 10px; background: #f8f9fa; padding: 15px; border-radius: 8px;">
-          <label class="toggle-switch" style="margin: 0;">
-            <input type="checkbox" id="greenscreen-toggle">
-            <span class="toggle-slider"></span>
-          </label>
-          <label for="greenscreen-toggle" style="cursor: pointer; margin: 0;">
-            <strong>Auto-detect Green Screen</strong>
-            <br>
-            <small style="color: #6c757d;">Automatically detect billboard frame using green screen chroma key</small>
-          </label>
+        <div class="form-group" style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+            <label class="toggle-switch" style="margin: 0;">
+              <input type="checkbox" id="greenscreen-toggle">
+              <span class="toggle-slider"></span>
+            </label>
+            <label for="greenscreen-toggle" style="cursor: pointer; margin: 0;">
+              <strong>Auto-detect Green Screen</strong>
+              <br>
+              <small style="color: #6c757d;">Automatically detect billboard frame using green screen chroma key</small>
+            </label>
+          </div>
+          <div id="color-picker-section" style="display: none; padding-top: 10px; border-top: 1px solid #dee2e6;">
+            <label for="greenscreen-color" style="display: block; margin-bottom: 5px;">
+              <strong>Green Screen Color:</strong>
+            </label>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <input type="color" id="greenscreen-color" value="#1CFF1C" style="width: 60px; height: 40px; border: 2px solid #dee2e6; border-radius: 4px; cursor: pointer;">
+              <input type="text" id="greenscreen-color-hex" value="#1CFF1C" placeholder="#1CFF1C" style="flex: 1; padding: 8px; border: 1px solid #dee2e6; border-radius: 4px; font-family: monospace;">
+              <small style="color: #6c757d;">Pick exact color or enter hex (default: #1CFF1C)</small>
+            </div>
+          </div>
         </div>
 
         <div class="canvas-container">
@@ -488,6 +500,24 @@
         showMessage('Failed to load locations', 'error');
       }
     }
+
+    // Toggle color picker visibility
+    document.getElementById('greenscreen-toggle').addEventListener('change', function(e) {
+      const colorPickerSection = document.getElementById('color-picker-section');
+      colorPickerSection.style.display = e.target.checked ? 'block' : 'none';
+    });
+
+    // Sync color picker and hex input
+    document.getElementById('greenscreen-color').addEventListener('input', function(e) {
+      document.getElementById('greenscreen-color-hex').value = e.target.value.toUpperCase();
+    });
+
+    document.getElementById('greenscreen-color-hex').addEventListener('input', function(e) {
+      const hex = e.target.value;
+      if (/^#[0-9A-F]{6}$/i.test(hex)) {
+        document.getElementById('greenscreen-color').value = hex;
+      }
+    });
 
     // Switch between modes
     function switchMode(mode) {
@@ -642,9 +672,18 @@
       const width = imageData.width;
       const height = imageData.height;
 
-      // Create binary mask of green pixels
+      // Get target color from picker
+      const targetHex = document.getElementById('greenscreen-color').value;
+      const targetR = parseInt(targetHex.slice(1, 3), 16);
+      const targetG = parseInt(targetHex.slice(3, 5), 16);
+      const targetB = parseInt(targetHex.slice(5, 7), 16);
+
+      // Color tolerance (Euclidean distance in RGB space)
+      const colorTolerance = 40; // Adjust this for strictness (lower = stricter)
+
+      // Create binary mask of matching pixels
       const mask = new Uint8Array(width * height);
-      let greenPixelCount = 0;
+      let matchedPixelCount = 0;
 
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
@@ -653,36 +692,24 @@
           const g = data[i + 1];
           const b = data[i + 2];
 
-          // Convert to HSV and check if it's green
-          const max = Math.max(r, g, b);
-          const min = Math.min(r, g, b);
-          const delta = max - min;
+          // Calculate Euclidean distance from target color
+          const distance = Math.sqrt(
+            Math.pow(r - targetR, 2) +
+            Math.pow(g - targetG, 2) +
+            Math.pow(b - targetB, 2)
+          );
 
-          if (delta === 0) {
-            mask[y * width + x] = 0;
-            continue;
-          }
-
-          let h = 0;
-          if (max === r) h = ((g - b) / delta) % 6;
-          else if (max === g) h = ((b - r) / delta) + 2;
-          else h = ((r - g) / delta) + 4;
-          h = (h * 60 + 360) % 360;
-
-          const s = max === 0 ? 0 : delta / max;
-          const v = max / 255;
-
-          // Check if it's green (optimized for bright greens like #1CFF1C)
-          if (h >= 90 && h <= 150 && s > 0.5 && v > 0.3) {
+          // Check if within tolerance
+          if (distance <= colorTolerance) {
             mask[y * width + x] = 255;
-            greenPixelCount++;
+            matchedPixelCount++;
           } else {
             mask[y * width + x] = 0;
           }
         }
       }
 
-      if (greenPixelCount < 1000) return null;
+      if (matchedPixelCount < 1000) return null;
 
       // Find contour points (edge pixels of green region)
       const contourPoints = [];
