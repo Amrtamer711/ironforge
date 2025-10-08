@@ -116,32 +116,57 @@
 
     /* Make range sliders smaller and more compact */
     input[type="range"] {
-      height: 6px;
+      height: 4px;
       -webkit-appearance: none;
       appearance: none;
       background: #e9ecef;
-      border-radius: 3px;
+      border-radius: 2px;
       outline: none;
     }
 
+    /* WebKit (Chrome, Safari, Edge) - Track */
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 4px;
+      background: #e9ecef;
+      border-radius: 2px;
+    }
+
+    /* WebKit - Thumb */
     input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none;
       appearance: none;
-      width: 16px;
-      height: 16px;
+      width: 12px;
+      height: 12px;
       background: #667eea;
       border-radius: 50%;
       cursor: pointer;
       transition: background 0.2s;
+      margin-top: -4px;
     }
 
     input[type="range"]::-webkit-slider-thumb:hover {
       background: #5568d3;
+      transform: scale(1.1);
     }
 
+    /* Firefox - Track */
+    input[type="range"]::-moz-range-track {
+      height: 4px;
+      background: #e9ecef;
+      border-radius: 2px;
+    }
+
+    /* Firefox - Progress (purple fill from left) */
+    input[type="range"]::-moz-range-progress {
+      height: 4px;
+      background: #667eea;
+      border-radius: 2px 0 0 2px;
+    }
+
+    /* Firefox - Thumb */
     input[type="range"]::-moz-range-thumb {
-      width: 16px;
-      height: 16px;
+      width: 12px;
+      height: 12px;
       background: #667eea;
       border-radius: 50%;
       cursor: pointer;
@@ -151,6 +176,7 @@
 
     input[type="range"]::-moz-range-thumb:hover {
       background: #5568d3;
+      transform: scale(1.1);
     }
 
     .canvas-container {
@@ -737,41 +763,65 @@
       document.getElementById('tolerance-value').textContent = e.target.value;
     });
 
+    // Helper function to update range slider fill
+    function updateRangeSliderFill(slider) {
+      const min = slider.min || 0;
+      const max = slider.max || 100;
+      const value = slider.value;
+      const percent = ((value - min) / (max - min)) * 100;
+      slider.style.background = `linear-gradient(to right, #667eea ${percent}%, #e9ecef ${percent}%)`;
+    }
+
     // Update config value displays and redraw preview if in test mode
     document.getElementById('config-brightness').addEventListener('input', function(e) {
       document.getElementById('brightness-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
       if (testPreviewMode && testCreativeImg) drawPreview();
     });
     document.getElementById('config-contrast').addEventListener('input', function(e) {
       document.getElementById('contrast-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
       if (testPreviewMode && testCreativeImg) drawPreview();
     });
     document.getElementById('config-saturation').addEventListener('input', function(e) {
       document.getElementById('saturation-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
       if (testPreviewMode && testCreativeImg) drawPreview();
     });
     document.getElementById('config-depth-multiplier').addEventListener('input', function(e) {
       document.getElementById('depth-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
     });
     document.getElementById('config-blur-strength').addEventListener('input', function(e) {
       document.getElementById('blur-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
     });
     document.getElementById('config-overlay-opacity').addEventListener('input', function(e) {
       document.getElementById('overlay-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
     });
     document.getElementById('config-shadow-intensity').addEventListener('input', function(e) {
       document.getElementById('shadow-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
       if (testPreviewMode && testCreativeImg) drawPreview();
     });
     document.getElementById('config-lighting-adjustment').addEventListener('input', function(e) {
       document.getElementById('lighting-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
     });
     document.getElementById('config-color-temperature').addEventListener('input', function(e) {
       document.getElementById('temperature-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
     });
     document.getElementById('config-vignette').addEventListener('input', function(e) {
       document.getElementById('vignette-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
       if (testPreviewMode && testCreativeImg) drawPreview();
+    });
+
+    // Initialize range slider fills on page load
+    document.querySelectorAll('input[type="range"]').forEach(slider => {
+      updateRangeSliderFill(slider);
     });
 
     // Test preview toggle
