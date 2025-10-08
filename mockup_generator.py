@@ -99,21 +99,46 @@ def warp_creative_to_billboard(
     h, w = creative_image.shape[:2]
     src_pts = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
 
-    # Apply depth perception adjustment if configured
+    # Apply base padding if configured (shrink frame inward)
     adjusted_dst_pts = dst_pts.copy()
-    if config and 'depthMultiplier' in config:
-        depth_multiplier = config['depthMultiplier'] / 15.0  # Normalize around default value of 15
+    if config and 'basePadding' in config:
+        base_padding = config['basePadding']
 
         # Calculate the center of the billboard frame
         center_x = np.mean(dst_pts[:, 0])
         center_y = np.mean(dst_pts[:, 1])
 
+        # Shrink each corner point toward center by padding amount
+        for i in range(4):
+            dx = dst_pts[i, 0] - center_x
+            dy = dst_pts[i, 1] - center_y
+
+            # Calculate direction vector and normalize
+            length = np.sqrt(dx**2 + dy**2)
+            if length > 0:
+                dx_norm = dx / length
+                dy_norm = dy / length
+
+                # Move point inward by padding amount
+                adjusted_dst_pts[i, 0] = dst_pts[i, 0] - dx_norm * base_padding
+                adjusted_dst_pts[i, 1] = dst_pts[i, 1] - dy_norm * base_padding
+
+        logger.info(f"[MOCKUP] Applied base padding of {base_padding}px")
+
+    # Apply depth perception adjustment if configured
+    if config and 'depthMultiplier' in config:
+        depth_multiplier = config['depthMultiplier'] / 15.0  # Normalize around default value of 15
+
+        # Calculate the center of the billboard frame
+        center_x = np.mean(adjusted_dst_pts[:, 0])
+        center_y = np.mean(adjusted_dst_pts[:, 1])
+
         # Adjust each corner point based on depth perception
         # Higher multiplier = more depth compensation (points move toward center)
         # Lower multiplier = less depth compensation (points move away from center)
         for i in range(4):
-            dx = dst_pts[i, 0] - center_x
-            dy = dst_pts[i, 1] - center_y
+            dx = adjusted_dst_pts[i, 0] - center_x
+            dy = adjusted_dst_pts[i, 1] - center_y
 
             # Scale the distance from center based on depth multiplier
             # Multiplier > 1 reduces perspective (flattens), < 1 increases perspective
