@@ -354,9 +354,29 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             try:
                 # Delete the location directory and all its contents
                 import shutil
+                import mockup_generator
+
+                # Delete PowerPoint templates
                 if location_dir.exists():
                     shutil.rmtree(location_dir)
                     logger.info(f"[LOCATION_DELETE] Deleted location directory: {location_dir}")
+
+                # Delete all mockup photos and database entries for this location
+                mockup_dir = mockup_generator.MOCKUPS_DIR / location_key
+                if mockup_dir.exists():
+                    shutil.rmtree(mockup_dir)
+                    logger.info(f"[LOCATION_DELETE] Deleted mockup directory: {mockup_dir}")
+
+                # Delete all mockup frame data from database
+                import db
+                conn = db._connect()
+                try:
+                    result = conn.execute("DELETE FROM mockup_frames WHERE location_key = ?", (location_key,))
+                    deleted_count = result.rowcount
+                    conn.commit()
+                    logger.info(f"[LOCATION_DELETE] Deleted {deleted_count} mockup frame entries from database")
+                finally:
+                    conn.close()
 
                 # Refresh templates to remove from cache
                 config.refresh_templates()
@@ -367,7 +387,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     text=config.markdown_to_slack(
                         f"✅ **Location `{location_key}` successfully deleted**\n\n"
                         f"📍 **Removed:** {display_name}\n"
-                        f"🗑️ **Files deleted:** PowerPoint template and metadata\n"
+                        f"🗑️ **Files deleted:** PowerPoint template, metadata, and {deleted_count} mockup frames\n"
                         f"🔄 **Templates refreshed:** Location no longer available for proposals"
                     )
                 )
