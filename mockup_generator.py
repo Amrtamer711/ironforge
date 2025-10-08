@@ -54,16 +54,20 @@ def warp_creative_to_billboard(
     # Perspective transform handles the aspect ratio automatically
     logger.info(f"[MOCKUP] Creative will be warped to fill entire billboard frame")
 
+    # Apply edge-preserving filter before scaling to reduce stretching artifacts
+    # Bilateral filter smooths while preserving edges
+    creative_smooth = cv2.bilateralFilter(creative_image, d=9, sigmaColor=75, sigmaSpace=75)
+
     # Reduce upscaling to save memory (1.5x instead of 2x)
     upscale_factor = 1.5  # 1.5x upscale before warping - good quality with less memory
     creative_upscaled = cv2.resize(
-        creative_image,
+        creative_smooth,
         None,
         fx=upscale_factor,
         fy=upscale_factor,
         interpolation=cv2.INTER_CUBIC
     )
-    logger.info(f"[MOCKUP] Upscaled creative {creative_image.shape[:2]} -> {creative_upscaled.shape[:2]} for quality preservation")
+    logger.info(f"[MOCKUP] Applied edge-preserving filter and upscaled creative {creative_image.shape[:2]} -> {creative_upscaled.shape[:2]}")
 
     # Source points (corners of upscaled creative image)
     h, w = creative_upscaled.shape[:2]
@@ -217,23 +221,16 @@ def warp_creative_to_billboard(
     result = (billboard_image.astype(np.float32) * (1 - mask_3ch * creative_opacity) +
               warped.astype(np.float32) * mask_3ch * creative_opacity).astype(np.uint8)
 
-    # Apply sharpening to the creative region to enhance detail and quality
-    # This recovers some detail lost during perspective transformation
-    sharpening_kernel = np.array([
-        [0, -1, 0],
-        [-1, 5, -1],
-        [0, -1, 0]
-    ], dtype=np.float32)
+    # Apply unsharp mask to enhance edges and reduce stretching blur
+    # This is more effective than simple sharpening for perspective-warped images
+    gaussian_blur = cv2.GaussianBlur(result, (0, 0), 2.0)
+    unsharp_mask = cv2.addWeighted(result, 1.5, gaussian_blur, -0.5, 0)
 
-    # Apply sharpening only to the warped creative region
-    result_float = result.astype(np.float32)
-    sharpened = cv2.filter2D(result, -1, sharpening_kernel)
-
-    # Blend sharpened result only within the frame region (using mask)
+    # Apply unsharp mask only within the frame region (using mask)
     result = (result.astype(np.float32) * (1 - mask_3ch) +
-              sharpened.astype(np.float32) * mask_3ch).astype(np.uint8)
+              unsharp_mask.astype(np.float32) * mask_3ch).astype(np.uint8)
 
-    logger.info(f"[MOCKUP] Applied sharpening filter to enhance creative detail")
+    logger.info(f"[MOCKUP] Applied unsharp mask to reduce stretching artifacts and enhance detail")
 
     return result
 
