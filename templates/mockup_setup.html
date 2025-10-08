@@ -114,6 +114,45 @@
       border-color: #667eea;
     }
 
+    /* Make range sliders smaller and more compact */
+    input[type="range"] {
+      height: 6px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: #e9ecef;
+      border-radius: 3px;
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      background: #667eea;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      background: #5568d3;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      background: #667eea;
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+      transition: background 0.2s;
+    }
+
+    input[type="range"]::-moz-range-thumb:hover {
+      background: #5568d3;
+    }
+
     .canvas-container {
       margin-top: 20px;
       text-align: center;
