@@ -58,8 +58,8 @@ def warp_creative_to_billboard(
     # Bilateral filter smooths while preserving edges
     creative_smooth = cv2.bilateralFilter(creative_image, d=9, sigmaColor=75, sigmaSpace=75)
 
-    # Reduce upscaling to save memory (1.5x instead of 2x)
-    upscale_factor = 1.5  # 1.5x upscale before warping - good quality with less memory
+    # High-quality upscaling for maximum detail
+    upscale_factor = 2.5  # 2.5x upscale before warping - maximum quality
     creative_upscaled = cv2.resize(
         creative_smooth,
         None,
