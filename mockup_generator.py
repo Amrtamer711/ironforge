@@ -95,8 +95,20 @@ def warp_creative_to_billboard(
         creative_image = canvas
         logger.info(f"[MOCKUP] Fitted creative {creative_w}x{creative_h} into {canvas_w}x{canvas_h} with aspect preservation")
 
-    # Source points (corners of adjusted creative image)
-    h, w = creative_image.shape[:2]
+    # Upscale creative before warping for higher quality (preserves more detail)
+    # This significantly improves quality after perspective transformation
+    upscale_factor = 2.0  # 2x upscale before warping
+    creative_upscaled = cv2.resize(
+        creative_image,
+        None,
+        fx=upscale_factor,
+        fy=upscale_factor,
+        interpolation=cv2.INTER_CUBIC
+    )
+    logger.info(f"[MOCKUP] Upscaled creative {creative_image.shape[:2]} -> {creative_upscaled.shape[:2]} for quality preservation")
+
+    # Source points (corners of upscaled creative image)
+    h, w = creative_upscaled.shape[:2]
     src_pts = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
 
     # Apply base padding if configured (shrink frame inward)
@@ -150,9 +162,9 @@ def warp_creative_to_billboard(
     # Get perspective transform matrix
     H = cv2.getPerspectiveTransform(src_pts, adjusted_dst_pts)
 
-    # Warp creative to billboard perspective with high-quality interpolation
+    # Warp upscaled creative to billboard perspective with high-quality interpolation
     warped = cv2.warpPerspective(
-        creative_image,
+        creative_upscaled,
         H,
         (billboard_image.shape[1], billboard_image.shape[0]),
         flags=cv2.INTER_LANCZOS4,  # High-quality interpolation for smooth edges
@@ -266,6 +278,24 @@ def warp_creative_to_billboard(
     # Blend with adjusted opacity to let billboard details enhance the creative
     result = (billboard_image.astype(np.float32) * (1 - mask_3ch * creative_opacity) +
               warped.astype(np.float32) * mask_3ch * creative_opacity).astype(np.uint8)
+
+    # Apply sharpening to the creative region to enhance detail and quality
+    # This recovers some detail lost during perspective transformation
+    sharpening_kernel = np.array([
+        [0, -1, 0],
+        [-1, 5, -1],
+        [0, -1, 0]
+    ], dtype=np.float32)
+
+    # Apply sharpening only to the warped creative region
+    result_float = result.astype(np.float32)
+    sharpened = cv2.filter2D(result, -1, sharpening_kernel)
+
+    # Blend sharpened result only within the frame region (using mask)
+    result = (result.astype(np.float32) * (1 - mask_3ch) +
+              sharpened.astype(np.float32) * mask_3ch).astype(np.uint8)
+
+    logger.info(f"[MOCKUP] Applied sharpening filter to enhance creative detail")
 
     return result
 
