@@ -983,12 +983,12 @@
       // Apply all config settings to preview - full opacity, realistic rendering
       const [tl, tr, br, bl] = points.map(pt => [drawX + pt[0] * scale, drawY + pt[1] * scale]);
 
-      // Get config values
-      const brightness = parseInt(document.getElementById('config-brightness').value) / 100;
-      const contrast = parseInt(document.getElementById('config-contrast').value) / 100;
-      const saturation = parseInt(document.getElementById('config-saturation').value) / 100;
-      const vignette = parseInt(document.getElementById('config-vignette').value) / 100;
-      const shadow = parseInt(document.getElementById('config-shadow-intensity').value) / 100;
+      // Get current frame config values
+      const brightness = parseInt(document.getElementById('frame-brightness').value) / 100;
+      const contrast = parseInt(document.getElementById('frame-contrast').value) / 100;
+      const saturation = parseInt(document.getElementById('frame-saturation').value) / 100;
+      const vignette = parseInt(document.getElementById('frame-vignette').value) / 100;
+      const shadow = parseInt(document.getElementById('frame-shadow-intensity').value) / 100;
 
       // Create offscreen canvas for image processing
       const tempCanvas = document.createElement('canvas');
