@@ -1333,16 +1333,32 @@ CREATIVE BRIEF:
 {ai_prompt}
 
 ═══════════════════════════════════════════════════════════
-FINAL REMINDER:
+⚠️ CRITICAL - FINAL REMINDER - READ CAREFULLY:
 ═══════════════════════════════════════════════════════════
 
-You are creating the ARTWORK FILE - the actual advertisement design.
-Imagine you're a graphic designer creating this in Adobe Illustrator or Photoshop.
-The output should be the flat design that will be PLACED onto a billboard structure later.
-DO NOT show the billboard itself, the street, or any environmental context.
-Just deliver the pure, flat, rectangular advertisement graphic.
+🚫 ABSOLUTELY DO NOT INCLUDE:
+- NO billboards, signs, or advertising structures
+- NO street scenes, highways, or roads
+- NO people holding/viewing the ad
+- NO frames, borders, or physical contexts
+- NO 3D perspective or mockup views
+- NO environmental surroundings whatsoever
 
-Example analogy: If asked to create a "movie poster," you'd create the poster ARTWORK, not a photo of someone holding a poster in a cinema."""
+✅ YOU MUST CREATE:
+- The FLAT ARTWORK FILE ONLY - the pure advertisement design
+- A rectangular graphic that will be PLACED onto a billboard LATER
+- Think: graphic designer working in Photoshop/Illustrator
+- The final output is the CREATIVE CONTENT, not a mockup
+
+📐 DELIVERABLE:
+Imagine you're delivering a print file to a billboard company.
+They will take YOUR flat design and apply it to their billboard.
+Your job: create the artwork. Their job: put it on the billboard.
+
+Example: If asked for a "Nike shoe ad," create the advertisement graphic (shoe + slogan + logo),
+NOT a photo of a billboard displaying that ad on the street.
+
+DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
 
                         # Generate creative using gpt-image-1
                         ai_creative_path = await mockup_generator.generate_ai_creative(
