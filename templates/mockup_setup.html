@@ -503,102 +503,91 @@
           </div>
         </div>
 
-        <div class="form-group" style="background: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107; margin-top: 15px;">
-          <h3 style="margin-bottom: 15px; font-size: 16px; color: #856404;">🎨 Photo Enhancement Config (Saved per photo)</h3>
+        <div id="current-frame-config-section" style="display: none; margin-top: 15px; padding: 15px; background: #d1ecf1; border-radius: 8px; border-left: 4px solid #17a2b8;">
+          <h4 style="margin-bottom: 15px; font-size: 16px; color: #0c5460;">🎯 Current Frame Settings</h4>
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
             <div>
-              <label for="config-brightness" style="display: block; margin-bottom: 5px;">
-                <strong>Brightness:</strong> <span id="brightness-value">100</span>%
+              <label for="frame-brightness" style="display: block; margin-bottom: 5px;">
+                <strong>Brightness:</strong> <span id="frame-brightness-value">100</span>%
               </label>
-              <input type="range" id="config-brightness" min="50" max="200" value="100" style="width: 100%;">
+              <input type="range" id="frame-brightness" min="50" max="200" value="100" style="width: 100%;">
             </div>
 
             <div>
-              <label for="config-contrast" style="display: block; margin-bottom: 5px;">
-                <strong>Contrast:</strong> <span id="contrast-value">100</span>%
+              <label for="frame-contrast" style="display: block; margin-bottom: 5px;">
+                <strong>Contrast:</strong> <span id="frame-contrast-value">100</span>%
               </label>
-              <input type="range" id="config-contrast" min="50" max="200" value="100" style="width: 100%;">
+              <input type="range" id="frame-contrast" min="50" max="200" value="100" style="width: 100%;">
             </div>
 
             <div>
-              <label for="config-saturation" style="display: block; margin-bottom: 5px;">
-                <strong>Saturation:</strong> <span id="saturation-value">100</span>%
+              <label for="frame-saturation" style="display: block; margin-bottom: 5px;">
+                <strong>Saturation:</strong> <span id="frame-saturation-value">100</span>%
               </label>
-              <input type="range" id="config-saturation" min="0" max="200" value="100" style="width: 100%;">
+              <input type="range" id="frame-saturation" min="0" max="200" value="100" style="width: 100%;">
             </div>
 
             <div>
-              <label for="config-depth-multiplier" style="display: block; margin-bottom: 5px;">
-                <strong>Depth Perception:</strong> <span id="depth-value">15</span>x
+              <label for="frame-depth-multiplier" style="display: block; margin-bottom: 5px;">
+                <strong>Depth Perception:</strong> <span id="frame-depth-value">15</span>x
               </label>
-              <input type="range" id="config-depth-multiplier" min="5" max="30" value="15" style="width: 100%;">
-              <small style="color: #6c757d; display: block; margin-top: 2px;">How much to compensate for billboard perspective</small>
+              <input type="range" id="frame-depth-multiplier" min="5" max="30" value="15" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Perspective compensation</small>
             </div>
 
             <div>
-              <label for="config-blur-strength" style="display: block; margin-bottom: 5px;">
-                <strong>Edge Blur:</strong> <span id="blur-value">8</span>px
+              <label for="frame-blur" style="display: block; margin-bottom: 5px;">
+                <strong>Edge Blur:</strong> <span id="frame-blur-value">8</span>px
               </label>
-              <input type="range" id="config-blur-strength" min="2" max="20" value="8" style="width: 100%;">
-              <small style="color: #6c757d; display: block; margin-top: 2px;">Smoothness of mockup edges</small>
+              <input type="range" id="frame-blur" min="2" max="20" value="8" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Edge smoothness</small>
             </div>
 
             <div>
-              <label for="config-overlay-opacity" style="display: block; margin-bottom: 5px;">
-                <strong>Overlay Opacity:</strong> <span id="overlay-value">0</span>%
+              <label for="frame-overlay-opacity" style="display: block; margin-bottom: 5px;">
+                <strong>Overlay Opacity:</strong> <span id="frame-overlay-value">0</span>%
               </label>
-              <input type="range" id="config-overlay-opacity" min="0" max="50" value="0" style="width: 100%;">
-              <small style="color: #6c757d; display: block; margin-top: 2px;">Billboard photo overlay on top of creative for realism</small>
+              <input type="range" id="frame-overlay-opacity" min="0" max="50" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Billboard overlay</small>
             </div>
 
             <div>
-              <label for="config-shadow-intensity" style="display: block; margin-bottom: 5px;">
-                <strong>Shadow Intensity:</strong> <span id="shadow-value">0</span>%
+              <label for="frame-shadow-intensity" style="display: block; margin-bottom: 5px;">
+                <strong>Shadow Intensity:</strong> <span id="frame-shadow-value">0</span>%
               </label>
-              <input type="range" id="config-shadow-intensity" min="0" max="100" value="0" style="width: 100%;">
-              <small style="color: #6c757d; display: block; margin-top: 2px;">Darken edges for depth simulation</small>
+              <input type="range" id="frame-shadow-intensity" min="0" max="100" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Edge darkening</small>
             </div>
 
             <div>
-              <label for="config-lighting-adjustment" style="display: block; margin-bottom: 5px;">
-                <strong>Lighting Match:</strong> <span id="lighting-value">0</span>%
+              <label for="frame-lighting-adjustment" style="display: block; margin-bottom: 5px;">
+                <strong>Lighting Match:</strong> <span id="frame-lighting-value">0</span>%
               </label>
-              <input type="range" id="config-lighting-adjustment" min="-50" max="50" value="0" style="width: 100%;">
-              <small style="color: #6c757d; display: block; margin-top: 2px;">Adjust creative brightness to match billboard lighting</small>
+              <input type="range" id="frame-lighting-adjustment" min="-50" max="50" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Brightness matching</small>
             </div>
 
             <div>
-              <label for="config-color-temperature" style="display: block; margin-bottom: 5px;">
-                <strong>Color Temperature:</strong> <span id="temperature-value">0</span>
+              <label for="frame-color-temperature" style="display: block; margin-bottom: 5px;">
+                <strong>Color Temperature:</strong> <span id="frame-temperature-value">0</span>
               </label>
-              <input type="range" id="config-color-temperature" min="-50" max="50" value="0" style="width: 100%;">
-              <small style="color: #6c757d; display: block; margin-top: 2px;">Warm (positive) or cool (negative) color shift</small>
+              <input type="range" id="frame-color-temperature" min="-50" max="50" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Warm/cool shift</small>
             </div>
 
             <div>
-              <label for="config-vignette" style="display: block; margin-bottom: 5px;">
-                <strong>Vignette:</strong> <span id="vignette-value">0</span>%
+              <label for="frame-vignette" style="display: block; margin-bottom: 5px;">
+                <strong>Vignette:</strong> <span id="frame-vignette-value">0</span>%
               </label>
-              <input type="range" id="config-vignette" min="0" max="100" value="0" style="width: 100%;">
-              <small style="color: #6c757d; display: block; margin-top: 2px;">Darken corners for natural look</small>
+              <input type="range" id="frame-vignette" min="0" max="100" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Corner darkening</small>
             </div>
           </div>
 
-          <small style="color: #856404; display: block; margin-top: 10px; text-align: center;">
-            ℹ️ These settings will be saved with the billboard frame and applied during mockup generation
+          <small style="color: #0c5460; display: block; margin-top: 10px; text-align: center;">
+            ℹ️ These settings apply to this frame only. Each frame can have different values.
           </small>
-        </div>
-
-        <div id="current-frame-blur-section" style="display: none; margin-top: 15px; padding: 15px; background: #d1ecf1; border-radius: 8px; border-left: 4px solid #17a2b8;">
-          <h4 style="margin-bottom: 10px; font-size: 14px; color: #0c5460;">🎯 Current Frame Settings</h4>
-          <div>
-            <label for="current-frame-blur" style="display: block; margin-bottom: 5px;">
-              <strong>Frame Edge Blur:</strong> <span id="current-frame-blur-value">8</span>px
-            </label>
-            <input type="range" id="current-frame-blur" min="2" max="20" value="8" style="width: 100%;">
-            <small style="color: #0c5460; display: block; margin-top: 2px;">Blur for this specific frame (independent from global config)</small>
-          </div>
         </div>
 
         <div id="test-preview-section" style="display: none; margin-top: 15px; padding: 15px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3;">
@@ -783,49 +772,50 @@
       slider.style.background = `linear-gradient(to right, #667eea ${percent}%, #e9ecef ${percent}%)`;
     }
 
-    // Update config value displays and redraw preview if in test mode
-    document.getElementById('config-brightness').addEventListener('input', function(e) {
-      document.getElementById('brightness-value').textContent = e.target.value;
+    // Per-frame config sliders - update displays and preview
+    document.getElementById('frame-brightness').addEventListener('input', function(e) {
+      document.getElementById('frame-brightness-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
       if (testPreviewMode && testCreativeImg) drawPreview();
     });
-    document.getElementById('config-contrast').addEventListener('input', function(e) {
-      document.getElementById('contrast-value').textContent = e.target.value;
+    document.getElementById('frame-contrast').addEventListener('input', function(e) {
+      document.getElementById('frame-contrast-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
       if (testPreviewMode && testCreativeImg) drawPreview();
     });
-    document.getElementById('config-saturation').addEventListener('input', function(e) {
-      document.getElementById('saturation-value').textContent = e.target.value;
+    document.getElementById('frame-saturation').addEventListener('input', function(e) {
+      document.getElementById('frame-saturation-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
       if (testPreviewMode && testCreativeImg) drawPreview();
     });
-    document.getElementById('config-depth-multiplier').addEventListener('input', function(e) {
-      document.getElementById('depth-value').textContent = e.target.value;
+    document.getElementById('frame-depth-multiplier').addEventListener('input', function(e) {
+      document.getElementById('frame-depth-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
     });
-    document.getElementById('config-blur-strength').addEventListener('input', function(e) {
-      document.getElementById('blur-value').textContent = e.target.value;
-      updateRangeSliderFill(e.target);
-    });
-    document.getElementById('config-overlay-opacity').addEventListener('input', function(e) {
-      document.getElementById('overlay-value').textContent = e.target.value;
-      updateRangeSliderFill(e.target);
-    });
-    document.getElementById('config-shadow-intensity').addEventListener('input', function(e) {
-      document.getElementById('shadow-value').textContent = e.target.value;
+    document.getElementById('frame-blur').addEventListener('input', function(e) {
+      document.getElementById('frame-blur-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
       if (testPreviewMode && testCreativeImg) drawPreview();
     });
-    document.getElementById('config-lighting-adjustment').addEventListener('input', function(e) {
-      document.getElementById('lighting-value').textContent = e.target.value;
+    document.getElementById('frame-overlay-opacity').addEventListener('input', function(e) {
+      document.getElementById('frame-overlay-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
     });
-    document.getElementById('config-color-temperature').addEventListener('input', function(e) {
-      document.getElementById('temperature-value').textContent = e.target.value;
+    document.getElementById('frame-shadow-intensity').addEventListener('input', function(e) {
+      document.getElementById('frame-shadow-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+      if (testPreviewMode && testCreativeImg) drawPreview();
+    });
+    document.getElementById('frame-lighting-adjustment').addEventListener('input', function(e) {
+      document.getElementById('frame-lighting-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
     });
-    document.getElementById('config-vignette').addEventListener('input', function(e) {
-      document.getElementById('vignette-value').textContent = e.target.value;
+    document.getElementById('frame-color-temperature').addEventListener('input', function(e) {
+      document.getElementById('frame-temperature-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('frame-vignette').addEventListener('input', function(e) {
+      document.getElementById('frame-vignette-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
       if (testPreviewMode && testCreativeImg) drawPreview();
     });
@@ -833,13 +823,6 @@
     // Initialize range slider fills on page load
     document.querySelectorAll('input[type="range"]').forEach(slider => {
       updateRangeSliderFill(slider);
-    });
-
-    // Current frame blur slider
-    document.getElementById('current-frame-blur').addEventListener('input', function(e) {
-      document.getElementById('current-frame-blur-value').textContent = e.target.value;
-      updateRangeSliderFill(e.target);
-      if (testPreviewMode && testCreativeImg) drawPreview();
     });
 
     // Test preview toggle
@@ -1664,8 +1647,8 @@
       document.getElementById('setup-hint').innerHTML =
         '✓ Frame drawn! Drag corners to adjust, or drag inside to move. Click "Add Frame" to save.';
 
-      // Show current frame blur section and test preview section when frame is drawn
-      document.getElementById('current-frame-blur-section').style.display = 'block';
+      // Show current frame config section and test preview section when frame is drawn
+      document.getElementById('current-frame-config-section').style.display = 'block';
       document.getElementById('test-preview-section').style.display = 'block';
     });
 
@@ -1676,13 +1659,24 @@
         return;
       }
 
-      // Get current frame blur value
-      const frameBlur = parseInt(document.getElementById('current-frame-blur').value);
+      // Collect all frame config values
+      const frameConfig = {
+        brightness: parseInt(document.getElementById('frame-brightness').value),
+        contrast: parseInt(document.getElementById('frame-contrast').value),
+        saturation: parseInt(document.getElementById('frame-saturation').value),
+        depthMultiplier: parseInt(document.getElementById('frame-depth-multiplier').value),
+        blurStrength: parseInt(document.getElementById('frame-blur').value),
+        overlayOpacity: parseInt(document.getElementById('frame-overlay-opacity').value),
+        shadowIntensity: parseInt(document.getElementById('frame-shadow-intensity').value),
+        lightingAdjustment: parseInt(document.getElementById('frame-lighting-adjustment').value),
+        colorTemperature: parseInt(document.getElementById('frame-color-temperature').value),
+        vignette: parseInt(document.getElementById('frame-vignette').value)
+      };
 
-      // Store frame with points and blur
+      // Store frame with points and all config
       allFrames.push({
         points: [...currentPoints],
-        blur: frameBlur
+        config: frameConfig
       });
 
       currentPoints = [];
@@ -1692,18 +1686,41 @@
       document.getElementById('frame-count').textContent = allFrames.length;
 
       document.getElementById('setup-hint').innerHTML =
-        `✓ Frame ${allFrames.length} added (blur: ${frameBlur}px)! Draw another box for more frames, or "Save All Frames" when done.`;
+        `✓ Frame ${allFrames.length} added! Draw another box for more frames, or "Save All Frames" when done.`;
 
-      // Hide frame blur and test preview sections when frame is added
-      document.getElementById('current-frame-blur-section').style.display = 'none';
+      // Hide frame config and test preview sections when frame is added
+      document.getElementById('current-frame-config-section').style.display = 'none';
       document.getElementById('test-preview-section').style.display = 'none';
       document.getElementById('test-preview-toggle').checked = false;
       testPreviewMode = false;
 
-      // Reset blur to default for next frame
-      document.getElementById('current-frame-blur').value = 8;
-      document.getElementById('current-frame-blur-value').textContent = '8';
-      updateRangeSliderFill(document.getElementById('current-frame-blur'));
+      // Reset all config to defaults for next frame
+      document.getElementById('frame-brightness').value = 100;
+      document.getElementById('frame-brightness-value').textContent = '100';
+      document.getElementById('frame-contrast').value = 100;
+      document.getElementById('frame-contrast-value').textContent = '100';
+      document.getElementById('frame-saturation').value = 100;
+      document.getElementById('frame-saturation-value').textContent = '100';
+      document.getElementById('frame-depth-multiplier').value = 15;
+      document.getElementById('frame-depth-value').textContent = '15';
+      document.getElementById('frame-blur').value = 8;
+      document.getElementById('frame-blur-value').textContent = '8';
+      document.getElementById('frame-overlay-opacity').value = 0;
+      document.getElementById('frame-overlay-value').textContent = '0';
+      document.getElementById('frame-shadow-intensity').value = 0;
+      document.getElementById('frame-shadow-value').textContent = '0';
+      document.getElementById('frame-lighting-adjustment').value = 0;
+      document.getElementById('frame-lighting-value').textContent = '0';
+      document.getElementById('frame-color-temperature').value = 0;
+      document.getElementById('frame-temperature-value').textContent = '0';
+      document.getElementById('frame-vignette').value = 0;
+      document.getElementById('frame-vignette-value').textContent = '0';
+
+      // Update all range slider fills
+      document.querySelectorAll('#current-frame-config-section input[type="range"]').forEach(slider => {
+        updateRangeSliderFill(slider);
+      });
+
       testCreativeImg = null;
       document.getElementById('test-preview-upload').style.display = 'none';
       document.getElementById('test-creative-upload').value = '';
@@ -1715,19 +1732,14 @@
     function resetCurrentFrame() {
       currentPoints = [];
 
-      // Hide blur and test preview sections when frame is reset
-      document.getElementById('current-frame-blur-section').style.display = 'none';
+      // Hide config and test preview sections when frame is reset
+      document.getElementById('current-frame-config-section').style.display = 'none';
       document.getElementById('test-preview-section').style.display = 'none';
       document.getElementById('test-preview-toggle').checked = false;
       testPreviewMode = false;
       testCreativeImg = null;
       document.getElementById('test-preview-upload').style.display = 'none';
       document.getElementById('test-creative-upload').value = '';
-
-      // Reset blur to default
-      document.getElementById('current-frame-blur').value = 8;
-      document.getElementById('current-frame-blur-value').textContent = '8';
-      updateRangeSliderFill(document.getElementById('current-frame-blur'));
 
       drawPreview();
       document.getElementById('add-frame-btn').disabled = true;
@@ -1753,7 +1765,7 @@
       document.getElementById('save-all-btn').disabled = true;
       document.getElementById('frames-info').style.display = 'none';
       document.getElementById('frame-count').textContent = '0';
-      document.getElementById('current-frame-blur-section').style.display = 'none';
+      document.getElementById('current-frame-config-section').style.display = 'none';
       drawPreview();
 
       if (previewImg) {
@@ -1773,9 +1785,25 @@
         return;
       }
 
-      // Add current frame if it has 4 points
+      // Add current frame if it has 4 points (with current config)
       if (currentPoints.length === 4) {
-        allFrames.push([...currentPoints]);
+        const frameConfig = {
+          brightness: parseInt(document.getElementById('frame-brightness').value),
+          contrast: parseInt(document.getElementById('frame-contrast').value),
+          saturation: parseInt(document.getElementById('frame-saturation').value),
+          depthMultiplier: parseInt(document.getElementById('frame-depth-multiplier').value),
+          blurStrength: parseInt(document.getElementById('frame-blur').value),
+          overlayOpacity: parseInt(document.getElementById('frame-overlay-opacity').value),
+          shadowIntensity: parseInt(document.getElementById('frame-shadow-intensity').value),
+          lightingAdjustment: parseInt(document.getElementById('frame-lighting-adjustment').value),
+          colorTemperature: parseInt(document.getElementById('frame-color-temperature').value),
+          vignette: parseInt(document.getElementById('frame-vignette').value)
+        };
+
+        allFrames.push({
+          points: [...currentPoints],
+          config: frameConfig
+        });
         currentPoints = [];
       }
 
@@ -1789,27 +1817,13 @@
         return;
       }
 
-      // Collect config values
-      const config = {
-        brightness: parseInt(document.getElementById('config-brightness').value),
-        contrast: parseInt(document.getElementById('config-contrast').value),
-        saturation: parseInt(document.getElementById('config-saturation').value),
-        depthMultiplier: parseInt(document.getElementById('config-depth-multiplier').value),
-        blurStrength: parseInt(document.getElementById('config-blur-strength').value),
-        overlayOpacity: parseInt(document.getElementById('config-overlay-opacity').value),
-        shadowIntensity: parseInt(document.getElementById('config-shadow-intensity').value),
-        lightingAdjustment: parseInt(document.getElementById('config-lighting-adjustment').value),
-        colorTemperature: parseInt(document.getElementById('config-color-temperature').value),
-        vignette: parseInt(document.getElementById('config-vignette').value)
-      };
-
       const formData = new FormData();
       formData.append('location_key', locationKey);
       formData.append('time_of_day', timeOfDay);
       formData.append('finish', finish);
       formData.append('photo', currentPhoto);
       formData.append('frames_data', JSON.stringify(allFrames));
-      formData.append('config_json', JSON.stringify(config));
+      // No global config - all config is per-frame now
 
       try {
         const response = await fetch('/api/mockup/save-frame', {

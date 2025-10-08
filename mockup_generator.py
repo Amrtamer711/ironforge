@@ -461,9 +461,13 @@ def generate_mockup(
 
     # Apply each creative to each frame
     for i, frame_data in enumerate(frames_data):
-        # New format: {"points": [...], "blur": 8}
+        # New format: {"points": [...], "config": {brightness: 100, blurStrength: 8, ...}}
         frame_points = frame_data["points"]
-        frame_blur = frame_data.get("blur", 8)
+        frame_config = frame_data.get("config", {})
+
+        # Merge with photo-level config (frame config takes precedence)
+        merged_config = photo_config.copy() if photo_config else {}
+        merged_config.update(frame_config)
 
         # Determine which creative to use
         if num_creatives == 1:
@@ -481,14 +485,11 @@ def generate_mockup(
             logger.error(f"[MOCKUP] Error loading creative {i}: {e}")
             return None
 
-        # Create frame-specific config with per-frame blur
-        frame_config = photo_config.copy() if photo_config else {}
-        frame_config["blurStrength"] = frame_blur
-
-        # Warp creative onto this frame
+        # Warp creative onto this frame with merged config
         try:
-            result = warp_creative_to_billboard(result, creative, frame_points, config=frame_config)
-            logger.info(f"[MOCKUP] Applied creative {i+1}/{num_frames} to frame {i+1} (blur: {frame_blur}px)")
+            result = warp_creative_to_billboard(result, creative, frame_points, config=merged_config)
+            blur_value = merged_config.get('blurStrength', 8)
+            logger.info(f"[MOCKUP] Applied creative {i+1}/{num_frames} to frame {i+1} (blur: {blur_value}px)")
         except Exception as e:
             logger.error(f"[MOCKUP] Error warping creative {i}: {e}")
             return None
