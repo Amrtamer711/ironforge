@@ -420,6 +420,64 @@
           </div>
         </div>
 
+        <div class="form-group" style="background: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107;">
+          <h3 style="margin-bottom: 15px; font-size: 16px; color: #856404;">🎨 Photo Enhancement Config (Saved per photo)</h3>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div>
+              <label for="config-brightness" style="display: block; margin-bottom: 5px;">
+                <strong>Brightness:</strong> <span id="brightness-value">100</span>%
+              </label>
+              <input type="range" id="config-brightness" min="50" max="200" value="100" style="width: 100%;">
+            </div>
+
+            <div>
+              <label for="config-contrast" style="display: block; margin-bottom: 5px;">
+                <strong>Contrast:</strong> <span id="contrast-value">100</span>%
+              </label>
+              <input type="range" id="config-contrast" min="50" max="200" value="100" style="width: 100%;">
+            </div>
+
+            <div>
+              <label for="config-saturation" style="display: block; margin-bottom: 5px;">
+                <strong>Saturation:</strong> <span id="saturation-value">100</span>%
+              </label>
+              <input type="range" id="config-saturation" min="0" max="200" value="100" style="width: 100%;">
+            </div>
+
+            <div>
+              <label for="config-depth-multiplier" style="display: block; margin-bottom: 5px;">
+                <strong>Depth Perception:</strong> <span id="depth-value">15</span>x
+              </label>
+              <input type="range" id="config-depth-multiplier" min="5" max="30" value="15" style="width: 100%;">
+              <small style="color: #6c757d; display: block; margin-top: 2px;">How much to compensate for billboard perspective</small>
+            </div>
+
+            <div>
+              <label for="config-base-padding" style="display: block; margin-bottom: 5px;">
+                <strong>Base Padding:</strong> <span id="padding-value">3</span>px
+              </label>
+              <input type="range" id="config-base-padding" min="1" max="10" value="3" style="width: 100%;">
+              <small style="color: #6c757d; display: block; margin-top: 2px;">Border padding around green screen</small>
+            </div>
+
+            <div>
+              <label for="config-blur-strength" style="display: block; margin-bottom: 5px;">
+                <strong>Edge Blur:</strong> <span id="blur-value">8</span>px
+              </label>
+              <input type="range" id="config-blur-strength" min="2" max="20" value="8" style="width: 100%;">
+              <small style="color: #6c757d; display: block; margin-top: 2px;">Smoothness of mockup edges</small>
+            </div>
+          </div>
+
+          <button type="button" id="test-config-btn" class="btn btn-secondary" style="width: 100%; margin-top: 15px;" disabled>
+            🧪 Test Config with Random Creative
+          </button>
+          <small style="color: #856404; display: block; margin-top: 10px; text-align: center;">
+            ℹ️ These settings will be saved with the billboard frame and applied during mockup generation
+          </small>
+        </div>
+
         <div class="canvas-container">
           <canvas id="canvas" width="1200" height="800"></canvas>
           <div class="hint" id="setup-hint">
@@ -578,6 +636,26 @@
     // Update tolerance value display
     document.getElementById('color-tolerance').addEventListener('input', function(e) {
       document.getElementById('tolerance-value').textContent = e.target.value;
+    });
+
+    // Update config value displays
+    document.getElementById('config-brightness').addEventListener('input', function(e) {
+      document.getElementById('brightness-value').textContent = e.target.value;
+    });
+    document.getElementById('config-contrast').addEventListener('input', function(e) {
+      document.getElementById('contrast-value').textContent = e.target.value;
+    });
+    document.getElementById('config-saturation').addEventListener('input', function(e) {
+      document.getElementById('saturation-value').textContent = e.target.value;
+    });
+    document.getElementById('config-depth-multiplier').addEventListener('input', function(e) {
+      document.getElementById('depth-value').textContent = e.target.value;
+    });
+    document.getElementById('config-base-padding').addEventListener('input', function(e) {
+      document.getElementById('padding-value').textContent = e.target.value;
+    });
+    document.getElementById('config-blur-strength').addEventListener('input', function(e) {
+      document.getElementById('blur-value').textContent = e.target.value;
     });
 
     // Manual detect green screen button
@@ -828,7 +906,8 @@
 
       // Dilate (expand) the mask to extend green region outward
       const dilatedMask = new Uint8Array(width * height);
-      const expandPixels = 6; // Reduced base expansion
+      // Get base padding from config slider
+      const expandPixels = parseInt(document.getElementById('config-base-padding').value);
 
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
@@ -909,33 +988,37 @@
 
       console.log(`[Green Screen] Perspective - Width ratio: ${widthRatio.toFixed(2)}, Height ratio: ${heightRatio.toFixed(2)}`);
 
-      // Adaptive padding based on perspective distortion
+      // Adaptive padding based on perspective distortion (depth perception effect)
+      // Smaller sides indicate greater depth/distance, requiring more padding
+      // Get depth multiplier from config slider
+      const depthMultiplier = parseInt(document.getElementById('config-depth-multiplier').value);
+
       if (widthRatio > 1.1) {
-        // Top wider: bottom recedes, push bottom out more
-        const extra = Math.floor((widthRatio - 1) * 8);
+        // Top wider: bottom recedes (further away), push bottom out more
+        const extra = Math.floor((widthRatio - 1) * depthMultiplier);
         bottomLeft[1] = Math.min(height - 1, bottomLeft[1] + extra);
         bottomRight[1] = Math.min(height - 1, bottomRight[1] + extra);
-        console.log(`[Green Screen] +${extra}px bottom (top wider)`);
+        console.log(`[Green Screen] +${extra}px bottom (depth: ${widthRatio.toFixed(2)}x)`);
       } else if (widthRatio < 0.9) {
-        // Bottom wider: top recedes, push top out more
-        const extra = Math.floor((1 / widthRatio - 1) * 8);
+        // Bottom wider: top recedes (further away), push top out more
+        const extra = Math.floor((1 / widthRatio - 1) * depthMultiplier);
         topLeft[1] = Math.max(0, topLeft[1] - extra);
         topRight[1] = Math.max(0, topRight[1] - extra);
-        console.log(`[Green Screen] +${extra}px top (bottom wider)`);
+        console.log(`[Green Screen] +${extra}px top (depth: ${(1/widthRatio).toFixed(2)}x)`);
       }
 
       if (heightRatio > 1.1) {
-        // Left taller: right recedes, push right out more
-        const extra = Math.floor((heightRatio - 1) * 8);
+        // Left taller: right recedes (further away), push right out more
+        const extra = Math.floor((heightRatio - 1) * depthMultiplier);
         topRight[0] = Math.min(width - 1, topRight[0] + extra);
         bottomRight[0] = Math.min(width - 1, bottomRight[0] + extra);
-        console.log(`[Green Screen] +${extra}px right (left taller)`);
+        console.log(`[Green Screen] +${extra}px right (depth: ${heightRatio.toFixed(2)}x)`);
       } else if (heightRatio < 0.9) {
-        // Right taller: left recedes, push left out more
-        const extra = Math.floor((1 / heightRatio - 1) * 8);
+        // Right taller: left recedes (further away), push left out more
+        const extra = Math.floor((1 / heightRatio - 1) * depthMultiplier);
         topLeft[0] = Math.max(0, topLeft[0] - extra);
         bottomLeft[0] = Math.max(0, bottomLeft[0] - extra);
-        console.log(`[Green Screen] +${extra}px left (right taller)`);
+        console.log(`[Green Screen] +${extra}px left (depth: ${(1/heightRatio).toFixed(2)}x)`);
       }
 
       console.log(`[Green Screen] ✓ Corners:`, {topLeft, topRight, bottomRight, bottomLeft});
@@ -1364,11 +1447,22 @@
         return;
       }
 
+      // Collect config values
+      const config = {
+        brightness: parseInt(document.getElementById('config-brightness').value),
+        contrast: parseInt(document.getElementById('config-contrast').value),
+        saturation: parseInt(document.getElementById('config-saturation').value),
+        depthMultiplier: parseInt(document.getElementById('config-depth-multiplier').value),
+        basePadding: parseInt(document.getElementById('config-base-padding').value),
+        blurStrength: parseInt(document.getElementById('config-blur-strength').value)
+      };
+
       const formData = new FormData();
       formData.append('location_key', locationKey);
       formData.append('subfolder', subfolder);
       formData.append('photo', currentPhoto);
       formData.append('frames_data', JSON.stringify(allFrames));
+      formData.append('config', JSON.stringify(config));
 
       try {
         const response = await fetch('/api/mockup/save-frame', {

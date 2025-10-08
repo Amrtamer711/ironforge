@@ -43,9 +43,25 @@ def order_points(pts: np.ndarray) -> np.ndarray:
 def warp_creative_to_billboard(
     billboard_image: np.ndarray,
     creative_image: np.ndarray,
-    frame_points: List[List[float]]
+    frame_points: List[List[float]],
+    config: Optional[dict] = None
 ) -> np.ndarray:
-    """Apply perspective warp to place creative on billboard."""
+    """Apply perspective warp to place creative on billboard with optional enhancements."""
+    # Apply config-based enhancements to creative before warping
+    if config:
+        brightness = config.get('brightness', 100) / 100.0
+        contrast = config.get('contrast', 100) / 100.0
+        saturation = config.get('saturation', 100) / 100.0
+
+        # Apply brightness and contrast
+        creative_image = cv2.convertScaleAbs(creative_image, alpha=contrast, beta=(brightness - 1) * 100)
+
+        # Apply saturation
+        if saturation != 1.0:
+            hsv = cv2.cvtColor(creative_image, cv2.COLOR_BGR2HSV).astype(np.float32)
+            hsv[:, :, 1] = np.clip(hsv[:, :, 1] * saturation, 0, 255)
+            creative_image = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
     # Order points consistently
     dst_pts = order_points(np.array(frame_points))
 
@@ -75,8 +91,15 @@ def warp_creative_to_billboard(
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
     # Apply Gaussian blur to the mask for smooth anti-aliased blending
+    # Use config blur strength if provided
+    blur_strength = 15
+    if config and 'blurStrength' in config:
+        blur_strength = max(3, min(21, config['blurStrength']))  # Clamp to odd numbers between 3-21
+        if blur_strength % 2 == 0:
+            blur_strength += 1  # Ensure odd number for GaussianBlur
+
     mask_float = mask.astype(np.float32) / 255.0
-    mask_float = cv2.GaussianBlur(mask_float, (15, 15), 0)
+    mask_float = cv2.GaussianBlur(mask_float, (blur_strength, blur_strength), 0)
     mask_float = np.clip(mask_float, 0, 1)
 
     # Convert to 3-channel mask for alpha blending
@@ -224,6 +247,11 @@ def generate_mockup(
         logger.error(f"[MOCKUP] No frame coordinates found for '{location_key}/{subfolder}/{photo_filename}'")
         return None
 
+    # Get config for this photo (if any)
+    photo_config = db.get_mockup_config(location_key, photo_filename, subfolder)
+    if photo_config:
+        logger.info(f"[MOCKUP] Using saved config: {photo_config}")
+
     num_frames = len(frames_data)
     num_creatives = len(creative_images)
 
@@ -267,7 +295,7 @@ def generate_mockup(
 
         # Warp creative onto this frame
         try:
-            result = warp_creative_to_billboard(result, creative, frame_points)
+            result = warp_creative_to_billboard(result, creative, frame_points, config=photo_config)
             logger.info(f"[MOCKUP] Applied creative {i+1}/{num_frames} to frame {i+1}")
         except Exception as e:
             logger.error(f"[MOCKUP] Error warping creative {i}: {e}")

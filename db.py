@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS mockup_frames (
     frames_data TEXT NOT NULL,
     created_at TEXT NOT NULL,
     created_by TEXT,
+    config_json TEXT,
     UNIQUE(location_key, subfolder, photo_filename)
 );
 """
@@ -70,6 +71,7 @@ def init_db() -> None:
 
         # Run migrations
         _migrate_add_subfolder_column(conn)
+        _migrate_add_config_json_column(conn)
     finally:
         conn.close()
 
@@ -102,6 +104,7 @@ def _migrate_add_subfolder_column(conn: sqlite3.Connection) -> None:
                     frames_data TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     created_by TEXT,
+                    config_json TEXT,
                     UNIQUE(location_key, subfolder, photo_filename)
                 )
             """)
@@ -109,7 +112,7 @@ def _migrate_add_subfolder_column(conn: sqlite3.Connection) -> None:
             # Copy data from old table
             conn.execute("""
                 INSERT INTO mockup_frames_new
-                SELECT id, location_key, subfolder, photo_filename, frames_data, created_at, created_by
+                SELECT id, location_key, subfolder, photo_filename, frames_data, created_at, created_by, NULL
                 FROM mockup_frames
             """)
 
@@ -129,6 +132,24 @@ def _migrate_add_subfolder_column(conn: sqlite3.Connection) -> None:
             conn.execute("ROLLBACK")
         except:
             pass
+
+
+def _migrate_add_config_json_column(conn: sqlite3.Connection) -> None:
+    """Migration: Add config_json column to mockup_frames if it doesn't exist"""
+    try:
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(mockup_frames)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if 'config_json' not in columns:
+            logger.info("[DB MIGRATION] Adding 'config_json' column to mockup_frames table")
+            conn.execute("ALTER TABLE mockup_frames ADD COLUMN config_json TEXT")
+            logger.info("[DB MIGRATION] Successfully added 'config_json' column")
+        else:
+            logger.debug("[DB MIGRATION] 'config_json' column already exists, skipping migration")
+
+    except Exception as e:
+        logger.error(f"[DB MIGRATION] Error adding config_json column: {e}", exc_info=True)
 
 
 def log_proposal(
@@ -255,18 +276,19 @@ def get_proposals_summary() -> dict:
         conn.close()
 
 
-def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list, created_by: Optional[str] = None, subfolder: str = "all") -> None:
-    """Save frame coordinates for a location photo in a subfolder. frames_data is a list of frame point arrays."""
+def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list, created_by: Optional[str] = None, subfolder: str = "all", config: Optional[dict] = None) -> None:
+    """Save frame coordinates and config for a location photo in a subfolder. frames_data is a list of frame point arrays."""
     import json
     conn = _connect()
     try:
         conn.execute("BEGIN")
+        config_json = json.dumps(config) if config else None
         conn.execute(
             """
-            INSERT OR REPLACE INTO mockup_frames (location_key, subfolder, photo_filename, frames_data, created_at, created_by)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO mockup_frames (location_key, subfolder, photo_filename, frames_data, created_at, created_by, config_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (location_key, subfolder, photo_filename, json.dumps(frames_data), datetime.now().isoformat(), created_by),
+            (location_key, subfolder, photo_filename, json.dumps(frames_data), datetime.now().isoformat(), created_by, config_json),
         )
         conn.execute("COMMIT")
     finally:
@@ -285,6 +307,22 @@ def get_mockup_frames(location_key: str, photo_filename: str, subfolder: str = "
         )
         row = cursor.fetchone()
         return json.loads(row[0]) if row else None
+    finally:
+        conn.close()
+
+
+def get_mockup_config(location_key: str, photo_filename: str, subfolder: str = "all") -> Optional[dict]:
+    """Get config for a specific location photo in a subfolder. Returns config dict or None."""
+    import json
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT config_json FROM mockup_frames WHERE location_key = ? AND subfolder = ? AND photo_filename = ?",
+            (location_key, subfolder, photo_filename)
+        )
+        row = cursor.fetchone()
+        return json.loads(row[0]) if (row and row[0]) else None
     finally:
         conn.close()
 

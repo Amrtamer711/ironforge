@@ -266,9 +266,10 @@ async def save_mockup_frame(
     location_key: str = Form(...),
     subfolder: str = Form("all"),
     frames_data: str = Form(...),
-    photo: UploadFile = File(...)
+    photo: UploadFile = File(...),
+    config: Optional[str] = Form(None)
 ):
-    """Save a billboard photo with multiple frame coordinates"""
+    """Save a billboard photo with multiple frame coordinates and optional config"""
     import json
     import db
     import mockup_generator
@@ -284,6 +285,14 @@ async def save_mockup_frame(
             if not isinstance(frame, list) or len(frame) != 4:
                 raise HTTPException(status_code=400, detail=f"Frame {i} must have exactly 4 corner points")
 
+        # Parse config if provided
+        config_dict = None
+        if config:
+            try:
+                config_dict = json.loads(config)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid config JSON")
+
         # Validate location
         if location_key not in config.LOCATION_METADATA:
             raise HTTPException(status_code=400, detail=f"Invalid location: {location_key}")
@@ -294,10 +303,10 @@ async def save_mockup_frame(
         # Save photo to disk in subfolder
         photo_path = mockup_generator.save_location_photo(location_key, photo.filename, photo_data, subfolder)
 
-        # Save all frames to database
-        db.save_mockup_frame(location_key, photo.filename, frames, subfolder=subfolder)
+        # Save all frames to database with config
+        db.save_mockup_frame(location_key, photo.filename, frames, subfolder=subfolder, config=config_dict)
 
-        logger.info(f"[MOCKUP API] Saved {len(frames)} frame(s) for {location_key}/{subfolder}/{photo.filename}")
+        logger.info(f"[MOCKUP API] Saved {len(frames)} frame(s) for {location_key}/{subfolder}/{photo.filename} with config: {config_dict}")
 
         return {"success": True, "photo": photo.filename, "subfolder": subfolder, "frames_count": len(frames)}
 
