@@ -510,9 +510,28 @@
             </div>
           </div>
 
-          <button type="button" id="test-config-btn" class="btn btn-secondary" style="width: 100%; margin-top: 15px;" disabled>
-            🧪 Test Config with Random Creative
-          </button>
+          <div style="display: flex; align-items: center; gap: 10px; margin-top: 15px;">
+            <label class="toggle-switch" style="margin: 0;">
+              <input type="checkbox" id="test-preview-toggle">
+              <span class="toggle-slider"></span>
+            </label>
+            <label for="test-preview-toggle" style="cursor: pointer; margin: 0; flex: 1;">
+              <strong>🧪 Test Preview Mode</strong>
+              <br>
+              <small style="color: #856404;">Upload a test creative to preview how config will look when applied</small>
+            </label>
+          </div>
+
+          <div id="test-preview-upload" style="display: none; margin-top: 15px;">
+            <label for="test-creative-upload" style="display: block; margin-bottom: 8px;">
+              <strong>Upload Test Creative:</strong>
+            </label>
+            <input type="file" id="test-creative-upload" accept="image/*" style="width: 100%;">
+            <small style="color: #856404; display: block; margin-top: 5px;">
+              Upload an ad creative to see a live preview with current config settings
+            </small>
+          </div>
+
           <small style="color: #856404; display: block; margin-top: 10px; text-align: center;">
             ℹ️ These settings will be saved with the billboard frame and applied during mockup generation
           </small>
@@ -678,15 +697,18 @@
       document.getElementById('tolerance-value').textContent = e.target.value;
     });
 
-    // Update config value displays
+    // Update config value displays and redraw preview if in test mode
     document.getElementById('config-brightness').addEventListener('input', function(e) {
       document.getElementById('brightness-value').textContent = e.target.value;
+      if (testPreviewMode && testCreativeImg) drawPreview();
     });
     document.getElementById('config-contrast').addEventListener('input', function(e) {
       document.getElementById('contrast-value').textContent = e.target.value;
+      if (testPreviewMode && testCreativeImg) drawPreview();
     });
     document.getElementById('config-saturation').addEventListener('input', function(e) {
       document.getElementById('saturation-value').textContent = e.target.value;
+      if (testPreviewMode && testCreativeImg) drawPreview();
     });
     document.getElementById('config-depth-multiplier').addEventListener('input', function(e) {
       document.getElementById('depth-value').textContent = e.target.value;
@@ -702,6 +724,7 @@
     });
     document.getElementById('config-shadow-intensity').addEventListener('input', function(e) {
       document.getElementById('shadow-value').textContent = e.target.value;
+      if (testPreviewMode && testCreativeImg) drawPreview();
     });
     document.getElementById('config-lighting-adjustment').addEventListener('input', function(e) {
       document.getElementById('lighting-value').textContent = e.target.value;
@@ -711,6 +734,39 @@
     });
     document.getElementById('config-vignette').addEventListener('input', function(e) {
       document.getElementById('vignette-value').textContent = e.target.value;
+      if (testPreviewMode && testCreativeImg) drawPreview();
+    });
+
+    // Test preview toggle
+    let testPreviewMode = false;
+    document.getElementById('test-preview-toggle').addEventListener('change', function(e) {
+      testPreviewMode = e.target.checked;
+      const uploadSection = document.getElementById('test-preview-upload');
+      uploadSection.style.display = testPreviewMode ? 'block' : 'none';
+
+      if (!testPreviewMode) {
+        // Turn off preview mode - clear test creative
+        testCreativeImg = null;
+      }
+
+      drawPreview();
+    });
+
+    // Test creative upload
+    document.getElementById('test-creative-upload').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+          testCreativeImg = img;
+          drawPreview();
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
     });
 
     // Manual detect green screen button
@@ -795,20 +851,107 @@
       canvasCtx.restore();
     }
 
+    function applyPerspectiveTransformWithConfig(creative, points, canvasCtx) {
+      // Apply all config settings to preview - full opacity, realistic rendering
+      const [tl, tr, br, bl] = points.map(pt => [drawX + pt[0] * scale, drawY + pt[1] * scale]);
+
+      // Get config values
+      const brightness = parseInt(document.getElementById('config-brightness').value) / 100;
+      const contrast = parseInt(document.getElementById('config-contrast').value) / 100;
+      const saturation = parseInt(document.getElementById('config-saturation').value) / 100;
+      const vignette = parseInt(document.getElementById('config-vignette').value) / 100;
+      const shadow = parseInt(document.getElementById('config-shadow-intensity').value) / 100;
+
+      // Create offscreen canvas for image processing
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = creative.width;
+      tempCanvas.height = creative.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.drawImage(creative, 0, 0);
+
+      // Apply brightness and contrast
+      if (brightness !== 1 || contrast !== 1) {
+        tempCtx.globalCompositeOperation = 'source-over';
+        tempCtx.filter = `brightness(${brightness}) contrast(${contrast})`;
+        tempCtx.drawImage(tempCanvas, 0, 0);
+        tempCtx.filter = 'none';
+      }
+
+      // Apply saturation (simplified - canvas doesn't have direct saturation filter)
+      if (saturation !== 1) {
+        const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+        const data = imageData.data;
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i], g = data[i + 1], b = data[i + 2];
+          const gray = 0.2989 * r + 0.5870 * g + 0.1140 * b;
+          data[i] = gray + saturation * (r - gray);
+          data[i + 1] = gray + saturation * (g - gray);
+          data[i + 2] = gray + saturation * (b - gray);
+        }
+        tempCtx.putImageData(imageData, 0, 0);
+      }
+
+      // Apply vignette
+      if (vignette > 0) {
+        const gradient = tempCtx.createRadialGradient(
+          tempCanvas.width / 2, tempCanvas.height / 2, 0,
+          tempCanvas.width / 2, tempCanvas.height / 2, tempCanvas.width / 2
+        );
+        gradient.addColorStop(0, `rgba(0,0,0,0)`);
+        gradient.addColorStop(1, `rgba(0,0,0,${vignette})`);
+        tempCtx.fillStyle = gradient;
+        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+      }
+
+      // Draw to main canvas
+      canvasCtx.save();
+      canvasCtx.beginPath();
+      canvasCtx.moveTo(tl[0], tl[1]);
+      canvasCtx.lineTo(tr[0], tr[1]);
+      canvasCtx.lineTo(br[0], br[1]);
+      canvasCtx.lineTo(bl[0], bl[1]);
+      canvasCtx.closePath();
+      canvasCtx.clip();
+
+      const minX = Math.min(tl[0], tr[0], br[0], bl[0]);
+      const minY = Math.min(tl[1], tr[1], br[1], bl[1]);
+      const maxX = Math.max(tl[0], tr[0], br[0], bl[0]);
+      const maxY = Math.max(tl[1], tr[1], br[1], bl[1]);
+
+      // Full opacity for realistic preview
+      canvasCtx.globalAlpha = 1.0;
+      canvasCtx.drawImage(tempCanvas, minX, minY, maxX - minX, maxY - minY);
+
+      // Apply shadow to edges if configured
+      if (shadow > 0) {
+        const shadowGradient = canvasCtx.createLinearGradient(minX, minY, maxX, maxY);
+        shadowGradient.addColorStop(0, `rgba(0,0,0,${shadow * 0.5})`);
+        shadowGradient.addColorStop(0.1, 'rgba(0,0,0,0)');
+        shadowGradient.addColorStop(0.9, 'rgba(0,0,0,0)');
+        shadowGradient.addColorStop(1, `rgba(0,0,0,${shadow * 0.5})`);
+        canvasCtx.fillStyle = shadowGradient;
+        canvasCtx.fillRect(minX, minY, maxX - minX, maxY - minY);
+      }
+
+      canvasCtx.restore();
+    }
+
     function drawPreview() {
       clearCanvas();
       if (!previewImg) return;
 
       ctx.drawImage(previewImg, drawX, drawY, drawW, drawH);
 
-      // If test creative is loaded, show it on current frame or all frames
-      if (testCreativeImg) {
+      // If test creative is loaded in preview mode, show realistic mockup with config applied
+      if (testCreativeImg && testPreviewMode) {
         const framesToPreview = currentPoints.length === 4 ? [currentPoints] : allFrames;
         framesToPreview.forEach(framePoints => {
           if (framePoints.length === 4) {
-            applyPerspectiveTransform(testCreativeImg, framePoints, ctx);
+            applyPerspectiveTransformWithConfig(testCreativeImg, framePoints, ctx);
           }
         });
+        // Skip drawing frame borders in test preview mode
+        return;
       }
 
       // Draw all completed frames with grey fill and dashed edges with hard corners
