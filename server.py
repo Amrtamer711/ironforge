@@ -541,22 +541,38 @@ Example analogy: If asked to create a "movie poster," you'd create the poster AR
         if not result_path:
             raise HTTPException(status_code=500, detail="Failed to generate mockup")
 
-        # Return the image
+        # Return the image with background_tasks to delete after serving
+        from fastapi import BackgroundTasks
+
+        def cleanup_files():
+            """Delete temp files after response is sent"""
+            try:
+                if creative_path and creative_path.exists():
+                    creative_path.unlink()
+                    logger.debug(f"[CLEANUP] Deleted temp creative: {creative_path}")
+            except Exception as e:
+                logger.debug(f"[CLEANUP] Error deleting creative: {e}")
+
+            try:
+                if result_path and result_path.exists():
+                    result_path.unlink()
+                    logger.debug(f"[CLEANUP] Deleted temp mockup: {result_path}")
+            except Exception as e:
+                logger.debug(f"[CLEANUP] Error deleting mockup: {e}")
+
+        # Schedule cleanup after response is sent
+        background_tasks = BackgroundTasks()
+        background_tasks.add_task(cleanup_files)
+
         return FileResponse(
             result_path,
             media_type="image/jpeg",
-            filename=f"mockup_{location_key}_{time_of_day}_{finish}.jpg"
+            filename=f"mockup_{location_key}_{time_of_day}_{finish}.jpg",
+            background=background_tasks
         )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"[MOCKUP API] Error generating mockup: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        # Cleanup temp creative file
-        try:
-            if creative_path and creative_path.exists():
-                creative_path.unlink()
-        except:
-            pass 
+        raise HTTPException(status_code=500, detail=str(e)) 
