@@ -468,6 +468,46 @@
               <input type="range" id="config-blur-strength" min="2" max="20" value="8" style="width: 100%;">
               <small style="color: #6c757d; display: block; margin-top: 2px;">Smoothness of mockup edges</small>
             </div>
+
+            <div>
+              <label for="config-overlay-opacity" style="display: block; margin-bottom: 5px;">
+                <strong>Overlay Opacity:</strong> <span id="overlay-value">0</span>%
+              </label>
+              <input type="range" id="config-overlay-opacity" min="0" max="50" value="0" style="width: 100%;">
+              <small style="color: #6c757d; display: block; margin-top: 2px;">Billboard photo overlay on top of creative for realism</small>
+            </div>
+
+            <div>
+              <label for="config-shadow-intensity" style="display: block; margin-bottom: 5px;">
+                <strong>Shadow Intensity:</strong> <span id="shadow-value">0</span>%
+              </label>
+              <input type="range" id="config-shadow-intensity" min="0" max="100" value="0" style="width: 100%;">
+              <small style="color: #6c757d; display: block; margin-top: 2px;">Darken edges for depth simulation</small>
+            </div>
+
+            <div>
+              <label for="config-lighting-adjustment" style="display: block; margin-bottom: 5px;">
+                <strong>Lighting Match:</strong> <span id="lighting-value">0</span>%
+              </label>
+              <input type="range" id="config-lighting-adjustment" min="-50" max="50" value="0" style="width: 100%;">
+              <small style="color: #6c757d; display: block; margin-top: 2px;">Adjust creative brightness to match billboard lighting</small>
+            </div>
+
+            <div>
+              <label for="config-color-temperature" style="display: block; margin-bottom: 5px;">
+                <strong>Color Temperature:</strong> <span id="temperature-value">0</span>
+              </label>
+              <input type="range" id="config-color-temperature" min="-50" max="50" value="0" style="width: 100%;">
+              <small style="color: #6c757d; display: block; margin-top: 2px;">Warm (positive) or cool (negative) color shift</small>
+            </div>
+
+            <div>
+              <label for="config-vignette" style="display: block; margin-bottom: 5px;">
+                <strong>Vignette:</strong> <span id="vignette-value">0</span>%
+              </label>
+              <input type="range" id="config-vignette" min="0" max="100" value="0" style="width: 100%;">
+              <small style="color: #6c757d; display: block; margin-top: 2px;">Darken corners for natural look</small>
+            </div>
           </div>
 
           <button type="button" id="test-config-btn" class="btn btn-secondary" style="width: 100%; margin-top: 15px;" disabled>
@@ -656,6 +696,21 @@
     });
     document.getElementById('config-blur-strength').addEventListener('input', function(e) {
       document.getElementById('blur-value').textContent = e.target.value;
+    });
+    document.getElementById('config-overlay-opacity').addEventListener('input', function(e) {
+      document.getElementById('overlay-value').textContent = e.target.value;
+    });
+    document.getElementById('config-shadow-intensity').addEventListener('input', function(e) {
+      document.getElementById('shadow-value').textContent = e.target.value;
+    });
+    document.getElementById('config-lighting-adjustment').addEventListener('input', function(e) {
+      document.getElementById('lighting-value').textContent = e.target.value;
+    });
+    document.getElementById('config-color-temperature').addEventListener('input', function(e) {
+      document.getElementById('temperature-value').textContent = e.target.value;
+    });
+    document.getElementById('config-vignette').addEventListener('input', function(e) {
+      document.getElementById('vignette-value').textContent = e.target.value;
     });
 
     // Manual detect green screen button
@@ -1454,7 +1509,12 @@
         saturation: parseInt(document.getElementById('config-saturation').value),
         depthMultiplier: parseInt(document.getElementById('config-depth-multiplier').value),
         basePadding: parseInt(document.getElementById('config-base-padding').value),
-        blurStrength: parseInt(document.getElementById('config-blur-strength').value)
+        blurStrength: parseInt(document.getElementById('config-blur-strength').value),
+        overlayOpacity: parseInt(document.getElementById('config-overlay-opacity').value),
+        shadowIntensity: parseInt(document.getElementById('config-shadow-intensity').value),
+        lightingAdjustment: parseInt(document.getElementById('config-lighting-adjustment').value),
+        colorTemperature: parseInt(document.getElementById('config-color-temperature').value),
+        vignette: parseInt(document.getElementById('config-vignette').value)
       };
 
       const formData = new FormData();

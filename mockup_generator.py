@@ -52,6 +52,8 @@ def warp_creative_to_billboard(
         brightness = config.get('brightness', 100) / 100.0
         contrast = config.get('contrast', 100) / 100.0
         saturation = config.get('saturation', 100) / 100.0
+        lighting_adjustment = config.get('lightingAdjustment', 0)
+        color_temperature = config.get('colorTemperature', 0)
 
         # Apply brightness and contrast
         creative_image = cv2.convertScaleAbs(creative_image, alpha=contrast, beta=(brightness - 1) * 100)
@@ -61,6 +63,23 @@ def warp_creative_to_billboard(
             hsv = cv2.cvtColor(creative_image, cv2.COLOR_BGR2HSV).astype(np.float32)
             hsv[:, :, 1] = np.clip(hsv[:, :, 1] * saturation, 0, 255)
             creative_image = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+        # Apply lighting adjustment to match billboard
+        if lighting_adjustment != 0:
+            creative_image = cv2.convertScaleAbs(creative_image, alpha=1.0, beta=lighting_adjustment * 2)
+
+        # Apply color temperature shift
+        if color_temperature != 0:
+            # Warm (positive): increase red/yellow, Cool (negative): increase blue
+            creative_float = creative_image.astype(np.float32)
+            if color_temperature > 0:
+                # Warm: increase red and green (yellow)
+                creative_float[:, :, 2] += color_temperature * 2  # Red
+                creative_float[:, :, 1] += color_temperature * 1  # Green
+            else:
+                # Cool: increase blue
+                creative_float[:, :, 0] += abs(color_temperature) * 2  # Blue
+            creative_image = np.clip(creative_float, 0, 255).astype(np.uint8)
 
     # Order points consistently
     dst_pts = order_points(np.array(frame_points))
@@ -105,9 +124,41 @@ def warp_creative_to_billboard(
     # Convert to 3-channel mask for alpha blending
     mask_3ch = np.stack([mask_float] * 3, axis=-1)
 
+    # Apply vignette to warped creative if configured
+    if config and config.get('vignette', 0) > 0:
+        vignette_strength = config['vignette'] / 100.0
+        h, w = warped.shape[:2]
+        # Create radial gradient mask
+        y_coords, x_coords = np.ogrid[:h, :w]
+        center_y, center_x = h / 2, w / 2
+        distances = np.sqrt((x_coords - center_x) ** 2 + (y_coords - center_y) ** 2)
+        max_distance = np.sqrt(center_x ** 2 + center_y ** 2)
+        vignette_mask = 1 - (distances / max_distance) * vignette_strength
+        vignette_mask = np.clip(vignette_mask, 0, 1)
+        vignette_mask_3ch = np.stack([vignette_mask] * 3, axis=-1)
+        warped = (warped.astype(np.float32) * vignette_mask_3ch).astype(np.uint8)
+
+    # Apply shadow (darken edges) if configured
+    if config and config.get('shadowIntensity', 0) > 0:
+        shadow_strength = config['shadowIntensity'] / 100.0
+        # Create edge shadow by using inverse of mask_float
+        shadow_mask = 1 - (mask_float ** 0.5)  # Softer falloff
+        shadow_mask = shadow_mask * shadow_strength
+        shadow_mask_3ch = np.stack([shadow_mask] * 3, axis=-1)
+        warped = (warped.astype(np.float32) * (1 - shadow_mask_3ch)).astype(np.uint8)
+
     # Alpha blend warped creative with billboard using smooth mask
     result = (billboard_image.astype(np.float32) * (1 - mask_3ch) +
               warped.astype(np.float32) * mask_3ch).astype(np.uint8)
+
+    # Apply billboard overlay on top for realism if configured
+    if config and config.get('overlayOpacity', 0) > 0:
+        overlay_opacity = config['overlayOpacity'] / 100.0
+        # Extract just the billboard region to overlay
+        billboard_region = billboard_image.astype(np.float32) * mask_3ch
+        # Blend billboard region on top of result with reduced opacity
+        result = (result.astype(np.float32) * (1 - overlay_opacity * mask_3ch) +
+                  billboard_region * overlay_opacity).astype(np.uint8)
 
     return result
 

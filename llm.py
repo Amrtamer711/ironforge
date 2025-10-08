@@ -1249,9 +1249,25 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     )
 
                     try:
+                        # Enhanced system prompt for billboard artwork generation
+                        enhanced_prompt = f"""Create a professional billboard advertisement creative (NOT a photo of a billboard, but the ARTWORK that goes ON a billboard).
+
+REQUIREMENTS:
+- Design format: Landscape orientation (wide), suitable for outdoor billboard display
+- Content: {ai_prompt}
+- Style: Clean, bold, high-impact outdoor advertising design
+- Typography: Large, readable text if any (designed for viewing from distance)
+- Colors: Vibrant, high-contrast, eye-catching
+- Composition: Simple, focused message (billboards are viewed for 5-7 seconds)
+- Quality: Professional commercial advertising standard
+- NO frames, borders, or billboard structures - just the flat advertisement artwork itself
+- NO perspective or 3D billboard mockups - deliver the 2D creative ready to be placed
+
+Think of this as the digital file a graphic designer would send to be printed on a billboard, not a photo of an existing billboard."""
+
                         # Generate creative using gpt-image-1
                         ai_creative_path = await mockup_generator.generate_ai_creative(
-                            prompt=f"Billboard advertisement creative: {ai_prompt}. Professional, high-quality, suitable for outdoor advertising.",
+                            prompt=enhanced_prompt,
                             size="1536x1024"  # Landscape format for billboards
                         )
 
