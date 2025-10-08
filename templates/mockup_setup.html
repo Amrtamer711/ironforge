@@ -740,6 +740,23 @@
       if (!testPreviewMode) {
         // Turn off preview mode - clear test creative
         testCreativeImg = null;
+      } else {
+        // Turn on preview mode - reload image if file is already selected
+        const fileInput = document.getElementById('test-creative-upload');
+        const file = fileInput.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = function(event) {
+            const img = new Image();
+            img.onload = function() {
+              testCreativeImg = img;
+              drawPreview();
+            };
+            img.src = event.target.result;
+          };
+          reader.readAsDataURL(file);
+          return; // Skip drawPreview() below since it will be called after image loads
+        }
       }
 
       drawPreview();
