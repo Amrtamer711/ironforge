@@ -557,15 +557,6 @@
           <strong>Frames configured: <span id="frame-count">0</span></strong>
         </div>
 
-        <div style="margin-top: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; border: 2px dashed #dee2e6;">
-          <h3 style="margin-top: 0; margin-bottom: 15px;">Test Preview</h3>
-          <p style="color: #6c757d; margin-bottom: 15px;">Upload a test creative to see how it looks on the billboard (won't be saved)</p>
-          <div style="display: flex; gap: 10px; align-items: center;">
-            <input type="file" id="test-creative" accept="image/*" style="flex: 1;">
-            <button class="btn btn-secondary" onclick="clearTestPreview()">Clear Preview</button>
-          </div>
-        </div>
-
         <h3 style="margin-top: 40px; margin-bottom: 15px;">Existing Photos</h3>
         <div id="photo-list" class="photo-list"></div>
       </div>
@@ -642,6 +633,7 @@
     let allFrames = [];       // All completed frames [[x,y,x,y,x,y,x,y], ...]
     let locations = [];
     let testCreativeImg = null; // Test creative for preview
+    let testPreviewMode = false; // Test preview mode flag
 
     // Canvas state
     let imgNaturalW = 0, imgNaturalH = 0;
@@ -738,7 +730,6 @@
     });
 
     // Test preview toggle
-    let testPreviewMode = false;
     document.getElementById('test-preview-toggle').addEventListener('change', function(e) {
       testPreviewMode = e.target.checked;
       const uploadSection = document.getElementById('test-preview-upload');
@@ -1537,32 +1528,6 @@
       document.getElementById('setup-hint').innerHTML =
         '✓ Frame drawn! Drag corners to adjust, or drag inside to move. Click "Add Frame" to save.';
     });
-
-    // Handle test creative upload
-    document.getElementById('test-creative').addEventListener('change', function(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = function(event) {
-        const img = new Image();
-        img.onload = function() {
-          testCreativeImg = img;
-          drawPreview();
-          showMessage('Test creative loaded! It will appear on your frames.', 'success');
-        };
-        img.src = event.target.result;
-      };
-      reader.readAsDataURL(file);
-    });
-
-    // Clear test preview
-    function clearTestPreview() {
-      testCreativeImg = null;
-      document.getElementById('test-creative').value = '';
-      drawPreview();
-      showMessage('Test preview cleared', 'success');
-    }
 
     // Add current frame to allFrames
     function addFrame() {
