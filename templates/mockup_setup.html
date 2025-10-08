@@ -420,7 +420,17 @@
           </div>
         </div>
 
-        <div class="form-group" style="background: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107;">
+        <div class="canvas-container">
+          <canvas id="canvas" width="1200" height="800"></canvas>
+          <div class="hint" id="setup-hint">
+            1. Select a location above<br>
+            2. Upload a billboard photo<br>
+            3. Click 4 corners of the billboard screen to define the frame<br>
+            4. Click "Save Frame" to store the configuration
+          </div>
+        </div>
+
+        <div class="form-group" style="background: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107; margin-top: 15px;">
           <h3 style="margin-bottom: 15px; font-size: 16px; color: #856404;">🎨 Photo Enhancement Config (Saved per photo)</h3>
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
@@ -513,16 +523,6 @@
           <small style="color: #856404; display: block; margin-top: 10px; text-align: center;">
             ℹ️ These settings will be saved with the billboard frame and applied during mockup generation
           </small>
-        </div>
-
-        <div class="canvas-container">
-          <canvas id="canvas" width="1200" height="800"></canvas>
-          <div class="hint" id="setup-hint">
-            1. Select a location above<br>
-            2. Upload a billboard photo<br>
-            3. Click 4 corners of the billboard screen to define the frame<br>
-            4. Click "Save Frame" to store the configuration
-          </div>
         </div>
 
         <div id="test-preview-section" style="display: none; margin-top: 15px; padding: 15px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3;">
