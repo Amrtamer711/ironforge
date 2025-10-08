@@ -267,7 +267,7 @@ async def save_mockup_frame(
     subfolder: str = Form("all"),
     frames_data: str = Form(...),
     photo: UploadFile = File(...),
-    config: Optional[str] = Form(None)
+    config_json: Optional[str] = Form(None)
 ):
     """Save a billboard photo with multiple frame coordinates and optional config"""
     import json
@@ -287,9 +287,9 @@ async def save_mockup_frame(
 
         # Parse config if provided
         config_dict = None
-        if config:
+        if config_json:
             try:
-                config_dict = json.loads(config)
+                config_dict = json.loads(config_json)
             except json.JSONDecodeError:
                 raise HTTPException(status_code=400, detail="Invalid config JSON")
 
