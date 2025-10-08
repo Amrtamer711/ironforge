@@ -254,17 +254,18 @@ def warp_creative_to_billboard(
         warped = warped_float.astype(np.uint8)
 
     # Alpha blend warped creative with billboard using smooth mask
-    result = (billboard_image.astype(np.float32) * (1 - mask_3ch) +
-              warped.astype(np.float32) * mask_3ch).astype(np.uint8)
-
-    # Apply billboard overlay on top for realism if configured
+    # Apply overlay opacity to reduce creative opacity and let billboard details show through
+    creative_opacity = 1.0
     if config and config.get('overlayOpacity', 0) > 0:
+        # Overlay opacity reduces creative opacity, allowing billboard lighting/texture to enhance realism
+        # Higher overlay = more transparent creative = more billboard detail shows through
         overlay_opacity = config['overlayOpacity'] / 100.0
-        # Extract just the billboard region to overlay
-        billboard_region = billboard_image.astype(np.float32) * mask_3ch
-        # Blend billboard region on top of result with reduced opacity
-        result = (result.astype(np.float32) * (1 - overlay_opacity * mask_3ch) +
-                  billboard_region * overlay_opacity).astype(np.uint8)
+        creative_opacity = 1.0 - (overlay_opacity * 0.5)  # Max 50% overlay = 75% creative opacity
+        logger.info(f"[MOCKUP] Applying overlay opacity {overlay_opacity:.2f}, creative opacity {creative_opacity:.2f}")
+
+    # Blend with adjusted opacity to let billboard details enhance the creative
+    result = (billboard_image.astype(np.float32) * (1 - mask_3ch * creative_opacity) +
+              warped.astype(np.float32) * mask_3ch * creative_opacity).astype(np.uint8)
 
     return result
 
