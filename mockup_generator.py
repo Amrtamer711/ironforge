@@ -460,7 +460,11 @@ def generate_mockup(
     result = billboard.copy()
 
     # Apply each creative to each frame
-    for i, frame_points in enumerate(frames_data):
+    for i, frame_data in enumerate(frames_data):
+        # New format: {"points": [...], "blur": 8}
+        frame_points = frame_data["points"]
+        frame_blur = frame_data.get("blur", 8)
+
         # Determine which creative to use
         if num_creatives == 1:
             creative_path = creative_images[0]  # Duplicate the same creative
@@ -477,10 +481,14 @@ def generate_mockup(
             logger.error(f"[MOCKUP] Error loading creative {i}: {e}")
             return None
 
+        # Create frame-specific config with per-frame blur
+        frame_config = photo_config.copy() if photo_config else {}
+        frame_config["blurStrength"] = frame_blur
+
         # Warp creative onto this frame
         try:
-            result = warp_creative_to_billboard(result, creative, frame_points, config=photo_config)
-            logger.info(f"[MOCKUP] Applied creative {i+1}/{num_frames} to frame {i+1}")
+            result = warp_creative_to_billboard(result, creative, frame_points, config=frame_config)
+            logger.info(f"[MOCKUP] Applied creative {i+1}/{num_frames} to frame {i+1} (blur: {frame_blur}px)")
         except Exception as e:
             logger.error(f"[MOCKUP] Error warping creative {i}: {e}")
             return None

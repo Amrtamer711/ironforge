@@ -590,6 +590,17 @@
           </small>
         </div>
 
+        <div id="current-frame-blur-section" style="display: none; margin-top: 15px; padding: 15px; background: #d1ecf1; border-radius: 8px; border-left: 4px solid #17a2b8;">
+          <h4 style="margin-bottom: 10px; font-size: 14px; color: #0c5460;">🎯 Current Frame Settings</h4>
+          <div>
+            <label for="current-frame-blur" style="display: block; margin-bottom: 5px;">
+              <strong>Frame Edge Blur:</strong> <span id="current-frame-blur-value">8</span>px
+            </label>
+            <input type="range" id="current-frame-blur" min="2" max="20" value="8" style="width: 100%;">
+            <small style="color: #0c5460; display: block; margin-top: 2px;">Blur for this specific frame (independent from global config)</small>
+          </div>
+        </div>
+
         <div id="test-preview-section" style="display: none; margin-top: 15px; padding: 15px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3;">
           <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
             <label class="toggle-switch" style="margin: 0;">
@@ -822,6 +833,13 @@
     // Initialize range slider fills on page load
     document.querySelectorAll('input[type="range"]').forEach(slider => {
       updateRangeSliderFill(slider);
+    });
+
+    // Current frame blur slider
+    document.getElementById('current-frame-blur').addEventListener('input', function(e) {
+      document.getElementById('current-frame-blur-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+      if (testPreviewMode && testCreativeImg) drawPreview();
     });
 
     // Test preview toggle
@@ -1062,8 +1080,9 @@
       }
 
       // Draw all completed frames with grey fill and dashed edges with hard corners
-      allFrames.forEach((framePoints, frameIndex) => {
+      allFrames.forEach((frameData, frameIndex) => {
         const isSelected = selectedFrameIndex === frameIndex;
+        const framePoints = frameData.points;
 
         ctx.fillStyle = 'rgba(128, 128, 128, 0.3)'; // Grey semi-transparent fill
         ctx.strokeStyle = isSelected ? '#667eea' : '#333'; // Blue if selected, dark grey otherwise
@@ -1399,9 +1418,10 @@
 
       // Check all saved frames
       for (let fi = 0; fi < allFrames.length; fi++) {
-        for (let pi = 0; pi < allFrames[fi].length; pi++) {
-          const cx = drawX + allFrames[fi][pi][0] * scale;
-          const cy = drawY + allFrames[fi][pi][1] * scale;
+        const framePoints = allFrames[fi].points;
+        for (let pi = 0; pi < framePoints.length; pi++) {
+          const cx = drawX + framePoints[pi][0] * scale;
+          const cy = drawY + framePoints[pi][1] * scale;
           const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
           if (dist < hitRadius) {
             return { frame: fi, point: pi };
@@ -1436,7 +1456,7 @@
 
       // Check all saved frames
       for (let fi = allFrames.length - 1; fi >= 0; fi--) {
-        if (isPointInFrame(x, y, allFrames[fi])) {
+        if (isPointInFrame(x, y, allFrames[fi].points)) {
           return fi;
         }
       }
@@ -1533,7 +1553,7 @@
           currentPoints[dragPointIndex] = [Math.round(ix), Math.round(iy)];
         } else {
           // Editing saved frame
-          allFrames[dragFrameIndex][dragPointIndex] = [Math.round(ix), Math.round(iy)];
+          allFrames[dragFrameIndex].points[dragPointIndex] = [Math.round(ix), Math.round(iy)];
         }
         drawPreview();
         return;
@@ -1552,7 +1572,7 @@
           ]);
         } else {
           // Move saved frame
-          allFrames[dragFrameIndex] = allFrames[dragFrameIndex].map(pt => [
+          allFrames[dragFrameIndex].points = allFrames[dragFrameIndex].points.map(pt => [
             Math.round(pt[0] + deltaX),
             Math.round(pt[1] + deltaY)
           ]);
@@ -1644,7 +1664,8 @@
       document.getElementById('setup-hint').innerHTML =
         '✓ Frame drawn! Drag corners to adjust, or drag inside to move. Click "Add Frame" to save.';
 
-      // Show test preview section when frame is drawn (blue state)
+      // Show current frame blur section and test preview section when frame is drawn
+      document.getElementById('current-frame-blur-section').style.display = 'block';
       document.getElementById('test-preview-section').style.display = 'block';
     });
 
@@ -1655,7 +1676,15 @@
         return;
       }
 
-      allFrames.push([...currentPoints]);
+      // Get current frame blur value
+      const frameBlur = parseInt(document.getElementById('current-frame-blur').value);
+
+      // Store frame with points and blur
+      allFrames.push({
+        points: [...currentPoints],
+        blur: frameBlur
+      });
+
       currentPoints = [];
       document.getElementById('add-frame-btn').disabled = true;
       document.getElementById('save-all-btn').disabled = false;
@@ -1663,12 +1692,18 @@
       document.getElementById('frame-count').textContent = allFrames.length;
 
       document.getElementById('setup-hint').innerHTML =
-        `✓ Frame ${allFrames.length} added! Draw another box for more frames, or "Save All Frames" when done.`;
+        `✓ Frame ${allFrames.length} added (blur: ${frameBlur}px)! Draw another box for more frames, or "Save All Frames" when done.`;
 
-      // Hide test preview section and clear preview when frame is added
+      // Hide frame blur and test preview sections when frame is added
+      document.getElementById('current-frame-blur-section').style.display = 'none';
       document.getElementById('test-preview-section').style.display = 'none';
       document.getElementById('test-preview-toggle').checked = false;
       testPreviewMode = false;
+
+      // Reset blur to default for next frame
+      document.getElementById('current-frame-blur').value = 8;
+      document.getElementById('current-frame-blur-value').textContent = '8';
+      updateRangeSliderFill(document.getElementById('current-frame-blur'));
       testCreativeImg = null;
       document.getElementById('test-preview-upload').style.display = 'none';
       document.getElementById('test-creative-upload').value = '';
@@ -1680,13 +1715,19 @@
     function resetCurrentFrame() {
       currentPoints = [];
 
-      // Hide test preview section when frame is reset
+      // Hide blur and test preview sections when frame is reset
+      document.getElementById('current-frame-blur-section').style.display = 'none';
       document.getElementById('test-preview-section').style.display = 'none';
       document.getElementById('test-preview-toggle').checked = false;
       testPreviewMode = false;
       testCreativeImg = null;
       document.getElementById('test-preview-upload').style.display = 'none';
       document.getElementById('test-creative-upload').value = '';
+
+      // Reset blur to default
+      document.getElementById('current-frame-blur').value = 8;
+      document.getElementById('current-frame-blur-value').textContent = '8';
+      updateRangeSliderFill(document.getElementById('current-frame-blur'));
 
       drawPreview();
       document.getElementById('add-frame-btn').disabled = true;
@@ -1712,6 +1753,7 @@
       document.getElementById('save-all-btn').disabled = true;
       document.getElementById('frames-info').style.display = 'none';
       document.getElementById('frame-count').textContent = '0';
+      document.getElementById('current-frame-blur-section').style.display = 'none';
       drawPreview();
 
       if (previewImg) {
