@@ -99,8 +99,31 @@ def warp_creative_to_billboard(
     h, w = creative_image.shape[:2]
     src_pts = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
 
+    # Apply depth perception adjustment if configured
+    adjusted_dst_pts = dst_pts.copy()
+    if config and 'depthMultiplier' in config:
+        depth_multiplier = config['depthMultiplier'] / 15.0  # Normalize around default value of 15
+
+        # Calculate the center of the billboard frame
+        center_x = np.mean(dst_pts[:, 0])
+        center_y = np.mean(dst_pts[:, 1])
+
+        # Adjust each corner point based on depth perception
+        # Higher multiplier = more depth compensation (points move toward center)
+        # Lower multiplier = less depth compensation (points move away from center)
+        for i in range(4):
+            dx = dst_pts[i, 0] - center_x
+            dy = dst_pts[i, 1] - center_y
+
+            # Scale the distance from center based on depth multiplier
+            # Multiplier > 1 reduces perspective (flattens), < 1 increases perspective
+            adjusted_dst_pts[i, 0] = center_x + dx * (2.0 - depth_multiplier)
+            adjusted_dst_pts[i, 1] = center_y + dy * (2.0 - depth_multiplier)
+
+        logger.info(f"[MOCKUP] Applied depth perception with multiplier {config['depthMultiplier']}")
+
     # Get perspective transform matrix
-    H = cv2.getPerspectiveTransform(src_pts, dst_pts)
+    H = cv2.getPerspectiveTransform(src_pts, adjusted_dst_pts)
 
     # Warp creative to billboard perspective with high-quality interpolation
     warped = cv2.warpPerspective(
@@ -114,7 +137,7 @@ def warp_creative_to_billboard(
 
     # Create mask for the billboard area with anti-aliased edges
     mask = np.zeros(billboard_image.shape[:2], dtype=np.uint8)
-    cv2.fillConvexPoly(mask, dst_pts.astype(int), 255)
+    cv2.fillConvexPoly(mask, adjusted_dst_pts.astype(int), 255)
 
     # Apply morphological operations for smoother edges
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
