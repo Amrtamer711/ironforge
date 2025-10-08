@@ -348,12 +348,38 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024") -> Optional
         b64_image = img.data[0].b64_json
         image_data = base64.b64decode(b64_image)
 
-        # Save to temp file
+        # Apply sharpening and quality enhancement to AI-generated image
+        import io
+        from PIL import Image
+
+        # Load image from bytes
+        pil_img = Image.open(io.BytesIO(image_data))
+        img_array = np.array(pil_img)
+
+        # Convert RGB to BGR for OpenCV
+        if len(img_array.shape) == 3 and img_array.shape[2] == 3:
+            img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+
+        # Apply unsharp mask for sharpening (more aggressive than mockup sharpening)
+        gaussian = cv2.GaussianBlur(img_array, (0, 0), 3.0)
+        sharpened = cv2.addWeighted(img_array, 1.8, gaussian, -0.8, 0)
+
+        # Apply slight contrast enhancement
+        lab = cv2.cvtColor(sharpened, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        l = clahe.apply(l)
+        enhanced = cv2.merge([l, a, b])
+        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
+
+        logger.info("[AI_CREATIVE] Applied sharpening and contrast enhancement to AI image")
+
+        # Save enhanced image to temp file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-        temp_file.write(image_data)
+        cv2.imwrite(temp_file.name, enhanced, [cv2.IMWRITE_PNG_COMPRESSION, 3])
         temp_file.close()
 
-        logger.info(f"[AI_CREATIVE] Generated image saved to: {temp_file.name}")
+        logger.info(f"[AI_CREATIVE] Enhanced image saved to: {temp_file.name}")
 
         return Path(temp_file.name)
 
