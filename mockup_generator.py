@@ -114,7 +114,7 @@ def warp_creative_to_billboard(
     # Apply base padding if configured (shrink frame inward)
     adjusted_dst_pts = dst_pts.copy()
     if config and 'basePadding' in config:
-        base_padding = config['basePadding']
+        base_padding = config['basePadding'] * 5  # Multiply by 5 for more visible effect (1-10 becomes 5-50px)
 
         # Calculate the center of the billboard frame
         center_x = np.mean(dst_pts[:, 0])
@@ -135,29 +135,32 @@ def warp_creative_to_billboard(
                 adjusted_dst_pts[i, 0] = dst_pts[i, 0] - dx_norm * base_padding
                 adjusted_dst_pts[i, 1] = dst_pts[i, 1] - dy_norm * base_padding
 
-        logger.info(f"[MOCKUP] Applied base padding of {base_padding}px")
+        logger.info(f"[MOCKUP] Applied base padding of {base_padding}px (config value: {config['basePadding']})")
 
     # Apply depth perception adjustment if configured
     if config and 'depthMultiplier' in config:
-        depth_multiplier = config['depthMultiplier'] / 15.0  # Normalize around default value of 15
+        # Range 5-30, default 15
+        # Lower values (5-14) = increase perspective (pull corners outward)
+        # Higher values (16-30) = flatten perspective (push corners inward)
+        depth_value = config['depthMultiplier']
+
+        # Calculate scaling factor: 15 = 1.0 (no change), 5 = 1.2 (more perspective), 30 = 0.7 (flatter)
+        scale_factor = 1.0 + (15 - depth_value) * 0.02
 
         # Calculate the center of the billboard frame
         center_x = np.mean(adjusted_dst_pts[:, 0])
         center_y = np.mean(adjusted_dst_pts[:, 1])
 
         # Adjust each corner point based on depth perception
-        # Higher multiplier = more depth compensation (points move toward center)
-        # Lower multiplier = less depth compensation (points move away from center)
         for i in range(4):
             dx = adjusted_dst_pts[i, 0] - center_x
             dy = adjusted_dst_pts[i, 1] - center_y
 
-            # Scale the distance from center based on depth multiplier
-            # Multiplier > 1 reduces perspective (flattens), < 1 increases perspective
-            adjusted_dst_pts[i, 0] = center_x + dx * (2.0 - depth_multiplier)
-            adjusted_dst_pts[i, 1] = center_y + dy * (2.0 - depth_multiplier)
+            # Scale the distance from center
+            adjusted_dst_pts[i, 0] = center_x + dx * scale_factor
+            adjusted_dst_pts[i, 1] = center_y + dy * scale_factor
 
-        logger.info(f"[MOCKUP] Applied depth perception with multiplier {config['depthMultiplier']}")
+        logger.info(f"[MOCKUP] Applied depth perception with value {depth_value} (scale factor: {scale_factor:.2f})")
 
     # Get perspective transform matrix
     H = cv2.getPerspectiveTransform(src_pts, adjusted_dst_pts)
