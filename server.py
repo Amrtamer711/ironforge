@@ -382,21 +382,100 @@ async def generate_mockup_api(
             # AI MODE: Generate creative using AI
             logger.info(f"[MOCKUP API] Generating AI creative with prompt: {ai_prompt[:100]}...")
 
-            # Enhanced system prompt for billboard artwork generation
-            enhanced_prompt = f"""Create a professional billboard advertisement creative (NOT a photo of a billboard, but the ARTWORK that goes ON a billboard).
+            # Extensive system prompt for billboard artwork generation
+            enhanced_prompt = f"""Create a professional outdoor advertising billboard creative - IMPORTANT: This is the FLAT 2D ARTWORK FILE that will be printed and placed ON a billboard, NOT a photograph of an existing billboard.
 
-REQUIREMENTS:
-- Design format: Landscape orientation (wide), suitable for outdoor billboard display
-- Content: {ai_prompt}
-- Style: Clean, bold, high-impact outdoor advertising design
-- Typography: Large, readable text if any (designed for viewing from distance)
-- Colors: Vibrant, high-contrast, eye-catching
-- Composition: Simple, focused message (billboards are viewed for 5-7 seconds)
-- Quality: Professional commercial advertising standard
-- NO frames, borders, or billboard structures - just the flat advertisement artwork itself
-- NO perspective or 3D billboard mockups - deliver the 2D creative ready to be placed
+═══════════════════════════════════════════════════════════
+CRITICAL DISTINCTIONS:
+═══════════════════════════════════════════════════════════
 
-Think of this as the digital file a graphic designer would send to be printed on a billboard, not a photo of an existing billboard."""
+✅ CORRECT OUTPUT (what we want):
+- A flat, rectangular advertisement design (like a Photoshop/Illustrator file)
+- The actual graphic design artwork that goes ON the billboard surface
+- Think: magazine ad, poster design, digital banner creative
+- Perfectly rectangular, no perspective, no angle, no depth
+- Edge-to-edge design filling the entire rectangular canvas
+- Like looking at a computer screen showing the ad design
+
+❌ INCORRECT OUTPUT (what we DON'T want):
+- A photograph of a physical billboard in a street scene
+- 3D rendering showing billboard from an angle/perspective
+- Image with billboard frame, poles, or support structure visible
+- Photo showing buildings, sky, roads, or environment around billboard
+- Any mockup showing how the billboard looks in real life
+- Perspective view, vanishing points, or dimensional representation
+
+═══════════════════════════════════════════════════════════
+DETAILED DESIGN REQUIREMENTS:
+═══════════════════════════════════════════════════════════
+
+📐 FORMAT & DIMENSIONS:
+- Aspect ratio: Wide landscape (roughly 3:2 ratio)
+- Orientation: Horizontal/landscape ONLY
+- Canvas: Perfectly flat, rectangular, no warping or perspective
+- Fill entire frame edge-to-edge with design
+- No white borders, frames, or margins around the design
+
+🎨 VISUAL DESIGN PRINCIPLES:
+- Bold, high-impact composition that catches attention immediately
+- Large hero image or visual focal point (50-70% of design)
+- Vibrant, saturated colors that pop in daylight
+- High contrast between elements for maximum visibility
+- Simple, uncluttered layout (viewer has 5-7 seconds max)
+- Professional photo quality or clean vector graphics
+- Modern, contemporary advertising aesthetic
+
+✍️ TYPOGRAPHY (if text is needed):
+- LARGE, bold, highly readable fonts
+- Sans-serif typefaces work best for outdoor viewing
+- Maximum 7-10 words total (fewer is better)
+- High contrast text-to-background ratio
+- Text size: headlines should occupy 15-25% of vertical height
+- Clear hierarchy: one main message, optional supporting text
+- Avoid script fonts, thin fonts, or decorative typefaces
+- Letter spacing optimized for distance reading
+
+🎯 COMPOSITION STRATEGY:
+- Rule of thirds or strong visual hierarchy
+- One clear focal point (don't scatter attention)
+- Negative space used strategically
+- Visual flow guides eye to key message/CTA
+- Brand logo prominent but not dominating (10-15% of space)
+- Clean, professional layout with breathing room
+
+💡 COLOR THEORY FOR OUTDOOR:
+- Vibrant, saturated colors (avoid pastels or muted tones)
+- High contrast pairings: dark on light or light on dark
+- Colors that work in bright sunlight and shadows
+- Consistent brand color palette if applicable
+- Background should enhance, not compete with message
+- Consider: bright blues, bold reds, energetic oranges, fresh greens
+
+🔍 QUALITY STANDARDS:
+- Sharp, crisp graphics (no blur, pixelation, or artifacts)
+- Professional commercial photography or illustration
+- Consistent lighting across all design elements
+- No watermarks, stock photo markers, or placeholder text
+- Print-ready quality at large scale
+- Polished, agency-level execution
+
+═══════════════════════════════════════════════════════════
+CREATIVE BRIEF:
+═══════════════════════════════════════════════════════════
+
+{ai_prompt}
+
+═══════════════════════════════════════════════════════════
+FINAL REMINDER:
+═══════════════════════════════════════════════════════════
+
+You are creating the ARTWORK FILE - the actual advertisement design.
+Imagine you're a graphic designer creating this in Adobe Illustrator or Photoshop.
+The output should be the flat design that will be PLACED onto a billboard structure later.
+DO NOT show the billboard itself, the street, or any environmental context.
+Just deliver the pure, flat, rectangular advertisement graphic.
+
+Example analogy: If asked to create a "movie poster," you'd create the poster ARTWORK, not a photo of someone holding a poster in a cinema."""
 
             creative_path = await mockup_generator.generate_ai_creative(
                 prompt=enhanced_prompt,
