@@ -264,7 +264,8 @@ async def get_mockup_locations():
 @app.post("/api/mockup/save-frame")
 async def save_mockup_frame(
     location_key: str = Form(...),
-    subfolder: str = Form("all"),
+    time_of_day: str = Form("day"),
+    finish: str = Form("gold"),
     frames_data: str = Form(...),
     photo: UploadFile = File(...),
     config_json: Optional[str] = Form(None)
@@ -300,15 +301,15 @@ async def save_mockup_frame(
         # Read photo data
         photo_data = await photo.read()
 
-        # Save photo to disk in subfolder
-        photo_path = mockup_generator.save_location_photo(location_key, photo.filename, photo_data, subfolder)
+        # Save photo to disk in time_of_day/finish folder structure
+        photo_path = mockup_generator.save_location_photo(location_key, photo.filename, photo_data, time_of_day, finish)
 
         # Save all frames to database with config
-        db.save_mockup_frame(location_key, photo.filename, frames, subfolder=subfolder, config=config_dict)
+        db.save_mockup_frame(location_key, photo.filename, frames, created_by=None, time_of_day=time_of_day, finish=finish, config=config_dict)
 
-        logger.info(f"[MOCKUP API] Saved {len(frames)} frame(s) for {location_key}/{subfolder}/{photo.filename} with config: {config_dict}")
+        logger.info(f"[MOCKUP API] Saved {len(frames)} frame(s) for {location_key}/{time_of_day}/{finish}/{photo.filename} with config: {config_dict}")
 
-        return {"success": True, "photo": photo.filename, "subfolder": subfolder, "frames_count": len(frames)}
+        return {"success": True, "photo": photo.filename, "time_of_day": time_of_day, "finish": finish, "frames_count": len(frames)}
 
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid frames_data JSON")
@@ -318,41 +319,76 @@ async def save_mockup_frame(
 
 
 @app.get("/api/mockup/photos/{location_key}")
-async def list_mockup_photos(location_key: str):
-    """List all photos for a location"""
+async def list_mockup_photos(location_key: str, time_of_day: str = "all", finish: str = "all"):
+    """List all photos for a location with specific time_of_day and finish"""
     import db
 
     try:
-        photos = db.list_mockup_photos(location_key)
-        return {"photos": photos}
+        # If "all" is specified, we need to aggregate from all variations
+        if time_of_day == "all" or finish == "all":
+            variations = db.list_mockup_variations(location_key)
+            all_photos = set()
+            for tod in variations:
+                for fin in variations[tod]:
+                    photos = db.list_mockup_photos(location_key, tod, fin)
+                    all_photos.update(photos)
+            return {"photos": sorted(list(all_photos))}
+        else:
+            photos = db.list_mockup_photos(location_key, time_of_day, finish)
+            return {"photos": photos}
     except Exception as e:
         logger.error(f"[MOCKUP API] Error listing photos: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/mockup/photo/{location_key}/{photo_filename}")
-async def get_mockup_photo(location_key: str, photo_filename: str):
+async def get_mockup_photo(location_key: str, photo_filename: str, time_of_day: str = "all", finish: str = "all"):
     """Get a specific photo file"""
     import mockup_generator
+    import db
 
-    photo_path = mockup_generator.get_location_photos_dir(location_key) / photo_filename
-    if not photo_path.exists():
+    # If "all" is specified, find the photo in any variation
+    if time_of_day == "all" or finish == "all":
+        variations = db.list_mockup_variations(location_key)
+        for tod in variations:
+            for fin in variations[tod]:
+                photo_path = mockup_generator.get_location_photos_dir(location_key, tod, fin) / photo_filename
+                if photo_path.exists():
+                    return FileResponse(photo_path)
         raise HTTPException(status_code=404, detail="Photo not found")
-
-    return FileResponse(photo_path)
+    else:
+        photo_path = mockup_generator.get_location_photos_dir(location_key, time_of_day, finish) / photo_filename
+        if not photo_path.exists():
+            raise HTTPException(status_code=404, detail="Photo not found")
+        return FileResponse(photo_path)
 
 
 @app.delete("/api/mockup/photo/{location_key}/{photo_filename}")
-async def delete_mockup_photo(location_key: str, photo_filename: str):
+async def delete_mockup_photo(location_key: str, photo_filename: str, time_of_day: str = "all", finish: str = "all"):
     """Delete a photo and its frame"""
     import mockup_generator
+    import db
 
     try:
-        success = mockup_generator.delete_location_photo(location_key, photo_filename)
-        if success:
-            return {"success": True}
+        # If "all" is specified, find and delete the photo from whichever variation it's in
+        if time_of_day == "all" or finish == "all":
+            variations = db.list_mockup_variations(location_key)
+            for tod in variations:
+                for fin in variations[tod]:
+                    photos = db.list_mockup_photos(location_key, tod, fin)
+                    if photo_filename in photos:
+                        success = mockup_generator.delete_location_photo(location_key, photo_filename, tod, fin)
+                        if success:
+                            return {"success": True}
+                        else:
+                            raise HTTPException(status_code=500, detail="Failed to delete photo")
+            raise HTTPException(status_code=404, detail="Photo not found")
         else:
-            raise HTTPException(status_code=500, detail="Failed to delete photo")
+            success = mockup_generator.delete_location_photo(location_key, photo_filename, time_of_day, finish)
+            if success:
+                return {"success": True}
+            else:
+                raise HTTPException(status_code=500, detail="Failed to delete photo")
     except Exception as e:
         logger.error(f"[MOCKUP API] Error deleting photo: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -361,7 +397,8 @@ async def delete_mockup_photo(location_key: str, photo_filename: str):
 @app.post("/api/mockup/generate")
 async def generate_mockup_api(
     location_key: str = Form(...),
-    subfolder: str = Form("all"),
+    time_of_day: str = Form("all"),
+    finish: str = Form("all"),
     ai_prompt: Optional[str] = Form(None),
     creative: Optional[UploadFile] = File(None)
 ):
@@ -498,8 +535,8 @@ Example analogy: If asked to create a "movie poster," you'd create the poster AR
         else:
             raise HTTPException(status_code=400, detail="Either ai_prompt or creative file must be provided")
 
-        # Generate mockup (pass as list) with subfolder
-        result_path = mockup_generator.generate_mockup(location_key, [creative_path], subfolder=subfolder)
+        # Generate mockup (pass as list) with time_of_day and finish
+        result_path = mockup_generator.generate_mockup(location_key, [creative_path], time_of_day=time_of_day, finish=finish)
 
         if not result_path:
             raise HTTPException(status_code=500, detail="Failed to generate mockup")
@@ -508,7 +545,7 @@ Example analogy: If asked to create a "movie poster," you'd create the poster AR
         return FileResponse(
             result_path,
             media_type="image/jpeg",
-            filename=f"mockup_{location_key}_{subfolder}.jpg"
+            filename=f"mockup_{location_key}_{time_of_day}_{finish}.jpg"
         )
 
     except HTTPException:

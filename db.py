@@ -41,13 +41,14 @@ CREATE TABLE IF NOT EXISTS proposals_log (
 CREATE TABLE IF NOT EXISTS mockup_frames (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     location_key TEXT NOT NULL,
-    subfolder TEXT NOT NULL DEFAULT 'all',
+    time_of_day TEXT NOT NULL DEFAULT 'day',
+    finish TEXT NOT NULL DEFAULT 'gold',
     photo_filename TEXT NOT NULL,
     frames_data TEXT NOT NULL,
     created_at TEXT NOT NULL,
     created_by TEXT,
     config_json TEXT,
-    UNIQUE(location_key, subfolder, photo_filename)
+    UNIQUE(location_key, time_of_day, finish, photo_filename)
 );
 """
 
@@ -72,6 +73,7 @@ def init_db() -> None:
         # Run migrations
         _migrate_add_subfolder_column(conn)
         _migrate_add_config_json_column(conn)
+        _migrate_subfolder_to_time_and_finish(conn)
     finally:
         conn.close()
 
@@ -150,6 +152,77 @@ def _migrate_add_config_json_column(conn: sqlite3.Connection) -> None:
 
     except Exception as e:
         logger.error(f"[DB MIGRATION] Error adding config_json column: {e}", exc_info=True)
+
+
+def _migrate_subfolder_to_time_and_finish(conn: sqlite3.Connection) -> None:
+    """Migration: Convert subfolder column to time_of_day and finish columns"""
+    try:
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(mockup_frames)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        # Check if we still have subfolder column (old schema)
+        if 'subfolder' in columns and 'time_of_day' not in columns:
+            logger.info("[DB MIGRATION] Migrating subfolder to time_of_day and finish columns")
+
+            # Add new columns
+            conn.execute("ALTER TABLE mockup_frames ADD COLUMN time_of_day TEXT NOT NULL DEFAULT 'day'")
+            conn.execute("ALTER TABLE mockup_frames ADD COLUMN finish TEXT NOT NULL DEFAULT 'gold'")
+
+            # Map old subfolder values to new structure
+            # Old: gold, silver, night, day, all
+            # New: time_of_day (day/night) + finish (gold/silver)
+            mapping = {
+                'gold': ('day', 'gold'),
+                'silver': ('day', 'silver'),
+                'night': ('night', 'gold'),  # Night defaults to gold finish
+                'day': ('day', 'gold'),      # Day defaults to gold finish
+                'all': ('day', 'gold')       # Default to day/gold
+            }
+
+            cursor.execute("SELECT id, subfolder FROM mockup_frames")
+            rows = cursor.fetchall()
+
+            for row_id, subfolder in rows:
+                time_of_day, finish = mapping.get(subfolder, ('day', 'gold'))
+                conn.execute(
+                    "UPDATE mockup_frames SET time_of_day = ?, finish = ? WHERE id = ?",
+                    (time_of_day, finish, row_id)
+                )
+
+            # Create new table without subfolder column
+            conn.execute("""
+                CREATE TABLE mockup_frames_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    location_key TEXT NOT NULL,
+                    time_of_day TEXT NOT NULL DEFAULT 'day',
+                    finish TEXT NOT NULL DEFAULT 'gold',
+                    photo_filename TEXT NOT NULL,
+                    frames_data TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    created_by TEXT,
+                    config_json TEXT,
+                    UNIQUE(location_key, time_of_day, finish, photo_filename)
+                )
+            """)
+
+            # Copy data to new table
+            conn.execute("""
+                INSERT INTO mockup_frames_new
+                SELECT id, location_key, time_of_day, finish, photo_filename, frames_data, created_at, created_by, config_json
+                FROM mockup_frames
+            """)
+
+            # Drop old table and rename new one
+            conn.execute("DROP TABLE mockup_frames")
+            conn.execute("ALTER TABLE mockup_frames_new RENAME TO mockup_frames")
+
+            logger.info("[DB MIGRATION] Successfully migrated subfolder to time_of_day and finish columns")
+        else:
+            logger.debug("[DB MIGRATION] time_of_day/finish columns already exist, skipping subfolder migration")
+
+    except Exception as e:
+        logger.error(f"[DB MIGRATION] Error migrating subfolder to time_of_day/finish: {e}", exc_info=True)
 
 
 def log_proposal(
@@ -276,8 +349,8 @@ def get_proposals_summary() -> dict:
         conn.close()
 
 
-def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list, created_by: Optional[str] = None, subfolder: str = "all", config: Optional[dict] = None) -> None:
-    """Save frame coordinates and config for a location photo in a subfolder. frames_data is a list of frame point arrays."""
+def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list, created_by: Optional[str] = None, time_of_day: str = "day", finish: str = "gold", config: Optional[dict] = None) -> None:
+    """Save frame coordinates and config for a location photo with time_of_day and finish. frames_data is a list of frame point arrays."""
     import json
     conn = _connect()
     try:
@@ -285,25 +358,25 @@ def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list,
         config_json = json.dumps(config) if config else None
         conn.execute(
             """
-            INSERT OR REPLACE INTO mockup_frames (location_key, subfolder, photo_filename, frames_data, created_at, created_by, config_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO mockup_frames (location_key, time_of_day, finish, photo_filename, frames_data, created_at, created_by, config_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (location_key, subfolder, photo_filename, json.dumps(frames_data), datetime.now().isoformat(), created_by, config_json),
+            (location_key, time_of_day, finish, photo_filename, json.dumps(frames_data), datetime.now().isoformat(), created_by, config_json),
         )
         conn.execute("COMMIT")
     finally:
         conn.close()
 
 
-def get_mockup_frames(location_key: str, photo_filename: str, subfolder: str = "all") -> Optional[list]:
-    """Get all frame coordinates for a specific location photo in a subfolder. Returns list of frames."""
+def get_mockup_frames(location_key: str, photo_filename: str, time_of_day: str = "day", finish: str = "gold") -> Optional[list]:
+    """Get all frame coordinates for a specific location photo with time_of_day and finish. Returns list of frames."""
     import json
     conn = _connect()
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT frames_data FROM mockup_frames WHERE location_key = ? AND subfolder = ? AND photo_filename = ?",
-            (location_key, subfolder, photo_filename)
+            "SELECT frames_data FROM mockup_frames WHERE location_key = ? AND time_of_day = ? AND finish = ? AND photo_filename = ?",
+            (location_key, time_of_day, finish, photo_filename)
         )
         row = cursor.fetchone()
         return json.loads(row[0]) if row else None
@@ -311,15 +384,15 @@ def get_mockup_frames(location_key: str, photo_filename: str, subfolder: str = "
         conn.close()
 
 
-def get_mockup_config(location_key: str, photo_filename: str, subfolder: str = "all") -> Optional[dict]:
-    """Get config for a specific location photo in a subfolder. Returns config dict or None."""
+def get_mockup_config(location_key: str, photo_filename: str, time_of_day: str = "day", finish: str = "gold") -> Optional[dict]:
+    """Get config for a specific location photo with time_of_day and finish. Returns config dict or None."""
     import json
     conn = _connect()
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT config_json FROM mockup_frames WHERE location_key = ? AND subfolder = ? AND photo_filename = ?",
-            (location_key, subfolder, photo_filename)
+            "SELECT config_json FROM mockup_frames WHERE location_key = ? AND time_of_day = ? AND finish = ? AND photo_filename = ?",
+            (location_key, time_of_day, finish, photo_filename)
         )
         row = cursor.fetchone()
         return json.loads(row[0]) if (row and row[0]) else None
@@ -327,42 +400,47 @@ def get_mockup_config(location_key: str, photo_filename: str, subfolder: str = "
         conn.close()
 
 
-def list_mockup_photos(location_key: str, subfolder: str = "all") -> list:
-    """List all photos with frames for a location in a specific subfolder."""
+def list_mockup_photos(location_key: str, time_of_day: str = "day", finish: str = "gold") -> list:
+    """List all photos with frames for a location with time_of_day and finish."""
     conn = _connect()
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT photo_filename FROM mockup_frames WHERE location_key = ? AND subfolder = ?",
-            (location_key, subfolder)
+            "SELECT photo_filename FROM mockup_frames WHERE location_key = ? AND time_of_day = ? AND finish = ?",
+            (location_key, time_of_day, finish)
         )
         return [row[0] for row in cursor.fetchall()]
     finally:
         conn.close()
 
 
-def list_mockup_subfolders(location_key: str) -> list:
-    """List all subfolders for a location."""
+def list_mockup_variations(location_key: str) -> dict:
+    """List all time_of_day/finish combinations that exist for a location. Returns dict like {'day': ['gold', 'silver'], 'night': ['gold']}."""
     conn = _connect()
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT DISTINCT subfolder FROM mockup_frames WHERE location_key = ? ORDER BY subfolder",
+            "SELECT DISTINCT time_of_day, finish FROM mockup_frames WHERE location_key = ? ORDER BY time_of_day, finish",
             (location_key,)
         )
-        return [row[0] for row in cursor.fetchall()]
+        variations = {}
+        for time_of_day, finish in cursor.fetchall():
+            if time_of_day not in variations:
+                variations[time_of_day] = []
+            variations[time_of_day].append(finish)
+        return variations
     finally:
         conn.close()
 
 
-def delete_mockup_frame(location_key: str, photo_filename: str, subfolder: str = "all") -> None:
+def delete_mockup_frame(location_key: str, photo_filename: str, time_of_day: str = "day", finish: str = "gold") -> None:
     """Delete a mockup frame."""
     conn = _connect()
     try:
         conn.execute("BEGIN")
         conn.execute(
-            "DELETE FROM mockup_frames WHERE location_key = ? AND subfolder = ? AND photo_filename = ?",
-            (location_key, subfolder, photo_filename)
+            "DELETE FROM mockup_frames WHERE location_key = ? AND time_of_day = ? AND finish = ? AND photo_filename = ?",
+            (location_key, time_of_day, finish, photo_filename)
         )
         conn.execute("COMMIT")
     finally:

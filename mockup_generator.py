@@ -235,26 +235,26 @@ def warp_creative_to_billboard(
     return result
 
 
-def get_location_photos_dir(location_key: str, subfolder: str = "all") -> Path:
-    """Get the directory for a location's mockup photos in a specific subfolder."""
-    return MOCKUPS_DIR / location_key / subfolder
+def get_location_photos_dir(location_key: str, time_of_day: str = "day", finish: str = "gold") -> Path:
+    """Get the directory for a location's mockup photos with time_of_day and finish."""
+    return MOCKUPS_DIR / location_key / time_of_day / finish
 
 
-def save_location_photo(location_key: str, photo_filename: str, photo_data: bytes, subfolder: str = "all") -> Path:
-    """Save a location photo to disk in a specific subfolder."""
-    location_dir = get_location_photos_dir(location_key, subfolder)
+def save_location_photo(location_key: str, photo_filename: str, photo_data: bytes, time_of_day: str = "day", finish: str = "gold") -> Path:
+    """Save a location photo to disk with time_of_day and finish."""
+    location_dir = get_location_photos_dir(location_key, time_of_day, finish)
     location_dir.mkdir(parents=True, exist_ok=True)
 
     photo_path = location_dir / photo_filename
     photo_path.write_bytes(photo_data)
 
-    logger.info(f"[MOCKUP] Saved photo for location '{location_key}/{subfolder}': {photo_path}")
+    logger.info(f"[MOCKUP] Saved photo for location '{location_key}/{time_of_day}/{finish}': {photo_path}")
     return photo_path
 
 
-def list_location_photos(location_key: str, subfolder: str = "all") -> List[str]:
-    """List all photo files for a location in a specific subfolder."""
-    location_dir = get_location_photos_dir(location_key, subfolder)
+def list_location_photos(location_key: str, time_of_day: str = "day", finish: str = "gold") -> List[str]:
+    """List all photo files for a location with time_of_day and finish."""
+    location_dir = get_location_photos_dir(location_key, time_of_day, finish)
     if not location_dir.exists():
         return []
 
@@ -266,25 +266,57 @@ def list_location_photos(location_key: str, subfolder: str = "all") -> List[str]
     return sorted(photos)
 
 
-def get_random_location_photo(location_key: str, subfolder: str = "all") -> Optional[Tuple[str, str, Path]]:
-    """Get a random photo for a location that has a frame configured. Returns (photo_filename, subfolder, photo_path)."""
-    # Get photos with frames from database
-    photos_with_frames = db.list_mockup_photos(location_key, subfolder)
+def get_random_location_photo(location_key: str, time_of_day: str = "all", finish: str = "all") -> Optional[Tuple[str, str, str, Path]]:
+    """Get a random photo for a location that has a frame configured. Returns (photo_filename, time_of_day, finish, photo_path)."""
+
+    # Special handling for "all" - pick from any variation
+    if time_of_day == "all" or finish == "all":
+        # Get all variations available for this location
+        variations = db.list_mockup_variations(location_key)
+        if not variations:
+            logger.warning(f"[MOCKUP] No variations found for location '{location_key}'")
+            return None
+
+        # Build list of all (time_of_day, finish, photo) tuples
+        all_photos = []
+        for tod in variations:
+            for fin in variations[tod]:
+                photos = db.list_mockup_photos(location_key, tod, fin)
+                for photo in photos:
+                    all_photos.append((photo, tod, fin))
+
+        if not all_photos:
+            logger.warning(f"[MOCKUP] No photos found for location '{location_key}'")
+            return None
+
+        # Pick random from all available
+        photo_filename, selected_tod, selected_finish = random.choice(all_photos)
+        photo_path = get_location_photos_dir(location_key, selected_tod, selected_finish) / photo_filename
+
+        if not photo_path.exists():
+            logger.error(f"[MOCKUP] Photo file not found: {photo_path}")
+            return None
+
+        logger.info(f"[MOCKUP] Selected random photo from all variations for '{location_key}': {photo_filename} ({selected_tod}/{selected_finish})")
+        return photo_filename, selected_tod, selected_finish, photo_path
+
+    # Specific variation requested
+    photos_with_frames = db.list_mockup_photos(location_key, time_of_day, finish)
 
     if not photos_with_frames:
-        logger.warning(f"[MOCKUP] No photos with frames found for location '{location_key}/{subfolder}'")
+        logger.warning(f"[MOCKUP] No photos with frames found for location '{location_key}/{time_of_day}/{finish}'")
         return None
 
     # Pick a random photo
     photo_filename = random.choice(photos_with_frames)
-    photo_path = get_location_photos_dir(location_key, subfolder) / photo_filename
+    photo_path = get_location_photos_dir(location_key, time_of_day, finish) / photo_filename
 
     if not photo_path.exists():
         logger.error(f"[MOCKUP] Photo file not found: {photo_path}")
         return None
 
-    logger.info(f"[MOCKUP] Selected random photo for '{location_key}/{subfolder}': {photo_filename}")
-    return photo_filename, subfolder, photo_path
+    logger.info(f"[MOCKUP] Selected random photo for '{location_key}/{time_of_day}/{finish}': {photo_filename}")
+    return photo_filename, time_of_day, finish, photo_path
 
 
 async def generate_ai_creative(prompt: str, size: str = "1536x1024") -> Optional[Path]:
@@ -335,7 +367,8 @@ def generate_mockup(
     creative_images: List[Path],
     output_path: Optional[Path] = None,
     specific_photo: Optional[str] = None,
-    subfolder: str = "all"
+    time_of_day: str = "day",
+    finish: str = "gold"
 ) -> Optional[Path]:
     """
     Generate a mockup by warping creatives onto a location billboard.
@@ -345,34 +378,35 @@ def generate_mockup(
         creative_images: List of creative/ad image paths (1 image = duplicate across frames, N images = 1 per frame)
         output_path: Optional output path (generates temp file if not provided)
         specific_photo: Optional specific photo filename to use (random if not provided)
-        subfolder: Subfolder within location (default: "all")
+        time_of_day: Time of day variation (default: "day")
+        finish: Billboard finish (default: "gold")
 
     Returns:
         Path to the generated mockup image, or None if failed
     """
-    logger.info(f"[MOCKUP] Generating mockup for location '{location_key}/{subfolder}' with {len(creative_images)} creative(s)")
+    logger.info(f"[MOCKUP] Generating mockup for location '{location_key}/{time_of_day}/{finish}' with {len(creative_images)} creative(s)")
 
     # Get billboard photo
     if specific_photo:
         photo_filename = specific_photo
-        photo_path = get_location_photos_dir(location_key, subfolder) / photo_filename
+        photo_path = get_location_photos_dir(location_key, time_of_day, finish) / photo_filename
         if not photo_path.exists():
             logger.error(f"[MOCKUP] Specific photo not found: {photo_path}")
             return None
     else:
-        result = get_random_location_photo(location_key, subfolder)
+        result = get_random_location_photo(location_key, time_of_day, finish)
         if not result:
             return None
-        photo_filename, subfolder, photo_path = result
+        photo_filename, time_of_day, finish, photo_path = result
 
     # Get all frame coordinates (list of frames)
-    frames_data = db.get_mockup_frames(location_key, photo_filename, subfolder)
+    frames_data = db.get_mockup_frames(location_key, photo_filename, time_of_day, finish)
     if not frames_data:
-        logger.error(f"[MOCKUP] No frame coordinates found for '{location_key}/{subfolder}/{photo_filename}'")
+        logger.error(f"[MOCKUP] No frame coordinates found for '{location_key}/{time_of_day}/{finish}/{photo_filename}'")
         return None
 
     # Get config for this photo (if any)
-    photo_config = db.get_mockup_config(location_key, photo_filename, subfolder)
+    photo_config = db.get_mockup_config(location_key, photo_filename, time_of_day, finish)
     if photo_config:
         logger.info(f"[MOCKUP] Using saved config: {photo_config}")
 
@@ -439,18 +473,18 @@ def generate_mockup(
         return None
 
 
-def delete_location_photo(location_key: str, photo_filename: str, subfolder: str = "all") -> bool:
+def delete_location_photo(location_key: str, photo_filename: str, time_of_day: str = "day", finish: str = "gold") -> bool:
     """Delete a location photo and its frame data."""
     try:
         # Delete from database
-        db.delete_mockup_frame(location_key, photo_filename, subfolder)
+        db.delete_mockup_frame(location_key, photo_filename, time_of_day, finish)
 
         # Delete file
-        photo_path = get_location_photos_dir(location_key, subfolder) / photo_filename
+        photo_path = get_location_photos_dir(location_key, time_of_day, finish) / photo_filename
         if photo_path.exists():
             photo_path.unlink()
 
-        logger.info(f"[MOCKUP] Deleted photo '{photo_filename}' for location '{location_key}/{subfolder}'")
+        logger.info(f"[MOCKUP] Deleted photo '{photo_filename}' for location '{location_key}/{time_of_day}/{finish}'")
         return True
     except Exception as e:
         logger.error(f"[MOCKUP] Error deleting photo: {e}")

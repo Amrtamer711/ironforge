@@ -712,12 +712,13 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         {
             "type": "function",
             "name": "generate_mockup",
-            "description": "Generate a billboard mockup. User can upload image(s) OR provide a text prompt for AI generation. System randomly selects billboard photo and warps creative(s) onto it. Supports multiple frames: 1 creative = duplicate across all, N creatives = match to N frames. Billboard variations (gold, silver, night, day) can be specified if available.",
+            "description": "Generate a billboard mockup. User can upload image(s) OR provide a text prompt for AI generation. System randomly selects billboard photo and warps creative(s) onto it. Supports multiple frames: 1 creative = duplicate across all, N creatives = match to N frames. Billboard variations can be specified with time_of_day (day/night) and finish (gold/silver).",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "location": {"type": "string", "description": "The location name only (e.g., 'Dubai Gateway', 'The Landmark', 'oryx')"},
-                    "variation": {"type": "string", "description": "Optional billboard variation: 'gold', 'silver', 'night', or 'day'. System will check if this variation exists for the location.", "enum": ["gold", "silver", "night", "day"]},
+                    "time_of_day": {"type": "string", "description": "Optional time of day: 'day' or 'night'. If not specified, random selection from all variations.", "enum": ["day", "night"]},
+                    "finish": {"type": "string", "description": "Optional billboard finish: 'gold' or 'silver'. If not specified, random selection from all variations.", "enum": ["gold", "silver"]},
                     "ai_prompt": {"type": "string", "description": "Optional: AI prompt to generate billboard-ready ARTWORK ONLY (flat advertisement design, NO billboards/signs/streets in the image). System will automatically place the artwork onto the billboard. Example: 'A luxury watch advertisement with gold accents and elegant typography' - this creates the ad design itself, not a photo of a billboard"}
                 },
                 "required": ["location"]
@@ -1157,7 +1158,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 # Parse the location from arguments
                 args = json.loads(msg.arguments)
                 location_name = args.get("location", "").strip()
-                variation = args.get("variation", "").strip().lower()  # Get variation param
+                time_of_day = args.get("time_of_day", "").strip().lower() or "all"
+                finish = args.get("finish", "").strip().lower() or "all"
                 ai_prompt = args.get("ai_prompt", "").strip()
 
                 # Convert display name to location key
@@ -1174,40 +1176,21 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     )
                     return
 
-                # Handle variation/subfolder selection
+                # Handle time_of_day and finish selection
                 import mockup_generator
                 import db
 
-                subfolder = "all"
-                subfolder_note = ""
+                variation_note = ""
 
-                if variation:
-                    # User explicitly requested a variation
-                    available_subfolders = db.list_mockup_subfolders(location_key)
-
-                    if variation not in available_subfolders:
-                        # Variation folder doesn't exist at all
-                        subfolder_note = f"\n\n_Note: '{variation}' variation not found for {location_name}. Using default version._"
-                        logger.info(f"[MOCKUP] Variation '{variation}' not found in subfolders: {available_subfolders}")
-                    else:
-                        # Variation exists, check if it has photos
-                        photos_in_variation = mockup_generator.list_location_photos(location_key, variation)
-                        if photos_in_variation:
-                            subfolder = variation
-                            logger.info(f"[MOCKUP] Using variation '{variation}' for {location_name}")
-                        else:
-                            subfolder_note = f"\n\n_Note: '{variation}' variation exists but has no photos for {location_name}. Using default version._"
-                            logger.info(f"[MOCKUP] Variation '{variation}' has no photos, falling back to 'all'")
-
-                # Check if location has any mockup photos configured in the selected subfolder
-                photos = mockup_generator.list_location_photos(location_key, subfolder)
-                if not photos:
+                # Check if location has any mockup photos configured
+                variations = db.list_mockup_variations(location_key)
+                if not variations:
                     await config.slack_client.chat_delete(channel=channel, ts=status_ts)
                     mockup_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:3000") + "/mockup"
                     await config.slack_client.chat_postMessage(
                         channel=channel,
                         text=config.markdown_to_slack(
-                            f"❌ **Error:** No billboard photos configured for '{location_name}'{' ('+subfolder+')' if subfolder != 'all' else ''}.\n\n"
+                            f"❌ **Error:** No billboard photos configured for '{location_name}'.\n\n"
                             f"Ask an admin to set up mockup frames at {mockup_url}"
                         )
                     )
@@ -1369,11 +1352,12 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                         if not ai_creative_path:
                             raise Exception("Failed to generate AI creative")
 
-                        # Generate mockup with subfolder
+                        # Generate mockup with time_of_day and finish
                         result_path = mockup_generator.generate_mockup(
                             location_key,
                             [ai_creative_path],
-                            subfolder=subfolder
+                            time_of_day=time_of_day,
+                            finish=finish
                         )
 
                         if not result_path:
@@ -1381,11 +1365,13 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
 
                         # Delete status and upload mockup
                         await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                        variation_info = f" ({subfolder} variation)" if subfolder != "all" else ""
+                        variation_info = ""
+                        if time_of_day != "all" or finish != "all":
+                            variation_info = f" ({time_of_day}/{finish})"
                         await config.slack_client.files_upload_v2(
                             channel=channel,
                             file=str(result_path),
-                            filename=f"ai_mockup_{location_key}_{subfolder}.jpg",
+                            filename=f"ai_mockup_{location_key}_{time_of_day}_{finish}.jpg",
                             initial_comment=config.markdown_to_slack(
                                 f"🎨 **AI-Generated Billboard Mockup**\n\n"
                                 f"📍 Location: {location_name}{variation_info}\n"
@@ -1421,7 +1407,8 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                         result_path = mockup_generator.generate_mockup(
                             location_key,
                             uploaded_creatives,
-                            subfolder=subfolder
+                            time_of_day=time_of_day,
+                            finish=finish
                         )
 
                         if not result_path:
@@ -1429,16 +1416,18 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
 
                         # Delete status and upload mockup
                         await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                        variation_info = f" ({subfolder} variation)" if subfolder != "all" else ""
+                        variation_info = ""
+                        if time_of_day != "all" or finish != "all":
+                            variation_info = f" ({time_of_day}/{finish})"
                         await config.slack_client.files_upload_v2(
                             channel=channel,
                             file=str(result_path),
-                            filename=f"mockup_{location_key}_{subfolder}.jpg",
+                            filename=f"mockup_{location_key}_{time_of_day}_{finish}.jpg",
                             initial_comment=config.markdown_to_slack(
                                 f"🎨 **Billboard Mockup Generated**\n\n"
                                 f"📍 Location: {location_name}{variation_info}\n"
                                 f"🖼️ Creative(s): {len(uploaded_creatives)} image(s)\n"
-                                f"✨ Your creative has been applied to a billboard photo.{subfolder_note}"
+                                f"✨ Your creative has been applied to a billboard photo.{variation_note}"
                             )
                         )
 

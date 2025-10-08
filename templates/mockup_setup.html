@@ -369,15 +369,23 @@
         </div>
 
         <div class="form-group">
-          <label for="setup-subfolder">Billboard Variation</label>
-          <select id="setup-subfolder">
+          <label for="setup-time-of-day">Time of Day</label>
+          <select id="setup-time-of-day">
+            <option value="all">All (Default)</option>
+            <option value="day">Day</option>
+            <option value="night">Night</option>
+          </select>
+          <small style="color: #6c757d; display: block; margin-top: 5px;">Select the time of day for this photo</small>
+        </div>
+
+        <div class="form-group">
+          <label for="setup-finish">Billboard Finish</label>
+          <select id="setup-finish">
             <option value="all">All (Default)</option>
             <option value="gold">Gold</option>
             <option value="silver">Silver</option>
-            <option value="night">Night</option>
-            <option value="day">Day</option>
           </select>
-          <small style="color: #6c757d; display: block; margin-top: 5px;">Organize photos by variation (e.g., gold frame, night lighting)</small>
+          <small style="color: #6c757d; display: block; margin-top: 5px;">Select the billboard frame finish</small>
         </div>
 
         <div class="form-group">
@@ -567,13 +575,20 @@
         </div>
 
         <div class="form-group">
-          <label for="generate-subfolder">Billboard Variation</label>
-          <select id="generate-subfolder">
+          <label for="generate-time-of-day">Time of Day</label>
+          <select id="generate-time-of-day">
+            <option value="all">All (Default)</option>
+            <option value="day">Day</option>
+            <option value="night">Night</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="generate-finish">Billboard Finish</label>
+          <select id="generate-finish">
             <option value="all">All (Default)</option>
             <option value="gold">Gold</option>
             <option value="silver">Silver</option>
-            <option value="night">Night</option>
-            <option value="day">Day</option>
           </select>
         </div>
 
@@ -1619,7 +1634,8 @@
     // Save all frames
     async function saveAllFrames() {
       const locationKey = document.getElementById('setup-location').value;
-      const subfolder = document.getElementById('setup-subfolder').value;
+      const timeOfDay = document.getElementById('setup-time-of-day').value;
+      const finish = document.getElementById('setup-finish').value;
 
       if (!locationKey) {
         showMessage('Please select a location', 'error');
@@ -1658,10 +1674,11 @@
 
       const formData = new FormData();
       formData.append('location_key', locationKey);
-      formData.append('subfolder', subfolder);
+      formData.append('time_of_day', timeOfDay);
+      formData.append('finish', finish);
       formData.append('photo', currentPhoto);
       formData.append('frames_data', JSON.stringify(allFrames));
-      formData.append('config', JSON.stringify(config));
+      formData.append('config_json', JSON.stringify(config));
 
       try {
         const response = await fetch('/api/mockup/save-frame', {
@@ -1742,7 +1759,8 @@
     // Generate mockup
     async function generateMockup() {
       const locationKey = document.getElementById('generate-location').value;
-      const subfolder = document.getElementById('generate-subfolder').value;
+      const timeOfDay = document.getElementById('generate-time-of-day').value;
+      const finish = document.getElementById('generate-finish').value;
       const creativeFile = document.getElementById('creative-photo').files[0];
       const aiPrompt = document.getElementById('ai-creative-prompt').value.trim();
 
@@ -1758,7 +1776,8 @@
 
       const formData = new FormData();
       formData.append('location_key', locationKey);
-      formData.append('subfolder', subfolder);
+      formData.append('time_of_day', timeOfDay);
+      formData.append('finish', finish);
 
       // If AI prompt is provided, use AI mode (ignore uploaded file)
       if (aiPrompt) {
