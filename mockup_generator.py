@@ -50,7 +50,52 @@ def warp_creative_to_billboard(
     # Order points consistently
     dst_pts = order_points(np.array(frame_points))
 
-    # Source points (corners of creative image)
+    # Calculate frame aspect ratio (average width/height to handle perspective)
+    frame_width_top = np.linalg.norm(dst_pts[1] - dst_pts[0])
+    frame_width_bottom = np.linalg.norm(dst_pts[2] - dst_pts[3])
+    frame_height_left = np.linalg.norm(dst_pts[3] - dst_pts[0])
+    frame_height_right = np.linalg.norm(dst_pts[2] - dst_pts[1])
+
+    frame_width = (frame_width_top + frame_width_bottom) / 2
+    frame_height = (frame_height_left + frame_height_right) / 2
+    frame_aspect = frame_width / frame_height
+
+    # Get creative dimensions and aspect ratio
+    creative_h, creative_w = creative_image.shape[:2]
+    creative_aspect = creative_w / creative_h
+
+    logger.info(f"[MOCKUP] Frame aspect: {frame_aspect:.2f}, Creative aspect: {creative_aspect:.2f}")
+
+    # Fit creative inside frame preserving aspect ratio (letterbox/pillarbox)
+    if abs(creative_aspect - frame_aspect) > 0.05:  # Significant aspect difference
+        # Calculate target dimensions that fit inside frame while preserving aspect
+        target_w = int(frame_width)
+        target_h = int(frame_height)
+
+        if creative_aspect > frame_aspect:
+            # Creative is wider - fit to width, add letterbox (top/bottom bars)
+            target_h = int(target_w / creative_aspect)
+        else:
+            # Creative is taller - fit to height, add pillarbox (left/right bars)
+            target_w = int(target_h * creative_aspect)
+
+        # Create canvas matching frame aspect with black bars
+        canvas_w = int(frame_width)
+        canvas_h = int(frame_height)
+        canvas = np.zeros((canvas_h, canvas_w, 3), dtype=np.uint8)
+
+        # Resize creative to fit
+        resized_creative = cv2.resize(creative_image, (target_w, target_h), interpolation=cv2.INTER_LANCZOS4)
+
+        # Center creative on canvas
+        x_offset = (canvas_w - target_w) // 2
+        y_offset = (canvas_h - target_h) // 2
+        canvas[y_offset:y_offset + target_h, x_offset:x_offset + target_w] = resized_creative
+
+        creative_image = canvas
+        logger.info(f"[MOCKUP] Fitted creative {creative_w}x{creative_h} into {canvas_w}x{canvas_h} with aspect preservation")
+
+    # Source points (corners of adjusted creative image)
     h, w = creative_image.shape[:2]
     src_pts = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
 
