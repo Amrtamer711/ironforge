@@ -95,9 +95,8 @@ def warp_creative_to_billboard(
         creative_image = canvas
         logger.info(f"[MOCKUP] Fitted creative {creative_w}x{creative_h} into {canvas_w}x{canvas_h} with aspect preservation")
 
-    # Upscale creative before warping for higher quality (preserves more detail)
-    # This significantly improves quality after perspective transformation
-    upscale_factor = 2.0  # 2x upscale before warping
+    # Reduce upscaling to save memory (1.5x instead of 2x)
+    upscale_factor = 1.5  # 1.5x upscale before warping - good quality with less memory
     creative_upscaled = cv2.resize(
         creative_image,
         None,
@@ -111,31 +110,8 @@ def warp_creative_to_billboard(
     h, w = creative_upscaled.shape[:2]
     src_pts = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
 
-    # Apply base padding if configured (shrink frame inward)
+    # Destination points (no longer shrinking for padding - padding is in the creative itself)
     adjusted_dst_pts = dst_pts.copy()
-    if config and 'basePadding' in config:
-        base_padding = config['basePadding'] * 5  # Multiply by 5 for more visible effect (1-10 becomes 5-50px)
-
-        # Calculate the center of the billboard frame
-        center_x = np.mean(dst_pts[:, 0])
-        center_y = np.mean(dst_pts[:, 1])
-
-        # Shrink each corner point toward center by padding amount
-        for i in range(4):
-            dx = dst_pts[i, 0] - center_x
-            dy = dst_pts[i, 1] - center_y
-
-            # Calculate direction vector and normalize
-            length = np.sqrt(dx**2 + dy**2)
-            if length > 0:
-                dx_norm = dx / length
-                dy_norm = dy / length
-
-                # Move point inward by padding amount
-                adjusted_dst_pts[i, 0] = dst_pts[i, 0] - dx_norm * base_padding
-                adjusted_dst_pts[i, 1] = dst_pts[i, 1] - dy_norm * base_padding
-
-        logger.info(f"[MOCKUP] Applied base padding of {base_padding}px (config value: {config['basePadding']})")
 
     # Apply depth perception adjustment if configured
     if config and 'depthMultiplier' in config:
