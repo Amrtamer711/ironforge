@@ -718,7 +718,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 "properties": {
                     "location": {"type": "string", "description": "The location name only (e.g., 'Dubai Gateway', 'The Landmark', 'oryx')"},
                     "variation": {"type": "string", "description": "Optional billboard variation: 'gold', 'silver', 'night', or 'day'. System will check if this variation exists for the location.", "enum": ["gold", "silver", "night", "day"]},
-                    "ai_prompt": {"type": "string", "description": "Optional: AI prompt to generate creative using DALL-E instead of uploading. Example: 'A luxury watch advertisement with gold accents and elegant typography'"}
+                    "ai_prompt": {"type": "string", "description": "Optional: AI prompt to generate billboard-ready ARTWORK ONLY (flat advertisement design, NO billboards/signs/streets in the image). System will automatically place the artwork onto the billboard. Example: 'A luxury watch advertisement with gold accents and elegant typography' - this creates the ad design itself, not a photo of a billboard"}
                 },
                 "required": ["location"]
             }

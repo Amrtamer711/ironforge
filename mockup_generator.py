@@ -287,7 +287,7 @@ def get_random_location_photo(location_key: str, subfolder: str = "all") -> Opti
     return photo_filename, subfolder, photo_path
 
 
-async def generate_ai_creative(prompt: str, size: str = "1024x1024") -> Optional[Path]:
+async def generate_ai_creative(prompt: str, size: str = "1536x1024") -> Optional[Path]:
     """Generate a creative using OpenAI gpt-image-1 API."""
     import tempfile
     import base64
@@ -308,7 +308,8 @@ async def generate_ai_creative(prompt: str, size: str = "1024x1024") -> Optional
             model="gpt-image-1",
             prompt=prompt,
             n=1,
-            size=size
+            size=size,
+            quality='high',
         )
 
         # Extract base64 image data (automatically returned by gpt-image-1)
