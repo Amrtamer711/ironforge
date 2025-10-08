@@ -510,26 +510,28 @@
             </div>
           </div>
 
-          <div style="display: flex; align-items: center; gap: 10px; margin-top: 15px;">
-            <label class="toggle-switch" style="margin: 0;">
-              <input type="checkbox" id="test-preview-toggle">
-              <span class="toggle-slider"></span>
-            </label>
-            <label for="test-preview-toggle" style="cursor: pointer; margin: 0; flex: 1;">
-              <strong>🧪 Test Preview Mode</strong>
-              <br>
-              <small style="color: #856404;">Upload a test creative to preview how config will look when applied</small>
-            </label>
-          </div>
+          <div id="test-preview-section" style="display: none; margin-top: 15px; padding: 15px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+              <label class="toggle-switch" style="margin: 0;">
+                <input type="checkbox" id="test-preview-toggle">
+                <span class="toggle-slider"></span>
+              </label>
+              <label for="test-preview-toggle" style="cursor: pointer; margin: 0; flex: 1;">
+                <strong>🧪 Test Preview Mode</strong>
+                <br>
+                <small style="color: #1565c0;">Preview creative on current frame before adding it</small>
+              </label>
+            </div>
 
-          <div id="test-preview-upload" style="display: none; margin-top: 15px;">
-            <label for="test-creative-upload" style="display: block; margin-bottom: 8px;">
-              <strong>Upload Test Creative:</strong>
-            </label>
-            <input type="file" id="test-creative-upload" accept="image/*" style="width: 100%;">
-            <small style="color: #856404; display: block; margin-top: 5px;">
-              Upload an ad creative to see a live preview with current config settings
-            </small>
+            <div id="test-preview-upload" style="display: none;">
+              <label for="test-creative-upload" style="display: block; margin-bottom: 8px;">
+                <strong>Upload Test Creative:</strong>
+              </label>
+              <input type="file" id="test-creative-upload" accept="image/*" style="width: 100%;">
+              <small style="color: #1565c0; display: block; margin-top: 5px;">
+                Preview will show on the blue frame with all config settings applied
+              </small>
+            </div>
           </div>
 
           <small style="color: #856404; display: block; margin-top: 10px; text-align: center;">
@@ -1527,6 +1529,9 @@
       document.getElementById('add-frame-btn').disabled = false;
       document.getElementById('setup-hint').innerHTML =
         '✓ Frame drawn! Drag corners to adjust, or drag inside to move. Click "Add Frame" to save.';
+
+      // Show test preview section when frame is drawn (blue state)
+      document.getElementById('test-preview-section').style.display = 'block';
     });
 
     // Add current frame to allFrames
@@ -1546,12 +1551,29 @@
       document.getElementById('setup-hint').innerHTML =
         `✓ Frame ${allFrames.length} added! Draw another box for more frames, or "Save All Frames" when done.`;
 
+      // Hide test preview section and clear preview when frame is added
+      document.getElementById('test-preview-section').style.display = 'none';
+      document.getElementById('test-preview-toggle').checked = false;
+      testPreviewMode = false;
+      testCreativeImg = null;
+      document.getElementById('test-preview-upload').style.display = 'none';
+      document.getElementById('test-creative-upload').value = '';
+
       drawPreview();
     }
 
     // Reset current frame
     function resetCurrentFrame() {
       currentPoints = [];
+
+      // Hide test preview section when frame is reset
+      document.getElementById('test-preview-section').style.display = 'none';
+      document.getElementById('test-preview-toggle').checked = false;
+      testPreviewMode = false;
+      testCreativeImg = null;
+      document.getElementById('test-preview-upload').style.display = 'none';
+      document.getElementById('test-creative-upload').value = '';
+
       drawPreview();
       document.getElementById('add-frame-btn').disabled = true;
       if (previewImg) {
