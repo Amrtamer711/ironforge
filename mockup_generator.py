@@ -47,40 +47,6 @@ def warp_creative_to_billboard(
     config: Optional[dict] = None
 ) -> np.ndarray:
     """Apply perspective warp to place creative on billboard with optional enhancements."""
-    # Apply config-based enhancements to creative before warping
-    if config:
-        brightness = config.get('brightness', 100) / 100.0
-        contrast = config.get('contrast', 100) / 100.0
-        saturation = config.get('saturation', 100) / 100.0
-        lighting_adjustment = config.get('lightingAdjustment', 0)
-        color_temperature = config.get('colorTemperature', 0)
-
-        # Apply brightness and contrast
-        creative_image = cv2.convertScaleAbs(creative_image, alpha=contrast, beta=(brightness - 1) * 100)
-
-        # Apply saturation
-        if saturation != 1.0:
-            hsv = cv2.cvtColor(creative_image, cv2.COLOR_BGR2HSV).astype(np.float32)
-            hsv[:, :, 1] = np.clip(hsv[:, :, 1] * saturation, 0, 255)
-            creative_image = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
-
-        # Apply lighting adjustment to match billboard
-        if lighting_adjustment != 0:
-            creative_image = cv2.convertScaleAbs(creative_image, alpha=1.0, beta=lighting_adjustment * 2)
-
-        # Apply color temperature shift
-        if color_temperature != 0:
-            # Warm (positive): increase red/yellow, Cool (negative): increase blue
-            creative_float = creative_image.astype(np.float32)
-            if color_temperature > 0:
-                # Warm: increase red and green (yellow)
-                creative_float[:, :, 2] += color_temperature * 2  # Red
-                creative_float[:, :, 1] += color_temperature * 1  # Green
-            else:
-                # Cool: increase blue
-                creative_float[:, :, 0] += abs(color_temperature) * 2  # Blue
-            creative_image = np.clip(creative_float, 0, 255).astype(np.uint8)
-
     # Order points consistently
     dst_pts = order_points(np.array(frame_points))
 
@@ -124,28 +90,75 @@ def warp_creative_to_billboard(
     # Convert to 3-channel mask for alpha blending
     mask_3ch = np.stack([mask_float] * 3, axis=-1)
 
-    # Apply vignette to warped creative if configured
-    if config and config.get('vignette', 0) > 0:
-        vignette_strength = config['vignette'] / 100.0
-        h, w = warped.shape[:2]
-        # Create radial gradient mask
-        y_coords, x_coords = np.ogrid[:h, :w]
-        center_y, center_x = h / 2, w / 2
-        distances = np.sqrt((x_coords - center_x) ** 2 + (y_coords - center_y) ** 2)
-        max_distance = np.sqrt(center_x ** 2 + center_y ** 2)
-        vignette_mask = 1 - (distances / max_distance) * vignette_strength
-        vignette_mask = np.clip(vignette_mask, 0, 1)
-        vignette_mask_3ch = np.stack([vignette_mask] * 3, axis=-1)
-        warped = (warped.astype(np.float32) * vignette_mask_3ch).astype(np.uint8)
+    # Apply config-based enhancements to ONLY the frame region
+    if config:
+        brightness = config.get('brightness', 100) / 100.0
+        contrast = config.get('contrast', 100) / 100.0
+        saturation = config.get('saturation', 100) / 100.0
+        lighting_adjustment = config.get('lightingAdjustment', 0)
+        color_temperature = config.get('colorTemperature', 0)
+        vignette_strength = config.get('vignette', 0) / 100.0
+        shadow_strength = config.get('shadowIntensity', 0) / 100.0
 
-    # Apply shadow (darken edges) if configured
-    if config and config.get('shadowIntensity', 0) > 0:
-        shadow_strength = config['shadowIntensity'] / 100.0
-        # Create edge shadow by using inverse of mask_float
-        shadow_mask = 1 - (mask_float ** 0.5)  # Softer falloff
-        shadow_mask = shadow_mask * shadow_strength
-        shadow_mask_3ch = np.stack([shadow_mask] * 3, axis=-1)
-        warped = (warped.astype(np.float32) * (1 - shadow_mask_3ch)).astype(np.uint8)
+        # Extract only the frame region from warped creative
+        warped_float = warped.astype(np.float32)
+
+        # Apply brightness and contrast to frame region only
+        if brightness != 1.0 or contrast != 1.0:
+            warped_float = warped_float * contrast + (brightness - 1) * 100
+            warped_float = np.clip(warped_float, 0, 255)
+
+        # Apply saturation to frame region only
+        if saturation != 1.0:
+            # Only process pixels within the mask
+            warped_uint = warped_float.astype(np.uint8)
+            hsv = cv2.cvtColor(warped_uint, cv2.COLOR_BGR2HSV).astype(np.float32)
+            # Apply saturation only where mask exists
+            hsv[:, :, 1] = hsv[:, :, 1] * saturation * mask_float + hsv[:, :, 1] * (1 - mask_float)
+            hsv[:, :, 1] = np.clip(hsv[:, :, 1], 0, 255)
+            warped_float = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR).astype(np.float32)
+
+        # Apply lighting adjustment to frame region only
+        if lighting_adjustment != 0:
+            warped_float = warped_float + (lighting_adjustment * 2 * mask_3ch)
+            warped_float = np.clip(warped_float, 0, 255)
+
+        # Apply color temperature shift to frame region only
+        if color_temperature != 0:
+            if color_temperature > 0:
+                # Warm: increase red and green (yellow) only in frame
+                warped_float[:, :, 2] += color_temperature * 2 * mask_float  # Red
+                warped_float[:, :, 1] += color_temperature * 1 * mask_float  # Green
+            else:
+                # Cool: increase blue only in frame
+                warped_float[:, :, 0] += abs(color_temperature) * 2 * mask_float  # Blue
+            warped_float = np.clip(warped_float, 0, 255)
+
+        # Apply vignette to frame region only
+        if vignette_strength > 0:
+            # Get bounding box of frame
+            x, y, w, h = cv2.boundingRect(dst_pts.astype(int))
+            # Create radial gradient centered on frame
+            y_coords, x_coords = np.ogrid[:billboard_image.shape[0], :billboard_image.shape[1]]
+            center_y, center_x = y + h / 2, x + w / 2
+            distances = np.sqrt((x_coords - center_x) ** 2 + (y_coords - center_y) ** 2)
+            max_distance = np.sqrt((w / 2) ** 2 + (h / 2) ** 2)
+            vignette_mask = 1 - (distances / max_distance) * vignette_strength
+            vignette_mask = np.clip(vignette_mask, 0, 1)
+            # Apply only within frame region
+            vignette_mask = vignette_mask * mask_float + (1 - mask_float)
+            vignette_mask_3ch = np.stack([vignette_mask] * 3, axis=-1)
+            warped_float = warped_float * vignette_mask_3ch
+
+        # Apply shadow (darken edges) to frame region only
+        if shadow_strength > 0:
+            # Create edge shadow by using inverse of mask_float
+            shadow_mask = 1 - (mask_float ** 0.5)  # Softer falloff
+            shadow_mask = shadow_mask * shadow_strength
+            shadow_mask_3ch = np.stack([shadow_mask] * 3, axis=-1)
+            warped_float = warped_float * (1 - shadow_mask_3ch)
+
+        warped = warped_float.astype(np.uint8)
 
     # Alpha blend warped creative with billboard using smooth mask
     result = (billboard_image.astype(np.float32) * (1 - mask_3ch) +
