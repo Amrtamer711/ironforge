@@ -54,26 +54,26 @@ def warp_creative_to_billboard(
     # Perspective transform handles the aspect ratio automatically
     logger.info(f"[MOCKUP] Creative will be warped to fill entire billboard frame")
 
-    # Apply optional image blur if configured (0 = off)
-    image_blur = config.get('imageBlur', 0) if config else 0
-    if image_blur > 0:
-        # Convert blur strength to kernel size (must be odd)
-        kernel_size = image_blur * 2 + 1
-        creative_blurred = cv2.GaussianBlur(creative_image, (kernel_size, kernel_size), 0)
-        logger.info(f"[MOCKUP] Applied image blur with strength {image_blur}")
-    else:
-        creative_blurred = creative_image
-
     # High-quality upscaling for maximum detail
     upscale_factor = 2.5  # 2.5x upscale before warping - maximum quality
     creative_upscaled = cv2.resize(
-        creative_blurred,
+        creative_image,
         None,
         fx=upscale_factor,
         fy=upscale_factor,
         interpolation=cv2.INTER_CUBIC
     )
     logger.info(f"[MOCKUP] Upscaled creative {creative_image.shape[:2]} -> {creative_upscaled.shape[:2]}")
+
+    # Apply optional image blur AFTER upscaling (so blur effect is preserved)
+    image_blur = config.get('imageBlur', 0) if config else 0
+    if image_blur > 0:
+        # Scale blur kernel size based on upscaled image size for consistent effect
+        kernel_size = int(image_blur * upscale_factor * 2 + 1)
+        if kernel_size % 2 == 0:
+            kernel_size += 1  # Ensure odd
+        creative_upscaled = cv2.GaussianBlur(creative_upscaled, (kernel_size, kernel_size), 0)
+        logger.info(f"[MOCKUP] Applied image blur with strength {image_blur} (kernel: {kernel_size})")
 
     # Source points (corners of upscaled creative image)
     h, w = creative_upscaled.shape[:2]
