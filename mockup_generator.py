@@ -66,7 +66,12 @@ def warp_creative_to_billboard(
     logger.info(f"[MOCKUP] Upscaled creative {creative_image.shape[:2]} -> {creative_upscaled.shape[:2]}")
 
     # Apply optional image blur AFTER upscaling (so blur effect is preserved)
-    image_blur = config.get('imageBlur', 0) if config else 0
+    image_blur = 0
+    if config:
+        image_blur = config.get('imageBlur', 0)
+
+    logger.info(f"[MOCKUP] Image blur config value: {image_blur}")
+
     if image_blur > 0:
         # Scale blur kernel size based on upscaled image size for consistent effect
         kernel_size = int(image_blur * upscale_factor * 2 + 1)
@@ -74,6 +79,8 @@ def warp_creative_to_billboard(
             kernel_size += 1  # Ensure odd
         creative_upscaled = cv2.GaussianBlur(creative_upscaled, (kernel_size, kernel_size), 0)
         logger.info(f"[MOCKUP] Applied image blur with strength {image_blur} (kernel: {kernel_size})")
+    else:
+        logger.info(f"[MOCKUP] No image blur applied (value was {image_blur})")
 
     # Source points (corners of upscaled creative image)
     h, w = creative_upscaled.shape[:2]
