@@ -556,10 +556,18 @@
             </div>
 
             <div>
-              <label for="frame-blur" style="display: block; margin-bottom: 5px;">
-                <strong>Edge Blur:</strong> <span id="frame-blur-value">8</span>px
+              <label for="frame-image-blur" style="display: block; margin-bottom: 5px;">
+                <strong>Image Blur:</strong> <span id="frame-image-blur-value">0</span>
               </label>
-              <input type="range" id="frame-blur" min="2" max="20" value="8" style="width: 100%;">
+              <input type="range" id="frame-image-blur" min="0" max="20" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Blur entire creative (0 = off)</small>
+            </div>
+
+            <div>
+              <label for="frame-edge-blur" style="display: block; margin-bottom: 5px;">
+                <strong>Edge Blur:</strong> <span id="frame-edge-blur-value">8</span>px
+              </label>
+              <input type="range" id="frame-edge-blur" min="2" max="20" value="8" style="width: 100%;">
               <small style="color: #0c5460; display: block; margin-top: 2px;">Edge smoothness</small>
             </div>
 
@@ -811,8 +819,13 @@
       document.getElementById('frame-depth-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
     });
-    document.getElementById('frame-blur').addEventListener('input', function(e) {
-      document.getElementById('frame-blur-value').textContent = e.target.value;
+    document.getElementById('frame-image-blur').addEventListener('input', function(e) {
+      document.getElementById('frame-image-blur-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+      if (testPreviewMode && testCreativeImg) drawPreview();
+    });
+    document.getElementById('frame-edge-blur').addEventListener('input', function(e) {
+      document.getElementById('frame-edge-blur-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
       if (testPreviewMode && testCreativeImg) drawPreview();
     });
@@ -1685,7 +1698,8 @@
         contrast: parseInt(document.getElementById('frame-contrast').value),
         saturation: parseInt(document.getElementById('frame-saturation').value),
         depthMultiplier: parseInt(document.getElementById('frame-depth-multiplier').value),
-        blurStrength: parseInt(document.getElementById('frame-blur').value),
+        imageBlur: parseInt(document.getElementById('frame-image-blur').value),
+        edgeBlur: parseInt(document.getElementById('frame-edge-blur').value),
         overlayOpacity: parseInt(document.getElementById('frame-overlay-opacity').value),
         shadowIntensity: parseInt(document.getElementById('frame-shadow-intensity').value),
         lightingAdjustment: parseInt(document.getElementById('frame-lighting-adjustment').value),
@@ -1723,8 +1737,10 @@
       document.getElementById('frame-saturation-value').textContent = '100';
       document.getElementById('frame-depth-multiplier').value = 15;
       document.getElementById('frame-depth-value').textContent = '15';
-      document.getElementById('frame-blur').value = 8;
-      document.getElementById('frame-blur-value').textContent = '8';
+      document.getElementById('frame-image-blur').value = 0;
+      document.getElementById('frame-image-blur-value').textContent = '0';
+      document.getElementById('frame-edge-blur').value = 8;
+      document.getElementById('frame-edge-blur-value').textContent = '8';
       document.getElementById('frame-overlay-opacity').value = 0;
       document.getElementById('frame-overlay-value').textContent = '0';
       document.getElementById('frame-shadow-intensity').value = 0;
@@ -1812,7 +1828,8 @@
           contrast: parseInt(document.getElementById('frame-contrast').value),
           saturation: parseInt(document.getElementById('frame-saturation').value),
           depthMultiplier: parseInt(document.getElementById('frame-depth-multiplier').value),
-          blurStrength: parseInt(document.getElementById('frame-blur').value),
+          imageBlur: parseInt(document.getElementById('frame-image-blur').value),
+          edgeBlur: parseInt(document.getElementById('frame-edge-blur').value),
           overlayOpacity: parseInt(document.getElementById('frame-overlay-opacity').value),
           shadowIntensity: parseInt(document.getElementById('frame-shadow-intensity').value),
           lightingAdjustment: parseInt(document.getElementById('frame-lighting-adjustment').value),

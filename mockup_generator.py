@@ -54,20 +54,26 @@ def warp_creative_to_billboard(
     # Perspective transform handles the aspect ratio automatically
     logger.info(f"[MOCKUP] Creative will be warped to fill entire billboard frame")
 
-    # Apply edge-preserving filter before scaling to reduce stretching artifacts
-    # Bilateral filter smooths while preserving edges
-    creative_smooth = cv2.bilateralFilter(creative_image, d=9, sigmaColor=75, sigmaSpace=75)
+    # Apply optional image blur if configured (0 = off)
+    image_blur = config.get('imageBlur', 0) if config else 0
+    if image_blur > 0:
+        # Convert blur strength to kernel size (must be odd)
+        kernel_size = image_blur * 2 + 1
+        creative_blurred = cv2.GaussianBlur(creative_image, (kernel_size, kernel_size), 0)
+        logger.info(f"[MOCKUP] Applied image blur with strength {image_blur}")
+    else:
+        creative_blurred = creative_image
 
     # High-quality upscaling for maximum detail
     upscale_factor = 2.5  # 2.5x upscale before warping - maximum quality
     creative_upscaled = cv2.resize(
-        creative_smooth,
+        creative_blurred,
         None,
         fx=upscale_factor,
         fy=upscale_factor,
         interpolation=cv2.INTER_CUBIC
     )
-    logger.info(f"[MOCKUP] Applied edge-preserving filter and upscaled creative {creative_image.shape[:2]} -> {creative_upscaled.shape[:2]}")
+    logger.info(f"[MOCKUP] Upscaled creative {creative_image.shape[:2]} -> {creative_upscaled.shape[:2]}")
 
     # Source points (corners of upscaled creative image)
     h, w = creative_upscaled.shape[:2]
@@ -123,15 +129,15 @@ def warp_creative_to_billboard(
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
     # Apply Gaussian blur to the mask for smooth anti-aliased blending
-    # Use config blur strength if provided
-    blur_strength = 15
-    if config and 'blurStrength' in config:
-        blur_strength = max(3, min(21, config['blurStrength']))  # Clamp to odd numbers between 3-21
-        if blur_strength % 2 == 0:
-            blur_strength += 1  # Ensure odd number for GaussianBlur
+    # Use config edge blur if provided (renamed from blurStrength)
+    edge_blur = 8
+    if config and 'edgeBlur' in config:
+        edge_blur = max(3, min(21, config['edgeBlur']))  # Clamp to odd numbers between 3-21
+        if edge_blur % 2 == 0:
+            edge_blur += 1  # Ensure odd number for GaussianBlur
 
     mask_float = mask.astype(np.float32) / 255.0
-    mask_float = cv2.GaussianBlur(mask_float, (blur_strength, blur_strength), 0)
+    mask_float = cv2.GaussianBlur(mask_float, (edge_blur, edge_blur), 0)
     mask_float = np.clip(mask_float, 0, 1)
 
     # Convert to 3-channel mask for alpha blending
@@ -488,8 +494,9 @@ def generate_mockup(
         # Warp creative onto this frame with merged config
         try:
             result = warp_creative_to_billboard(result, creative, frame_points, config=merged_config)
-            blur_value = merged_config.get('blurStrength', 8)
-            logger.info(f"[MOCKUP] Applied creative {i+1}/{num_frames} to frame {i+1} (blur: {blur_value}px)")
+            edge_blur = merged_config.get('edgeBlur', 8)
+            image_blur = merged_config.get('imageBlur', 0)
+            logger.info(f"[MOCKUP] Applied creative {i+1}/{num_frames} to frame {i+1} (edge blur: {edge_blur}px, image blur: {image_blur})")
         except Exception as e:
             logger.error(f"[MOCKUP] Error warping creative {i}: {e}")
             return None
