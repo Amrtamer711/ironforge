@@ -66,6 +66,8 @@ def warp_creative_to_billboard(
     logger.info(f"[MOCKUP] Upscaled creative {creative_image.shape[:2]} -> {creative_upscaled.shape[:2]}")
 
     # Apply optional image blur AFTER upscaling (so blur effect is preserved)
+    logger.info(f"[MOCKUP] Full config received: {config}")
+
     image_blur = 0
     if config:
         image_blur = config.get('imageBlur', 0)

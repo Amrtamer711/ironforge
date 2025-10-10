@@ -74,6 +74,7 @@ def init_db() -> None:
         _migrate_add_subfolder_column(conn)
         _migrate_add_config_json_column(conn)
         _migrate_subfolder_to_time_and_finish(conn)
+        _migrate_add_image_blur_to_frames(conn)
     finally:
         conn.close()
 
@@ -223,6 +224,42 @@ def _migrate_subfolder_to_time_and_finish(conn: sqlite3.Connection) -> None:
 
     except Exception as e:
         logger.error(f"[DB MIGRATION] Error migrating subfolder to time_of_day/finish: {e}", exc_info=True)
+
+
+def _migrate_add_image_blur_to_frames(conn: sqlite3.Connection) -> None:
+    """Migration: Add imageBlur field to all existing frame configs that don't have it"""
+    import json
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, frames_data FROM mockup_frames")
+        rows = cursor.fetchall()
+
+        updated_count = 0
+        for row_id, frames_data_json in rows:
+            frames_data = json.loads(frames_data_json)
+            modified = False
+
+            # Check each frame in the frames_data array
+            for frame in frames_data:
+                if 'config' in frame and 'imageBlur' not in frame['config']:
+                    frame['config']['imageBlur'] = 0
+                    modified = True
+
+            # Update the row if we modified any frames
+            if modified:
+                conn.execute(
+                    "UPDATE mockup_frames SET frames_data = ? WHERE id = ?",
+                    (json.dumps(frames_data), row_id)
+                )
+                updated_count += 1
+
+        if updated_count > 0:
+            logger.info(f"[DB MIGRATION] Added imageBlur field to {updated_count} frame record(s)")
+        else:
+            logger.debug("[DB MIGRATION] All frames already have imageBlur field, skipping migration")
+
+    except Exception as e:
+        logger.error(f"[DB MIGRATION] Error adding imageBlur to frames: {e}", exc_info=True)
 
 
 def log_proposal(
