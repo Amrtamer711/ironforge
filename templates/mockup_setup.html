@@ -762,6 +762,143 @@
             </small>
           </div>
 
+          <!-- Config Customization Toggle -->
+        <div class="form-group" id="generate-config-toggle-section" style="display: none; margin-top: 20px;">
+          <label style="display: flex; align-items: center; cursor: pointer; user-select: none;">
+            <input type="checkbox" id="generate-config-toggle" style="margin-right: 10px;">
+            <span><strong>Customize Frame Configuration</strong> (optional)</span>
+          </label>
+          <small style="color: #6c757d; display: block; margin-top: 5px; margin-left: 24px;">
+            Enable to adjust settings like brightness, contrast, edge smoothing, etc. and regenerate the mockup
+          </small>
+        </div>
+
+        <!-- Generate Mode Config Sliders (shown when toggle is enabled) -->
+        <div id="generate-frame-config-section" style="display: none; background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+          <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 1.1rem; color: #495057;">Frame Configuration</h3>
+          <small style="color: #6c757d; display: block; margin-bottom: 15px;">Adjust these settings to customize your mockup</small>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div>
+              <label for="gen-frame-brightness" style="display: block; margin-bottom: 5px;">
+                <strong>Brightness:</strong> <span id="gen-frame-brightness-value">100</span>%
+              </label>
+              <input type="range" id="gen-frame-brightness" min="50" max="200" value="100" style="width: 100%;">
+            </div>
+
+            <div>
+              <label for="gen-frame-contrast" style="display: block; margin-bottom: 5px;">
+                <strong>Contrast:</strong> <span id="gen-frame-contrast-value">100</span>%
+              </label>
+              <input type="range" id="gen-frame-contrast" min="50" max="200" value="100" style="width: 100%;">
+            </div>
+
+            <div>
+              <label for="gen-frame-saturation" style="display: block; margin-bottom: 5px;">
+                <strong>Saturation:</strong> <span id="gen-frame-saturation-value">100</span>%
+              </label>
+              <input type="range" id="gen-frame-saturation" min="0" max="200" value="100" style="width: 100%;">
+            </div>
+
+            <div>
+              <label for="gen-frame-image-blur" style="display: block; margin-bottom: 5px;">
+                <strong>Image Blur:</strong> <span id="gen-frame-image-blur-value">0</span>
+              </label>
+              <input type="range" id="gen-frame-image-blur" min="0" max="20" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Blur entire creative (0 = off)</small>
+            </div>
+
+            <div>
+              <label for="gen-frame-edge-blur" style="display: block; margin-bottom: 5px;">
+                <strong>Edge Blur:</strong> <span id="gen-frame-edge-blur-value">1</span>px
+              </label>
+              <input type="range" id="gen-frame-edge-blur" min="1" max="20" value="1" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Edge blur amount (1 = off)</small>
+            </div>
+
+            <div>
+              <label for="gen-frame-overlay-opacity" style="display: block; margin-bottom: 5px;">
+                <strong>Overlay Opacity:</strong> <span id="gen-frame-overlay-value">0</span>%
+              </label>
+              <input type="range" id="gen-frame-overlay-opacity" min="0" max="50" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Billboard overlay</small>
+            </div>
+
+            <div style="grid-column: span 2; display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+              <div>
+                <label style="display: block; margin-bottom: 8px;">
+                  <strong>Light Direction:</strong> <span id="gen-frame-light-direction-label">Top</span>
+                </label>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; width: 150px;">
+                  <button type="button" class="gen-light-dir-btn" data-direction="top-left" style="grid-column: 1; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Top Left">↖</button>
+                  <button type="button" class="gen-light-dir-btn active" data-direction="top" style="grid-column: 2; padding: 8px; border: 2px solid #667eea; background: #e3f2fd; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Top">↑</button>
+                  <button type="button" class="gen-light-dir-btn" data-direction="top-right" style="grid-column: 3; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Top Right">↗</button>
+                  <button type="button" class="gen-light-dir-btn" data-direction="left" style="grid-column: 1; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Left">←</button>
+                  <button type="button" class="gen-light-dir-btn" data-direction="center" style="grid-column: 2; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Center">●</button>
+                  <button type="button" class="gen-light-dir-btn" data-direction="right" style="grid-column: 3; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Right">→</button>
+                  <button type="button" class="gen-light-dir-btn" data-direction="bottom-left" style="grid-column: 1; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Bottom Left">↙</button>
+                  <button type="button" class="gen-light-dir-btn" data-direction="bottom" style="grid-column: 2; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Bottom">↓</button>
+                  <button type="button" class="gen-light-dir-btn" data-direction="bottom-right" style="grid-column: 3; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Bottom Right">↘</button>
+                </div>
+                <input type="hidden" id="gen-frame-light-direction" value="top">
+                <small style="color: #0c5460; display: block; margin-top: 5px;">Light source direction for day mode depth effects</small>
+              </div>
+
+              <div>
+                <label for="gen-frame-depth-multiplier" style="display: block; margin-bottom: 5px;">
+                  <strong>Depth Perception:</strong> <span id="gen-frame-depth-value">15</span>x
+                </label>
+                <input type="range" id="gen-frame-depth-multiplier" min="5" max="30" value="15" style="width: 100%;">
+                <small style="color: #0c5460; display: block; margin-top: 2px;">Perspective compensation</small>
+              </div>
+            </div>
+
+            <div>
+              <label for="gen-frame-shadow-intensity" style="display: block; margin-bottom: 5px;">
+                <strong>Shadow Intensity:</strong> <span id="gen-frame-shadow-value">0</span>%
+              </label>
+              <input type="range" id="gen-frame-shadow-intensity" min="0" max="100" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Edge darkening</small>
+            </div>
+
+            <div>
+              <label for="gen-frame-lighting-adjustment" style="display: block; margin-bottom: 5px;">
+                <strong>Lighting Match:</strong> <span id="gen-frame-lighting-value">0</span>%
+              </label>
+              <input type="range" id="gen-frame-lighting-adjustment" min="-50" max="50" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Brightness matching</small>
+            </div>
+
+            <div>
+              <label for="gen-frame-color-temperature" style="display: block; margin-bottom: 5px;">
+                <strong>Color Temperature:</strong> <span id="gen-frame-temperature-value">0</span>
+              </label>
+              <input type="range" id="gen-frame-color-temperature" min="-50" max="50" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Warm/cool shift</small>
+            </div>
+
+            <div>
+              <label for="gen-frame-vignette" style="display: block; margin-bottom: 5px;">
+                <strong>Vignette:</strong> <span id="gen-frame-vignette-value">0</span>%
+              </label>
+              <input type="range" id="gen-frame-vignette" min="0" max="100" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Corner darkening</small>
+            </div>
+
+            <div>
+              <label for="gen-frame-edge-smoother" style="display: block; margin-bottom: 5px;">
+                <strong>Edge Smoother:</strong> <span id="gen-frame-edge-smoother-value">3</span>x
+              </label>
+              <input type="range" id="gen-frame-edge-smoother" min="1" max="20" value="3" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Anti-aliasing smoothness (higher = much softer edges)</small>
+            </div>
+          </div>
+
+          <small style="color: #0c5460; display: block; margin-top: 10px; text-align: center;">
+            ℹ️ These settings customize the mockup appearance. Adjust and regenerate for different variations.
+          </small>
+        </div>
+
           <div class="button-group">
             <button class="btn btn-primary" onclick="generateMockup()" id="generate-btn" disabled>Generate Mockup</button>
           </div>
@@ -773,150 +910,6 @@
         </div>
 
         <div id="mockup-result" class="mockup-result"></div>
-
-        <!-- Config Customization Toggle (appears after mockup generation) -->
-        <div class="form-group" id="generate-config-toggle-section" style="display: none; margin-top: 20px;">
-          <label style="display: flex; align-items: center; cursor: pointer; user-select: none;">
-            <input type="checkbox" id="generate-config-toggle" style="margin-right: 10px;">
-            <span><strong>Customize Frame Configuration</strong> (optional)</span>
-          </label>
-          <small style="color: #6c757d; display: block; margin-top: 5px; margin-left: 24px;">
-            Enable to adjust settings like brightness, contrast, edge smoothing, etc. and regenerate the mockup
-          </small>
-        </div>
-
-        <!-- Generate Mode Toggles (shown when toggle is enabled) -->
-        <div id="generate-frame-config-section" style="display: none; background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 20px;">
-          <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 1.1rem; color: #495057;">Frame Configuration</h3>
-          <small style="color: #6c757d; display: block; margin-bottom: 15px;">Adjust these settings to customize your mockup and click "Generate Mockup" again</small>
-
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-            <!-- Left Column -->
-            <div style="display: flex; flex-direction: column; gap: 15px;">
-              <div>
-                <label for="gen-frame-brightness" style="display: block; margin-bottom: 5px;">
-                  <strong>Brightness:</strong> <span id="gen-frame-brightness-value">100</span>%
-                </label>
-                <input type="range" id="gen-frame-brightness" min="50" max="150" value="100" style="width: 100%;">
-                <small style="color: #0c5460; display: block; margin-top: 2px;">Creative brightness</small>
-              </div>
-
-              <div>
-                <label for="gen-frame-contrast" style="display: block; margin-bottom: 5px;">
-                  <strong>Contrast:</strong> <span id="gen-frame-contrast-value">100</span>%
-                </label>
-                <input type="range" id="gen-frame-contrast" min="50" max="150" value="100" style="width: 100%;">
-                <small style="color: #0c5460; display: block; margin-top: 2px;">Creative contrast</small>
-              </div>
-
-              <div>
-                <label for="gen-frame-saturation" style="display: block; margin-bottom: 5px;">
-                  <strong>Saturation:</strong> <span id="gen-frame-saturation-value">100</span>%
-                </label>
-                <input type="range" id="gen-frame-saturation" min="0" max="150" value="100" style="width: 100%;">
-                <small style="color: #0c5460; display: block; margin-top: 2px;">Color intensity</small>
-              </div>
-
-              <div>
-                <label for="gen-frame-image-blur" style="display: block; margin-bottom: 5px;">
-                  <strong>Image Blur:</strong> <span id="gen-frame-image-blur-value">0</span>px
-                </label>
-                <input type="range" id="gen-frame-image-blur" min="0" max="10" value="0" style="width: 100%;">
-                <small style="color: #0c5460; display: block; margin-top: 2px;">Blur entire creative</small>
-              </div>
-
-              <div>
-                <label for="gen-frame-edge-blur" style="display: block; margin-bottom: 5px;">
-                  <strong>Edge Blur:</strong> <span id="gen-frame-edge-blur-value">1</span>px
-                </label>
-                <input type="range" id="gen-frame-edge-blur" min="1" max="20" value="1" style="width: 100%;">
-                <small style="color: #0c5460; display: block; margin-top: 2px;">Edge blur amount (1 = off)</small>
-              </div>
-
-              <div>
-                <label for="gen-frame-overlay-opacity" style="display: block; margin-bottom: 5px;">
-                  <strong>Billboard Overlay:</strong> <span id="gen-frame-overlay-value">0</span>%
-                </label>
-                <input type="range" id="gen-frame-overlay-opacity" min="0" max="100" value="0" style="width: 100%;">
-                <small style="color: #0c5460; display: block; margin-top: 2px;">Billboard texture blending</small>
-              </div>
-            </div>
-
-            <!-- Right Column -->
-            <div style="display: flex; flex-direction: column; gap: 15px;">
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                <div>
-                  <label style="display: block; margin-bottom: 5px;"><strong>Light Direction</strong></label>
-                  <small style="color: #0c5460; display: block; margin-bottom: 8px;" id="gen-frame-light-direction-label">Top</small>
-                  <input type="hidden" id="gen-frame-light-direction" value="top">
-                  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;">
-                    <button type="button" class="gen-light-dir-btn" data-direction="top-left" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;">↖</button>
-                    <button type="button" class="gen-light-dir-btn active" data-direction="top" style="padding: 8px; border: 2px solid #667eea; border-radius: 4px; background: #e3f2fd; cursor: pointer; font-size: 14px;">↑</button>
-                    <button type="button" class="gen-light-dir-btn" data-direction="top-right" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;">↗</button>
-                    <button type="button" class="gen-light-dir-btn" data-direction="left" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;">←</button>
-                    <button type="button" class="gen-light-dir-btn" data-direction="center" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;">·</button>
-                    <button type="button" class="gen-light-dir-btn" data-direction="right" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;">→</button>
-                    <button type="button" class="gen-light-dir-btn" data-direction="bottom-left" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;">↙</button>
-                    <button type="button" class="gen-light-dir-btn" data-direction="bottom" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;">↓</button>
-                    <button type="button" class="gen-light-dir-btn" data-direction="bottom-right" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;">↘</button>
-                  </div>
-                </div>
-
-                <div>
-                  <label for="gen-frame-depth-multiplier" style="display: block; margin-bottom: 5px;">
-                    <strong>Depth Perception:</strong> <span id="gen-frame-depth-value">15</span>x
-                  </label>
-                  <input type="range" id="gen-frame-depth-multiplier" min="5" max="40" value="15" style="width: 100%;">
-                  <small style="color: #0c5460; display: block; margin-top: 2px;">3D depth effect</small>
-                </div>
-              </div>
-
-              <div>
-                <label for="gen-frame-shadow-intensity" style="display: block; margin-bottom: 5px;">
-                  <strong>Shadow Intensity:</strong> <span id="gen-frame-shadow-value">0</span>%
-                </label>
-                <input type="range" id="gen-frame-shadow-intensity" min="0" max="100" value="0" style="width: 100%;">
-                <small style="color: #0c5460; display: block; margin-top: 2px;">Drop shadow strength</small>
-              </div>
-
-              <div>
-                <label for="gen-frame-lighting-adjustment" style="display: block; margin-bottom: 5px;">
-                  <strong>Lighting Adjustment:</strong> <span id="gen-frame-lighting-value">0</span>%
-                </label>
-                <input type="range" id="gen-frame-lighting-adjustment" min="-50" max="50" value="0" style="width: 100%;">
-                <small style="color: #0c5460; display: block; margin-top: 2px;">Match billboard lighting</small>
-              </div>
-
-              <div>
-                <label for="gen-frame-color-temperature" style="display: block; margin-bottom: 5px;">
-                  <strong>Color Temperature:</strong> <span id="gen-frame-temperature-value">0</span>
-                </label>
-                <input type="range" id="gen-frame-color-temperature" min="-50" max="50" value="0" style="width: 100%;">
-                <small style="color: #0c5460; display: block; margin-top: 2px;">Warm ↔ Cool</small>
-              </div>
-
-              <div>
-                <label for="gen-frame-vignette" style="display: block; margin-bottom: 5px;">
-                  <strong>Vignette:</strong> <span id="gen-frame-vignette-value">0</span>%
-                </label>
-                <input type="range" id="gen-frame-vignette" min="0" max="100" value="0" style="width: 100%;">
-                <small style="color: #0c5460; display: block; margin-top: 2px;">Corner darkening</small>
-              </div>
-
-              <div>
-                <label for="gen-frame-edge-smoother" style="display: block; margin-bottom: 5px;">
-                  <strong>Edge Smoother:</strong> <span id="gen-frame-edge-smoother-value">3</span>x
-                </label>
-                <input type="range" id="gen-frame-edge-smoother" min="1" max="20" value="3" style="width: 100%;">
-                <small style="color: #0c5460; display: block; margin-top: 2px;">Anti-aliasing smoothness (higher = much softer edges)</small>
-              </div>
-            </div>
-          </div>
-
-          <small style="color: #0c5460; display: block; margin-top: 10px; text-align: center;">
-            💡 Tip: Adjust these settings to match the billboard's lighting and perspective for maximum realism
-          </small>
-        </div>
       </div>
     </div>
   </div>
