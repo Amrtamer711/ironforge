@@ -34,3 +34,10 @@ generated_proposals/
 
 # Logs
 *.log
+
+# Database files (should not be in version control)
+*.db
+*.db-shm
+*.db-wal
+proposals.db
+proposals_test.db
