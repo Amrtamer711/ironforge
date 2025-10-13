@@ -303,15 +303,29 @@ async def save_mockup_frame(
             raise HTTPException(status_code=400, detail=f"Invalid location: {location_key}")
 
         # Read photo data
+        logger.info(f"[MOCKUP API] Reading photo data from upload: {photo.filename}")
         photo_data = await photo.read()
+        logger.info(f"[MOCKUP API] ✓ Read {len(photo_data)} bytes from upload")
 
         # Save all frames to database with per-frame configs - this returns the auto-numbered filename
+        logger.info(f"[MOCKUP API] Saving {len(frames)} frame(s) to database for {location_key}/{time_of_day}/{finish}")
         final_filename = db.save_mockup_frame(location_key, photo.filename, frames, created_by=None, time_of_day=time_of_day, finish=finish, config=config_dict)
+        logger.info(f"[MOCKUP API] ✓ Database save complete, filename: {final_filename}")
 
         # Save photo to disk with the final auto-numbered filename
+        logger.info(f"[MOCKUP API] Saving photo to disk: {final_filename}")
         photo_path = mockup_generator.save_location_photo(location_key, final_filename, photo_data, time_of_day, finish)
+        logger.info(f"[MOCKUP API] ✓ Photo saved to disk at: {photo_path}")
 
-        logger.info(f"[MOCKUP API] Saved {len(frames)} frame(s) for {location_key}/{time_of_day}/{finish}/{final_filename} (per-frame configs included)")
+        # Verify the file exists immediately after saving
+        import os
+        if os.path.exists(photo_path):
+            file_size = os.path.getsize(photo_path)
+            logger.info(f"[MOCKUP API] ✓ VERIFICATION: File exists on disk, size: {file_size} bytes")
+        else:
+            logger.error(f"[MOCKUP API] ✗ VERIFICATION FAILED: File does not exist at {photo_path}")
+
+        logger.info(f"[MOCKUP API] ✓ Complete: Saved {len(frames)} frame(s) for {location_key}/{time_of_day}/{finish}/{final_filename}")
 
         return {"success": True, "photo": final_filename, "time_of_day": time_of_day, "finish": finish, "frames_count": len(frames)}
 

@@ -410,11 +410,15 @@ def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list,
         conn.execute("BEGIN")
         config_json = json.dumps(config) if config else None
 
+        logger.info(f"[DB] save_mockup_frame called: location_key={location_key}, photo_filename={photo_filename}, time_of_day={time_of_day}, finish={finish}, frame_count={len(frames_data)}")
+
         # Get file extension from original filename
         _, ext = os.path.splitext(photo_filename)
+        logger.info(f"[DB] Original filename: {photo_filename}, extension: {ext}")
 
         # Format location name for filename (e.g., "oryx" -> "Oryx")
         location_display_name = location_key.replace('_', ' ').title().replace(' ', '')
+        logger.info(f"[DB] Display name for filename: {location_display_name}")
 
         # Find all existing photos for this location (across ALL time_of_day/finish) to determine next number
         cursor = conn.cursor()
@@ -423,6 +427,7 @@ def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list,
             (location_key,)
         )
         existing_files = [row[0] for row in cursor.fetchall()]
+        logger.info(f"[DB] Found {len(existing_files)} existing photos for location: {existing_files}")
 
         # Extract numbers from existing filenames (e.g., "Oryx_1.jpg" -> 1)
         existing_numbers = []
@@ -434,16 +439,20 @@ def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list,
                     existing_numbers.append(num)
                 except ValueError:
                     pass
+        logger.info(f"[DB] Extracted existing numbers: {existing_numbers}")
 
         # Find next available number (1-indexed)
         next_num = 1
         while next_num in existing_numbers:
             next_num += 1
+        logger.info(f"[DB] Next available number: {next_num}")
 
         # Create standardized filename: LocationName_Number.ext
         final_filename = f"{location_display_name}_{next_num}{ext}"
+        logger.info(f"[DB] Final filename: {final_filename}")
 
         # Insert new entry with auto-numbered filename
+        logger.info(f"[DB] Inserting into database: {location_key}/{time_of_day}/{finish}/{final_filename}")
         conn.execute(
             """
             INSERT INTO mockup_frames (location_key, time_of_day, finish, photo_filename, frames_data, created_at, created_by, config_json)
@@ -451,9 +460,10 @@ def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list,
             """,
             (location_key, time_of_day, finish, final_filename, json.dumps(frames_data), datetime.now().isoformat(), created_by, config_json),
         )
-        logger.info(f"[DB] Inserted new frame for {location_key}/{time_of_day}/{finish}/{final_filename}")
+        logger.info(f"[DB] ✓ Database insert successful")
 
         conn.execute("COMMIT")
+        logger.info(f"[DB] ✓ Transaction committed, returning filename: {final_filename}")
         return final_filename
     finally:
         conn.close()
