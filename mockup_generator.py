@@ -20,6 +20,53 @@ else:
 MOCKUPS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def extend_image_borders_smart(image: np.ndarray, extend_pixels: int, method: str = 'inpaint') -> np.ndarray:
+    """
+    Intelligently extend image borders to prevent warp artifacts.
+
+    Args:
+        image: Input image (BGR)
+        extend_pixels: Pixels to extend on each side
+        method: 'reflect' or 'inpaint'
+
+    Returns:
+        Extended image
+    """
+    if extend_pixels < 10 or method == 'reflect':
+        # Simple reflection for small extensions
+        return cv2.copyMakeBorder(
+            image,
+            extend_pixels, extend_pixels, extend_pixels, extend_pixels,
+            cv2.BORDER_REFLECT_101
+        )
+    else:
+        # Inpainting for larger extensions
+        h, w = image.shape[:2]
+
+        # Create extended canvas
+        extended = cv2.copyMakeBorder(
+            image,
+            extend_pixels, extend_pixels, extend_pixels, extend_pixels,
+            cv2.BORDER_REPLICATE
+        )
+
+        # Create mask for inpainting (only outermost border)
+        mask = np.zeros((h + 2*extend_pixels, w + 2*extend_pixels), dtype=np.uint8)
+        border_inpaint = min(extend_pixels, 15)  # Limit inpainting region
+
+        mask[0:border_inpaint, :] = 255
+        mask[-border_inpaint:, :] = 255
+        mask[:, 0:border_inpaint] = 255
+        mask[:, -border_inpaint:] = 255
+
+        # Inpaint with Telea algorithm (fast and good quality)
+        inpaint_radius = min(10, extend_pixels // 2)
+        result = cv2.inpaint(extended, mask, inpaint_radius, cv2.INPAINT_TELEA)
+
+        logger.info(f"[MOCKUP] Extended borders by {extend_pixels}px using inpainting")
+        return result
+
+
 def order_points(pts: np.ndarray) -> np.ndarray:
     """Order points consistently: top-left, top-right, bottom-right, bottom-left."""
     pts = np.array(pts, dtype="float32")
@@ -86,6 +133,18 @@ def warp_creative_to_billboard(
         creative_upscaled = cv2.GaussianBlur(creative_upscaled, (kernel_size, kernel_size), 0)
         logger.info(f"[MOCKUP] Applied image blur with strength {image_blur} (kernel: {kernel_size})")
 
+    # Get edge blur setting to determine border extension strategy
+    edge_blur = 8
+    if config and 'edgeBlur' in config:
+        edge_blur = max(3, min(21, config['edgeBlur']))
+
+    # Intelligently extend borders for high edge blur to prevent artifacts
+    if edge_blur > 10:
+        extend_amount = int(edge_blur * 2.5)
+        method = 'inpaint' if edge_blur > 14 else 'reflect'
+        logger.info(f"[MOCKUP] Extending creative borders by {extend_amount}px (method: {method}) for edge blur {edge_blur}")
+        creative_upscaled = extend_image_borders_smart(creative_upscaled, extend_amount, method)
+
     # Source points (corners of upscaled creative image)
     h, w = creative_upscaled.shape[:2]
     src_pts = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
@@ -96,14 +155,17 @@ def warp_creative_to_billboard(
     # Get perspective transform matrix
     H = cv2.getPerspectiveTransform(src_pts, adjusted_dst_pts)
 
+    # Choose interpolation based on blur level (CUBIC has fewer artifacts for high blur)
+    interp_method = cv2.INTER_CUBIC if edge_blur > 15 else cv2.INTER_LANCZOS4
+
     # Warp upscaled creative to billboard perspective with high-quality interpolation
-    # Use BORDER_REPLICATE to color borders with inward edge pixels instead of black
+    # Use BORDER_REFLECT_101 for natural mirrored borders (better than BORDER_REPLICATE)
     warped = cv2.warpPerspective(
         creative_upscaled,
         H,
         (billboard_image.shape[1], billboard_image.shape[0]),
-        flags=cv2.INTER_LANCZOS4,  # High-quality interpolation for smooth edges
-        borderMode=cv2.BORDER_REPLICATE  # Replicate edge pixels for natural borders
+        flags=interp_method,
+        borderMode=cv2.BORDER_REFLECT_101  # Mirror reflection without edge duplication
     )
 
     # Create high-quality anti-aliased mask using super-sampling
