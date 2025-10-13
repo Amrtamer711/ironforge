@@ -305,15 +305,15 @@ async def save_mockup_frame(
         # Read photo data
         photo_data = await photo.read()
 
-        # Save photo to disk in time_of_day/finish folder structure
-        photo_path = mockup_generator.save_location_photo(location_key, photo.filename, photo_data, time_of_day, finish)
+        # Save all frames to database with per-frame configs - this returns the auto-numbered filename
+        final_filename = db.save_mockup_frame(location_key, photo.filename, frames, created_by=None, time_of_day=time_of_day, finish=finish, config=config_dict)
 
-        # Save all frames to database with per-frame configs
-        db.save_mockup_frame(location_key, photo.filename, frames, created_by=None, time_of_day=time_of_day, finish=finish, config=config_dict)
+        # Save photo to disk with the final auto-numbered filename
+        photo_path = mockup_generator.save_location_photo(location_key, final_filename, photo_data, time_of_day, finish)
 
-        logger.info(f"[MOCKUP API] Saved {len(frames)} frame(s) for {location_key}/{time_of_day}/{finish}/{photo.filename} (per-frame configs included)")
+        logger.info(f"[MOCKUP API] Saved {len(frames)} frame(s) for {location_key}/{time_of_day}/{finish}/{final_filename} (per-frame configs included)")
 
-        return {"success": True, "photo": photo.filename, "time_of_day": time_of_day, "finish": finish, "frames_count": len(frames)}
+        return {"success": True, "photo": final_filename, "time_of_day": time_of_day, "finish": finish, "frames_count": len(frames)}
 
     except json.JSONDecodeError as e:
         logger.error(f"[MOCKUP API] JSON decode error: {e}", exc_info=True)

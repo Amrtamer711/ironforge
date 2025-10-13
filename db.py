@@ -386,8 +386,8 @@ def get_proposals_summary() -> dict:
         conn.close()
 
 
-def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list, created_by: Optional[str] = None, time_of_day: str = "day", finish: str = "gold", config: Optional[dict] = None) -> None:
-    """Save frame coordinates and config for a location photo with time_of_day and finish. frames_data is a list of frame point arrays."""
+def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list, created_by: Optional[str] = None, time_of_day: str = "day", finish: str = "gold", config: Optional[dict] = None) -> str:
+    """Save frame coordinates and config for a location photo with time_of_day and finish. Returns the final auto-numbered filename."""
     import json
     import os
     conn = _connect()
@@ -439,6 +439,7 @@ def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list,
         logger.info(f"[DB] Inserted new frame for {location_key}/{time_of_day}/{finish}/{final_filename}")
 
         conn.execute("COMMIT")
+        return final_filename
     finally:
         conn.close()
 
