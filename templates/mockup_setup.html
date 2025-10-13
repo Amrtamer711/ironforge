@@ -2244,11 +2244,12 @@
 
       const formData = new FormData();
       formData.append('location_key', locationKey);
-      formData.append('time_of_day', timeOfDay);
-      formData.append('finish', finish);
 
-      // If a template is selected, use its specific photo and send custom config
+      // If a template is selected, use its specific time_of_day/finish/photo
+      // Otherwise use dropdown values for random selection
       if (selectedTemplateConfig) {
+        formData.append('time_of_day', selectedTemplateConfig.time_of_day);
+        formData.append('finish', selectedTemplateConfig.finish);
         formData.append('specific_photo', selectedTemplateConfig.photo);
 
         // Collect current config values from controls
@@ -2269,6 +2270,10 @@
         };
 
         formData.append('frame_config', JSON.stringify(frameConfig));
+      } else {
+        // No template selected - use dropdown values for random selection
+        formData.append('time_of_day', timeOfDay);
+        formData.append('finish', finish);
       }
 
       // If AI prompt is provided, use AI mode (ignore uploaded file)
