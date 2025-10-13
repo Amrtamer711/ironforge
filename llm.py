@@ -451,7 +451,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"     1. User UPLOADS image(s) WITH mockup request in same message\n"
         f"     2. System detects images and generates mockup immediately\n"
         f"     3. Supports multiple frames: 1 image = duplicate across all, N images = match to N frames\n"
-        f"     IMPORTANT: No AI prompt = requires image upload WITH request\n"
+        f"     CRITICAL: If you see '[User uploaded X image file(s): ...]' in the message, call generate_mockup IMMEDIATELY\n"
+        f"     DO NOT ask for clarification - the images are already uploaded!\n"
         f"  B) AI GENERATION MODE (NO upload needed):\n"
         f"     1. User provides location AND creative description in request\n"
         f"     2. System generates creative using gpt-image-1 model (NO upload needed)\n"
@@ -459,13 +460,14 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"     IMPORTANT: If description provided = AI mode, ignore any uploaded images\n"
         f"  Decision Logic:\n"
         f"  - Has creative description? → Use AI mode (ignore uploads)\n"
-        f"  - No description but has upload? → Use upload mode\n"
+        f"  - No description but has upload? → Use upload mode (DO NOT ASK FOR CLARIFICATION)\n"
         f"  - No description and no upload? → ERROR\n"
         f"  Examples:\n"
-        f"  - [uploads creative.jpg] + 'mockup for Dubai Gateway' → uses uploaded image\n"
+        f"  - [uploads creative.jpg] + 'mockup for Dubai Gateway' → uses uploaded image (IMMEDIATE)\n"
+        f"  - 'put this on triple crown' + [User uploaded 1 image file(s): test.jpg] → IMMEDIATE mockup\n"
         f"  - 'mockup for Oryx with luxury watch ad, gold and elegant' → AI generates creative (no upload needed)\n"
         f"  - 'mockup for Gateway' (no upload, no description) → ERROR: missing creative\n"
-        f"  Keywords: 'mockup', 'mock up', 'billboard preview', 'show my ad on'\n\n"
+        f"  Keywords: 'mockup', 'mock up', 'billboard preview', 'show my ad on', 'put this on'\n\n"
 
         f"═══════════════════════════════════════════════════════════════════\n"
         f"🗄️ DATABASE & LOCATION MANAGEMENT\n"
@@ -651,7 +653,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         {
             "type": "function",
             "name": "generate_mockup",
-            "description": "Generate a billboard mockup. User can upload image(s) OR provide a text prompt for AI generation. System randomly selects billboard photo and warps creative(s) onto it. Supports multiple frames: 1 creative = duplicate across all, N creatives = match to N frames. Billboard variations can be specified with time_of_day (day/night/all) and finish (gold/silver/all). Use 'all' or omit to randomly select from all available variations.",
+            "description": "Generate a billboard mockup. IMPORTANT: If user uploads image file(s) and mentions a location for mockup, call this function IMMEDIATELY - do not ask for clarification. User can upload image(s) OR provide a text prompt for AI generation. System randomly selects billboard photo and warps creative(s) onto it. Supports multiple frames: 1 creative = duplicate across all, N creatives = match to N frames. Billboard variations can be specified with time_of_day (day/night/all) and finish (gold/silver/all). Use 'all' or omit to randomly select from all available variations.",
             "parameters": {
                 "type": "object",
                 "properties": {
