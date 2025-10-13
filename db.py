@@ -395,74 +395,48 @@ def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list,
         conn.execute("BEGIN")
         config_json = json.dumps(config) if config else None
 
-        # Check if this exact photo already exists (location + time_of_day + finish + filename)
+        # Get file extension from original filename
+        _, ext = os.path.splitext(photo_filename)
+
+        # Format location name for filename (e.g., "oryx" -> "Oryx")
+        location_display_name = location_key.replace('_', ' ').title().replace(' ', '')
+
+        # Find all existing photos for this location (across ALL time_of_day/finish) to determine next number
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id FROM mockup_frames WHERE location_key = ? AND time_of_day = ? AND finish = ? AND photo_filename = ?",
-            (location_key, time_of_day, finish, photo_filename)
+            "SELECT photo_filename FROM mockup_frames WHERE location_key = ?",
+            (location_key,)
         )
-        existing = cursor.fetchone()
+        existing_files = [row[0] for row in cursor.fetchall()]
 
-        if existing:
-            # Update existing entry (same filename = edit mode)
-            conn.execute(
-                """
-                UPDATE mockup_frames
-                SET frames_data = ?, created_at = ?, created_by = ?, config_json = ?
-                WHERE id = ?
-                """,
-                (json.dumps(frames_data), datetime.now().isoformat(), created_by, config_json, existing[0]),
-            )
-            logger.info(f"[DB] Updated existing frame for {location_key}/{time_of_day}/{finish}/{photo_filename}")
-        else:
-            # Check if there are any existing files with the same base name (handle duplicates)
-            # Split filename into name and extension
-            base_name, ext = os.path.splitext(photo_filename)
+        # Extract numbers from existing filenames (e.g., "Oryx_1.jpg" -> 1)
+        existing_numbers = []
+        for filename in existing_files:
+            name_part = os.path.splitext(filename)[0]
+            if name_part.startswith(f"{location_display_name}_"):
+                try:
+                    num = int(name_part.split('_')[-1])
+                    existing_numbers.append(num)
+                except ValueError:
+                    pass
 
-            # Check for existing files with same base name (including numbered variants like _1, _2, etc.)
-            cursor.execute(
-                "SELECT photo_filename FROM mockup_frames WHERE location_key = ? AND time_of_day = ? AND finish = ? AND photo_filename LIKE ?",
-                (location_key, time_of_day, finish, f"{base_name}%{ext}")
-            )
-            existing_files = [row[0] for row in cursor.fetchall()]
+        # Find next available number (1-indexed)
+        next_num = 1
+        while next_num in existing_numbers:
+            next_num += 1
 
-            # If there are duplicates, find the next available number
-            if existing_files:
-                # Extract numbers from existing filenames (e.g., "photo_1.jpg" -> 1)
-                existing_numbers = []
-                for filename in existing_files:
-                    name_part = os.path.splitext(filename)[0]
-                    if name_part == base_name:
-                        # Original file without number
-                        existing_numbers.append(0)
-                    elif name_part.startswith(f"{base_name}_"):
-                        # Numbered variant
-                        try:
-                            num = int(name_part.split('_')[-1])
-                            existing_numbers.append(num)
-                        except ValueError:
-                            pass
+        # Create standardized filename: LocationName_Number.ext
+        final_filename = f"{location_display_name}_{next_num}{ext}"
 
-                # Find next available number (1-indexed)
-                next_num = 1
-                while next_num in existing_numbers:
-                    next_num += 1
-
-                # Create new filename with number suffix
-                final_filename = f"{base_name}_{next_num}{ext}"
-                logger.info(f"[DB] Duplicate filename detected. Using {final_filename} instead of {photo_filename}")
-            else:
-                final_filename = photo_filename
-
-            # Insert new entry with final filename
-            conn.execute(
-                """
-                INSERT INTO mockup_frames (location_key, time_of_day, finish, photo_filename, frames_data, created_at, created_by, config_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (location_key, time_of_day, finish, final_filename, json.dumps(frames_data), datetime.now().isoformat(), created_by, config_json),
-            )
-            logger.info(f"[DB] Inserted new frame for {location_key}/{time_of_day}/{finish}/{final_filename}")
+        # Insert new entry with auto-numbered filename
+        conn.execute(
+            """
+            INSERT INTO mockup_frames (location_key, time_of_day, finish, photo_filename, frames_data, created_at, created_by, config_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (location_key, time_of_day, finish, final_filename, json.dumps(frames_data), datetime.now().isoformat(), created_by, config_json),
+        )
+        logger.info(f"[DB] Inserted new frame for {location_key}/{time_of_day}/{finish}/{final_filename}")
 
         conn.execute("COMMIT")
     finally:
