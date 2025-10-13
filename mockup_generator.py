@@ -50,12 +50,11 @@ def warp_creative_to_billboard(
     # Order points consistently
     dst_pts = order_points(np.array(frame_points))
 
-    # Creative will stretch to fit billboard frame (no letterboxing/pillarboxing)
-    # Perspective transform handles the aspect ratio automatically
-    logger.info(f"[MOCKUP] Creative will be warped to fill entire billboard frame")
+    # Creative will stretch to fill the entire frame for maximum realism
+    # The perspective transform handles the warping - no black bars/padding
 
-    # High-quality upscaling for maximum detail
-    upscale_factor = 2.5  # 2.5x upscale before warping - maximum quality
+    # Upscale creative before warping for higher quality
+    upscale_factor = 2.0  # 2x upscale - good balance of quality and performance
     creative_upscaled = cv2.resize(
         creative_image,
         None,
@@ -66,29 +65,23 @@ def warp_creative_to_billboard(
     logger.info(f"[MOCKUP] Upscaled creative {creative_image.shape[:2]} -> {creative_upscaled.shape[:2]}")
 
     # Apply optional image blur AFTER upscaling (so blur effect is preserved)
-    logger.info(f"[MOCKUP] Full config received: {config}")
-
-    image_blur = 0
-    if config:
-        image_blur = config.get('imageBlur', 0)
-
-    logger.info(f"[MOCKUP] Image blur config value: {image_blur}")
+    image_blur = config.get('imageBlur', 0) if config else 0
+    logger.info(f"[MOCKUP] Config received: {config}")
+    logger.info(f"[MOCKUP] Image blur value from config: {image_blur}")
 
     if image_blur > 0:
-        # Scale blur kernel size based on upscaled image size for consistent effect
-        kernel_size = int(image_blur * upscale_factor * 2 + 1)
+        # Use kernel size that scales with blur intensity
+        kernel_size = int(image_blur * 2 + 1)
         if kernel_size % 2 == 0:
             kernel_size += 1  # Ensure odd
         creative_upscaled = cv2.GaussianBlur(creative_upscaled, (kernel_size, kernel_size), 0)
         logger.info(f"[MOCKUP] Applied image blur with strength {image_blur} (kernel: {kernel_size})")
-    else:
-        logger.info(f"[MOCKUP] No image blur applied (value was {image_blur})")
 
     # Source points (corners of upscaled creative image)
     h, w = creative_upscaled.shape[:2]
     src_pts = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
 
-    # Destination points (no longer shrinking for padding - padding is in the creative itself)
+    # Destination points
     adjusted_dst_pts = dst_pts.copy()
 
     # Apply depth perception adjustment if configured
@@ -480,9 +473,13 @@ def generate_mockup(
         frame_points = frame_data["points"]
         frame_config = frame_data.get("config", {})
 
+        logger.info(f"[MOCKUP] Frame {i+1} raw config: {frame_config}")
+
         # Merge with photo-level config (frame config takes precedence)
         merged_config = photo_config.copy() if photo_config else {}
         merged_config.update(frame_config)
+
+        logger.info(f"[MOCKUP] Frame {i+1} merged config: {merged_config}")
 
         # Determine which creative to use
         if num_creatives == 1:
