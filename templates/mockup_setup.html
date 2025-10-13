@@ -584,8 +584,8 @@
               <small style="color: #0c5460; display: block; margin-top: 2px;">Billboard overlay</small>
             </div>
 
-            <div style="grid-column: span 2; display: flex; gap: 15px; align-items: center;">
-              <div style="flex-shrink: 0;">
+            <div style="grid-column: span 2; display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+              <div>
                 <label style="display: block; margin-bottom: 8px;">
                   <strong>Light Direction:</strong> <span id="frame-light-direction-label">Top</span>
                 </label>
@@ -604,7 +604,7 @@
                 <small style="color: #0c5460; display: block; margin-top: 5px;">Light source direction for day mode depth effects</small>
               </div>
 
-              <div style="flex: 1;">
+              <div>
                 <label for="frame-depth-multiplier" style="display: block; margin-bottom: 5px;">
                   <strong>Depth Perception:</strong> <span id="frame-depth-value">15</span>x
                 </label>
