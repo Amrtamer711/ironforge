@@ -52,7 +52,8 @@ def warp_creative_to_billboard(
     billboard_image: np.ndarray,
     creative_image: np.ndarray,
     frame_points: List[List[float]],
-    config: Optional[dict] = None
+    config: Optional[dict] = None,
+    time_of_day: str = "day"
 ) -> np.ndarray:
     """Apply perspective warp to place creative on billboard with optional enhancements."""
     # Order points consistently
@@ -89,33 +90,8 @@ def warp_creative_to_billboard(
     h, w = creative_upscaled.shape[:2]
     src_pts = np.array([[0, 0], [w, 0], [w, h], [0, h]], dtype=np.float32)
 
-    # Destination points
+    # Use the user's drawn frame exactly as-is (no scaling/adjustment)
     adjusted_dst_pts = dst_pts.copy()
-
-    # Apply depth perception adjustment if configured
-    if config and 'depthMultiplier' in config:
-        # Range 5-30, default 15
-        # Lower values (5-14) = increase perspective (pull corners outward)
-        # Higher values (16-30) = flatten perspective (push corners inward)
-        depth_value = config['depthMultiplier']
-
-        # Calculate scaling factor: 15 = 1.0 (no change), 5 = 1.2 (more perspective), 30 = 0.7 (flatter)
-        scale_factor = 1.0 + (15 - depth_value) * 0.02
-
-        # Calculate the center of the billboard frame
-        center_x = np.mean(adjusted_dst_pts[:, 0])
-        center_y = np.mean(adjusted_dst_pts[:, 1])
-
-        # Adjust each corner point based on depth perception
-        for i in range(4):
-            dx = adjusted_dst_pts[i, 0] - center_x
-            dy = adjusted_dst_pts[i, 1] - center_y
-
-            # Scale the distance from center
-            adjusted_dst_pts[i, 0] = center_x + dx * scale_factor
-            adjusted_dst_pts[i, 1] = center_y + dy * scale_factor
-
-        logger.info(f"[MOCKUP] Applied depth perception with value {depth_value} (scale factor: {scale_factor:.2f})")
 
     # Get perspective transform matrix
     H = cv2.getPerspectiveTransform(src_pts, adjusted_dst_pts)
@@ -177,9 +153,68 @@ def warp_creative_to_billboard(
         color_temperature = config.get('colorTemperature', 0)
         vignette_strength = config.get('vignette', 0) / 100.0
         shadow_strength = config.get('shadowIntensity', 0) / 100.0
+        depth_multiplier = config.get('depthMultiplier', 15)  # 5-30, default 15 (neutral)
 
         # Extract only the frame region from warped creative
         warped_float = warped.astype(np.float32)
+
+        # ========================================================================
+        # 3D DEPTH PERCEPTION EFFECTS (Time-of-Day Aware)
+        # ========================================================================
+        # EASY REMOVAL: Set ENABLE_DEPTH_EFFECTS = False to disable completely
+        ENABLE_DEPTH_EFFECTS = True
+
+        if ENABLE_DEPTH_EFFECTS and depth_multiplier != 15:
+            # Calculate intensity: 0 at depth=15 (neutral), increases as it moves away from 15
+            depth_intensity = abs(depth_multiplier - 15) / 15.0  # 0.0 to 1.0
+
+            # Apply different effects based on time of day
+            if time_of_day == "night":
+                # NIGHT: Directional spotlight effect (lit from top)
+                # Simulates billboard illuminated by spotlights from above
+                x, y, w, h = cv2.boundingRect(dst_pts.astype(int))
+                y_coords, x_coords = np.ogrid[:billboard_image.shape[0], :billboard_image.shape[1]]
+
+                # Vertical gradient: top (lit) to bottom (shadow)
+                y_norm = np.clip((y_coords - y) / max(h, 1), 0, 1)
+                lighting_gradient = 1.0 - (y_norm * depth_intensity * 0.35)  # Up to 35% darker at bottom
+
+                # Apply only within mask
+                lighting_gradient = lighting_gradient * mask_float + (1 - mask_float)
+                lighting_gradient_3ch = np.stack([lighting_gradient] * 3, axis=-1)
+                warped_float = warped_float * lighting_gradient_3ch
+                warped_float = np.clip(warped_float, 0, 255)
+
+                logger.info(f"[MOCKUP] Applied night spotlight depth (intensity: {depth_intensity:.2f})")
+
+            else:  # "day" or default
+                # DAY: Atmospheric perspective (aerial perspective effect)
+                # Things appear hazier, less saturated, and lower contrast when further away
+
+                # Convert to HSV for saturation adjustment
+                warped_uint = warped_float.astype(np.uint8)
+                hsv = cv2.cvtColor(warped_uint, cv2.COLOR_BGR2HSV).astype(np.float32)
+
+                # Reduce saturation (up to 15% at max intensity)
+                desaturation = 1.0 - (depth_intensity * 0.15)
+                hsv[:, :, 1] = hsv[:, :, 1] * desaturation * mask_float + hsv[:, :, 1] * (1 - mask_float)
+                hsv[:, :, 1] = np.clip(hsv[:, :, 1], 0, 255)
+
+                warped_float = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR).astype(np.float32)
+
+                # Reduce contrast (up to 12% at max intensity)
+                mean = np.mean(warped_float[mask_float > 0.5])
+                contrast_factor = 1.0 - (depth_intensity * 0.12)
+                warped_float = mean + (warped_float - mean) * contrast_factor
+                warped_float = np.clip(warped_float, 0, 255)
+
+                # Slight blue shift (atmospheric scattering - up to +8 blue)
+                blue_shift = depth_intensity * 8
+                warped_float[:, :, 0] += blue_shift * mask_float  # Blue channel
+                warped_float = np.clip(warped_float, 0, 255)
+
+                logger.info(f"[MOCKUP] Applied daytime atmospheric depth (intensity: {depth_intensity:.2f})")
+        # ========================================================================
 
         # Apply brightness and contrast to frame region only
         if brightness != 1.0 or contrast != 1.0:
@@ -522,7 +557,7 @@ def generate_mockup(
 
         # Warp creative onto this frame with merged config
         try:
-            result = warp_creative_to_billboard(result, creative, frame_points, config=merged_config)
+            result = warp_creative_to_billboard(result, creative, frame_points, config=merged_config, time_of_day=time_of_day)
             edge_blur = merged_config.get('edgeBlur', 8)
             image_blur = merged_config.get('imageBlur', 0)
             logger.info(f"[MOCKUP] Applied creative {i+1}/{num_frames} to frame {i+1} (edge blur: {edge_blur}px, image blur: {image_blur})")

@@ -311,10 +311,11 @@ async def save_mockup_frame(
 
         return {"success": True, "photo": photo.filename, "time_of_day": time_of_day, "finish": finish, "frames_count": len(frames)}
 
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        logger.error(f"[MOCKUP API] JSON decode error: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail="Invalid frames_data JSON")
     except Exception as e:
-        logger.error(f"[MOCKUP API] Error saving frames: {e}")
+        logger.error(f"[MOCKUP API] Error saving frames: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -323,7 +324,8 @@ async def test_preview_mockup(
     billboard_photo: UploadFile = File(...),
     creative: UploadFile = File(...),
     frame_points: str = Form(...),
-    config: str = Form("{}")
+    config: str = Form("{}"),
+    time_of_day: str = Form("day")
 ):
     """Generate a test preview of how the creative will look on the billboard with current config"""
     import json
@@ -363,7 +365,8 @@ async def test_preview_mockup(
             billboard_img,
             creative_img,
             points,
-            config=config_dict
+            config=config_dict,
+            time_of_day=time_of_day
         )
 
         # Encode result as JPEG

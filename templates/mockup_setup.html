@@ -902,6 +902,10 @@
         formData.append('frame_points', JSON.stringify(currentPoints));
         formData.append('config', JSON.stringify(frameConfig));
 
+        // Send time_of_day for context-aware depth effects
+        const timeOfDay = document.getElementById('setup-time-of-day').value || 'day';
+        formData.append('time_of_day', timeOfDay);
+
         // Send to backend
         const response = await fetch('/api/mockup/test-preview', {
           method: 'POST',
