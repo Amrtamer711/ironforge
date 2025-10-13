@@ -1355,7 +1355,7 @@
       // Adaptive padding based on perspective distortion (depth perception effect)
       // Smaller sides indicate greater depth/distance, requiring more padding
       // Get depth multiplier from config slider
-      const depthMultiplier = parseInt(document.getElementById('config-depth-multiplier').value);
+      const depthMultiplier = parseInt(document.getElementById('frame-depth-multiplier').value);
 
       if (widthRatio > 1.1) {
         // Top wider: bottom recedes (further away), push bottom out more
