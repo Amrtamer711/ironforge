@@ -1263,7 +1263,7 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                             raise Exception("Failed to generate AI creative")
 
                         # Generate mockup with time_of_day and finish
-                        result_path = mockup_generator.generate_mockup(
+                        result_path, _ = mockup_generator.generate_mockup(
                             location_key,
                             [ai_creative_path],
                             time_of_day=time_of_day,
@@ -1314,7 +1314,7 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                     )
 
                     try:
-                        result_path = mockup_generator.generate_mockup(
+                        result_path, _ = mockup_generator.generate_mockup(
                             location_key,
                             uploaded_creatives,
                             time_of_day=time_of_day,
