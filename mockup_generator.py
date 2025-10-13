@@ -97,13 +97,13 @@ def warp_creative_to_billboard(
     H = cv2.getPerspectiveTransform(src_pts, adjusted_dst_pts)
 
     # Warp upscaled creative to billboard perspective with high-quality interpolation
+    # Use BORDER_REPLICATE to color borders with inward edge pixels instead of black
     warped = cv2.warpPerspective(
         creative_upscaled,
         H,
         (billboard_image.shape[1], billboard_image.shape[0]),
         flags=cv2.INTER_LANCZOS4,  # High-quality interpolation for smooth edges
-        borderMode=cv2.BORDER_CONSTANT,
-        borderValue=(0, 0, 0)
+        borderMode=cv2.BORDER_REPLICATE  # Replicate edge pixels for natural borders
     )
 
     # Create high-quality anti-aliased mask using super-sampling
