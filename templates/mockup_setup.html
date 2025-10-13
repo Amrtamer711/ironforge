@@ -423,8 +423,19 @@
     <div class="content">
       <div id="message" class="message"></div>
 
+      <!-- Setup Mode Password Protection -->
+      <div id="setup-password-screen" class="section" style="max-width: 400px; margin: 100px auto; text-align: center; display: block;">
+        <h2 style="margin-bottom: 20px;">🔒 Setup Mode</h2>
+        <p style="color: #6c757d; margin-bottom: 20px;">This section is password protected</p>
+        <div class="form-group">
+          <input type="password" id="setup-password" placeholder="Enter password" style="width: 100%; padding: 12px; font-size: 16px; border: 2px solid #e9ecef; border-radius: 4px;">
+        </div>
+        <button class="btn btn-primary" onclick="verifySetupPassword()" style="width: 100%;">Unlock Setup Mode</button>
+        <p id="password-error" style="color: #dc3545; margin-top: 10px; display: none;">Incorrect password</p>
+      </div>
+
       <!-- Setup Mode -->
-      <div id="setup-section" class="section active">
+      <div id="setup-section" class="section" style="display: none;">
         <h2 style="margin-bottom: 20px;">Setup Billboard Frames</h2>
 
         <div class="form-group">
@@ -713,6 +724,10 @@
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
 
+    // Password for setup mode (in production, use environment variable or config)
+    const SETUP_PASSWORD = "admin123";  // Change this to your desired password
+    let isSetupAuthenticated = false;
+
     let currentMode = 'setup';
     let previewImg = null;
     let currentPhoto = null;
@@ -990,6 +1005,33 @@
       drawPreview();
     });
 
+    // Verify setup password
+    function verifySetupPassword() {
+      const password = document.getElementById('setup-password').value;
+      const errorMsg = document.getElementById('password-error');
+
+      if (password === SETUP_PASSWORD) {
+        isSetupAuthenticated = true;
+        document.getElementById('setup-password-screen').style.display = 'none';
+        document.getElementById('setup-section').style.display = 'block';
+        errorMsg.style.display = 'none';
+        document.getElementById('setup-password').value = ''; // Clear password field
+        loadPhotoList();
+        showMessage('Setup mode unlocked successfully!', 'success');
+      } else {
+        errorMsg.style.display = 'block';
+        document.getElementById('setup-password').value = ''; // Clear password field
+        document.getElementById('setup-password').focus(); // Re-focus input
+      }
+    }
+
+    // Allow Enter key to submit password
+    document.getElementById('setup-password').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        verifySetupPassword();
+      }
+    });
+
     // Switch between modes
     function switchMode(mode) {
       currentMode = mode;
@@ -1000,9 +1042,28 @@
       document.querySelectorAll('.section').forEach(section => section.classList.remove('active'));
 
       if (mode === 'setup') {
-        document.getElementById('setup-section').classList.add('active');
-        loadPhotoList();
+        // Check if authenticated
+        if (!isSetupAuthenticated) {
+          // Show password screen instead of setup section
+          document.getElementById('setup-password-screen').style.display = 'block';
+          document.getElementById('setup-password-screen').classList.add('active');
+          document.getElementById('setup-section').style.display = 'none';
+          document.getElementById('generate-section').style.display = 'none';
+          // Focus password input
+          setTimeout(() => {
+            document.getElementById('setup-password').focus();
+          }, 100);
+        } else {
+          // Already authenticated - show setup section
+          document.getElementById('setup-password-screen').style.display = 'none';
+          document.getElementById('setup-section').style.display = 'block';
+          document.getElementById('setup-section').classList.add('active');
+          loadPhotoList();
+        }
       } else {
+        // Generate mode - no authentication required
+        document.getElementById('setup-password-screen').style.display = 'none';
+        document.getElementById('generate-section').style.display = 'block';
         document.getElementById('generate-section').classList.add('active');
       }
     }
