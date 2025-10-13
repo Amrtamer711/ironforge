@@ -167,7 +167,13 @@ def warp_creative_to_billboard(
         # Large blur for soft outer edge + small blur for core sharpness
         kernel_size = edge_blur if edge_blur % 2 == 1 else edge_blur + 1
         mask_large = cv2.GaussianBlur(mask_linear, (kernel_size, kernel_size), sigmaX=edge_blur/2.5)
-        mask_small = cv2.GaussianBlur(mask_linear, (max(3, kernel_size//2), max(3, kernel_size//2)), sigmaX=edge_blur/6.0)
+
+        # Calculate small kernel size - must be odd and at least 3
+        small_kernel = kernel_size // 2
+        if small_kernel % 2 == 0:  # If even, make it odd
+            small_kernel = small_kernel + 1
+        small_kernel = max(3, small_kernel)  # Minimum size is 3
+        mask_small = cv2.GaussianBlur(mask_linear, (small_kernel, small_kernel), sigmaX=edge_blur/6.0)
 
         # Blend: core sharp, edges soft (80% soft blur, 20% sharp)
         mask_linear = mask_large * 0.8 + mask_small * 0.2
