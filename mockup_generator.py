@@ -14,10 +14,13 @@ logger = logging.getLogger("proposal-bot")
 # Mockups storage directory
 if os.path.exists("/data/"):
     MOCKUPS_DIR = Path("/data/mockups")
+    logger.info(f"[MOCKUP INIT] Using PRODUCTION mockups directory: {MOCKUPS_DIR}")
 else:
     MOCKUPS_DIR = Path(__file__).parent / "data" / "mockups"
+    logger.info(f"[MOCKUP INIT] Using DEVELOPMENT mockups directory: {MOCKUPS_DIR}")
 
 MOCKUPS_DIR.mkdir(parents=True, exist_ok=True)
+logger.info(f"[MOCKUP INIT] Mockups directory exists: {MOCKUPS_DIR.exists()}, writable: {os.access(MOCKUPS_DIR, os.W_OK)}")
 
 
 def extend_image_borders_smart(image: np.ndarray, extend_pixels: int, method: str = 'inpaint') -> np.ndarray:
@@ -599,12 +602,33 @@ def get_location_photos_dir(location_key: str, time_of_day: str = "day", finish:
 def save_location_photo(location_key: str, photo_filename: str, photo_data: bytes, time_of_day: str = "day", finish: str = "gold") -> Path:
     """Save a location photo to disk with time_of_day and finish."""
     location_dir = get_location_photos_dir(location_key, time_of_day, finish)
+
+    logger.info(f"[MOCKUP] Creating directory: {location_dir}")
     location_dir.mkdir(parents=True, exist_ok=True)
 
     photo_path = location_dir / photo_filename
-    photo_path.write_bytes(photo_data)
+    logger.info(f"[MOCKUP] Writing {len(photo_data)} bytes to: {photo_path}")
 
-    logger.info(f"[MOCKUP] Saved photo for location '{location_key}/{time_of_day}/{finish}': {photo_path}")
+    try:
+        photo_path.write_bytes(photo_data)
+
+        # Verify the file was written correctly
+        if photo_path.exists():
+            actual_size = photo_path.stat().st_size
+            logger.info(f"[MOCKUP] ✓ Photo saved successfully: {photo_path} ({actual_size} bytes)")
+
+            # Verify we can read it back
+            test_read = photo_path.read_bytes()
+            if len(test_read) == len(photo_data):
+                logger.info(f"[MOCKUP] ✓ Photo verified readable")
+            else:
+                logger.error(f"[MOCKUP] ✗ Photo size mismatch! Written: {len(photo_data)}, Read: {len(test_read)}")
+        else:
+            logger.error(f"[MOCKUP] ✗ Photo path does not exist after write: {photo_path}")
+    except Exception as e:
+        logger.error(f"[MOCKUP] ✗ Failed to save photo: {e}", exc_info=True)
+        raise
+
     return photo_path
 
 
