@@ -569,6 +569,25 @@
             </div>
 
             <div>
+              <label style="display: block; margin-bottom: 8px;">
+                <strong>Light Direction:</strong> <span id="frame-light-direction-label">Top</span>
+              </label>
+              <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; max-width: 150px;">
+                <button type="button" class="light-dir-btn" data-direction="top-left" style="grid-column: 1; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Top Left">↖</button>
+                <button type="button" class="light-dir-btn active" data-direction="top" style="grid-column: 2; padding: 8px; border: 2px solid #667eea; background: #e3f2fd; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Top">↑</button>
+                <button type="button" class="light-dir-btn" data-direction="top-right" style="grid-column: 3; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Top Right">↗</button>
+                <button type="button" class="light-dir-btn" data-direction="left" style="grid-column: 1; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Left">←</button>
+                <button type="button" class="light-dir-btn" data-direction="center" style="grid-column: 2; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Center">●</button>
+                <button type="button" class="light-dir-btn" data-direction="right" style="grid-column: 3; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Right">→</button>
+                <button type="button" class="light-dir-btn" data-direction="bottom-left" style="grid-column: 1; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Bottom Left">↙</button>
+                <button type="button" class="light-dir-btn" data-direction="bottom" style="grid-column: 2; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Bottom">↓</button>
+                <button type="button" class="light-dir-btn" data-direction="bottom-right" style="grid-column: 3; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Bottom Right">↘</button>
+              </div>
+              <input type="hidden" id="frame-light-direction" value="top">
+              <small style="color: #0c5460; display: block; margin-top: 5px;">Light source direction for day mode depth effects</small>
+            </div>
+
+            <div>
               <label for="frame-image-blur" style="display: block; margin-bottom: 5px;">
                 <strong>Image Blur:</strong> <span id="frame-image-blur-value">0</span>
               </label>
@@ -873,6 +892,41 @@
       updateRangeSliderFill(slider);
     });
 
+    // Light direction button handler
+    document.querySelectorAll('.light-dir-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        // Remove active class from all buttons
+        document.querySelectorAll('.light-dir-btn').forEach(b => {
+          b.style.border = '2px solid #dee2e6';
+          b.style.background = 'white';
+          b.classList.remove('active');
+        });
+
+        // Add active class to clicked button
+        this.style.border = '2px solid #667eea';
+        this.style.background = '#e3f2fd';
+        this.classList.add('active');
+
+        // Update hidden input and label
+        const direction = this.dataset.direction;
+        document.getElementById('frame-light-direction').value = direction;
+
+        // Update label text
+        const labelMap = {
+          'top-left': 'Top Left',
+          'top': 'Top',
+          'top-right': 'Top Right',
+          'left': 'Left',
+          'center': 'Center',
+          'right': 'Right',
+          'bottom-left': 'Bottom Left',
+          'bottom': 'Bottom',
+          'bottom-right': 'Bottom Right'
+        };
+        document.getElementById('frame-light-direction-label').textContent = labelMap[direction];
+      });
+    });
+
     // Test preview toggle
     document.getElementById('test-preview-toggle').addEventListener('change', function(e) {
       testPreviewMode = e.target.checked;
@@ -921,6 +975,7 @@
           contrast: parseInt(document.getElementById('frame-contrast').value),
           saturation: parseInt(document.getElementById('frame-saturation').value),
           depthMultiplier: parseInt(document.getElementById('frame-depth-multiplier').value),
+          lightDirection: document.getElementById('frame-light-direction').value,
           imageBlur: parseInt(document.getElementById('frame-image-blur').value),
           edgeBlur: parseInt(document.getElementById('frame-edge-blur').value),
           overlayOpacity: parseInt(document.getElementById('frame-overlay-opacity').value),
@@ -1742,6 +1797,7 @@
         contrast: parseInt(document.getElementById('frame-contrast').value),
         saturation: parseInt(document.getElementById('frame-saturation').value),
         depthMultiplier: parseInt(document.getElementById('frame-depth-multiplier').value),
+        lightDirection: document.getElementById('frame-light-direction').value,
         imageBlur: parseInt(document.getElementById('frame-image-blur').value),
         edgeBlur: parseInt(document.getElementById('frame-edge-blur').value),
         overlayOpacity: parseInt(document.getElementById('frame-overlay-opacity').value),
@@ -1781,6 +1837,17 @@
       document.getElementById('frame-saturation-value').textContent = '100';
       document.getElementById('frame-depth-multiplier').value = 15;
       document.getElementById('frame-depth-value').textContent = '15';
+      // Reset light direction to top (default)
+      document.getElementById('frame-light-direction').value = 'top';
+      document.getElementById('frame-light-direction-label').textContent = 'Top';
+      document.querySelectorAll('.light-dir-btn').forEach(b => {
+        b.style.border = '2px solid #dee2e6';
+        b.style.background = 'white';
+        b.classList.remove('active');
+      });
+      document.querySelector('.light-dir-btn[data-direction="top"]').style.border = '2px solid #667eea';
+      document.querySelector('.light-dir-btn[data-direction="top"]').style.background = '#e3f2fd';
+      document.querySelector('.light-dir-btn[data-direction="top"]').classList.add('active');
       document.getElementById('frame-image-blur').value = 0;
       document.getElementById('frame-image-blur-value').textContent = '0';
       document.getElementById('frame-edge-blur').value = 8;
@@ -1874,6 +1941,7 @@
           contrast: parseInt(document.getElementById('frame-contrast').value),
           saturation: parseInt(document.getElementById('frame-saturation').value),
           depthMultiplier: parseInt(document.getElementById('frame-depth-multiplier').value),
+          lightDirection: document.getElementById('frame-light-direction').value,
           imageBlur: parseInt(document.getElementById('frame-image-blur').value),
           edgeBlur: parseInt(document.getElementById('frame-edge-blur').value),
           overlayOpacity: parseInt(document.getElementById('frame-overlay-opacity').value),
