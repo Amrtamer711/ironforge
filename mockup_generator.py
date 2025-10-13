@@ -521,8 +521,35 @@ def warp_creative_to_billboard(
         warped_enhanced = np.clip(warped_enhanced, 0, 255)
         logger.info(f"[MOCKUP] Applied light wrap for photorealistic color bleeding (blur: {edge_blur})")
 
+    # Prevent green screen/background bleed-through at high edge blur
+    # When mask is heavily blurred, fill billboard frame area with creative edge color
+    # This prevents green screens or adjacent billboards from showing through
+    if edge_blur > 12:
+        # Find pixels that are part of the frame (mask > 0.05)
+        frame_region = mask_3ch[:,:,0] > 0.05
+
+        if np.sum(frame_region) > 0:
+            # Calculate average color from creative edges within frame
+            edge_region = (mask_3ch[:,:,0] > 0.05) & (mask_3ch[:,:,0] < 0.95)
+            if np.sum(edge_region) > 100:  # Enough edge pixels
+                edge_pixels = warped_enhanced[edge_region]
+                fill_color = np.mean(edge_pixels, axis=0)
+            else:
+                # Fallback: use overall average of warped creative in frame
+                fill_color = np.mean(warped_enhanced[frame_region], axis=0)
+
+            # Create filled billboard (replace frame area with fill color)
+            billboard_filled = billboard_image.copy().astype(np.float32)
+            billboard_filled[frame_region] = fill_color
+
+            logger.info(f"[MOCKUP] Pre-filled billboard frame to prevent background bleed (edge blur: {edge_blur})")
+        else:
+            billboard_filled = billboard_image.astype(np.float32)
+    else:
+        billboard_filled = billboard_image.astype(np.float32)
+
     # Blend with adjusted opacity to let billboard details enhance the creative
-    result = (billboard_image.astype(np.float32) * (1 - mask_3ch * creative_opacity) +
+    result = (billboard_filled * (1 - mask_3ch * creative_opacity) +
               warped_enhanced * mask_3ch * creative_opacity).astype(np.uint8)
 
     # Apply unsharp mask to enhance edges and reduce stretching blur
