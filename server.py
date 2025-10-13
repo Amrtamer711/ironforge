@@ -480,20 +480,60 @@ async def get_mockup_photo(location_key: str, photo_filename: str, time_of_day: 
     """Get a specific photo file"""
     import mockup_generator
     import db
+    import os
+
+    logger.info(f"[PHOTO GET] Request for photo: {location_key}/{photo_filename} (time_of_day={time_of_day}, finish={finish})")
 
     # If "all" is specified, find the photo in any variation
     if time_of_day == "all" or finish == "all":
+        logger.info(f"[PHOTO GET] Searching across variations (all mode)")
         variations = db.list_mockup_variations(location_key)
+        logger.info(f"[PHOTO GET] Available variations: {variations}")
+
+        all_checked_paths = []
         for tod in variations:
             for fin in variations[tod]:
                 photo_path = mockup_generator.get_location_photos_dir(location_key, tod, fin) / photo_filename
+                all_checked_paths.append(str(photo_path))
+                logger.info(f"[PHOTO GET] Checking: {photo_path}")
+
                 if photo_path.exists():
+                    file_size = os.path.getsize(photo_path)
+                    logger.info(f"[PHOTO GET] ✓ FOUND: {photo_path} ({file_size} bytes)")
                     return FileResponse(photo_path)
-        raise HTTPException(status_code=404, detail="Photo not found")
+                else:
+                    logger.info(f"[PHOTO GET] ✗ NOT FOUND: {photo_path}")
+
+        logger.error(f"[PHOTO GET] ✗ Photo not found in any variation. Checked paths: {all_checked_paths}")
+
+        # Check if directory exists at all
+        mockups_base = mockup_generator.MOCKUPS_DIR / location_key
+        if mockups_base.exists():
+            logger.info(f"[PHOTO GET] Base directory exists: {mockups_base}")
+            logger.info(f"[PHOTO GET] Contents: {list(os.walk(mockups_base))}")
+        else:
+            logger.error(f"[PHOTO GET] Base directory doesn't exist: {mockups_base}")
+
+        raise HTTPException(status_code=404, detail=f"Photo not found: {photo_filename}")
     else:
         photo_path = mockup_generator.get_location_photos_dir(location_key, time_of_day, finish) / photo_filename
+        logger.info(f"[PHOTO GET] Direct path request: {photo_path}")
+
         if not photo_path.exists():
-            raise HTTPException(status_code=404, detail="Photo not found")
+            logger.error(f"[PHOTO GET] ✗ Photo not found: {photo_path}")
+
+            # Check parent directories
+            parent_dir = photo_path.parent
+            if parent_dir.exists():
+                logger.info(f"[PHOTO GET] Parent directory exists: {parent_dir}")
+                logger.info(f"[PHOTO GET] Contents: {list(parent_dir.iterdir())}")
+            else:
+                logger.error(f"[PHOTO GET] Parent directory doesn't exist: {parent_dir}")
+
+            raise HTTPException(status_code=404, detail=f"Photo not found: {photo_filename}")
+
+        file_size = os.path.getsize(photo_path)
+        logger.info(f"[PHOTO GET] ✓ Found photo: {photo_path} ({file_size} bytes)")
         return FileResponse(photo_path)
 
 
