@@ -276,14 +276,18 @@ async def save_mockup_frame(
     import mockup_generator
 
     try:
-        # Parse frames data (list of frames, each frame is list of 4 points)
+        # Parse frames data (list of frames, each frame has points and config)
         frames = json.loads(frames_data)
         if not isinstance(frames, list) or len(frames) == 0:
             raise HTTPException(status_code=400, detail="frames_data must be a non-empty list of frames")
 
-        # Validate each frame has 4 points
+        # Validate each frame has points array with 4 points and optional config
         for i, frame in enumerate(frames):
-            if not isinstance(frame, list) or len(frame) != 4:
+            if not isinstance(frame, dict):
+                raise HTTPException(status_code=400, detail=f"Frame {i} must be an object with 'points' and 'config'")
+            if 'points' not in frame:
+                raise HTTPException(status_code=400, detail=f"Frame {i} missing 'points' field")
+            if not isinstance(frame['points'], list) or len(frame['points']) != 4:
                 raise HTTPException(status_code=400, detail=f"Frame {i} must have exactly 4 corner points")
 
         # Parse config if provided
