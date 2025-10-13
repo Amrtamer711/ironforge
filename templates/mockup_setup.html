@@ -730,6 +730,147 @@
           </select>
         </div>
 
+        <div class="form-group" id="generate-template-selection" style="display: none;">
+          <label for="generate-template">Select Template</label>
+          <select id="generate-template">
+            <option value="">-- Select a template --</option>
+          </select>
+          <small style="color: #6c757d; display: block; margin-top: 5px;">Choose a specific billboard photo template</small>
+        </div>
+
+        <!-- Generate Mode Toggles (shown after template selection) -->
+        <div id="generate-frame-config-section" style="display: none; background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+          <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 1.1rem; color: #495057;">Frame Configuration</h3>
+          <small style="color: #6c757d; display: block; margin-bottom: 15px;">Adjust these settings to customize your mockup</small>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <!-- Left Column -->
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+              <div>
+                <label for="gen-frame-brightness" style="display: block; margin-bottom: 5px;">
+                  <strong>Brightness:</strong> <span id="gen-frame-brightness-value">100</span>%
+                </label>
+                <input type="range" id="gen-frame-brightness" min="50" max="150" value="100" style="width: 100%;">
+                <small style="color: #0c5460; display: block; margin-top: 2px;">Creative brightness</small>
+              </div>
+
+              <div>
+                <label for="gen-frame-contrast" style="display: block; margin-bottom: 5px;">
+                  <strong>Contrast:</strong> <span id="gen-frame-contrast-value">100</span>%
+                </label>
+                <input type="range" id="gen-frame-contrast" min="50" max="150" value="100" style="width: 100%;">
+                <small style="color: #0c5460; display: block; margin-top: 2px;">Creative contrast</small>
+              </div>
+
+              <div>
+                <label for="gen-frame-saturation" style="display: block; margin-bottom: 5px;">
+                  <strong>Saturation:</strong> <span id="gen-frame-saturation-value">100</span>%
+                </label>
+                <input type="range" id="gen-frame-saturation" min="0" max="150" value="100" style="width: 100%;">
+                <small style="color: #0c5460; display: block; margin-top: 2px;">Color intensity</small>
+              </div>
+
+              <div>
+                <label for="gen-frame-image-blur" style="display: block; margin-bottom: 5px;">
+                  <strong>Image Blur:</strong> <span id="gen-frame-image-blur-value">0</span>px
+                </label>
+                <input type="range" id="gen-frame-image-blur" min="0" max="10" value="0" style="width: 100%;">
+                <small style="color: #0c5460; display: block; margin-top: 2px;">Blur entire creative</small>
+              </div>
+
+              <div>
+                <label for="gen-frame-edge-blur" style="display: block; margin-bottom: 5px;">
+                  <strong>Edge Blur:</strong> <span id="gen-frame-edge-blur-value">1</span>px
+                </label>
+                <input type="range" id="gen-frame-edge-blur" min="1" max="20" value="1" style="width: 100%;">
+                <small style="color: #0c5460; display: block; margin-top: 2px;">Edge blur amount (1 = off)</small>
+              </div>
+
+              <div>
+                <label for="gen-frame-overlay-opacity" style="display: block; margin-bottom: 5px;">
+                  <strong>Billboard Overlay:</strong> <span id="gen-frame-overlay-value">0</span>%
+                </label>
+                <input type="range" id="gen-frame-overlay-opacity" min="0" max="100" value="0" style="width: 100%;">
+                <small style="color: #0c5460; display: block; margin-top: 2px;">Billboard texture blending</small>
+              </div>
+            </div>
+
+            <!-- Right Column -->
+            <div style="display: flex; flex-direction: column; gap: 15px;">
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div>
+                  <label style="display: block; margin-bottom: 5px;"><strong>Light Direction</strong></label>
+                  <small style="color: #0c5460; display: block; margin-bottom: 8px;" id="gen-frame-light-direction-label">Top</small>
+                  <input type="hidden" id="gen-frame-light-direction" value="top">
+                  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px;">
+                    <button type="button" class="gen-light-dir-btn" data-direction="top-left" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;">↖</button>
+                    <button type="button" class="gen-light-dir-btn active" data-direction="top" style="padding: 8px; border: 2px solid #667eea; border-radius: 4px; background: #e3f2fd; cursor: pointer; font-size: 14px;">↑</button>
+                    <button type="button" class="gen-light-dir-btn" data-direction="top-right" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;">↗</button>
+                    <button type="button" class="gen-light-dir-btn" data-direction="left" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;">←</button>
+                    <button type="button" class="gen-light-dir-btn" data-direction="center" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;">·</button>
+                    <button type="button" class="gen-light-dir-btn" data-direction="right" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;">→</button>
+                    <button type="button" class="gen-light-dir-btn" data-direction="bottom-left" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;">↙</button>
+                    <button type="button" class="gen-light-dir-btn" data-direction="bottom" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;">↓</button>
+                    <button type="button" class="gen-light-dir-btn" data-direction="bottom-right" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 4px; background: white; cursor: pointer; font-size: 14px;">↘</button>
+                  </div>
+                </div>
+
+                <div>
+                  <label for="gen-frame-depth-multiplier" style="display: block; margin-bottom: 5px;">
+                    <strong>Depth Perception:</strong> <span id="gen-frame-depth-value">15</span>x
+                  </label>
+                  <input type="range" id="gen-frame-depth-multiplier" min="5" max="40" value="15" style="width: 100%;">
+                  <small style="color: #0c5460; display: block; margin-top: 2px;">3D depth effect</small>
+                </div>
+              </div>
+
+              <div>
+                <label for="gen-frame-shadow-intensity" style="display: block; margin-bottom: 5px;">
+                  <strong>Shadow Intensity:</strong> <span id="gen-frame-shadow-value">0</span>%
+                </label>
+                <input type="range" id="gen-frame-shadow-intensity" min="0" max="100" value="0" style="width: 100%;">
+                <small style="color: #0c5460; display: block; margin-top: 2px;">Drop shadow strength</small>
+              </div>
+
+              <div>
+                <label for="gen-frame-lighting-adjustment" style="display: block; margin-bottom: 5px;">
+                  <strong>Lighting Adjustment:</strong> <span id="gen-frame-lighting-value">0</span>%
+                </label>
+                <input type="range" id="gen-frame-lighting-adjustment" min="-50" max="50" value="0" style="width: 100%;">
+                <small style="color: #0c5460; display: block; margin-top: 2px;">Match billboard lighting</small>
+              </div>
+
+              <div>
+                <label for="gen-frame-color-temperature" style="display: block; margin-bottom: 5px;">
+                  <strong>Color Temperature:</strong> <span id="gen-frame-temperature-value">0</span>
+                </label>
+                <input type="range" id="gen-frame-color-temperature" min="-50" max="50" value="0" style="width: 100%;">
+                <small style="color: #0c5460; display: block; margin-top: 2px;">Warm ↔ Cool</small>
+              </div>
+
+              <div>
+                <label for="gen-frame-vignette" style="display: block; margin-bottom: 5px;">
+                  <strong>Vignette:</strong> <span id="gen-frame-vignette-value">0</span>%
+                </label>
+                <input type="range" id="gen-frame-vignette" min="0" max="100" value="0" style="width: 100%;">
+                <small style="color: #0c5460; display: block; margin-top: 2px;">Corner darkening</small>
+              </div>
+
+              <div>
+                <label for="gen-frame-edge-smoother" style="display: block; margin-bottom: 5px;">
+                  <strong>Edge Smoother:</strong> <span id="gen-frame-edge-smoother-value">3</span>x
+                </label>
+                <input type="range" id="gen-frame-edge-smoother" min="1" max="10" value="3" style="width: 100%;">
+                <small style="color: #0c5460; display: block; margin-top: 2px;">Anti-aliasing smoothness (higher = softer edges)</small>
+              </div>
+            </div>
+          </div>
+
+          <small style="color: #0c5460; display: block; margin-top: 10px; text-align: center;">
+            💡 Tip: Adjust these settings to match the billboard's lighting and perspective for maximum realism
+          </small>
+        </div>
+
         <div class="creative-upload">
           <div class="form-group">
             <label for="creative-photo">Upload Creative/Ad Image</label>
@@ -2095,6 +2236,30 @@
       formData.append('time_of_day', timeOfDay);
       formData.append('finish', finish);
 
+      // If a template is selected, use its specific photo and send custom config
+      if (selectedTemplateConfig) {
+        formData.append('specific_photo', selectedTemplateConfig.photo);
+
+        // Collect current config values from controls
+        const frameConfig = {
+          brightness: parseInt(document.getElementById('gen-frame-brightness').value),
+          contrast: parseInt(document.getElementById('gen-frame-contrast').value),
+          saturation: parseInt(document.getElementById('gen-frame-saturation').value),
+          depthMultiplier: parseInt(document.getElementById('gen-frame-depth-multiplier').value),
+          lightDirection: document.getElementById('gen-frame-light-direction').value,
+          imageBlur: parseInt(document.getElementById('gen-frame-image-blur').value),
+          edgeBlur: parseInt(document.getElementById('gen-frame-edge-blur').value),
+          overlayOpacity: parseInt(document.getElementById('gen-frame-overlay-opacity').value),
+          shadowIntensity: parseInt(document.getElementById('gen-frame-shadow-intensity').value),
+          lightingAdjustment: parseInt(document.getElementById('gen-frame-lighting-adjustment').value),
+          colorTemperature: parseInt(document.getElementById('gen-frame-color-temperature').value),
+          vignette: parseInt(document.getElementById('gen-frame-vignette').value),
+          edgeSmoother: parseInt(document.getElementById('gen-frame-edge-smoother').value)
+        };
+
+        formData.append('frame_config', JSON.stringify(frameConfig));
+      }
+
       // If AI prompt is provided, use AI mode (ignore uploaded file)
       if (aiPrompt) {
         formData.append('ai_prompt', aiPrompt);
@@ -2161,6 +2326,225 @@
     document.getElementById('creative-photo').addEventListener('change', updateGenerateButtonState);
     document.getElementById('ai-creative-prompt').addEventListener('input', updateGenerateButtonState);
     document.getElementById('generate-location').addEventListener('change', updateGenerateButtonState);
+
+    // Load templates when location/time/finish changes
+    let selectedTemplateConfig = null;
+
+    async function loadTemplatesForGenerate() {
+      const locationKey = document.getElementById('generate-location').value;
+      const timeOfDay = document.getElementById('generate-time-of-day').value;
+      const finish = document.getElementById('generate-finish').value;
+
+      if (!locationKey) {
+        document.getElementById('generate-template-selection').style.display = 'none';
+        document.getElementById('generate-frame-config-section').style.display = 'none';
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/mockup/templates/${locationKey}?time_of_day=${timeOfDay}&finish=${finish}`);
+        const data = await response.json();
+
+        const templateSelect = document.getElementById('generate-template');
+        templateSelect.innerHTML = '<option value="">-- Select a template --</option>';
+
+        if (data.templates && data.templates.length > 0) {
+          data.templates.forEach(template => {
+            const displayName = `${template.photo} (${template.time_of_day}/${template.finish}, ${template.frame_count} frame${template.frame_count > 1 ? 's' : ''})`;
+            const option = document.createElement('option');
+            option.value = JSON.stringify({
+              photo: template.photo,
+              time_of_day: template.time_of_day,
+              finish: template.finish,
+              config: template.config
+            });
+            option.textContent = displayName;
+            templateSelect.appendChild(option);
+          });
+
+          document.getElementById('generate-template-selection').style.display = 'block';
+        } else {
+          document.getElementById('generate-template-selection').style.display = 'none';
+          document.getElementById('generate-frame-config-section').style.display = 'none';
+        }
+      } catch (err) {
+        console.error('Error loading templates:', err);
+        showMessage('Failed to load templates', 'error');
+      }
+    }
+
+    // Load and display config when template is selected
+    function loadTemplateConfig() {
+      const templateSelect = document.getElementById('generate-template');
+      const selectedValue = templateSelect.value;
+
+      if (!selectedValue) {
+        document.getElementById('generate-frame-config-section').style.display = 'none';
+        selectedTemplateConfig = null;
+        return;
+      }
+
+      try {
+        const templateData = JSON.parse(selectedValue);
+        selectedTemplateConfig = templateData;
+        const config = templateData.config || {};
+
+        // Populate all config controls with saved values
+        document.getElementById('gen-frame-brightness').value = config.brightness || 100;
+        document.getElementById('gen-frame-brightness-value').textContent = config.brightness || 100;
+        document.getElementById('gen-frame-contrast').value = config.contrast || 100;
+        document.getElementById('gen-frame-contrast-value').textContent = config.contrast || 100;
+        document.getElementById('gen-frame-saturation').value = config.saturation || 100;
+        document.getElementById('gen-frame-saturation-value').textContent = config.saturation || 100;
+        document.getElementById('gen-frame-depth-multiplier').value = config.depthMultiplier || 15;
+        document.getElementById('gen-frame-depth-value').textContent = config.depthMultiplier || 15;
+        document.getElementById('gen-frame-light-direction').value = config.lightDirection || 'top';
+        document.getElementById('gen-frame-image-blur').value = config.imageBlur || 0;
+        document.getElementById('gen-frame-image-blur-value').textContent = config.imageBlur || 0;
+        document.getElementById('gen-frame-edge-blur').value = config.edgeBlur || 1;
+        document.getElementById('gen-frame-edge-blur-value').textContent = config.edgeBlur || 1;
+        document.getElementById('gen-frame-overlay-opacity').value = config.overlayOpacity || 0;
+        document.getElementById('gen-frame-overlay-value').textContent = config.overlayOpacity || 0;
+        document.getElementById('gen-frame-shadow-intensity').value = config.shadowIntensity || 0;
+        document.getElementById('gen-frame-shadow-value').textContent = config.shadowIntensity || 0;
+        document.getElementById('gen-frame-lighting-adjustment').value = config.lightingAdjustment || 0;
+        document.getElementById('gen-frame-lighting-value').textContent = config.lightingAdjustment || 0;
+        document.getElementById('gen-frame-color-temperature').value = config.colorTemperature || 0;
+        document.getElementById('gen-frame-temperature-value').textContent = config.colorTemperature || 0;
+        document.getElementById('gen-frame-vignette').value = config.vignette || 0;
+        document.getElementById('gen-frame-vignette-value').textContent = config.vignette || 0;
+        document.getElementById('gen-frame-edge-smoother').value = config.edgeSmoother || 3;
+        document.getElementById('gen-frame-edge-smoother-value').textContent = config.edgeSmoother || 3;
+
+        // Update light direction buttons
+        const lightDirection = config.lightDirection || 'top';
+        document.querySelectorAll('.gen-light-dir-btn').forEach(btn => {
+          btn.style.border = '2px solid #dee2e6';
+          btn.style.background = 'white';
+          btn.classList.remove('active');
+        });
+        const activeBtn = document.querySelector(`.gen-light-dir-btn[data-direction="${lightDirection}"]`);
+        if (activeBtn) {
+          activeBtn.style.border = '2px solid #667eea';
+          activeBtn.style.background = '#e3f2fd';
+          activeBtn.classList.add('active');
+        }
+
+        const labelMap = {
+          'top-left': 'Top Left',
+          'top': 'Top',
+          'top-right': 'Top Right',
+          'left': 'Left',
+          'center': 'Center',
+          'right': 'Right',
+          'bottom-left': 'Bottom Left',
+          'bottom': 'Bottom',
+          'bottom-right': 'Bottom Right'
+        };
+        document.getElementById('gen-frame-light-direction-label').textContent = labelMap[lightDirection] || 'Top';
+
+        // Update all range slider fills
+        document.querySelectorAll('#generate-frame-config-section input[type="range"]').forEach(slider => {
+          updateRangeSliderFill(slider);
+        });
+
+        document.getElementById('generate-frame-config-section').style.display = 'block';
+      } catch (err) {
+        console.error('Error loading template config:', err);
+        showMessage('Error loading template configuration', 'error');
+      }
+    }
+
+    // Add event listeners for generate mode controls
+    document.getElementById('generate-location').addEventListener('change', loadTemplatesForGenerate);
+    document.getElementById('generate-time-of-day').addEventListener('change', loadTemplatesForGenerate);
+    document.getElementById('generate-finish').addEventListener('change', loadTemplatesForGenerate);
+    document.getElementById('generate-template').addEventListener('change', loadTemplateConfig);
+
+    // Add event listeners for all generate mode range sliders
+    document.getElementById('gen-frame-brightness').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-brightness-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-contrast').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-contrast-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-saturation').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-saturation-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-depth-multiplier').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-depth-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-image-blur').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-image-blur-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-edge-blur').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-edge-blur-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-overlay-opacity').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-overlay-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-shadow-intensity').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-shadow-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-lighting-adjustment').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-lighting-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-color-temperature').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-temperature-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-vignette').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-vignette-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-edge-smoother').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-edge-smoother-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+
+    // Light direction button handler for generate mode
+    document.querySelectorAll('.gen-light-dir-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        // Remove active class from all buttons
+        document.querySelectorAll('.gen-light-dir-btn').forEach(b => {
+          b.style.border = '2px solid #dee2e6';
+          b.style.background = 'white';
+          b.classList.remove('active');
+        });
+
+        // Add active class to clicked button
+        this.style.border = '2px solid #667eea';
+        this.style.background = '#e3f2fd';
+        this.classList.add('active');
+
+        // Update hidden input and label
+        const direction = this.dataset.direction;
+        document.getElementById('gen-frame-light-direction').value = direction;
+
+        // Update label text
+        const labelMap = {
+          'top-left': 'Top Left',
+          'top': 'Top',
+          'top-right': 'Top Right',
+          'left': 'Left',
+          'center': 'Center',
+          'right': 'Right',
+          'bottom-left': 'Bottom Left',
+          'bottom': 'Bottom',
+          'bottom-right': 'Bottom Right'
+        };
+        document.getElementById('gen-frame-light-direction-label').textContent = labelMap[direction];
+      });
+    });
 
     // Initialize
     loadLocations();

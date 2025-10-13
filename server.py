@@ -413,6 +413,54 @@ async def list_mockup_photos(location_key: str, time_of_day: str = "all", finish
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/mockup/templates/{location_key}")
+async def list_mockup_templates(location_key: str, time_of_day: str = "all", finish: str = "all"):
+    """List all templates (photos with frame configs) for a location"""
+    import db
+
+    try:
+        templates = []
+
+        # If "all" is specified, aggregate from all variations
+        if time_of_day == "all" or finish == "all":
+            variations = db.list_mockup_variations(location_key)
+            for tod in variations:
+                for fin in variations[tod]:
+                    photos = db.list_mockup_photos(location_key, tod, fin)
+                    for photo in photos:
+                        # Get frame count and config
+                        frames_data = db.get_mockup_frames(location_key, photo, tod, fin)
+                        if frames_data:
+                            # Get first frame's config (all frames typically share same config in UI)
+                            frame_config = frames_data[0].get("config", {}) if frames_data else {}
+                            templates.append({
+                                "photo": photo,
+                                "time_of_day": tod,
+                                "finish": fin,
+                                "frame_count": len(frames_data),
+                                "config": frame_config
+                            })
+        else:
+            photos = db.list_mockup_photos(location_key, time_of_day, finish)
+            for photo in photos:
+                # Get frame count and config
+                frames_data = db.get_mockup_frames(location_key, photo, time_of_day, finish)
+                if frames_data:
+                    frame_config = frames_data[0].get("config", {}) if frames_data else {}
+                    templates.append({
+                        "photo": photo,
+                        "time_of_day": time_of_day,
+                        "finish": finish,
+                        "frame_count": len(frames_data),
+                        "config": frame_config
+                    })
+
+        return {"templates": templates}
+    except Exception as e:
+        logger.error(f"[MOCKUP API] Error listing templates: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/mockup/photo/{location_key}/{photo_filename}")
 async def get_mockup_photo(location_key: str, photo_filename: str, time_of_day: str = "all", finish: str = "all"):
     """Get a specific photo file"""
@@ -472,16 +520,28 @@ async def generate_mockup_api(
     time_of_day: str = Form("all"),
     finish: str = Form("all"),
     ai_prompt: Optional[str] = Form(None),
-    creative: Optional[UploadFile] = File(None)
+    creative: Optional[UploadFile] = File(None),
+    specific_photo: Optional[str] = Form(None),
+    frame_config: Optional[str] = Form(None)
 ):
     """Generate a mockup by warping creative onto billboard (upload or AI-generated)"""
     import tempfile
     import mockup_generator
     from pathlib import Path
+    import json
 
     creative_path = None
 
     try:
+        # Parse frame config if provided
+        config_dict = None
+        if frame_config:
+            try:
+                config_dict = json.loads(frame_config)
+                logger.info(f"[MOCKUP API] Using custom frame config: {config_dict}")
+            except json.JSONDecodeError:
+                logger.warning(f"[MOCKUP API] Invalid frame config JSON, ignoring")
+
         # Validate location
         if location_key not in config.LOCATION_METADATA:
             raise HTTPException(status_code=400, detail=f"Invalid location: {location_key}")
@@ -607,8 +667,15 @@ Example analogy: If asked to create a "movie poster," you'd create the poster AR
         else:
             raise HTTPException(status_code=400, detail="Either ai_prompt or creative file must be provided")
 
-        # Generate mockup (pass as list) with time_of_day and finish
-        result_path = mockup_generator.generate_mockup(location_key, [creative_path], time_of_day=time_of_day, finish=finish)
+        # Generate mockup (pass as list) with time_of_day, finish, specific_photo, and config override
+        result_path = mockup_generator.generate_mockup(
+            location_key,
+            [creative_path],
+            time_of_day=time_of_day,
+            finish=finish,
+            specific_photo=specific_photo,
+            config_override=config_dict
+        )
 
         if not result_path:
             raise HTTPException(status_code=500, detail="Failed to generate mockup")

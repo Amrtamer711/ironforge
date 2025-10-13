@@ -730,7 +730,8 @@ def generate_mockup(
     output_path: Optional[Path] = None,
     specific_photo: Optional[str] = None,
     time_of_day: str = "day",
-    finish: str = "gold"
+    finish: str = "gold",
+    config_override: Optional[dict] = None
 ) -> Optional[Path]:
     """
     Generate a mockup by warping creatives onto a location billboard.
@@ -742,6 +743,7 @@ def generate_mockup(
         specific_photo: Optional specific photo filename to use (random if not provided)
         time_of_day: Time of day variation (default: "day")
         finish: Billboard finish (default: "gold")
+        config_override: Optional config dict to override saved frame config
 
     Returns:
         Path to the generated mockup image, or None if failed
@@ -803,9 +805,12 @@ def generate_mockup(
 
         logger.info(f"[MOCKUP] Frame {i+1} raw config: {frame_config}")
 
-        # Merge with photo-level config (frame config takes precedence)
+        # Merge configs: photo_config < frame_config < config_override (highest priority)
         merged_config = photo_config.copy() if photo_config else {}
         merged_config.update(frame_config)
+        if config_override:
+            merged_config.update(config_override)
+            logger.info(f"[MOCKUP] Frame {i+1} applying config override: {config_override}")
 
         logger.info(f"[MOCKUP] Frame {i+1} merged config: {merged_config}")
 
