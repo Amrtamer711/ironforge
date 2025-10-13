@@ -629,13 +629,13 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         {
             "type": "function",
             "name": "generate_mockup",
-            "description": "Generate a billboard mockup. User can upload image(s) OR provide a text prompt for AI generation. System randomly selects billboard photo and warps creative(s) onto it. Supports multiple frames: 1 creative = duplicate across all, N creatives = match to N frames. Billboard variations can be specified with time_of_day (day/night) and finish (gold/silver).",
+            "description": "Generate a billboard mockup. User can upload image(s) OR provide a text prompt for AI generation. System randomly selects billboard photo and warps creative(s) onto it. Supports multiple frames: 1 creative = duplicate across all, N creatives = match to N frames. Billboard variations can be specified with time_of_day (day/night/all) and finish (gold/silver/all). Use 'all' or omit to randomly select from all available variations.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "location": {"type": "string", "description": "The location name only (e.g., 'Dubai Gateway', 'The Landmark', 'oryx')"},
-                    "time_of_day": {"type": "string", "description": "Optional time of day: 'day' or 'night'. If not specified, random selection from all variations.", "enum": ["day", "night"]},
-                    "finish": {"type": "string", "description": "Optional billboard finish: 'gold' or 'silver'. If not specified, random selection from all variations.", "enum": ["gold", "silver"]},
+                    "time_of_day": {"type": "string", "description": "Optional time of day: 'day', 'night', or 'all' (default). Use 'all' for random selection from all time variations.", "enum": ["day", "night", "all"]},
+                    "finish": {"type": "string", "description": "Optional billboard finish: 'gold', 'silver', or 'all' (default). Use 'all' for random selection from all finish variations.", "enum": ["gold", "silver", "all"]},
                     "ai_prompt": {"type": "string", "description": "Optional: AI prompt to generate billboard-ready ARTWORK ONLY (flat advertisement design, NO billboards/signs/streets in the image). System will automatically place the artwork onto the billboard. Example: 'A luxury watch advertisement with gold accents and elegant typography' - this creates the ad design itself, not a photo of a billboard"}
                 },
                 "required": ["location"]
