@@ -17,109 +17,6 @@ user_history: Dict[str, list] = {}
 # Global for pending location additions (waiting for PPT upload)
 pending_location_additions: Dict[str, Dict[str, Any]] = {}
 
-
-async def handle_edit_task_flow(channel: str, user_id: str, user_input: str, task_number: int, task_data: Dict[str, Any]) -> str:
-    import textwrap
-
-    def _load_mapping_config():
-        return {
-            "sales_people": {"Nourhan": {}, "Jason": {}, "James": {}, "Amr": {}},
-            "location_mappings": {name: {} for name in config.available_location_names()},
-            "videographers": {"James Sevillano": {}, "Jason Pieterse": {}, "Cesar Sierra": {}, "Amr Tamer": {}},
-        }
-
-    def _format_sales_people_hint(cfg):
-        return ", ".join(cfg["sales_people"].keys())
-
-    def _format_locations_hint(cfg):
-        return ", ".join(cfg["location_mappings"].keys())
-
-    mapping_cfg = _load_mapping_config()
-
-    system_prompt = f"""
-You are helping edit Task #{task_number}. The user said: "{user_input}"
-
-Determine their intent and parse any field updates:
-- If they want to save/confirm/done: action = 'save'
-- If they want to cancel/stop/exit: action = 'cancel'
-- If they want to see current values: action = 'view'
-- If they're making changes: action = 'edit' and parse the field updates
-
-Current task data: {json.dumps(task_data, indent=2)}
-
-CRITICAL VALIDATION RULES - YOU MUST ENFORCE:
-
-1. Sales Person - ONLY accept these exact values: {list(mapping_cfg.get('sales_people', {}).keys())}
-   Auto-map: {_format_sales_people_hint(mapping_cfg)}
-   Common: "Nour"→"Nourhan"
-   If invalid: keep current value, tell user valid options
-
-2. Location - ONLY accept these exact values: {list(mapping_cfg.get('location_mappings', {}).keys())}
-   Valid: {_format_locations_hint(mapping_cfg)}
-   If invalid: keep current value, tell user valid options
-
-3. Videographer - ONLY accept these exact values: {list(mapping_cfg.get('videographers', {}).keys())}
-   If invalid: keep current value, tell user valid options
-
-Return JSON with: action, fields (only changed fields with VALID values), message.
-In your message, explain any fields that couldn't be updated due to invalid values.
-IMPORTANT: Use natural language in messages - say 'Sales Person' not 'sales_person', 'Location' not 'location'.
-"""
-
-    res = await config.openai_client.responses.create(
-        model=config.OPENAI_MODEL,
-        input=[{"role": "system", "content": system_prompt}],
-        text={
-            'format': {
-                'type': 'json_schema',
-                'name': 'edit_response',
-                'strict': False,
-                'schema': {
-                    'type': 'object',
-                    'properties': {
-                        'action': {'type': 'string', 'enum': ['save', 'cancel', 'edit', 'view']},
-                        'fields': {
-                            'type': 'object',
-                            'properties': {
-                                'Brand': {'type': 'string'},
-                                'Campaign Start Date': {'type': 'string'},
-                                'Campaign End Date': {'type': 'string'},
-                                'Reference Number': {'type': 'string'},
-                                'Location': {'type': 'string'},
-                                'Sales Person': {'type': 'string'},
-                                'Status': {'type': 'string'},
-                                'Filming Date': {'type': 'string'},
-                                'Videographer': {'type': 'string'}
-                            },
-                            'additionalProperties': False
-                        },
-                        'message': {'type': 'string'}
-                    },
-                    'required': ['action'],
-                    'additionalProperties': False
-                }
-            }
-        },
-        store=False
-    )
-
-    payload = {}
-    try:
-        if res.output and len(res.output) > 0 and hasattr(res.output[0], 'content'):
-            content = res.output[0].content
-            if content and len(content) > 0 and hasattr(content[-1], 'text'):
-                payload = json.loads(content[-1].text)
-    except Exception:
-        payload = {"action": "view", "fields": {}, "message": "I couldn't parse your request. Showing current values."}
-
-    action = payload.get("action", "view")
-    message = payload.get("message", "")
-    fields = payload.get("fields", {})
-
-    await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(message or f"Action: {action}"))
-    return action
-
-
 def _validate_powerpoint_file(file_path: Path) -> bool:
     """Validate that uploaded file is actually a PowerPoint presentation."""
     try:
@@ -855,13 +752,6 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 config.refresh_templates()
                 await config.slack_client.chat_delete(channel=channel, ts=status_ts)
                 await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("✅ Templates refreshed successfully."))
-
-            elif msg.name == "edit_task_flow":
-                args = json.loads(msg.arguments)
-                task_number = int(args.get("task_number"))
-                task_data = args.get("task_data", {})
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                await handle_edit_task_flow(channel, user_id, user_input, task_number, task_data)
 
             elif msg.name == "add_location":
                 # Admin permission gate
