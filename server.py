@@ -275,6 +275,14 @@ async def save_mockup_frame(
     import db
     import mockup_generator
 
+    # Log EXACTLY what was received from the form
+    logger.info(f"[MOCKUP API] ====== SAVE FRAME REQUEST ======")
+    logger.info(f"[MOCKUP API] RECEIVED location_key: '{location_key}'")
+    logger.info(f"[MOCKUP API] RECEIVED time_of_day: '{time_of_day}'")
+    logger.info(f"[MOCKUP API] RECEIVED finish: '{finish}'")
+    logger.info(f"[MOCKUP API] RECEIVED photo filename: '{photo.filename}'")
+    logger.info(f"[MOCKUP API] ====================================")
+
     try:
         # Parse frames data (list of frames, each frame has points and config)
         frames = json.loads(frames_data)

@@ -520,6 +520,19 @@ def list_mockup_variations(location_key: str) -> dict:
     conn = _connect()
     try:
         cursor = conn.cursor()
+
+        # First, get ALL records for this location to see what's in the database
+        logger.info(f"[DB VARIATIONS] Querying ALL records for location: {location_key}")
+        cursor.execute(
+            "SELECT photo_filename, time_of_day, finish, created_at FROM mockup_frames WHERE location_key = ? ORDER BY created_at",
+            (location_key,)
+        )
+        all_records = cursor.fetchall()
+        logger.info(f"[DB VARIATIONS] Found {len(all_records)} total records:")
+        for record in all_records:
+            logger.info(f"[DB VARIATIONS]   - {record[0]} | time_of_day='{record[1]}' | finish='{record[2]}' | created={record[3]}")
+
+        # Now get distinct variations
         cursor.execute(
             "SELECT DISTINCT time_of_day, finish FROM mockup_frames WHERE location_key = ? ORDER BY time_of_day, finish",
             (location_key,)
@@ -529,6 +542,8 @@ def list_mockup_variations(location_key: str) -> dict:
             if time_of_day not in variations:
                 variations[time_of_day] = []
             variations[time_of_day].append(finish)
+
+        logger.info(f"[DB VARIATIONS] Distinct variations: {variations}")
         return variations
     finally:
         conn.close()
