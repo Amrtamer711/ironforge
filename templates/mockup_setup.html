@@ -2374,6 +2374,7 @@
       if (!locationKey) {
         document.getElementById('generate-template-selection').style.display = 'none';
         document.getElementById('generate-frame-config-section').style.display = 'none';
+        selectedTemplateConfig = null; // Clear selected template
         return;
       }
 
@@ -2383,6 +2384,7 @@
 
         const templateSelect = document.getElementById('generate-template');
         templateSelect.innerHTML = '<option value="">-- Select a template --</option>';
+        selectedTemplateConfig = null; // Clear selected template when loading new list
 
         if (data.templates && data.templates.length > 0) {
           data.templates.forEach(template => {
@@ -2403,6 +2405,7 @@
           document.getElementById('generate-template-selection').style.display = 'none';
           document.getElementById('generate-config-toggle-section').style.display = 'none';
           document.getElementById('generate-frame-config-section').style.display = 'none';
+          selectedTemplateConfig = null; // Clear selected template if no templates available
         }
       } catch (err) {
         console.error('Error loading templates:', err);
