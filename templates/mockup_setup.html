@@ -649,8 +649,8 @@
               <label for="frame-edge-smoother" style="display: block; margin-bottom: 5px;">
                 <strong>Edge Smoother:</strong> <span id="frame-edge-smoother-value">3</span>x
               </label>
-              <input type="range" id="frame-edge-smoother" min="1" max="10" value="3" style="width: 100%;">
-              <small style="color: #0c5460; display: block; margin-top: 2px;">Anti-aliasing smoothness (higher = softer edges)</small>
+              <input type="range" id="frame-edge-smoother" min="1" max="20" value="3" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Anti-aliasing smoothness (higher = much softer edges)</small>
             </div>
           </div>
 
@@ -738,7 +738,18 @@
           <small style="color: #6c757d; display: block; margin-top: 5px;">Choose a specific billboard photo template</small>
         </div>
 
-        <!-- Generate Mode Toggles (shown after template selection) -->
+        <!-- Config Customization Toggle -->
+        <div class="form-group" id="generate-config-toggle-section" style="display: none;">
+          <label style="display: flex; align-items: center; cursor: pointer; user-select: none;">
+            <input type="checkbox" id="generate-config-toggle" style="margin-right: 10px;">
+            <span><strong>Customize Frame Configuration</strong> (optional)</span>
+          </label>
+          <small style="color: #6c757d; display: block; margin-top: 5px; margin-left: 24px;">
+            Enable to adjust settings like brightness, contrast, edge smoothing, etc.
+          </small>
+        </div>
+
+        <!-- Generate Mode Toggles (shown when toggle is enabled) -->
         <div id="generate-frame-config-section" style="display: none; background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
           <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 1.1rem; color: #495057;">Frame Configuration</h3>
           <small style="color: #6c757d; display: block; margin-bottom: 15px;">Adjust these settings to customize your mockup</small>
@@ -860,8 +871,8 @@
                 <label for="gen-frame-edge-smoother" style="display: block; margin-bottom: 5px;">
                   <strong>Edge Smoother:</strong> <span id="gen-frame-edge-smoother-value">3</span>x
                 </label>
-                <input type="range" id="gen-frame-edge-smoother" min="1" max="10" value="3" style="width: 100%;">
-                <small style="color: #0c5460; display: block; margin-top: 2px;">Anti-aliasing smoothness (higher = softer edges)</small>
+                <input type="range" id="gen-frame-edge-smoother" min="1" max="20" value="3" style="width: 100%;">
+                <small style="color: #0c5460; display: block; margin-top: 2px;">Anti-aliasing smoothness (higher = much softer edges)</small>
               </div>
             </div>
           </div>
@@ -2365,6 +2376,7 @@
           document.getElementById('generate-template-selection').style.display = 'block';
         } else {
           document.getElementById('generate-template-selection').style.display = 'none';
+          document.getElementById('generate-config-toggle-section').style.display = 'none';
           document.getElementById('generate-frame-config-section').style.display = 'none';
         }
       } catch (err) {
@@ -2379,7 +2391,9 @@
       const selectedValue = templateSelect.value;
 
       if (!selectedValue) {
+        document.getElementById('generate-config-toggle-section').style.display = 'none';
         document.getElementById('generate-frame-config-section').style.display = 'none';
+        document.getElementById('generate-config-toggle').checked = false;
         selectedTemplateConfig = null;
         return;
       }
@@ -2448,12 +2462,24 @@
           updateRangeSliderFill(slider);
         });
 
-        document.getElementById('generate-frame-config-section').style.display = 'block';
+        // Show the toggle section (config stays hidden until user enables it)
+        document.getElementById('generate-config-toggle-section').style.display = 'block';
+
+        // If toggle is already checked, show config section
+        if (document.getElementById('generate-config-toggle').checked) {
+          document.getElementById('generate-frame-config-section').style.display = 'block';
+        }
       } catch (err) {
         console.error('Error loading template config:', err);
         showMessage('Error loading template configuration', 'error');
       }
     }
+
+    // Toggle config section visibility
+    document.getElementById('generate-config-toggle').addEventListener('change', function(e) {
+      const configSection = document.getElementById('generate-frame-config-section');
+      configSection.style.display = e.target.checked ? 'block' : 'none';
+    });
 
     // Add event listeners for generate mode controls
     document.getElementById('generate-location').addEventListener('change', loadTemplatesForGenerate);

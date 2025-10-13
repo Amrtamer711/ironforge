@@ -169,10 +169,10 @@ def warp_creative_to_billboard(
     )
 
     # Create high-quality anti-aliased mask using super-sampling
-    # Edge Smoother controls super-sampling factor (1-10x) for smooth edges
+    # Edge Smoother controls super-sampling factor (1-20x) for smooth edges
     edge_smoother = 3  # Default
     if config and 'edgeSmoother' in config:
-        edge_smoother = max(1, min(10, config['edgeSmoother']))
+        edge_smoother = max(1, min(20, config['edgeSmoother']))
 
     supersample_factor = edge_smoother
     h_hires = billboard_image.shape[0] * supersample_factor
@@ -185,6 +185,15 @@ def warp_creative_to_billboard(
     # Draw mask at high resolution with anti-aliased lines
     mask_hires = np.zeros((h_hires, w_hires), dtype=np.uint8)
     cv2.fillPoly(mask_hires, [dst_pts_hires.astype(np.int32)], 255, lineType=cv2.LINE_AA)
+
+    # Apply additional Gaussian blur at high-res for extra smoothing based on edge smoother
+    # Higher edge smoother values = more aggressive smoothing
+    if edge_smoother > 3:
+        blur_strength = int((edge_smoother - 3) * 2)  # 0 at 3x, up to 34 at 20x
+        if blur_strength > 0:
+            kernel_size = blur_strength * 2 + 1  # Ensure odd
+            mask_hires = cv2.GaussianBlur(mask_hires, (kernel_size, kernel_size), sigmaX=blur_strength/2)
+            logger.info(f"[MOCKUP] Applied additional mask blur: {blur_strength}px for smoother edges")
 
     # Downsample to original resolution with high-quality interpolation
     # INTER_AREA is best for downsampling - produces smooth anti-aliased edges
