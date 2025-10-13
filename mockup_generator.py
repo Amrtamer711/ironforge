@@ -566,16 +566,27 @@ def warp_creative_to_billboard(
     result = (billboard_filled * (1 - mask_3ch * creative_opacity) +
               warped_enhanced * mask_3ch * creative_opacity).astype(np.uint8)
 
-    # Apply unsharp mask to enhance edges and reduce stretching blur
-    # This is more effective than simple sharpening for perspective-warped images
-    gaussian_blur = cv2.GaussianBlur(result, (0, 0), 2.0)
-    unsharp_mask = cv2.addWeighted(result, 1.5, gaussian_blur, -0.5, 0)
+    # Apply optional sharpening (user-configurable, default off)
+    sharpening = 0  # Default: no sharpening
+    if config and 'sharpening' in config:
+        sharpening = max(0, min(100, config['sharpening']))
 
-    # Apply unsharp mask only within the frame region (using mask)
-    result = (result.astype(np.float32) * (1 - mask_3ch) +
-              unsharp_mask.astype(np.float32) * mask_3ch).astype(np.uint8)
+    if sharpening > 0:
+        # Convert sharpening percentage to strength (0-100 -> 1.0-1.5x)
+        strength = 1.0 + (sharpening / 100.0) * 0.5
 
-    logger.info(f"[MOCKUP] Applied unsharp mask to reduce stretching artifacts and enhance detail")
+        # Apply unsharp mask with user-defined strength
+        gaussian_blur = cv2.GaussianBlur(result, (0, 0), 2.0)
+        negative_weight = -(strength - 1.0)
+        unsharp_mask = cv2.addWeighted(result, strength, gaussian_blur, negative_weight, 0)
+
+        # Apply only within frame region (using mask)
+        result = (result.astype(np.float32) * (1 - mask_3ch) +
+                  unsharp_mask.astype(np.float32) * mask_3ch).astype(np.uint8)
+
+        logger.info(f"[MOCKUP] Applied sharpening: {sharpening}% (strength: {strength:.2f}x)")
+    else:
+        logger.info(f"[MOCKUP] Sharpening disabled (0%)")
 
     return result
 
@@ -724,19 +735,21 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024") -> Optional
         if len(img_array.shape) == 3 and img_array.shape[2] == 3:
             img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
 
-        # Apply unsharp mask for sharpening (more aggressive than mockup sharpening)
-        gaussian = cv2.GaussianBlur(img_array, (0, 0), 3.0)
-        sharpened = cv2.addWeighted(img_array, 1.8, gaussian, -0.8, 0)
+        # Apply subtle sharpening (weakened to avoid artifacts)
+        # Old: 1.8x sharpening was too aggressive
+        # New: 1.2x mild sharpening to slightly enhance AI image without degradation
+        gaussian = cv2.GaussianBlur(img_array, (0, 0), 2.0)
+        sharpened = cv2.addWeighted(img_array, 1.2, gaussian, -0.2, 0)
 
-        # Apply slight contrast enhancement
+        # Apply very subtle contrast enhancement
         lab = cv2.cvtColor(sharpened, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(8, 8))
         l = clahe.apply(l)
         enhanced = cv2.merge([l, a, b])
         enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
-        logger.info("[AI_CREATIVE] Applied sharpening and contrast enhancement to AI image")
+        logger.info("[AI_CREATIVE] Applied subtle sharpening (1.2x) and contrast enhancement to AI image")
 
         # Save enhanced image to temp file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")

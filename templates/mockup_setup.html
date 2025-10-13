@@ -652,6 +652,14 @@
               <input type="range" id="frame-edge-smoother" min="1" max="20" value="3" style="width: 100%;">
               <small style="color: #0c5460; display: block; margin-top: 2px;">Anti-aliasing smoothness (higher = much softer edges)</small>
             </div>
+
+            <div>
+              <label for="frame-sharpening" style="display: block; margin-bottom: 5px;">
+                <strong>Sharpening:</strong> <span id="frame-sharpening-value">0</span>%
+              </label>
+              <input type="range" id="frame-sharpening" min="0" max="100" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Unsharp mask strength (0 = off, use sparingly)</small>
+            </div>
           </div>
 
           <small style="color: #0c5460; display: block; margin-top: 10px; text-align: center;">
@@ -892,6 +900,14 @@
               <input type="range" id="gen-frame-edge-smoother" min="1" max="20" value="3" style="width: 100%;">
               <small style="color: #0c5460; display: block; margin-top: 2px;">Anti-aliasing smoothness (higher = much softer edges)</small>
             </div>
+
+            <div>
+              <label for="gen-frame-sharpening" style="display: block; margin-bottom: 5px;">
+                <strong>Sharpening:</strong> <span id="gen-frame-sharpening-value">0</span>%
+              </label>
+              <input type="range" id="gen-frame-sharpening" min="0" max="100" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Unsharp mask strength (0 = off, use sparingly)</small>
+            </div>
           </div>
 
           <small style="color: #0c5460; display: block; margin-top: 10px; text-align: center;">
@@ -1045,6 +1061,10 @@
       document.getElementById('frame-edge-smoother-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
     });
+    document.getElementById('frame-sharpening').addEventListener('input', function(e) {
+      document.getElementById('frame-sharpening-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
 
     // Initialize range slider fills on page load
     document.querySelectorAll('input[type="range"]').forEach(slider => {
@@ -1142,7 +1162,8 @@
           lightingAdjustment: parseInt(document.getElementById('frame-lighting-adjustment').value),
           colorTemperature: parseInt(document.getElementById('frame-color-temperature').value),
           vignette: parseInt(document.getElementById('frame-vignette').value),
-          edgeSmoother: parseInt(document.getElementById('frame-edge-smoother').value)
+          edgeSmoother: parseInt(document.getElementById('frame-edge-smoother').value),
+          sharpening: parseInt(document.getElementById('frame-sharpening').value)
         };
 
         // Prepare form data
@@ -1967,7 +1988,8 @@
         lightingAdjustment: parseInt(document.getElementById('frame-lighting-adjustment').value),
         colorTemperature: parseInt(document.getElementById('frame-color-temperature').value),
         vignette: parseInt(document.getElementById('frame-vignette').value),
-        edgeSmoother: parseInt(document.getElementById('frame-edge-smoother').value)
+        edgeSmoother: parseInt(document.getElementById('frame-edge-smoother').value),
+        sharpening: parseInt(document.getElementById('frame-sharpening').value)
       };
 
       // Store frame with points and all config
@@ -2027,6 +2049,8 @@
       document.getElementById('frame-vignette-value').textContent = '0';
       document.getElementById('frame-edge-smoother').value = 3;
       document.getElementById('frame-edge-smoother-value').textContent = '3';
+      document.getElementById('frame-sharpening').value = 0;
+      document.getElementById('frame-sharpening-value').textContent = '0';
 
       // Update all range slider fills
       document.querySelectorAll('#current-frame-config-section input[type="range"]').forEach(slider => {
@@ -2113,7 +2137,9 @@
           shadowIntensity: parseInt(document.getElementById('frame-shadow-intensity').value),
           lightingAdjustment: parseInt(document.getElementById('frame-lighting-adjustment').value),
           colorTemperature: parseInt(document.getElementById('frame-color-temperature').value),
-          vignette: parseInt(document.getElementById('frame-vignette').value)
+          vignette: parseInt(document.getElementById('frame-vignette').value),
+          edgeSmoother: parseInt(document.getElementById('frame-edge-smoother').value),
+          sharpening: parseInt(document.getElementById('frame-sharpening').value)
         };
 
         allFrames.push({
@@ -2259,7 +2285,8 @@
           lightingAdjustment: parseInt(document.getElementById('gen-frame-lighting-adjustment').value),
           colorTemperature: parseInt(document.getElementById('gen-frame-color-temperature').value),
           vignette: parseInt(document.getElementById('gen-frame-vignette').value),
-          edgeSmoother: parseInt(document.getElementById('gen-frame-edge-smoother').value)
+          edgeSmoother: parseInt(document.getElementById('gen-frame-edge-smoother').value),
+          sharpening: parseInt(document.getElementById('gen-frame-sharpening').value)
         };
 
         formData.append('frame_config', JSON.stringify(frameConfig));
@@ -2427,6 +2454,8 @@
         document.getElementById('gen-frame-vignette-value').textContent = config.vignette || 0;
         document.getElementById('gen-frame-edge-smoother').value = config.edgeSmoother || 3;
         document.getElementById('gen-frame-edge-smoother-value').textContent = config.edgeSmoother || 3;
+        document.getElementById('gen-frame-sharpening').value = config.sharpening || 0;
+        document.getElementById('gen-frame-sharpening-value').textContent = config.sharpening || 0;
 
         // Update light direction buttons
         const lightDirection = config.lightDirection || 'top';
@@ -2532,6 +2561,10 @@
     });
     document.getElementById('gen-frame-edge-smoother').addEventListener('input', function(e) {
       document.getElementById('gen-frame-edge-smoother-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-sharpening').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-sharpening-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
     });
 
