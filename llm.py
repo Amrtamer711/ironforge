@@ -506,8 +506,30 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"- ALWAYS collect client name - it's required for tracking"
     )
 
+    # Check if user uploaded image files and append to message
+    user_message_content = user_input
+    if has_files and slack_event:
+        files = slack_event.get("files", [])
+        if not files and slack_event.get("subtype") == "file_share" and "file" in slack_event:
+            files = [slack_event["file"]]
+
+        # Check for image files
+        image_files = []
+        for f in files:
+            filetype = f.get("filetype", "")
+            mimetype = f.get("mimetype", "")
+            filename = f.get("name", "").lower()
+            if (filetype in ["jpg", "jpeg", "png", "gif", "bmp"] or
+                mimetype.startswith("image/") or
+                any(filename.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp"])):
+                image_files.append(f.get("name", "image"))
+
+        if image_files:
+            user_message_content = f"{user_input}\n\n[User uploaded {len(image_files)} image file(s): {', '.join(image_files)}]"
+            logger.info(f"[LLM] Detected {len(image_files)} uploaded image(s), informing LLM")
+
     history = user_history.get(user_id, [])
-    history.append({"role": "user", "content": user_input, "timestamp": datetime.now().isoformat()})
+    history.append({"role": "user", "content": user_message_content, "timestamp": datetime.now().isoformat()})
     history = history[-10:]
     # Remove timestamp from messages sent to OpenAI
     messages_for_openai = [{"role": msg["role"], "content": msg["content"]} for msg in history if "role" in msg and "content" in msg]
