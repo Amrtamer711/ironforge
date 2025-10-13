@@ -1100,7 +1100,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     await config.slack_client.chat_postMessage(
                         channel=channel,
                         text=config.markdown_to_slack(
-                            f"❌ **Error:** No billboard photos configured for '{location_name}'.\n\n"
+                            f"❌ **Error:** No billboard photos configured for *{location_name}* (location key: `{location_key}`).\n\n"
                             f"Ask an admin to set up mockup frames at {mockup_url}"
                         )
                     )
