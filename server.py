@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 import config
+import db
 from llm import main_llm_loop
 from font_utils import install_custom_fonts
 
