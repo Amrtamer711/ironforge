@@ -130,24 +130,39 @@ def warp_creative_to_billboard(
         borderValue=(0, 0, 0)
     )
 
-    # Create mask for the billboard area with anti-aliased edges
-    mask = np.zeros(billboard_image.shape[:2], dtype=np.uint8)
-    cv2.fillConvexPoly(mask, adjusted_dst_pts.astype(int), 255)
+    # Create high-quality anti-aliased mask using super-sampling
+    # Super-sample at 4x resolution for smooth edges without jaggies
+    supersample_factor = 4
+    h_hires = billboard_image.shape[0] * supersample_factor
+    w_hires = billboard_image.shape[1] * supersample_factor
 
-    # Apply morphological operations for smoother edges
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    # Scale destination points to high-res space
+    dst_pts_hires = adjusted_dst_pts * supersample_factor
 
-    # Apply Gaussian blur to the mask for smooth anti-aliased blending
-    # Use config edge blur if provided (renamed from blurStrength)
+    # Draw mask at high resolution with anti-aliased lines
+    mask_hires = np.zeros((h_hires, w_hires), dtype=np.uint8)
+    cv2.fillPoly(mask_hires, [dst_pts_hires.astype(np.int32)], 255, lineType=cv2.LINE_AA)
+
+    # Downsample to original resolution with high-quality interpolation
+    # INTER_AREA is best for downsampling - produces smooth anti-aliased edges
+    mask = cv2.resize(mask_hires, (billboard_image.shape[1], billboard_image.shape[0]),
+                     interpolation=cv2.INTER_AREA)
+
+    # Apply edge blur for additional smoothing (user-configurable)
+    # Use config edge blur if provided
     edge_blur = 8
     if config and 'edgeBlur' in config:
-        edge_blur = max(3, min(21, config['edgeBlur']))  # Clamp to odd numbers between 3-21
+        edge_blur = max(3, min(21, config['edgeBlur']))
         if edge_blur % 2 == 0:
             edge_blur += 1  # Ensure odd number for GaussianBlur
 
     mask_float = mask.astype(np.float32) / 255.0
-    mask_float = cv2.GaussianBlur(mask_float, (edge_blur, edge_blur), 0)
+
+    # Use bilateral filter for edge blur to preserve edge sharpness while smoothing noise
+    # This is better than Gaussian blur as it preserves the actual edge location
+    if edge_blur > 3:
+        mask_float = cv2.bilateralFilter(mask_float, edge_blur, edge_blur * 2, edge_blur * 2)
+
     mask_float = np.clip(mask_float, 0, 1)
 
     # Convert to 3-channel mask for alpha blending
