@@ -393,13 +393,37 @@ def save_mockup_frame(location_key: str, photo_filename: str, frames_data: list,
     try:
         conn.execute("BEGIN")
         config_json = json.dumps(config) if config else None
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO mockup_frames (location_key, time_of_day, finish, photo_filename, frames_data, created_at, created_by, config_json)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (location_key, time_of_day, finish, photo_filename, json.dumps(frames_data), datetime.now().isoformat(), created_by, config_json),
+
+        # Check if this exact photo already exists (location + time_of_day + finish + filename)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id FROM mockup_frames WHERE location_key = ? AND time_of_day = ? AND finish = ? AND photo_filename = ?",
+            (location_key, time_of_day, finish, photo_filename)
         )
+        existing = cursor.fetchone()
+
+        if existing:
+            # Update existing entry
+            conn.execute(
+                """
+                UPDATE mockup_frames
+                SET frames_data = ?, created_at = ?, created_by = ?, config_json = ?
+                WHERE id = ?
+                """,
+                (json.dumps(frames_data), datetime.now().isoformat(), created_by, config_json, existing[0]),
+            )
+            logger.info(f"[DB] Updated existing frame for {location_key}/{time_of_day}/{finish}/{photo_filename}")
+        else:
+            # Insert new entry
+            conn.execute(
+                """
+                INSERT INTO mockup_frames (location_key, time_of_day, finish, photo_filename, frames_data, created_at, created_by, config_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (location_key, time_of_day, finish, photo_filename, json.dumps(frames_data), datetime.now().isoformat(), created_by, config_json),
+            )
+            logger.info(f"[DB] Inserted new frame for {location_key}/{time_of_day}/{finish}/{photo_filename}")
+
         conn.execute("COMMIT")
     finally:
         conn.close()
