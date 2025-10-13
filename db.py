@@ -97,10 +97,16 @@ def init_db() -> None:
 def _migrate_add_subfolder_column(conn: sqlite3.Connection) -> None:
     """Migration: Add subfolder column to mockup_frames if it doesn't exist"""
     try:
-        # Check if subfolder column exists
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(mockup_frames)")
         columns = [row[1] for row in cursor.fetchall()]
+
+        # CRITICAL: If newer schema columns exist, we must NOT run the legacy migration
+        # This prevents data corruption on every deploy by avoiding recreation of table
+        # with old schema that drops time_of_day/finish columns
+        if 'time_of_day' in columns or 'finish' in columns:
+            logger.debug("[DB MIGRATION] Detected modern schema (time_of_day/finish present); skipping legacy 'subfolder' migration")
+            return
 
         if 'subfolder' not in columns:
             logger.info("[DB MIGRATION] Adding 'subfolder' column to mockup_frames table")
