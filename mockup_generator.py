@@ -5,6 +5,7 @@ import numpy as np
 from pathlib import Path
 from typing import Optional, Tuple, List
 import logging
+import gc
 
 import config
 import db
@@ -588,8 +589,19 @@ def warp_creative_to_billboard(
                   unsharp_mask.astype(np.float32) * mask_3ch).astype(np.uint8)
 
         logger.info(f"[MOCKUP] Applied sharpening: {sharpening}% (strength: {strength:.2f}x)")
+
+        # Cleanup sharpening intermediate arrays
+        del gaussian_blur, unsharp_mask
     else:
         logger.info(f"[MOCKUP] Sharpening disabled (0%)")
+
+    # Cleanup intermediate processing arrays to free memory
+    # These can be very large (billboard size * supersample factor)
+    try:
+        del creative_upscaled, warped, mask_hires, mask, mask_float, mask_linear
+        del mask_large, mask_3ch, billboard_filled, warped_enhanced
+    except:
+        pass  # Some variables may not exist depending on code path
 
     return result
 
@@ -903,7 +915,13 @@ def generate_mockup(
             logger.info(f"[MOCKUP] Applied creative {i+1}/{num_frames} to frame {i+1} (edge blur: {edge_blur}px, image blur: {image_blur})")
         except Exception as e:
             logger.error(f"[MOCKUP] Error warping creative {i}: {e}")
+            # Cleanup on error
+            del billboard, result, creative
+            gc.collect()
             return None, None
+
+        # Explicitly delete creative image to free memory after each frame
+        del creative
 
     # Save result
     if not output_path:
@@ -913,9 +931,20 @@ def generate_mockup(
     try:
         cv2.imwrite(str(output_path), result)
         logger.info(f"[MOCKUP] Generated mockup saved to: {output_path}")
+
+        # Cleanup large numpy arrays to free memory immediately
+        del billboard, result
+        gc.collect()
+
         return output_path, photo_filename
     except Exception as e:
         logger.error(f"[MOCKUP] Error saving mockup: {e}")
+        # Cleanup on error
+        try:
+            del billboard, result
+        except:
+            pass
+        gc.collect()
         return None, None
 
 

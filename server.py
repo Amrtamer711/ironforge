@@ -807,10 +807,41 @@ Example analogy: If asked to create a "movie poster," you'd create the poster AR
             background=background_tasks
         )
 
-    except HTTPException:
-        raise
+    except HTTPException as http_exc:
+        # Cleanup temp files on HTTP exceptions (validation errors, etc.)
+        try:
+            if 'creative_path' in locals() and creative_path and creative_path.exists():
+                creative_path.unlink()
+                logger.debug(f"[CLEANUP] Deleted temp creative after error: {creative_path}")
+        except Exception as cleanup_error:
+            logger.debug(f"[CLEANUP] Error deleting creative after error: {cleanup_error}")
+
+        try:
+            if 'result_path' in locals() and result_path and result_path.exists():
+                result_path.unlink()
+                logger.debug(f"[CLEANUP] Deleted temp mockup after error: {result_path}")
+        except Exception as cleanup_error:
+            logger.debug(f"[CLEANUP] Error deleting mockup after error: {cleanup_error}")
+
+        raise http_exc
+
     except Exception as e:
         logger.error(f"[MOCKUP API] Error generating mockup: {e}", exc_info=True)
+
+        # Cleanup temp files on unexpected errors
+        try:
+            if 'creative_path' in locals() and creative_path and creative_path.exists():
+                creative_path.unlink()
+                logger.debug(f"[CLEANUP] Deleted temp creative after error: {creative_path}")
+        except Exception as cleanup_error:
+            logger.debug(f"[CLEANUP] Error deleting creative after error: {cleanup_error}")
+
+        try:
+            if 'result_path' in locals() and result_path and result_path.exists():
+                result_path.unlink()
+                logger.debug(f"[CLEANUP] Deleted temp mockup after error: {result_path}")
+        except Exception as cleanup_error:
+            logger.debug(f"[CLEANUP] Error deleting mockup after error: {cleanup_error}")
 
         # Log failed attempt
         try:
