@@ -360,7 +360,7 @@
       100% { transform: rotate(360deg); }
     }
 
-    /* Toggle Switch */
+    /* Toggle Switch with Progressive Fill */
     .toggle-switch {
       position: relative;
       display: inline-block;
@@ -383,9 +383,25 @@
       bottom: 0;
       background-color: #e9ecef;
       border-radius: 26px;
-      transition: background-color 0.3s ease;
+      transition: all 0.3s ease;
+      overflow: hidden;
     }
 
+    /* Purple fill that grows from left to right */
+    .toggle-slider:after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 0%;
+      background-color: #667eea;
+      border-radius: 26px;
+      transition: width 0.3s ease;
+      z-index: 0;
+    }
+
+    /* White sliding button */
     .toggle-slider:before {
       position: absolute;
       content: "";
@@ -397,10 +413,12 @@
       border-radius: 50%;
       box-shadow: 0 2px 4px rgba(0,0,0,0.2);
       transition: transform 0.3s ease;
+      z-index: 1;
     }
 
-    .toggle-switch input:checked + .toggle-slider {
-      background-color: #667eea;
+    /* When checked: purple fill expands to full width, button slides right */
+    .toggle-switch input:checked + .toggle-slider:after {
+      width: 100%;
     }
 
     .toggle-switch input:checked + .toggle-slider:before {
