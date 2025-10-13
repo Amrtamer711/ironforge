@@ -568,15 +568,23 @@
               <small style="color: #0c5460; display: block; margin-top: 2px;">Blur entire creative (0 = off)</small>
             </div>
 
-            <div style="display: flex; gap: 15px; align-items: center;">
-              <div style="flex: 1;">
-                <label for="frame-depth-multiplier" style="display: block; margin-bottom: 5px;">
-                  <strong>Depth Perception:</strong> <span id="frame-depth-value">15</span>x
-                </label>
-                <input type="range" id="frame-depth-multiplier" min="5" max="30" value="15" style="width: 100%;">
-                <small style="color: #0c5460; display: block; margin-top: 2px;">Perspective compensation</small>
-              </div>
+            <div>
+              <label for="frame-edge-blur" style="display: block; margin-bottom: 5px;">
+                <strong>Edge Blur:</strong> <span id="frame-edge-blur-value">8</span>px
+              </label>
+              <input type="range" id="frame-edge-blur" min="2" max="20" value="8" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Edge smoothness</small>
+            </div>
 
+            <div>
+              <label for="frame-overlay-opacity" style="display: block; margin-bottom: 5px;">
+                <strong>Overlay Opacity:</strong> <span id="frame-overlay-value">0</span>%
+              </label>
+              <input type="range" id="frame-overlay-opacity" min="0" max="50" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Billboard overlay</small>
+            </div>
+
+            <div style="display: flex; gap: 15px; align-items: center;">
               <div style="flex-shrink: 0;">
                 <label style="display: block; margin-bottom: 8px;">
                   <strong>Light Direction:</strong> <span id="frame-light-direction-label">Top</span>
@@ -595,22 +603,14 @@
                 <input type="hidden" id="frame-light-direction" value="top">
                 <small style="color: #0c5460; display: block; margin-top: 5px;">Light source direction for day mode depth effects</small>
               </div>
-            </div>
 
-            <div>
-              <label for="frame-edge-blur" style="display: block; margin-bottom: 5px;">
-                <strong>Edge Blur:</strong> <span id="frame-edge-blur-value">8</span>px
-              </label>
-              <input type="range" id="frame-edge-blur" min="2" max="20" value="8" style="width: 100%;">
-              <small style="color: #0c5460; display: block; margin-top: 2px;">Edge smoothness</small>
-            </div>
-
-            <div>
-              <label for="frame-overlay-opacity" style="display: block; margin-bottom: 5px;">
-                <strong>Overlay Opacity:</strong> <span id="frame-overlay-value">0</span>%
-              </label>
-              <input type="range" id="frame-overlay-opacity" min="0" max="50" value="0" style="width: 100%;">
-              <small style="color: #0c5460; display: block; margin-top: 2px;">Billboard overlay</small>
+              <div style="flex: 1;">
+                <label for="frame-depth-multiplier" style="display: block; margin-bottom: 5px;">
+                  <strong>Depth Perception:</strong> <span id="frame-depth-value">15</span>x
+                </label>
+                <input type="range" id="frame-depth-multiplier" min="5" max="30" value="15" style="width: 100%;">
+                <small style="color: #0c5460; display: block; margin-top: 2px;">Perspective compensation</small>
+              </div>
             </div>
 
             <div>
