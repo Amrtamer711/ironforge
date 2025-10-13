@@ -318,6 +318,71 @@ async def save_mockup_frame(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/mockup/test-preview")
+async def test_preview_mockup(
+    billboard_photo: UploadFile = File(...),
+    creative: UploadFile = File(...),
+    frame_points: str = Form(...),
+    config: str = Form("{}")
+):
+    """Generate a test preview of how the creative will look on the billboard with current config"""
+    import json
+    import tempfile
+    import mockup_generator
+    import cv2
+    import numpy as np
+    from pathlib import Path
+
+    try:
+        # Parse frame points (list of 4 [x, y] coordinates)
+        points = json.loads(frame_points)
+        if not isinstance(points, list) or len(points) != 4:
+            raise HTTPException(status_code=400, detail="frame_points must be a list of 4 [x, y] coordinates")
+
+        # Parse config
+        config_dict = json.loads(config)
+
+        # Read billboard photo
+        billboard_data = await billboard_photo.read()
+        billboard_array = np.frombuffer(billboard_data, np.uint8)
+        billboard_img = cv2.imdecode(billboard_array, cv2.IMREAD_COLOR)
+
+        if billboard_img is None:
+            raise HTTPException(status_code=400, detail="Invalid billboard photo")
+
+        # Read creative
+        creative_data = await creative.read()
+        creative_array = np.frombuffer(creative_data, np.uint8)
+        creative_img = cv2.imdecode(creative_array, cv2.IMREAD_COLOR)
+
+        if creative_img is None:
+            raise HTTPException(status_code=400, detail="Invalid creative image")
+
+        # Apply the warp using the same function as real mockup generation
+        result = mockup_generator.warp_creative_to_billboard(
+            billboard_img,
+            creative_img,
+            points,
+            config=config_dict
+        )
+
+        # Encode result as JPEG
+        success, buffer = cv2.imencode('.jpg', result, [cv2.IMWRITE_JPEG_QUALITY, 85])
+
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to encode preview image")
+
+        # Return as image response
+        from fastapi.responses import Response
+        return Response(content=buffer.tobytes(), media_type="image/jpeg")
+
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+    except Exception as e:
+        logger.error(f"[TEST PREVIEW] Error generating preview: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/mockup/photos/{location_key}")
 async def list_mockup_photos(location_key: str, time_of_day: str = "all", finish: str = "all"):
     """List all photos for a location with specific time_of_day and finish"""

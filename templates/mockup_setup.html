@@ -616,9 +616,13 @@
             <label for="test-creative-upload" style="display: block; margin-bottom: 8px;">
               <strong>Upload Test Creative:</strong>
             </label>
-            <input type="file" id="test-creative-upload" accept="image/*" style="width: 100%;">
+            <input type="file" id="test-creative-upload" accept="image/*" style="width: 100%; margin-bottom: 10px;">
+            <button class="btn btn-primary" id="generate-preview-btn" onclick="generateBackendPreview()" disabled style="width: 100%;">
+              <span id="preview-btn-text">Generate Test Preview</span>
+              <span id="preview-loading" style="display: none;">⏳ Generating...</span>
+            </button>
             <small style="color: #1565c0; display: block; margin-top: 5px;">
-              Preview will show on the blue frame with all config settings applied
+              Click "Generate Test Preview" to see how the creative will look with current settings
             </small>
           </div>
         </div>
@@ -715,8 +719,10 @@
     let currentPoints = [];  // Points for current frame being drawn
     let allFrames = [];       // All completed frames [[x,y,x,y,x,y,x,y], ...]
     let locations = [];
-    let testCreativeImg = null; // Test creative for preview
+    let testCreativeFile = null; // Test creative file for backend preview
     let testPreviewMode = false; // Test preview mode flag
+    let testPreviewImage = null; // Backend-generated preview image
+    let isGeneratingPreview = false; // Flag to prevent multiple requests
 
     // Canvas state
     let imgNaturalW = 0, imgNaturalH = 0;
@@ -781,21 +787,18 @@
       slider.style.background = `linear-gradient(to right, #667eea ${percent}%, #e9ecef ${percent}%)`;
     }
 
-    // Per-frame config sliders - update displays and preview
+    // Per-frame config sliders - update displays only (no auto-preview)
     document.getElementById('frame-brightness').addEventListener('input', function(e) {
       document.getElementById('frame-brightness-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
-      if (testPreviewMode && testCreativeImg) drawPreview();
     });
     document.getElementById('frame-contrast').addEventListener('input', function(e) {
       document.getElementById('frame-contrast-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
-      if (testPreviewMode && testCreativeImg) drawPreview();
     });
     document.getElementById('frame-saturation').addEventListener('input', function(e) {
       document.getElementById('frame-saturation-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
-      if (testPreviewMode && testCreativeImg) drawPreview();
     });
     document.getElementById('frame-depth-multiplier').addEventListener('input', function(e) {
       document.getElementById('frame-depth-value').textContent = e.target.value;
@@ -804,12 +807,10 @@
     document.getElementById('frame-image-blur').addEventListener('input', function(e) {
       document.getElementById('frame-image-blur-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
-      if (testPreviewMode && testCreativeImg) drawPreview();
     });
     document.getElementById('frame-edge-blur').addEventListener('input', function(e) {
       document.getElementById('frame-edge-blur-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
-      if (testPreviewMode && testCreativeImg) drawPreview();
     });
     document.getElementById('frame-overlay-opacity').addEventListener('input', function(e) {
       document.getElementById('frame-overlay-value').textContent = e.target.value;
@@ -818,7 +819,6 @@
     document.getElementById('frame-shadow-intensity').addEventListener('input', function(e) {
       document.getElementById('frame-shadow-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
-      if (testPreviewMode && testCreativeImg) drawPreview();
     });
     document.getElementById('frame-lighting-adjustment').addEventListener('input', function(e) {
       document.getElementById('frame-lighting-value').textContent = e.target.value;
@@ -831,7 +831,6 @@
     document.getElementById('frame-vignette').addEventListener('input', function(e) {
       document.getElementById('frame-vignette-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
-      if (testPreviewMode && testCreativeImg) drawPreview();
     });
 
     // Initialize range slider fills on page load
@@ -847,44 +846,108 @@
 
       if (!testPreviewMode) {
         // Turn off preview mode - clear test creative
-        testCreativeImg = null;
+        testCreativeFile = null;
+        testPreviewImage = null;
+        drawPreview();
       } else {
-        // Turn on preview mode - reload image if file is already selected
+        // Turn on preview mode - generate preview if file is already selected
         const fileInput = document.getElementById('test-creative-upload');
         const file = fileInput.files[0];
         if (file) {
-          const reader = new FileReader();
-          reader.onload = function(event) {
-            const img = new Image();
-            img.onload = function() {
-              testCreativeImg = img;
-              drawPreview();
-            };
-            img.src = event.target.result;
-          };
-          reader.readAsDataURL(file);
-          return; // Skip drawPreview() below since it will be called after image loads
+          testCreativeFile = file;
+          generateBackendPreview();
         }
       }
-
-      drawPreview();
     });
 
     // Test creative upload
-    document.getElementById('test-creative-upload').addEventListener('change', function(e) {
-      const file = e.target.files[0];
-      if (!file) return;
+    // Generate backend preview
+    async function generateBackendPreview() {
+      if (!testCreativeFile || !currentPhoto || currentPoints.length !== 4) {
+        showMessage('Please upload a billboard photo, draw a frame, and upload a test creative first', 'error');
+        return;
+      }
+      if (isGeneratingPreview) return; // Prevent multiple concurrent requests
 
-      const reader = new FileReader();
-      reader.onload = function(event) {
+      isGeneratingPreview = true;
+
+      // Update button state
+      const btn = document.getElementById('generate-preview-btn');
+      const btnText = document.getElementById('preview-btn-text');
+      const loading = document.getElementById('preview-loading');
+      btn.disabled = true;
+      btnText.style.display = 'none';
+      loading.style.display = 'inline';
+
+      try {
+        // Collect current frame config
+        const frameConfig = {
+          brightness: parseInt(document.getElementById('frame-brightness').value),
+          contrast: parseInt(document.getElementById('frame-contrast').value),
+          saturation: parseInt(document.getElementById('frame-saturation').value),
+          depthMultiplier: parseInt(document.getElementById('frame-depth-multiplier').value),
+          imageBlur: parseInt(document.getElementById('frame-image-blur').value),
+          edgeBlur: parseInt(document.getElementById('frame-edge-blur').value),
+          overlayOpacity: parseInt(document.getElementById('frame-overlay-opacity').value),
+          shadowIntensity: parseInt(document.getElementById('frame-shadow-intensity').value),
+          lightingAdjustment: parseInt(document.getElementById('frame-lighting-adjustment').value),
+          colorTemperature: parseInt(document.getElementById('frame-color-temperature').value),
+          vignette: parseInt(document.getElementById('frame-vignette').value)
+        };
+
+        // Prepare form data
+        const formData = new FormData();
+        formData.append('billboard_photo', currentPhoto);
+        formData.append('creative', testCreativeFile);
+        formData.append('frame_points', JSON.stringify(currentPoints));
+        formData.append('config', JSON.stringify(frameConfig));
+
+        // Send to backend
+        const response = await fetch('/api/mockup/test-preview', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) {
+          throw new Error(`Preview failed: ${response.statusText}`);
+        }
+
+        // Get image blob and create URL
+        const blob = await response.blob();
+        const imageUrl = URL.createObjectURL(blob);
+
+        // Load preview image
         const img = new Image();
         img.onload = function() {
-          testCreativeImg = img;
+          testPreviewImage = img;
           drawPreview();
         };
-        img.src = event.target.result;
-      };
-      reader.readAsDataURL(file);
+        img.src = imageUrl;
+
+      } catch (error) {
+        console.error('[Test Preview] Error:', error);
+        showMessage('Error generating preview: ' + error.message, 'error');
+      } finally {
+        isGeneratingPreview = false;
+        // Reset button state
+        btn.disabled = false;
+        btnText.style.display = 'inline';
+        loading.style.display = 'none';
+      }
+    }
+
+    document.getElementById('test-creative-upload').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) {
+        document.getElementById('generate-preview-btn').disabled = true;
+        return;
+      }
+
+      testCreativeFile = file;
+      // Enable the preview button now that we have a creative file
+      if (currentPhoto && currentPoints.length === 4) {
+        document.getElementById('generate-preview-btn').disabled = false;
+      }
     });
 
     // Manual detect green screen button
@@ -974,108 +1037,22 @@
       canvasCtx.restore();
     }
 
-    function applyPerspectiveTransformWithConfig(creative, points, canvasCtx) {
-      // Apply all config settings to preview - full opacity, realistic rendering
-      const [tl, tr, br, bl] = points.map(pt => [drawX + pt[0] * scale, drawY + pt[1] * scale]);
-
-      // Get current frame config values
-      const brightness = parseInt(document.getElementById('frame-brightness').value) / 100;
-      const contrast = parseInt(document.getElementById('frame-contrast').value) / 100;
-      const saturation = parseInt(document.getElementById('frame-saturation').value) / 100;
-      const vignette = parseInt(document.getElementById('frame-vignette').value) / 100;
-      const shadow = parseInt(document.getElementById('frame-shadow-intensity').value) / 100;
-
-      // Create offscreen canvas for image processing
-      const tempCanvas = document.createElement('canvas');
-      tempCanvas.width = creative.width;
-      tempCanvas.height = creative.height;
-      const tempCtx = tempCanvas.getContext('2d');
-      tempCtx.drawImage(creative, 0, 0);
-
-      // Apply brightness and contrast
-      if (brightness !== 1 || contrast !== 1) {
-        tempCtx.globalCompositeOperation = 'source-over';
-        tempCtx.filter = `brightness(${brightness}) contrast(${contrast})`;
-        tempCtx.drawImage(tempCanvas, 0, 0);
-        tempCtx.filter = 'none';
-      }
-
-      // Apply saturation (simplified - canvas doesn't have direct saturation filter)
-      if (saturation !== 1) {
-        const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-        const data = imageData.data;
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i], g = data[i + 1], b = data[i + 2];
-          const gray = 0.2989 * r + 0.5870 * g + 0.1140 * b;
-          data[i] = gray + saturation * (r - gray);
-          data[i + 1] = gray + saturation * (g - gray);
-          data[i + 2] = gray + saturation * (b - gray);
-        }
-        tempCtx.putImageData(imageData, 0, 0);
-      }
-
-      // Apply vignette
-      if (vignette > 0) {
-        const gradient = tempCtx.createRadialGradient(
-          tempCanvas.width / 2, tempCanvas.height / 2, 0,
-          tempCanvas.width / 2, tempCanvas.height / 2, tempCanvas.width / 2
-        );
-        gradient.addColorStop(0, `rgba(0,0,0,0)`);
-        gradient.addColorStop(1, `rgba(0,0,0,${vignette})`);
-        tempCtx.fillStyle = gradient;
-        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-      }
-
-      // Draw to main canvas
-      canvasCtx.save();
-      canvasCtx.beginPath();
-      canvasCtx.moveTo(tl[0], tl[1]);
-      canvasCtx.lineTo(tr[0], tr[1]);
-      canvasCtx.lineTo(br[0], br[1]);
-      canvasCtx.lineTo(bl[0], bl[1]);
-      canvasCtx.closePath();
-      canvasCtx.clip();
-
-      const minX = Math.min(tl[0], tr[0], br[0], bl[0]);
-      const minY = Math.min(tl[1], tr[1], br[1], bl[1]);
-      const maxX = Math.max(tl[0], tr[0], br[0], bl[0]);
-      const maxY = Math.max(tl[1], tr[1], br[1], bl[1]);
-
-      // Full opacity for realistic preview
-      canvasCtx.globalAlpha = 1.0;
-      canvasCtx.drawImage(tempCanvas, minX, minY, maxX - minX, maxY - minY);
-
-      // Apply shadow to edges if configured
-      if (shadow > 0) {
-        const shadowGradient = canvasCtx.createLinearGradient(minX, minY, maxX, maxY);
-        shadowGradient.addColorStop(0, `rgba(0,0,0,${shadow * 0.5})`);
-        shadowGradient.addColorStop(0.1, 'rgba(0,0,0,0)');
-        shadowGradient.addColorStop(0.9, 'rgba(0,0,0,0)');
-        shadowGradient.addColorStop(1, `rgba(0,0,0,${shadow * 0.5})`);
-        canvasCtx.fillStyle = shadowGradient;
-        canvasCtx.fillRect(minX, minY, maxX - minX, maxY - minY);
-      }
-
-      canvasCtx.restore();
-    }
+    // Old JavaScript-based perspective transform removed - now using backend for 100% accuracy
 
     function drawPreview() {
       clearCanvas();
       if (!previewImg) return;
 
-      ctx.drawImage(previewImg, drawX, drawY, drawW, drawH);
-
-      // If test creative is loaded in preview mode, show realistic mockup with config applied
-      if (testCreativeImg && testPreviewMode) {
-        const framesToPreview = currentPoints.length === 4 ? [currentPoints] : allFrames;
-        framesToPreview.forEach(framePoints => {
-          if (framePoints.length === 4) {
-            applyPerspectiveTransformWithConfig(testCreativeImg, framePoints, ctx);
-          }
-        });
+      // If test preview mode is active and we have a backend-generated preview, show it
+      if (testPreviewMode && testPreviewImage) {
+        // Draw the backend-generated preview image (it already has the creative warped onto the billboard)
+        ctx.drawImage(testPreviewImage, drawX, drawY, drawW, drawH);
         // Skip drawing frame borders in test preview mode
         return;
       }
+
+      // Normal mode: draw billboard without creative
+      ctx.drawImage(previewImg, drawX, drawY, drawW, drawH);
 
       // Draw all completed frames with grey fill and dashed edges with hard corners
       allFrames.forEach((frameData, frameIndex) => {
@@ -1739,7 +1716,8 @@
         updateRangeSliderFill(slider);
       });
 
-      testCreativeImg = null;
+      testCreativeFile = null;
+      testPreviewImage = null;
       document.getElementById('test-preview-upload').style.display = 'none';
       document.getElementById('test-creative-upload').value = '';
 
@@ -1755,7 +1733,8 @@
       document.getElementById('test-preview-section').style.display = 'none';
       document.getElementById('test-preview-toggle').checked = false;
       testPreviewMode = false;
-      testCreativeImg = null;
+      testCreativeFile = null;
+      testPreviewImage = null;
       document.getElementById('test-preview-upload').style.display = 'none';
       document.getElementById('test-creative-upload').value = '';
 

@@ -21,23 +21,31 @@ MOCKUPS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def order_points(pts: np.ndarray) -> np.ndarray:
-    """Order points consistently: top-left, top-right, bottom-right, bottom-left"""
+    """Order points consistently: top-left, top-right, bottom-right, bottom-left."""
     pts = np.array(pts, dtype="float32")
 
-    # Sort by y-coordinate (top to bottom)
-    sorted_by_y = pts[np.argsort(pts[:, 1])]
+    if pts.shape != (4, 2):
+        raise ValueError(f"Expected 4 corner points with shape (4, 2), got {pts.shape}")
 
-    # Top two points
-    top_points = sorted_by_y[:2]
-    top_points = top_points[np.argsort(top_points[:, 0])]
-    top_left, top_right = top_points
+    rect = np.zeros((4, 2), dtype="float32")
 
-    # Bottom two points
-    bottom_points = sorted_by_y[2:]
-    bottom_points = bottom_points[np.argsort(bottom_points[:, 0])]
-    bottom_left, bottom_right = bottom_points
+    # The sum of coordinates identifies the top-left (smallest) and bottom-right (largest)
+    s = pts.sum(axis=1)
+    rect[0] = pts[np.argmin(s)]  # top-left
+    rect[2] = pts[np.argmax(s)]  # bottom-right
 
-    return np.array([top_left, top_right, bottom_right, bottom_left], dtype="float32")
+    # The difference identifies the top-right (smallest) and bottom-left (largest)
+    diff = np.diff(pts, axis=1)
+    rect[1] = pts[np.argmin(diff)]  # top-right
+    rect[3] = pts[np.argmax(diff)]  # bottom-left
+
+    # Ensure clockwise ordering (positive area) to avoid inverted transforms
+    tl, tr, br, bl = rect
+    cross = (tr[0] - tl[0]) * (br[1] - tl[1]) - (tr[1] - tl[1]) * (br[0] - tl[0])
+    if cross < 0:
+        rect[1], rect[3] = rect[3], rect[1]
+
+    return rect
 
 
 def warp_creative_to_billboard(
