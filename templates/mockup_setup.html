@@ -738,21 +738,57 @@
           <small style="color: #6c757d; display: block; margin-top: 5px;">Choose a specific billboard photo template</small>
         </div>
 
-        <!-- Config Customization Toggle -->
-        <div class="form-group" id="generate-config-toggle-section" style="display: none;">
+        <div class="creative-upload">
+          <div class="form-group">
+            <label for="creative-photo">Upload Creative/Ad Image</label>
+            <input type="file" id="creative-photo" accept="image/*">
+            <small style="color: #6c757d; display: block; margin-top: 5px;">Upload your own creative image</small>
+          </div>
+
+          <div style="text-align: center; margin: 20px 0; color: #6c757d; font-weight: 500;">
+            — OR —
+          </div>
+
+          <div class="form-group">
+            <label for="ai-creative-prompt">AI-Generated Creative (Describe what you want)</label>
+            <textarea
+              id="ai-creative-prompt"
+              placeholder="e.g., luxury watch ad with gold typography on dark background, professional and elegant"
+              rows="3"
+              style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 4px; font-family: inherit; resize: vertical;"
+            ></textarea>
+            <small style="color: #6c757d; display: block; margin-top: 5px;">
+              💡 The AI will generate a billboard creative based on your description (no upload needed)
+            </small>
+          </div>
+
+          <div class="button-group">
+            <button class="btn btn-primary" onclick="generateMockup()" id="generate-btn" disabled>Generate Mockup</button>
+          </div>
+        </div>
+
+        <div id="loading" class="loading">
+          <div class="spinner"></div>
+          <p>Generating mockup...</p>
+        </div>
+
+        <div id="mockup-result" class="mockup-result"></div>
+
+        <!-- Config Customization Toggle (appears after mockup generation) -->
+        <div class="form-group" id="generate-config-toggle-section" style="display: none; margin-top: 20px;">
           <label style="display: flex; align-items: center; cursor: pointer; user-select: none;">
             <input type="checkbox" id="generate-config-toggle" style="margin-right: 10px;">
             <span><strong>Customize Frame Configuration</strong> (optional)</span>
           </label>
           <small style="color: #6c757d; display: block; margin-top: 5px; margin-left: 24px;">
-            Enable to adjust settings like brightness, contrast, edge smoothing, etc.
+            Enable to adjust settings like brightness, contrast, edge smoothing, etc. and regenerate the mockup
           </small>
         </div>
 
         <!-- Generate Mode Toggles (shown when toggle is enabled) -->
-        <div id="generate-frame-config-section" style="display: none; background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+        <div id="generate-frame-config-section" style="display: none; background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 20px;">
           <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 1.1rem; color: #495057;">Frame Configuration</h3>
-          <small style="color: #6c757d; display: block; margin-bottom: 15px;">Adjust these settings to customize your mockup</small>
+          <small style="color: #6c757d; display: block; margin-bottom: 15px;">Adjust these settings to customize your mockup and click "Generate Mockup" again</small>
 
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
             <!-- Left Column -->
@@ -881,42 +917,6 @@
             💡 Tip: Adjust these settings to match the billboard's lighting and perspective for maximum realism
           </small>
         </div>
-
-        <div class="creative-upload">
-          <div class="form-group">
-            <label for="creative-photo">Upload Creative/Ad Image</label>
-            <input type="file" id="creative-photo" accept="image/*">
-            <small style="color: #6c757d; display: block; margin-top: 5px;">Upload your own creative image</small>
-          </div>
-
-          <div style="text-align: center; margin: 20px 0; color: #6c757d; font-weight: 500;">
-            — OR —
-          </div>
-
-          <div class="form-group">
-            <label for="ai-creative-prompt">AI-Generated Creative (Describe what you want)</label>
-            <textarea
-              id="ai-creative-prompt"
-              placeholder="e.g., luxury watch ad with gold typography on dark background, professional and elegant"
-              rows="3"
-              style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 4px; font-family: inherit; resize: vertical;"
-            ></textarea>
-            <small style="color: #6c757d; display: block; margin-top: 5px;">
-              💡 The AI will generate a billboard creative based on your description (no upload needed)
-            </small>
-          </div>
-
-          <div class="button-group">
-            <button class="btn btn-primary" onclick="generateMockup()" id="generate-btn" disabled>Generate Mockup</button>
-          </div>
-        </div>
-
-        <div id="loading" class="loading">
-          <div class="spinner"></div>
-          <p>Generating mockup...</p>
-        </div>
-
-        <div id="mockup-result" class="mockup-result"></div>
       </div>
     </div>
   </div>
