@@ -134,9 +134,9 @@ def warp_creative_to_billboard(
         logger.info(f"[MOCKUP] Applied image blur with strength {image_blur} (kernel: {kernel_size})")
 
     # Get edge blur setting to determine border extension strategy
-    edge_blur = 8
+    edge_blur = 1
     if config and 'edgeBlur' in config:
-        edge_blur = max(3, min(21, config['edgeBlur']))
+        edge_blur = max(1, min(21, config['edgeBlur']))
 
     # Intelligently extend borders for high edge blur to prevent artifacts
     if edge_blur > 10:
@@ -169,10 +169,15 @@ def warp_creative_to_billboard(
     )
 
     # Create high-quality anti-aliased mask using super-sampling
-    # Super-sample at 4x resolution for smooth edges without jaggies
-    supersample_factor = 4
+    # Edge Smoother controls super-sampling factor (1-10x) for smooth edges
+    edge_smoother = 3  # Default
+    if config and 'edgeSmoother' in config:
+        edge_smoother = max(1, min(10, config['edgeSmoother']))
+
+    supersample_factor = edge_smoother
     h_hires = billboard_image.shape[0] * supersample_factor
     w_hires = billboard_image.shape[1] * supersample_factor
+    logger.info(f"[MOCKUP] Edge smoother set to {edge_smoother}x super-sampling")
 
     # Scale destination points to high-res space
     dst_pts_hires = adjusted_dst_pts * supersample_factor
@@ -188,9 +193,9 @@ def warp_creative_to_billboard(
 
     # Apply edge blur for additional smoothing (user-configurable)
     # Use config edge blur if provided
-    edge_blur = 8
+    edge_blur = 1
     if config and 'edgeBlur' in config:
-        edge_blur = max(3, min(21, config['edgeBlur']))
+        edge_blur = max(1, min(21, config['edgeBlur']))
         if edge_blur % 2 == 0:
             edge_blur += 1  # Ensure odd number for GaussianBlur
 

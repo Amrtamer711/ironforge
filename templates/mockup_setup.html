@@ -570,10 +570,10 @@
 
             <div>
               <label for="frame-edge-blur" style="display: block; margin-bottom: 5px;">
-                <strong>Edge Blur:</strong> <span id="frame-edge-blur-value">8</span>px
+                <strong>Edge Blur:</strong> <span id="frame-edge-blur-value">1</span>px
               </label>
-              <input type="range" id="frame-edge-blur" min="2" max="20" value="8" style="width: 100%;">
-              <small style="color: #0c5460; display: block; margin-top: 2px;">Edge smoothness</small>
+              <input type="range" id="frame-edge-blur" min="1" max="20" value="1" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Edge blur amount (1 = off)</small>
             </div>
 
             <div>
@@ -643,6 +643,14 @@
               </label>
               <input type="range" id="frame-vignette" min="0" max="100" value="0" style="width: 100%;">
               <small style="color: #0c5460; display: block; margin-top: 2px;">Corner darkening</small>
+            </div>
+
+            <div>
+              <label for="frame-edge-smoother" style="display: block; margin-bottom: 5px;">
+                <strong>Edge Smoother:</strong> <span id="frame-edge-smoother-value">3</span>x
+              </label>
+              <input type="range" id="frame-edge-smoother" min="1" max="10" value="3" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Anti-aliasing smoothness (higher = softer edges)</small>
             </div>
           </div>
 
@@ -888,6 +896,10 @@
       document.getElementById('frame-vignette-value').textContent = e.target.value;
       updateRangeSliderFill(e.target);
     });
+    document.getElementById('frame-edge-smoother').addEventListener('input', function(e) {
+      document.getElementById('frame-edge-smoother-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
 
     // Initialize range slider fills on page load
     document.querySelectorAll('input[type="range"]').forEach(slider => {
@@ -984,7 +996,8 @@
           shadowIntensity: parseInt(document.getElementById('frame-shadow-intensity').value),
           lightingAdjustment: parseInt(document.getElementById('frame-lighting-adjustment').value),
           colorTemperature: parseInt(document.getElementById('frame-color-temperature').value),
-          vignette: parseInt(document.getElementById('frame-vignette').value)
+          vignette: parseInt(document.getElementById('frame-vignette').value),
+          edgeSmoother: parseInt(document.getElementById('frame-edge-smoother').value)
         };
 
         // Prepare form data
@@ -1808,7 +1821,8 @@
         shadowIntensity: parseInt(document.getElementById('frame-shadow-intensity').value),
         lightingAdjustment: parseInt(document.getElementById('frame-lighting-adjustment').value),
         colorTemperature: parseInt(document.getElementById('frame-color-temperature').value),
-        vignette: parseInt(document.getElementById('frame-vignette').value)
+        vignette: parseInt(document.getElementById('frame-vignette').value),
+        edgeSmoother: parseInt(document.getElementById('frame-edge-smoother').value)
       };
 
       // Store frame with points and all config
@@ -1854,8 +1868,8 @@
       document.querySelector('.light-dir-btn[data-direction="top"]').classList.add('active');
       document.getElementById('frame-image-blur').value = 0;
       document.getElementById('frame-image-blur-value').textContent = '0';
-      document.getElementById('frame-edge-blur').value = 8;
-      document.getElementById('frame-edge-blur-value').textContent = '8';
+      document.getElementById('frame-edge-blur').value = 1;
+      document.getElementById('frame-edge-blur-value').textContent = '1';
       document.getElementById('frame-overlay-opacity').value = 0;
       document.getElementById('frame-overlay-value').textContent = '0';
       document.getElementById('frame-shadow-intensity').value = 0;
@@ -1866,6 +1880,8 @@
       document.getElementById('frame-temperature-value').textContent = '0';
       document.getElementById('frame-vignette').value = 0;
       document.getElementById('frame-vignette-value').textContent = '0';
+      document.getElementById('frame-edge-smoother').value = 3;
+      document.getElementById('frame-edge-smoother-value').textContent = '3';
 
       // Update all range slider fills
       document.querySelectorAll('#current-frame-config-section input[type="range"]').forEach(slider => {
