@@ -516,6 +516,7 @@ async def delete_mockup_photo(location_key: str, photo_filename: str, time_of_da
 
 @app.post("/api/mockup/generate")
 async def generate_mockup_api(
+    request: Request,
     location_key: str = Form(...),
     time_of_day: str = Form("all"),
     finish: str = Form("all"),
@@ -531,6 +532,12 @@ async def generate_mockup_api(
     import json
 
     creative_path = None
+    photo_used = None
+    creative_type = None
+    template_selected = specific_photo is not None
+
+    # Get client IP for analytics
+    client_ip = request.client.host if request.client else None
 
     try:
         # Parse frame config if provided
@@ -549,6 +556,7 @@ async def generate_mockup_api(
         # Determine mode: AI generation or upload
         if ai_prompt:
             # AI MODE: Generate creative using AI
+            creative_type = "ai_generated"
             logger.info(f"[MOCKUP API] Generating AI creative with prompt: {ai_prompt[:100]}...")
 
             # Extensive system prompt for billboard artwork generation
@@ -656,6 +664,7 @@ Example analogy: If asked to create a "movie poster," you'd create the poster AR
 
         elif creative:
             # UPLOAD MODE: Use uploaded creative
+            creative_type = "uploaded"
             logger.info(f"[MOCKUP API] Using uploaded creative: {creative.filename}")
 
             creative_data = await creative.read()
@@ -668,7 +677,7 @@ Example analogy: If asked to create a "movie poster," you'd create the poster AR
             raise HTTPException(status_code=400, detail="Either ai_prompt or creative file must be provided")
 
         # Generate mockup (pass as list) with time_of_day, finish, specific_photo, and config override
-        result_path = mockup_generator.generate_mockup(
+        result_path, photo_used = mockup_generator.generate_mockup(
             location_key,
             [creative_path],
             time_of_day=time_of_day,
@@ -677,8 +686,33 @@ Example analogy: If asked to create a "movie poster," you'd create the poster AR
             config_override=config_dict
         )
 
-        if not result_path:
+        if not result_path or not photo_used:
+            # Log failed attempt
+            db.log_mockup_usage(
+                location_key=location_key,
+                time_of_day=time_of_day,
+                finish=finish,
+                photo_used=specific_photo or "random",
+                creative_type=creative_type or "unknown",
+                ai_prompt=ai_prompt if ai_prompt else None,
+                template_selected=template_selected,
+                success=False,
+                user_ip=client_ip
+            )
             raise HTTPException(status_code=500, detail="Failed to generate mockup")
+
+        # Log successful generation
+        db.log_mockup_usage(
+            location_key=location_key,
+            time_of_day=time_of_day,
+            finish=finish,
+            photo_used=photo_used,
+            creative_type=creative_type,
+            ai_prompt=ai_prompt if ai_prompt else None,
+            template_selected=template_selected,
+            success=True,
+            user_ip=client_ip
+        )
 
         # Return the image with background_tasks to delete after serving
         from fastapi import BackgroundTasks
@@ -714,4 +748,21 @@ Example analogy: If asked to create a "movie poster," you'd create the poster AR
         raise
     except Exception as e:
         logger.error(f"[MOCKUP API] Error generating mockup: {e}", exc_info=True)
+
+        # Log failed attempt
+        try:
+            db.log_mockup_usage(
+                location_key=location_key,
+                time_of_day=time_of_day,
+                finish=finish,
+                photo_used=specific_photo or "random",
+                creative_type=creative_type or "unknown",
+                ai_prompt=ai_prompt if ai_prompt else None,
+                template_selected=template_selected,
+                success=False,
+                user_ip=client_ip
+            )
+        except Exception as log_error:
+            logger.error(f"[MOCKUP API] Error logging usage: {log_error}")
+
         raise HTTPException(status_code=500, detail=str(e)) 

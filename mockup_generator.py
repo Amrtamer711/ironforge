@@ -787,7 +787,7 @@ def generate_mockup(
         config_override: Optional config dict to override saved frame config
 
     Returns:
-        Path to the generated mockup image, or None if failed
+        Tuple of (Path to the generated mockup image, photo_filename used), or (None, None) if failed
     """
     logger.info(f"[MOCKUP] Generating mockup for location '{location_key}/{time_of_day}/{finish}' with {len(creative_images)} creative(s)")
 
@@ -797,18 +797,18 @@ def generate_mockup(
         photo_path = get_location_photos_dir(location_key, time_of_day, finish) / photo_filename
         if not photo_path.exists():
             logger.error(f"[MOCKUP] Specific photo not found: {photo_path}")
-            return None
+            return None, None
     else:
         result = get_random_location_photo(location_key, time_of_day, finish)
         if not result:
-            return None
+            return None, None
         photo_filename, time_of_day, finish, photo_path = result
 
     # Get all frame coordinates (list of frames)
     frames_data = db.get_mockup_frames(location_key, photo_filename, time_of_day, finish)
     if not frames_data:
         logger.error(f"[MOCKUP] No frame coordinates found for '{location_key}/{time_of_day}/{finish}/{photo_filename}'")
-        return None
+        return None, None
 
     # Get config for this photo (if any)
     photo_config = db.get_mockup_config(location_key, photo_filename, time_of_day, finish)
@@ -823,17 +823,17 @@ def generate_mockup(
     # Validate creative count
     if num_creatives != 1 and num_creatives != num_frames:
         logger.error(f"[MOCKUP] Invalid creative count: need 1 (duplicate) or {num_frames} (one per frame), got {num_creatives}")
-        return None
+        return None, None
 
     # Load billboard
     try:
         billboard = cv2.imread(str(photo_path))
         if billboard is None:
             logger.error(f"[MOCKUP] Failed to load billboard image: {photo_path}")
-            return None
+            return None, None
     except Exception as e:
         logger.error(f"[MOCKUP] Error loading billboard: {e}")
-        return None
+        return None, None
 
     # Start with the billboard as the result
     result = billboard.copy()
@@ -866,10 +866,10 @@ def generate_mockup(
             creative = cv2.imread(str(creative_path))
             if creative is None:
                 logger.error(f"[MOCKUP] Failed to load creative image: {creative_path}")
-                return None
+                return None, None
         except Exception as e:
             logger.error(f"[MOCKUP] Error loading creative {i}: {e}")
-            return None
+            return None, None
 
         # Warp creative onto this frame with merged config
         try:
@@ -879,7 +879,7 @@ def generate_mockup(
             logger.info(f"[MOCKUP] Applied creative {i+1}/{num_frames} to frame {i+1} (edge blur: {edge_blur}px, image blur: {image_blur})")
         except Exception as e:
             logger.error(f"[MOCKUP] Error warping creative {i}: {e}")
-            return None
+            return None, None
 
     # Save result
     if not output_path:
@@ -889,10 +889,10 @@ def generate_mockup(
     try:
         cv2.imwrite(str(output_path), result)
         logger.info(f"[MOCKUP] Generated mockup saved to: {output_path}")
-        return output_path
+        return output_path, photo_filename
     except Exception as e:
         logger.error(f"[MOCKUP] Error saving mockup: {e}")
-        return None
+        return None, None
 
 
 def delete_location_photo(location_key: str, photo_filename: str, time_of_day: str = "day", finish: str = "gold") -> bool:

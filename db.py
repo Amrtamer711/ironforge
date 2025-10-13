@@ -50,6 +50,21 @@ CREATE TABLE IF NOT EXISTS mockup_frames (
     config_json TEXT,
     UNIQUE(location_key, time_of_day, finish, photo_filename)
 );
+
+CREATE TABLE IF NOT EXISTS mockup_usage (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    generated_at TEXT NOT NULL,
+    location_key TEXT NOT NULL,
+    time_of_day TEXT NOT NULL,
+    finish TEXT NOT NULL,
+    photo_used TEXT NOT NULL,
+    creative_type TEXT NOT NULL,
+    ai_prompt TEXT,
+    template_selected INTEGER NOT NULL DEFAULT 0,
+    success INTEGER NOT NULL DEFAULT 1,
+    user_ip TEXT,
+    CONSTRAINT creative_type_check CHECK (creative_type IN ('uploaded', 'ai_generated'))
+);
 """
 
 
@@ -519,6 +534,163 @@ def delete_mockup_frame(location_key: str, photo_filename: str, time_of_day: str
             (location_key, time_of_day, finish, photo_filename)
         )
         conn.execute("COMMIT")
+    finally:
+        conn.close()
+
+
+def log_mockup_usage(
+    location_key: str,
+    time_of_day: str,
+    finish: str,
+    photo_used: str,
+    creative_type: str,
+    ai_prompt: Optional[str] = None,
+    template_selected: bool = False,
+    success: bool = True,
+    user_ip: Optional[str] = None
+) -> None:
+    """Log a mockup generation event for analytics."""
+    conn = _connect()
+    try:
+        conn.execute("BEGIN")
+        conn.execute(
+            """
+            INSERT INTO mockup_usage (generated_at, location_key, time_of_day, finish, photo_used, creative_type, ai_prompt, template_selected, success, user_ip)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (datetime.now().isoformat(), location_key, time_of_day, finish, photo_used, creative_type, ai_prompt, 1 if template_selected else 0, 1 if success else 0, user_ip),
+        )
+        conn.execute("COMMIT")
+        logger.info(f"[DB] Logged mockup usage: {location_key}/{time_of_day}/{finish} - {creative_type} - Success: {success}")
+    finally:
+        conn.close()
+
+
+def get_mockup_usage_stats() -> dict:
+    """Get analytics and statistics on mockup generation usage."""
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+
+        # Total mockup generations
+        cursor.execute("SELECT COUNT(*) FROM mockup_usage")
+        total_count = cursor.fetchone()[0]
+
+        # Successful vs failed
+        cursor.execute("SELECT success, COUNT(*) FROM mockup_usage GROUP BY success")
+        success_stats = dict(cursor.fetchall())
+
+        # By location
+        cursor.execute("""
+            SELECT location_key, COUNT(*)
+            FROM mockup_usage
+            GROUP BY location_key
+            ORDER BY COUNT(*) DESC
+        """)
+        by_location = dict(cursor.fetchall())
+
+        # By creative type
+        cursor.execute("""
+            SELECT creative_type, COUNT(*)
+            FROM mockup_usage
+            GROUP BY creative_type
+        """)
+        by_creative_type = dict(cursor.fetchall())
+
+        # Template usage
+        cursor.execute("""
+            SELECT template_selected, COUNT(*)
+            FROM mockup_usage
+            GROUP BY template_selected
+        """)
+        template_stats = dict(cursor.fetchall())
+
+        # Recent generations
+        cursor.execute("""
+            SELECT location_key, creative_type, generated_at, success
+            FROM mockup_usage
+            ORDER BY generated_at DESC
+            LIMIT 10
+        """)
+        recent = cursor.fetchall()
+
+        return {
+            "total_generations": total_count,
+            "successful": success_stats.get(1, 0),
+            "failed": success_stats.get(0, 0),
+            "by_location": by_location,
+            "by_creative_type": by_creative_type,
+            "with_template": template_stats.get(1, 0),
+            "without_template": template_stats.get(0, 0),
+            "recent_generations": [
+                {
+                    "location": row[0],
+                    "creative_type": row[1],
+                    "generated_at": row[2],
+                    "success": bool(row[3])
+                }
+                for row in recent
+            ]
+        }
+
+    finally:
+        conn.close()
+
+
+def export_mockup_usage_to_excel() -> str:
+    """Export mockup usage log to Excel file and return the file path."""
+    import pandas as pd
+    import tempfile
+    from datetime import datetime
+
+    conn = _connect()
+    try:
+        # Read all mockup usage into a DataFrame
+        df = pd.read_sql_query(
+            "SELECT * FROM mockup_usage ORDER BY generated_at DESC",
+            conn
+        )
+
+        # Convert generated_at to datetime for better Excel formatting
+        df['generated_at'] = pd.to_datetime(df['generated_at'])
+
+        # Convert boolean columns
+        df['template_selected'] = df['template_selected'].map({1: 'Yes', 0: 'No'})
+        df['success'] = df['success'].map({1: 'Success', 0: 'Failed'})
+
+        # Create a temporary Excel file
+        temp_file = tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=f'_mockup_usage_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        )
+        temp_file.close()
+
+        # Write to Excel with formatting
+        with pd.ExcelWriter(temp_file.name, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Mockup Usage', index=False)
+
+            # Get the workbook and worksheet
+            workbook = writer.book
+            worksheet = writer.sheets['Mockup Usage']
+
+            # Auto-adjust column widths
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+
+            # Add filters
+            worksheet.auto_filter.ref = worksheet.dimensions
+
+        return temp_file.name
+
     finally:
         conn.close()
 
