@@ -614,7 +614,7 @@ def list_location_photos(location_key: str, time_of_day: str = "day", finish: st
 def get_random_location_photo(location_key: str, time_of_day: str = "all", finish: str = "all") -> Optional[Tuple[str, str, str, Path]]:
     """Get a random photo for a location that has a frame configured. Returns (photo_filename, time_of_day, finish, photo_path)."""
 
-    # Special handling for "all" - pick from any variation
+    # Special handling for "all" - pick from filtered variations
     if time_of_day == "all" or finish == "all":
         # Get all variations available for this location
         variations = db.list_mockup_variations(location_key)
@@ -622,19 +622,32 @@ def get_random_location_photo(location_key: str, time_of_day: str = "all", finis
             logger.warning(f"[MOCKUP] No variations found for location '{location_key}'")
             return None
 
-        # Build list of all (time_of_day, finish, photo) tuples
+        # Build list of all (time_of_day, finish, photo) tuples, filtered by specified dimension
         all_photos = []
         for tod in variations:
+            # If user specified time_of_day, only use that one
+            if time_of_day != "all" and tod != time_of_day:
+                continue
+
             for fin in variations[tod]:
+                # If user specified finish, only use that one
+                if finish != "all" and fin != finish:
+                    continue
+
                 photos = db.list_mockup_photos(location_key, tod, fin)
                 for photo in photos:
                     all_photos.append((photo, tod, fin))
 
         if not all_photos:
-            logger.warning(f"[MOCKUP] No photos found for location '{location_key}'")
+            filter_info = ""
+            if time_of_day != "all":
+                filter_info += f" time_of_day={time_of_day}"
+            if finish != "all":
+                filter_info += f" finish={finish}"
+            logger.warning(f"[MOCKUP] No photos found for location '{location_key}'{filter_info}")
             return None
 
-        # Pick random from all available
+        # Pick random from filtered available photos
         photo_filename, selected_tod, selected_finish = random.choice(all_photos)
         photo_path = get_location_photos_dir(location_key, selected_tod, selected_finish) / photo_filename
 
@@ -642,7 +655,13 @@ def get_random_location_photo(location_key: str, time_of_day: str = "all", finis
             logger.error(f"[MOCKUP] Photo file not found: {photo_path}")
             return None
 
-        logger.info(f"[MOCKUP] Selected random photo from all variations for '{location_key}': {photo_filename} ({selected_tod}/{selected_finish})")
+        filter_desc = []
+        if time_of_day != "all":
+            filter_desc.append(f"time={time_of_day}")
+        if finish != "all":
+            filter_desc.append(f"finish={finish}")
+        filter_str = f" (filtered: {', '.join(filter_desc)})" if filter_desc else " (all variations)"
+        logger.info(f"[MOCKUP] Selected random photo for '{location_key}'{filter_str}: {photo_filename} ({selected_tod}/{selected_finish})")
         return photo_filename, selected_tod, selected_finish, photo_path
 
     # Specific variation requested
