@@ -1318,7 +1318,8 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                                 logger.info(f"[MOCKUP] Generating AI creative {i}/{num_ai_frames}")
                                 creative_path = await mockup_generator.generate_ai_creative(
                                     prompt=enhanced_prompt.replace(ai_prompt, variation_prompt),
-                                    size="1536x1024"
+                                    size="1536x1024",  # Will auto-flip to portrait if needed
+                                    location_key=location_key
                                 )
 
                                 if not creative_path:
@@ -1329,7 +1330,8 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                             # Single frame AI generation (original behavior)
                             ai_creative_path = await mockup_generator.generate_ai_creative(
                                 prompt=enhanced_prompt,
-                                size="1536x1024"  # Landscape format for billboards
+                                size="1536x1024",  # Will auto-flip to portrait if needed
+                                location_key=location_key
                             )
 
                             if not ai_creative_path:
