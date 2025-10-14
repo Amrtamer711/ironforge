@@ -658,8 +658,16 @@ def list_location_photos(location_key: str, time_of_day: str = "day", finish: st
     return sorted(photos)
 
 
-def get_random_location_photo(location_key: str, time_of_day: str = "all", finish: str = "all") -> Optional[Tuple[str, str, str, Path]]:
-    """Get a random photo for a location that has a frame configured. Returns (photo_filename, time_of_day, finish, photo_path)."""
+def get_random_location_photo(location_key: str, time_of_day: str = "all", finish: str = "all", required_frame_count: Optional[int] = None) -> Optional[Tuple[str, str, str, Path]]:
+    """Get a random photo for a location that has a frame configured.
+
+    Args:
+        location_key: Location identifier
+        time_of_day: 'day', 'night', or 'all'
+        finish: 'gold', 'silver', or 'all'
+        required_frame_count: If specified, only select photos with exactly this many frames
+
+    Returns (photo_filename, time_of_day, finish, photo_path)."""
 
     # Special handling for "all" - pick from filtered variations
     if time_of_day == "all" or finish == "all":
@@ -683,7 +691,14 @@ def get_random_location_photo(location_key: str, time_of_day: str = "all", finis
 
                 photos = db.list_mockup_photos(location_key, tod, fin)
                 for photo in photos:
-                    all_photos.append((photo, tod, fin))
+                    # Filter by frame count if required
+                    if required_frame_count is not None:
+                        frames = db.get_mockup_frames(location_key, photo, tod, fin)
+                        if frames and len(frames) == required_frame_count:
+                            all_photos.append((photo, tod, fin))
+                            logger.debug(f"[MOCKUP] Photo {photo} matches required frame count {required_frame_count}")
+                    else:
+                        all_photos.append((photo, tod, fin))
 
         if not all_photos:
             filter_info = ""
@@ -691,6 +706,8 @@ def get_random_location_photo(location_key: str, time_of_day: str = "all", finis
                 filter_info += f" time_of_day={time_of_day}"
             if finish != "all":
                 filter_info += f" finish={finish}"
+            if required_frame_count is not None:
+                filter_info += f" frame_count={required_frame_count}"
             logger.warning(f"[MOCKUP] No photos found for location '{location_key}'{filter_info}")
             return None
 
@@ -707,6 +724,8 @@ def get_random_location_photo(location_key: str, time_of_day: str = "all", finis
             filter_desc.append(f"time={time_of_day}")
         if finish != "all":
             filter_desc.append(f"finish={finish}")
+        if required_frame_count is not None:
+            filter_desc.append(f"frames={required_frame_count}")
         filter_str = f" (filtered: {', '.join(filter_desc)})" if filter_desc else " (all variations)"
         logger.info(f"[MOCKUP] Selected random photo for '{location_key}'{filter_str}: {photo_filename} ({selected_tod}/{selected_finish})")
         return photo_filename, selected_tod, selected_finish, photo_path
@@ -728,6 +747,103 @@ def get_random_location_photo(location_key: str, time_of_day: str = "all", finis
 
     logger.info(f"[MOCKUP] Selected random photo for '{location_key}/{time_of_day}/{finish}': {photo_filename}")
     return photo_filename, time_of_day, finish, photo_path
+
+
+async def parse_prompt_for_multi_frame(prompt: str, num_frames: int) -> List[str]:
+    """Parse a single prompt into N separate prompts for multi-frame mockups using LLM.
+
+    Args:
+        prompt: Original user prompt describing the creative
+        num_frames: Number of separate prompts needed (one per frame)
+
+    Returns:
+        List of N prompts, one for each frame
+    """
+    from openai import AsyncOpenAI
+
+    logger.info(f"[PROMPT_PARSER] Parsing prompt into {num_frames} variations: {prompt[:100]}...")
+
+    api_key = config.OPENAI_API_KEY
+    if not api_key:
+        logger.error("[PROMPT_PARSER] No OpenAI API key configured")
+        return [prompt] * num_frames  # Fallback: duplicate the same prompt
+
+    try:
+        client = AsyncOpenAI(api_key=api_key)
+
+        system_prompt = f"""You are a creative director helping to create {num_frames} different billboard advertisements from a single concept.
+
+The user will provide a creative brief for a billboard campaign. Your job is to:
+1. Understand their core concept/message
+2. Generate {num_frames} DISTINCT but RELATED variations that work together as a multi-frame campaign
+
+IMPORTANT RULES:
+- Each variation must be DIFFERENT (different visuals, angles, or messaging)
+- All variations should share the same brand/product/theme
+- Variations should complement each other (tell a story, show different angles, or emphasize different benefits)
+- Each prompt should be complete and standalone (include brand, style, colors)
+- DO NOT number the variations or use phrases like "variation 1", "version A", etc.
+- Keep each prompt focused and under 100 words
+
+EXAMPLES:
+
+User: "Nike running shoes, dynamic and energetic"
+Your output ({num_frames} frames):
+Frame 1: "Professional photo of Nike running shoes in motion, captured mid-stride with dynamic motion blur, vibrant orange and black colorway, energetic composition with bold 'Just Do It' text"
+Frame 2: "Close-up detail shot of Nike running shoe sole and cushioning technology, technical diagram style, blue and white color scheme, clean modern typography highlighting innovation"
+Frame 3: "Nike running shoes on athletic track at sunrise, inspirational lifestyle shot, warm golden lighting, minimal text focusing on performance"
+
+User: "Luxury watch advertisement"
+Your output ({num_frames} frames):
+Frame 1: "Rolex luxury watch close-up on black marble, dramatic side lighting highlighting gold craftsmanship, elegant serif typography, deep blacks and rich golds"
+Frame 2: "Rolex watch worn on wrist in sophisticated business setting, professional lifestyle photography, muted tones, emphasis on prestige and success"
+Frame 3: "Technical cutaway view of Rolex watch mechanism, precision engineering focus, metallic silver and blue tones, modern clean design"
+
+Now parse the user's prompt into {num_frames} distinct variations. Output ONLY the prompts, one per line, no numbering or labels."""
+
+        response = await client.responses.create(
+            model=config.OPENAI_MODEL,
+            input=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        if not response.output or len(response.output) == 0:
+            logger.warning("[PROMPT_PARSER] No output from LLM, using fallback")
+            return [prompt] * num_frames
+
+        content = response.output[0].content
+        if not content or len(content) == 0:
+            logger.warning("[PROMPT_PARSER] Empty content from LLM, using fallback")
+            return [prompt] * num_frames
+
+        parsed_text = content[0].text if isinstance(content, list) else content.text
+
+        # Split into lines and filter out empty lines
+        variations = [line.strip() for line in parsed_text.strip().split('\n') if line.strip()]
+
+        # Remove any numbering that might have been added (e.g., "1.", "Frame 1:", etc.)
+        import re
+        variations = [re.sub(r'^(Frame\s+\d+:|\d+[\.\)]\s*)', '', v, flags=re.IGNORECASE).strip() for v in variations]
+
+        # Ensure we have exactly num_frames variations
+        if len(variations) < num_frames:
+            logger.warning(f"[PROMPT_PARSER] Got {len(variations)} variations, expected {num_frames}. Padding with original prompt.")
+            variations.extend([prompt] * (num_frames - len(variations)))
+        elif len(variations) > num_frames:
+            logger.warning(f"[PROMPT_PARSER] Got {len(variations)} variations, expected {num_frames}. Taking first {num_frames}.")
+            variations = variations[:num_frames]
+
+        logger.info(f"[PROMPT_PARSER] Successfully parsed into {len(variations)} variations")
+        for i, v in enumerate(variations, 1):
+            logger.info(f"[PROMPT_PARSER] Variation {i}: {v[:80]}...")
+
+        return variations
+
+    except Exception as e:
+        logger.error(f"[PROMPT_PARSER] Error parsing prompt: {e}", exc_info=True)
+        return [prompt] * num_frames  # Fallback: duplicate the same prompt
 
 
 async def generate_ai_creative(prompt: str, size: str = "1536x1024") -> Optional[Path]:
@@ -825,9 +941,10 @@ def generate_mockup(
     Returns:
         Tuple of (Path to the generated mockup image, photo_filename used), or (None, None) if failed
     """
-    logger.info(f"[MOCKUP] Generating mockup for location '{location_key}/{time_of_day}/{finish}' with {len(creative_images)} creative(s)")
+    num_creatives = len(creative_images)
+    logger.info(f"[MOCKUP] Generating mockup for location '{location_key}/{time_of_day}/{finish}' with {num_creatives} creative(s)")
 
-    # Get billboard photo
+    # Get billboard photo with intelligent frame count matching
     if specific_photo:
         photo_filename = specific_photo
         photo_path = get_location_photos_dir(location_key, time_of_day, finish) / photo_filename
@@ -835,7 +952,14 @@ def generate_mockup(
             logger.error(f"[MOCKUP] Specific photo not found: {photo_path}")
             return None, None
     else:
-        result = get_random_location_photo(location_key, time_of_day, finish)
+        # INTELLIGENT TEMPLATE SELECTION:
+        # If user uploaded multiple images (N > 1), only select templates with exactly N frames
+        # If user uploaded 1 image, allow any template (will duplicate across frames)
+        required_frames = num_creatives if num_creatives > 1 else None
+        if required_frames:
+            logger.info(f"[MOCKUP] Applying intelligent selection: requiring templates with exactly {required_frames} frames")
+
+        result = get_random_location_photo(location_key, time_of_day, finish, required_frame_count=required_frames)
         if not result:
             return None, None
         photo_filename, time_of_day, finish, photo_path = result

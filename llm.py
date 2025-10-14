@@ -450,13 +450,22 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"  A) USER UPLOAD MODE (requires image attachment):\n"
         f"     1. User UPLOADS image(s) WITH mockup request in same message\n"
         f"     2. System detects images and generates mockup immediately\n"
-        f"     3. Supports multiple frames: 1 image = duplicate across all, N images = match to N frames\n"
+        f"     3. INTELLIGENT TEMPLATE SELECTION:\n"
+        f"        • 1 image uploaded → Selects ANY template (image duplicated across all frames)\n"
+        f"        • N images uploaded → ONLY selects templates with EXACTLY N frames\n"
+        f"        • Example: Upload 3 images → system finds template with 3 frames only\n"
         f"     CRITICAL: If you see '[User uploaded X image file(s): ...]' in the message, call generate_mockup IMMEDIATELY\n"
         f"     DO NOT ask for clarification - the images are already uploaded!\n"
         f"  B) AI GENERATION MODE (NO upload needed):\n"
         f"     1. User provides location AND creative description in request\n"
         f"     2. System generates creative using gpt-image-1 model (NO upload needed)\n"
-        f"     3. System applies AI creative to billboard and returns mockup\n"
+        f"     3. MULTI-FRAME AI SUPPORT:\n"
+        f"        • Default: Generates 1 artwork (duplicated across frames if multi-frame template)\n"
+        f"        • User can request multiple variations: 'dual frame mockup', 'triple frame with 3 different ads'\n"
+        f"        • Set num_ai_frames parameter to generate N DIFFERENT artworks for N frames\n"
+        f"        • System uses prompt parser to create variations, then matches to N-frame template\n"
+        f"        • Example: 'triple crown with 3 different nike ads' → num_ai_frames=3\n"
+        f"     4. System applies AI creative(s) to billboard and returns mockup\n"
         f"     IMPORTANT: If description provided = AI mode, ignore any uploaded images\n"
         f"  Decision Logic:\n"
         f"  - Has creative description? → Use AI mode (ignore uploads)\n"
@@ -464,10 +473,12 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"  - No description and no upload? → ERROR\n"
         f"  Examples:\n"
         f"  - [uploads creative.jpg] + 'mockup for Dubai Gateway' → uses uploaded image (IMMEDIATE)\n"
+        f"  - [uploads 3 images] + 'triple crown mockup' → matches to 3-frame template (IMMEDIATE)\n"
         f"  - 'put this on triple crown' + [User uploaded 1 image file(s): test.jpg] → IMMEDIATE mockup\n"
-        f"  - 'mockup for Oryx with luxury watch ad, gold and elegant' → AI generates creative (no upload needed)\n"
+        f"  - 'mockup for Oryx with luxury watch ad, gold and elegant' → AI generates 1 creative\n"
+        f"  - 'triple crown with 3 different nike shoe ads' → AI generates 3 variations (num_ai_frames=3)\n"
         f"  - 'mockup for Gateway' (no upload, no description) → ERROR: missing creative\n"
-        f"  Keywords: 'mockup', 'mock up', 'billboard preview', 'show my ad on', 'put this on'\n\n"
+        f"  Keywords: 'mockup', 'mock up', 'billboard preview', 'show my ad on', 'put this on', 'dual frame', 'triple frame'\n\n"
 
         f"═══════════════════════════════════════════════════════════════════\n"
         f"🗄️ DATABASE & LOCATION MANAGEMENT\n"
@@ -660,7 +671,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     "location": {"type": "string", "description": "The location name only (e.g., 'Dubai Gateway', 'The Landmark', 'oryx')"},
                     "time_of_day": {"type": "string", "description": "Optional time of day: 'day', 'night', or 'all' (default). Use 'all' for random selection from all time variations.", "enum": ["day", "night", "all"]},
                     "finish": {"type": "string", "description": "Optional billboard finish: 'gold', 'silver', or 'all' (default). Use 'all' for random selection from all finish variations.", "enum": ["gold", "silver", "all"]},
-                    "ai_prompt": {"type": "string", "description": "Optional: AI prompt to generate billboard-ready ARTWORK ONLY (flat advertisement design, NO billboards/signs/streets in the image). System will automatically place the artwork onto the billboard. Example: 'A luxury watch advertisement with gold accents and elegant typography' - this creates the ad design itself, not a photo of a billboard"}
+                    "ai_prompt": {"type": "string", "description": "Optional: AI prompt to generate billboard-ready ARTWORK ONLY (flat advertisement design, NO billboards/signs/streets in the image). System will automatically place the artwork onto the billboard. Example: 'A luxury watch advertisement with gold accents and elegant typography' - this creates the ad design itself, not a photo of a billboard"},
+                    "num_ai_frames": {"type": "integer", "description": "Optional: For AI generation only - specify number of different artworks to generate (e.g., 2 for dual frames, 3 for triple frames). System will use prompt parser to create N variations and match to template with N frames. Default is 1 (single artwork)."}
                 },
                 "required": ["location"]
             }
@@ -1095,6 +1107,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 time_of_day = args.get("time_of_day", "").strip().lower() or "all"
                 finish = args.get("finish", "").strip().lower() or "all"
                 ai_prompt = args.get("ai_prompt", "").strip()
+                num_ai_frames = args.get("num_ai_frames", 1) or 1  # Default to 1 if not specified
 
                 # Convert display name to location key
                 location_key = config.get_location_key_from_display_name(location_name)
@@ -1277,19 +1290,57 @@ NOT a photo of a billboard displaying that ad on the street.
 
 DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
 
-                        # Generate creative using gpt-image-1
-                        ai_creative_path = await mockup_generator.generate_ai_creative(
-                            prompt=enhanced_prompt,
-                            size="1536x1024"  # Landscape format for billboards
-                        )
+                        ai_creative_paths = []
 
-                        if not ai_creative_path:
-                            raise Exception("Failed to generate AI creative")
+                        # MULTI-FRAME AI GENERATION SUPPORT
+                        if num_ai_frames > 1:
+                            logger.info(f"[MOCKUP] Multi-frame AI generation requested: {num_ai_frames} frames")
+
+                            # Update status to show we're parsing the prompt
+                            await config.slack_client.chat_update(
+                                channel=channel,
+                                ts=status_ts,
+                                text=f"⏳ _Creating {num_ai_frames} creative variations..._"
+                            )
+
+                            # Parse prompt into N variations
+                            prompt_variations = await mockup_generator.parse_prompt_for_multi_frame(ai_prompt, num_ai_frames)
+
+                            # Update status to show we're generating images
+                            await config.slack_client.chat_update(
+                                channel=channel,
+                                ts=status_ts,
+                                text=f"⏳ _Generating {num_ai_frames} AI artworks and mockup..._"
+                            )
+
+                            # Generate each creative
+                            for i, variation_prompt in enumerate(prompt_variations, 1):
+                                logger.info(f"[MOCKUP] Generating AI creative {i}/{num_ai_frames}")
+                                creative_path = await mockup_generator.generate_ai_creative(
+                                    prompt=enhanced_prompt.replace(ai_prompt, variation_prompt),
+                                    size="1536x1024"
+                                )
+
+                                if not creative_path:
+                                    raise Exception(f"Failed to generate AI creative {i}/{num_ai_frames}")
+
+                                ai_creative_paths.append(creative_path)
+                        else:
+                            # Single frame AI generation (original behavior)
+                            ai_creative_path = await mockup_generator.generate_ai_creative(
+                                prompt=enhanced_prompt,
+                                size="1536x1024"  # Landscape format for billboards
+                            )
+
+                            if not ai_creative_path:
+                                raise Exception("Failed to generate AI creative")
+
+                            ai_creative_paths.append(ai_creative_path)
 
                         # Generate mockup with time_of_day and finish
                         result_path, _ = mockup_generator.generate_mockup(
                             location_key,
-                            [ai_creative_path],
+                            ai_creative_paths,
                             time_of_day=time_of_day,
                             finish=finish
                         )
@@ -1302,19 +1353,23 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                         variation_info = ""
                         if time_of_day != "all" or finish != "all":
                             variation_info = f" ({time_of_day}/{finish})"
+
+                        frames_info = f" ({num_ai_frames} frames)" if num_ai_frames > 1 else ""
+
                         await config.slack_client.files_upload_v2(
                             channel=channel,
                             file=str(result_path),
                             filename=f"ai_mockup_{location_key}_{time_of_day}_{finish}.jpg",
                             initial_comment=config.markdown_to_slack(
                                 f"🎨 **AI-Generated Billboard Mockup**\n\n"
-                                f"📍 Location: {location_name}{variation_info}\n"
+                                f"📍 Location: {location_name}{variation_info}{frames_info}\n"
                             )
                         )
 
                         # Cleanup
                         try:
-                            os.unlink(ai_creative_path)
+                            for creative_path in ai_creative_paths:
+                                os.unlink(creative_path)
                             os.unlink(result_path)
                         except:
                             pass
