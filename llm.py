@@ -343,7 +343,14 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"• Financial proposal generation for advertising locations\n"
         f"• Billboard mockup visualization (upload-based or AI-generated)\n"
         f"• Location database management\n"
-        f"• Sales analytics and reporting\n\n"
+        f"• Sales analytics and reporting\n"
+        f"• Code interpreter for calculations and data analysis\n\n"
+        f"CRITICAL INSTRUCTION:\n"
+        f"You are an INTERFACE to tools, NOT the executor. When users request actions:\n"
+        f"- DO NOT say 'Generating now...', 'Creating proposal...', or 'Building mockup...'\n"
+        f"- DO call the appropriate tool/function immediately\n"
+        f"- Let the TOOL handle the actual execution\n"
+        f"- Only respond with text AFTER the tool completes or if asking clarifying questions\n\n"
         f"Today's date is: {datetime.now().strftime('%B %d, %Y')} ({datetime.now().strftime('%A')})\n"
         f"Use this date to understand relative dates like 'tomorrow', 'next week', 'next month', etc.\n\n"
         f"═══════════════════════════════════════════════════════════════════\n"
@@ -676,6 +683,10 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 },
                 "required": ["location"]
             }
+        },
+        {
+            "type": "code_interpreter",
+            "container": {"type": "auto"}
         }
     ]
 
