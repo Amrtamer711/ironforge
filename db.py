@@ -65,6 +65,52 @@ CREATE TABLE IF NOT EXISTS mockup_usage (
     user_ip TEXT,
     CONSTRAINT creative_type_check CHECK (creative_type IN ('uploaded', 'ai_generated'))
 );
+
+CREATE TABLE IF NOT EXISTS booking_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bo_ref TEXT UNIQUE NOT NULL,
+    company TEXT NOT NULL,
+    original_file_path TEXT NOT NULL,
+    original_file_type TEXT NOT NULL,
+    original_file_size INTEGER,
+    original_filename TEXT,
+    parsed_excel_path TEXT NOT NULL,
+    bo_number TEXT,
+    bo_date TEXT,
+    client TEXT,
+    agency TEXT,
+    brand_campaign TEXT,
+    category TEXT,
+    asset TEXT,
+    net_pre_vat REAL,
+    vat_value REAL,
+    gross_amount REAL,
+    sla_pct REAL,
+    payment_terms TEXT,
+    sales_person TEXT,
+    commission_pct REAL,
+    notes TEXT,
+    locations_json TEXT,
+    extraction_method TEXT,
+    extraction_confidence TEXT,
+    warnings_json TEXT,
+    missing_fields_json TEXT,
+    vat_calc REAL,
+    gross_calc REAL,
+    sla_deduction REAL,
+    net_excl_sla_calc REAL,
+    parsed_at TEXT NOT NULL,
+    parsed_by TEXT,
+    source_classification TEXT,
+    classification_confidence TEXT,
+    needs_review INTEGER DEFAULT 0,
+    search_text TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_booking_orders_bo_ref ON booking_orders(bo_ref);
+CREATE INDEX IF NOT EXISTS idx_booking_orders_company ON booking_orders(company);
+CREATE INDEX IF NOT EXISTS idx_booking_orders_client ON booking_orders(client);
+CREATE INDEX IF NOT EXISTS idx_booking_orders_parsed_at ON booking_orders(parsed_at);
 """
 
 
@@ -117,6 +163,137 @@ def log_proposal(
             (submitted_by, client_name, date_generated, package_type, locations, total_amount),
         )
         conn.execute("COMMIT")
+    finally:
+        conn.close()
+
+
+def generate_next_bo_ref() -> str:
+    """Generate the next booking order reference number: BO-YYYY-NNNN"""
+    import json
+    current_year = datetime.now().year
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT bo_ref FROM booking_orders WHERE bo_ref LIKE ? ORDER BY bo_ref DESC LIMIT 1",
+            (f"BO-{current_year}-%",)
+        )
+        row = cursor.fetchone()
+        if row:
+            last_num = int(row[0].split("-")[-1])
+            next_num = last_num + 1
+        else:
+            next_num = 1
+        return f"BO-{current_year}-{next_num:04d}"
+    finally:
+        conn.close()
+
+
+def save_booking_order(data: dict) -> str:
+    """Save a booking order to the database. Returns the bo_ref."""
+    import json
+    conn = _connect()
+    try:
+        conn.execute("BEGIN")
+
+        # Build search text
+        search_text = " ".join([
+            str(data.get("bo_ref", "")),
+            str(data.get("client", "")),
+            str(data.get("brand_campaign", "")),
+            str(data.get("bo_number", "")),
+        ]).lower()
+
+        # Serialize JSON fields
+        locations_json = json.dumps(data.get("locations", []))
+        warnings_json = json.dumps(data.get("warnings", []))
+        missing_json = json.dumps(data.get("missing_required", []))
+
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO booking_orders (
+                bo_ref, company, original_file_path, original_file_type, original_file_size, original_filename,
+                parsed_excel_path, bo_number, bo_date, client, agency, brand_campaign, category, asset,
+                net_pre_vat, vat_value, gross_amount, sla_pct, payment_terms, sales_person, commission_pct,
+                notes, locations_json, extraction_method, extraction_confidence, warnings_json, missing_fields_json,
+                vat_calc, gross_calc, sla_deduction, net_excl_sla_calc, parsed_at, parsed_by,
+                source_classification, classification_confidence, needs_review, search_text
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                data["bo_ref"],
+                data["company"],
+                data["original_file_path"],
+                data["original_file_type"],
+                data.get("original_file_size"),
+                data.get("original_filename"),
+                data["parsed_excel_path"],
+                data.get("bo_number"),
+                data.get("bo_date"),
+                data.get("client"),
+                data.get("agency"),
+                data.get("brand_campaign"),
+                data.get("category"),
+                data.get("asset"),  # Can be string or will be JSON if list
+                data.get("net_pre_vat"),
+                data.get("vat_value"),
+                data.get("gross_amount"),
+                data.get("sla_pct"),
+                data.get("payment_terms"),
+                data.get("sales_person"),
+                data.get("commission_pct"),
+                data.get("notes"),
+                locations_json,
+                data.get("extraction_method", "llm"),
+                data.get("extraction_confidence", "medium"),
+                warnings_json,
+                missing_json,
+                data.get("vat_calc"),
+                data.get("gross_calc"),
+                data.get("sla_deduction"),
+                data.get("net_excl_sla_calc"),
+                data.get("parsed_at", datetime.now().isoformat()),
+                data.get("parsed_by"),
+                data.get("source_classification"),
+                data.get("classification_confidence"),
+                int(data.get("needs_review", False)),
+                search_text,
+            ),
+        )
+        conn.execute("COMMIT")
+        logger.info(f"[DB] Saved booking order: {data['bo_ref']}")
+        return data["bo_ref"]
+    except Exception as e:
+        conn.execute("ROLLBACK")
+        logger.error(f"[DB] Error saving booking order: {e}", exc_info=True)
+        raise
+    finally:
+        conn.close()
+
+
+def get_booking_order(bo_ref: str) -> Optional[dict]:
+    """Retrieve a booking order by reference number."""
+    import json
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM booking_orders WHERE bo_ref = ?", (bo_ref,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        columns = [desc[0] for desc in cursor.description]
+        record = dict(zip(columns, row))
+
+        # Deserialize JSON fields
+        if record.get("locations_json"):
+            record["locations"] = json.loads(record["locations_json"])
+        if record.get("warnings_json"):
+            record["warnings"] = json.loads(record["warnings_json"])
+        if record.get("missing_fields_json"):
+            record["missing_required"] = json.loads(record["missing_fields_json"])
+
+        return record
     finally:
         conn.close()
 

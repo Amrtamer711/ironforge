@@ -11,6 +11,7 @@ import config
 import db
 from proposals import process_proposals
 from slack_formatting import SlackResponses
+from booking_parser import BookingOrderParser, ORIGINAL_DIR, PARSED_DIR
 
 user_history: Dict[str, list] = {}
 
@@ -102,6 +103,203 @@ async def _persist_location_upload(location_key: str, pptx_path: Path, metadata_
     import shutil
     shutil.move(str(pptx_path), str(target_pptx))
     target_meta.write_text(metadata_text, encoding="utf-8")
+
+
+async def _handle_booking_order_parse(
+    company: str,
+    slack_event: Dict[str, Any],
+    channel: str,
+    status_ts: str,
+    user_notes: str,
+    user_id: str
+):
+    """Handle booking order parsing workflow"""
+    logger = config.logger
+
+    # Extract files from slack event
+    files = slack_event.get("files", [])
+    if not files and slack_event.get("subtype") == "file_share" and "file" in slack_event:
+        files = [slack_event["file"]]
+
+    if not files:
+        await config.slack_client.chat_update(
+            channel=channel,
+            ts=status_ts,
+            text=config.markdown_to_slack("❌ No file detected. Please upload a booking order document (Excel, PDF, or image).")
+        )
+        return
+
+    file_info = files[0]
+    logger.info(f"[BOOKING] Processing file: {file_info.get('name')}")
+
+    # Download file
+    try:
+        tmp_file = await _download_slack_file(file_info)
+    except Exception as e:
+        logger.error(f"[BOOKING] Download failed: {e}")
+        await config.slack_client.chat_update(
+            channel=channel,
+            ts=status_ts,
+            text=config.markdown_to_slack(f"❌ Failed to download file: {e}")
+        )
+        return
+
+    # Initialize parser
+    parser = BookingOrderParser(company=company)
+    file_type = parser.detect_file_type(tmp_file)
+
+    # Classify document
+    await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Classifying document..._")
+    classification = await parser.classify_document(tmp_file)
+    logger.info(f"[BOOKING] Classification: {classification}")
+
+    # Check if it's actually a booking order
+    if classification.get("classification") != "BOOKING_ORDER" or classification.get("confidence") in {"low", None}:
+        await config.slack_client.chat_update(
+            channel=channel,
+            ts=status_ts,
+            text=config.markdown_to_slack(
+                f"⚠️ This doesn't look like a booking order (confidence: {classification.get('confidence', 'unknown')}).\n\n"
+                f"Reasoning: {classification.get('reasoning', 'N/A')}\n\n"
+                f"If this is artwork for a mockup, please request a mockup instead."
+            )
+        )
+        tmp_file.unlink(missing_ok=True)
+        return
+
+    # Parse the booking order
+    await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Extracting booking order data..._")
+    try:
+        result = await parser.parse_file(tmp_file, file_type)
+    except Exception as e:
+        logger.error(f"[BOOKING] Parsing failed: {e}", exc_info=True)
+        await config.slack_client.chat_update(
+            channel=channel,
+            ts=status_ts,
+            text=config.markdown_to_slack(f"❌ Failed to parse booking order: {e}")
+        )
+        tmp_file.unlink(missing_ok=True)
+        return
+
+    # Check for missing required fields
+    if result.missing_required:
+        missing_list = "\n".join(f"• {item}" for item in result.missing_required)
+        await config.slack_client.chat_update(
+            channel=channel,
+            ts=status_ts,
+            text=config.markdown_to_slack(
+                f"⚠️ **Missing Required Information:**\n{missing_list}\n\n"
+                f"Please provide the missing details so I can complete the booking order."
+            )
+        )
+        tmp_file.unlink(missing_ok=True)
+        return
+
+    # Generate BO reference
+    bo_ref = db.generate_next_bo_ref()
+    logger.info(f"[BOOKING] Generated BO ref: {bo_ref}")
+
+    # Store original file
+    original_ext = tmp_file.suffix
+    original_path = ORIGINAL_DIR / f"{bo_ref}{original_ext}"
+    tmp_file.rename(original_path)
+    logger.info(f"[BOOKING] Stored original: {original_path}")
+
+    # Generate Excel
+    await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Generating Excel..._")
+    excel_path = await parser.generate_excel(result.data, bo_ref)
+
+    # Prepare database record
+    db_data = result.data.copy()
+    db_data.update({
+        "bo_ref": bo_ref,
+        "company": company,
+        "original_file_path": str(original_path),
+        "original_file_type": file_type,
+        "original_file_size": original_path.stat().st_size,
+        "original_filename": file_info.get("name"),
+        "parsed_excel_path": str(excel_path),
+        "parsed_by": user_id,
+        "source_classification": classification.get("classification"),
+        "classification_confidence": classification.get("confidence"),
+        "warnings": result.warnings,
+        "missing_required": result.missing_required,
+        "needs_review": result.needs_review,
+    })
+
+    # Save to database
+    try:
+        db.save_booking_order(db_data)
+        logger.info(f"[BOOKING] Saved to database: {bo_ref}")
+    except Exception as e:
+        logger.error(f"[BOOKING] Database save failed: {e}", exc_info=True)
+        await config.slack_client.chat_update(
+            channel=channel,
+            ts=status_ts,
+            text=config.markdown_to_slack(f"❌ Failed to save to database: {e}")
+        )
+        return
+
+    # Upload Excel to Slack
+    await config.slack_client.files_upload_v2(
+        channel=channel,
+        file=str(excel_path),
+        title=f"{bo_ref} - Booking Order",
+        initial_comment=config.markdown_to_slack(f"✅ **Booking Order Parsed: {bo_ref}**")
+    )
+
+    # Send summary
+    summary = parser.format_for_slack(result.data, bo_ref)
+    if result.warnings:
+        summary += "\n\n⚠️ **Warnings:**\n" + "\n".join(f"• {w}" for w in result.warnings)
+
+    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+    await config.slack_client.chat_postMessage(
+        channel=channel,
+        text=config.markdown_to_slack(summary)
+    )
+
+
+async def _handle_booking_order_retrieve(args: Dict[str, Any], channel: str) -> str:
+    """Handle booking order retrieval"""
+    bo_ref = args.get("bo_ref")
+    include_original = args.get("include_original", False)
+
+    record = db.get_booking_order(bo_ref)
+    if not record:
+        return f"❌ Booking order `{bo_ref}` not found."
+
+    # Upload parsed Excel
+    parsed_path = record.get("parsed_excel_path")
+    if parsed_path and Path(parsed_path).exists():
+        await config.slack_client.files_upload_v2(
+            channel=channel,
+            file=parsed_path,
+            title=f"{bo_ref} - Parsed Booking Order"
+        )
+
+    # Upload original if requested
+    if include_original:
+        orig_path = record.get("original_file_path")
+        if orig_path and Path(orig_path).exists():
+            await config.slack_client.files_upload_v2(
+                channel=channel,
+                file=orig_path,
+                title=f"{bo_ref} - Original Document"
+            )
+
+    # Format summary
+    parser = BookingOrderParser(company=record.get("company", "mmg_backlite"))
+    summary = parser.format_for_slack(record, bo_ref)
+
+    if record.get("warnings"):
+        summary += "\n\n⚠️ **Warnings:**\n" + "\n".join(f"• {w}" for w in record["warnings"])
+    if record.get("missing_required"):
+        summary += "\n\n⚠️ **Missing fields:**\n" + "\n".join(f"• {m}" for m in record["missing_required"])
+
+    summary += f"\n\n📅 Parsed: {record.get('parsed_at', 'Unknown')}"
+
+    return summary
 
 
 async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event: Dict[str, Any] = None):
@@ -685,6 +883,46 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             }
         },
         {
+            "type": "function",
+            "name": "parse_booking_order",
+            "description": "Parse a booking order document (Excel, PDF, or image) for MMG Backlite or Viola. Extracts client, campaign, locations, pricing, dates, and financial data. Biased toward classifying uploads as ARTWORK unless clearly a booking order.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "company": {
+                        "type": "string",
+                        "enum": ["mmg_backlite", "viola"],
+                        "description": "Company name - either 'mmg_backlite' or 'viola'"
+                    },
+                    "user_notes": {
+                        "type": "string",
+                        "description": "Optional notes or instructions from user about the booking order"
+                    }
+                },
+                "required": ["company"]
+            }
+        },
+        {
+            "type": "function",
+            "name": "retrieve_booking_order",
+            "description": "Retrieve an existing booking order by its reference number (e.g., BO-2025-0001). Returns parsed Excel and summary.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "bo_ref": {
+                        "type": "string",
+                        "description": "Booking order reference number (format: BO-YYYY-NNNN)"
+                    },
+                    "include_original": {
+                        "type": "boolean",
+                        "description": "Whether to include the original uploaded file (default: false)",
+                        "default": False
+                    }
+                },
+                "required": ["bo_ref"]
+            }
+        },
+        {
             "type": "code_interpreter",
             "container": {"type": "auto"}
         }
@@ -1107,6 +1345,29 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
 
                 except Exception as e:
                     logger.error(f"[STATS] Error: {e}", exc_info=True)
+
+            elif msg.name == "parse_booking_order":
+                args = json.loads(msg.arguments)
+                company = args.get("company")
+                user_notes = args.get("user_notes", "")
+                await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Parsing booking order..._")
+                await _handle_booking_order_parse(
+                    company=company,
+                    slack_event=slack_event,
+                    channel=channel,
+                    status_ts=status_ts,
+                    user_notes=user_notes,
+                    user_id=user_id
+                )
+                return
+
+            elif msg.name == "retrieve_booking_order":
+                args = json.loads(msg.arguments)
+                await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Retrieving booking order..._")
+                response = await _handle_booking_order_retrieve(args, channel)
+                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(response))
+                return
 
             elif msg.name == "generate_mockup":
                 # Handle mockup generation with AI or user upload
