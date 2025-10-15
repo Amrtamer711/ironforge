@@ -595,13 +595,28 @@ def warp_creative_to_billboard(
     else:
         logger.info(f"[MOCKUP] Sharpening disabled (0%)")
 
-    # Cleanup intermediate processing arrays to free memory
-    # These can be very large (billboard size * supersample factor)
-    try:
-        del creative_upscaled, warped, mask_hires, mask, mask_float, mask_linear
-        del mask_large, mask_3ch, billboard_filled, warped_enhanced
-    except:
-        pass  # Some variables may not exist depending on code path
+    # Cleanup ALL intermediate processing arrays to free memory immediately
+    # After this point, only 'result' is needed for return
+    # Each del wrapped individually so one missing variable doesn't skip others
+    import gc
+
+    for var in ['creative_upscaled', 'warped', 'billboard_image', 'creative_image',
+                'mask_hires', 'mask', 'mask_3ch', 'billboard_filled', 'warped_enhanced',
+                'mask_float', 'mask_linear', 'mask_large', 'mask_small', 'mask_spread', 'mask_choked',
+                'mask_binary', 'dist_transform', 'edge_detect_kernel', 'dilated_mask', 'eroded_mask',
+                'edge_region', 'edge_region_3ch', 'edge_contact', 'edge_shadow', 'edge_mask_binary',
+                'edge_adaptive', 'billboard_edge_colors', 'billboard_colors_blur', 'billboard_gray',
+                'billboard_lum_blur', 'warped_float', 'warped_gray', 'warped_lum_blur', 'warped_uint',
+                'light_wrap_contribution', 'lighting_gradient', 'lighting_gradient_3ch',
+                'feather_normalized', 'feather_smooth', 'lum_diff', 'lum_diff_clipped',
+                'hsv', 'y_coords', 'x_coords', 'y_norm', 'gaussian_blur', 'unsharp_mask']:
+        try:
+            del locals()[var]
+        except:
+            pass
+
+    # Force immediate garbage collection
+    gc.collect()
 
     return result
 
