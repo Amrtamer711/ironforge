@@ -399,6 +399,14 @@ async def test_preview_mockup(
         # Encode result as JPEG
         success, buffer = cv2.imencode('.jpg', result, [cv2.IMWRITE_JPEG_QUALITY, 85])
 
+        # CRITICAL: Explicitly delete large numpy arrays to free memory immediately
+        # Preview endpoint is called repeatedly during setup, causing memory buildup
+        del billboard_data, billboard_array, billboard_img
+        del creative_data, creative_array, creative_img
+        del result
+        import gc
+        gc.collect()
+
         if not success:
             raise HTTPException(status_code=500, detail="Failed to encode preview image")
 
@@ -410,6 +418,15 @@ async def test_preview_mockup(
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
     except Exception as e:
         logger.error(f"[TEST PREVIEW] Error generating preview: {e}", exc_info=True)
+        # Cleanup on error path too
+        try:
+            del billboard_data, billboard_array, billboard_img
+            del creative_data, creative_array, creative_img
+            del result
+            import gc
+            gc.collect()
+        except:
+            pass
         raise HTTPException(status_code=500, detail=str(e))
 
 
