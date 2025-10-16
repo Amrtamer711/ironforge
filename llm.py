@@ -299,6 +299,92 @@ async def _generate_mockup_queued(
     return await mockup_queue.submit(_generate)
 
 
+async def _generate_ai_mockup_queued(
+    ai_prompt: str,
+    enhanced_prompt: str,
+    num_ai_frames: int,
+    location_key: str,
+    time_of_day: str,
+    finish: str
+):
+    """
+    Wrapper for AI mockup generation (AI creative generation + mockup) through the queue.
+    This ensures the entire AI workflow (fetch from OpenAI + image processing + mockup)
+    is treated as ONE queued task to prevent memory spikes.
+
+    Args:
+        ai_prompt: User's original AI prompt
+        enhanced_prompt: Full enhanced system prompt
+        num_ai_frames: Number of frames to generate
+        location_key: Location identifier
+        time_of_day: Time of day variation
+        finish: Finish type
+
+    Returns:
+        Tuple of (result_path, ai_creative_paths)
+    """
+    import mockup_generator
+    import gc
+
+    logger = config.logger
+    logger.info(f"[QUEUE] AI mockup requested for {location_key} ({num_ai_frames} frames)")
+
+    async def _generate():
+        try:
+            logger.info(f"[QUEUE] Generating {num_ai_frames} AI creative(s) for {location_key}")
+            ai_creative_paths = []
+
+            if num_ai_frames > 1:
+                # Multi-frame: parse prompt into variations
+                prompt_variations = await mockup_generator.parse_prompt_for_multi_frame(ai_prompt, num_ai_frames)
+
+                # Generate each creative
+                for i, variation_prompt in enumerate(prompt_variations, 1):
+                    logger.info(f"[AI QUEUE] Generating creative {i}/{num_ai_frames}")
+                    creative_path = await mockup_generator.generate_ai_creative(
+                        prompt=enhanced_prompt.replace(ai_prompt, variation_prompt),
+                        size="1536x1024",
+                        location_key=location_key
+                    )
+                    if not creative_path:
+                        raise Exception(f"Failed to generate AI creative {i}/{num_ai_frames}")
+                    ai_creative_paths.append(creative_path)
+            else:
+                # Single frame
+                creative_path = await mockup_generator.generate_ai_creative(
+                    prompt=enhanced_prompt,
+                    size="1536x1024",
+                    location_key=location_key
+                )
+                if not creative_path:
+                    raise Exception("Failed to generate AI creative")
+                ai_creative_paths.append(creative_path)
+
+            logger.info(f"[QUEUE] AI creatives ready, generating mockup for {location_key}")
+
+            # Generate mockup with AI creatives
+            result_path, metadata = mockup_generator.generate_mockup(
+                location_key,
+                ai_creative_paths,
+                time_of_day=time_of_day,
+                finish=finish
+            )
+
+            if not result_path:
+                raise Exception("Failed to generate mockup")
+
+            logger.info(f"[QUEUE] AI mockup completed for {location_key}")
+            gc.collect()
+            return result_path, ai_creative_paths
+
+        except Exception as e:
+            logger.error(f"[QUEUE] AI mockup failed for {location_key}: {e}")
+            raise
+
+    # Submit entire AI workflow to queue as ONE task
+    return await mockup_queue.submit(_generate)
+
+
 async def _persist_location_upload(location_key: str, pptx_path: Path, metadata_text: str) -> None:
     location_dir = config.TEMPLATES_DIR / location_key
     location_dir.mkdir(parents=True, exist_ok=True)
@@ -2101,59 +2187,20 @@ NOT a photo of a billboard displaying that ad on the street.
 
 DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
 
-                        ai_creative_paths = []
+                        # Update status to show we're generating
+                        frames_text = f"{num_ai_frames} artworks and mockup" if num_ai_frames > 1 else "AI artwork and mockup"
+                        await config.slack_client.chat_update(
+                            channel=channel,
+                            ts=status_ts,
+                            text=f"⏳ _Generating {frames_text}..._"
+                        )
 
-                        # MULTI-FRAME AI GENERATION SUPPORT
-                        if num_ai_frames > 1:
-                            logger.info(f"[MOCKUP] Multi-frame AI generation requested: {num_ai_frames} frames")
-
-                            # Update status to show we're parsing the prompt
-                            await config.slack_client.chat_update(
-                                channel=channel,
-                                ts=status_ts,
-                                text=f"⏳ _Creating {num_ai_frames} creative variations..._"
-                            )
-
-                            # Parse prompt into N variations
-                            prompt_variations = await mockup_generator.parse_prompt_for_multi_frame(ai_prompt, num_ai_frames)
-
-                            # Update status to show we're generating images
-                            await config.slack_client.chat_update(
-                                channel=channel,
-                                ts=status_ts,
-                                text=f"⏳ _Generating {num_ai_frames} AI artworks and mockup..._"
-                            )
-
-                            # Generate each creative
-                            for i, variation_prompt in enumerate(prompt_variations, 1):
-                                logger.info(f"[MOCKUP] Generating AI creative {i}/{num_ai_frames}")
-                                creative_path = await mockup_generator.generate_ai_creative(
-                                    prompt=enhanced_prompt.replace(ai_prompt, variation_prompt),
-                                    size="1536x1024",  # Will auto-flip to portrait if needed
-                                    location_key=location_key
-                                )
-
-                                if not creative_path:
-                                    raise Exception(f"Failed to generate AI creative {i}/{num_ai_frames}")
-
-                                ai_creative_paths.append(creative_path)
-                        else:
-                            # Single frame AI generation (original behavior)
-                            ai_creative_path = await mockup_generator.generate_ai_creative(
-                                prompt=enhanced_prompt,
-                                size="1536x1024",  # Will auto-flip to portrait if needed
-                                location_key=location_key
-                            )
-
-                            if not ai_creative_path:
-                                raise Exception("Failed to generate AI creative")
-
-                            ai_creative_paths.append(ai_creative_path)
-
-                        # Generate mockup with time_of_day and finish (queued)
-                        result_path, _ = await _generate_mockup_queued(
-                            location_key,
-                            ai_creative_paths,
+                        # Generate AI creative(s) + mockup through queue (prevents memory spikes)
+                        result_path, ai_creative_paths = await _generate_ai_mockup_queued(
+                            ai_prompt=ai_prompt,
+                            enhanced_prompt=enhanced_prompt,
+                            num_ai_frames=num_ai_frames,
+                            location_key=location_key,
                             time_of_day=time_of_day,
                             finish=finish
                         )
