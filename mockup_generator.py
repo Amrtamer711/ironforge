@@ -182,60 +182,86 @@ def warp_creative_to_billboard(
     )
 
     # Create high-quality anti-aliased mask using super-sampling
-    # Edge Smoother controls super-sampling factor (1-20x) for smooth edges
-    # ADAPTIVE: Automatically reduce super-sampling for large images to prevent memory exhaustion
+    # OPTIMIZED: Only super-sample the frame region, not the entire billboard
+    # This saves massive amounts of memory (e.g., 1152MB → 36MB for 8K billboard)
 
-    # Calculate billboard size for adaptive super-sampling
-    total_pixels = billboard_image.shape[0] * billboard_image.shape[1]
-    megapixels = total_pixels / 1_000_000
-
+    # Get edge smoother value
     if config and 'edgeSmoother' in config:
-        # User explicitly set edge smoother, respect it
         edge_smoother = max(1, min(20, config['edgeSmoother']))
         logger.info(f"[MOCKUP] Using config edge smoother: {edge_smoother}x")
     else:
-        # Adaptive edge smoother based on billboard size to prevent memory spikes
-        # Super-sampled memory = (width × height × factor²) × 3 bytes
-        if total_pixels > 12_000_000:  # 12MP+ (e.g., 4000×3000)
-            edge_smoother = 1.5  # 1.5x → 27MP super-sampled (81MB)
-            logger.info(f"[MOCKUP] Large billboard ({megapixels:.1f}MP), adaptive edge smoother: {edge_smoother}x")
-        elif total_pixels > 8_000_000:  # 8-12MP (e.g., 3500×2500)
-            edge_smoother = 2  # 2x → 32-48MP super-sampled (96-144MB)
-            logger.info(f"[MOCKUP] Medium-large billboard ({megapixels:.1f}MP), adaptive edge smoother: {edge_smoother}x")
-        elif total_pixels > 5_000_000:  # 5-8MP (e.g., 3000×2000)
-            edge_smoother = 2.5  # 2.5x → 31-50MP super-sampled (93-150MB)
-            logger.info(f"[MOCKUP] Medium billboard ({megapixels:.1f}MP), adaptive edge smoother: {edge_smoother}x")
-        else:  # <5MP (e.g., 2000×2000 or smaller)
-            edge_smoother = 3  # 3x → full quality (108MB for 4MP image)
-            logger.info(f"[MOCKUP] Small billboard ({megapixels:.1f}MP), adaptive edge smoother: {edge_smoother}x")
+        edge_smoother = 3  # Default full quality
+        logger.info(f"[MOCKUP] Using default edge smoother: {edge_smoother}x")
 
     supersample_factor = edge_smoother
-    h_hires = int(billboard_image.shape[0] * supersample_factor)
-    w_hires = int(billboard_image.shape[1] * supersample_factor)
-    hires_megapixels = (h_hires * w_hires) / 1_000_000
-    hires_mb_estimate = (h_hires * w_hires * 3) / 1024 / 1024  # 3 bytes per pixel
-    logger.info(f"[MOCKUP] Super-sampled mask size: {w_hires}×{h_hires} ({hires_megapixels:.1f}MP, ~{hires_mb_estimate:.1f}MB)")
 
-    # Scale destination points to high-res space
-    dst_pts_hires = adjusted_dst_pts * supersample_factor
+    # Calculate bounding box of the frame polygon
+    # Add padding to ensure smooth edges extend beyond frame
+    padding = int(50 * supersample_factor)  # Extra padding in super-sampled space
+    x_coords = adjusted_dst_pts[:, 0]
+    y_coords = adjusted_dst_pts[:, 1]
+    bbox_x_min = max(0, int(np.floor(x_coords.min())))
+    bbox_y_min = max(0, int(np.floor(y_coords.min())))
+    bbox_x_max = min(billboard_image.shape[1], int(np.ceil(x_coords.max())))
+    bbox_y_max = min(billboard_image.shape[0], int(np.ceil(y_coords.max())))
 
-    # Draw mask at high resolution with anti-aliased lines
-    mask_hires = np.zeros((h_hires, w_hires), dtype=np.uint8)
-    cv2.fillPoly(mask_hires, [dst_pts_hires.astype(np.int32)], 255, lineType=cv2.LINE_AA)
+    # Add padding
+    bbox_x_min = max(0, bbox_x_min - int(padding / supersample_factor))
+    bbox_y_min = max(0, bbox_y_min - int(padding / supersample_factor))
+    bbox_x_max = min(billboard_image.shape[1], bbox_x_max + int(padding / supersample_factor))
+    bbox_y_max = min(billboard_image.shape[0], bbox_y_max + int(padding / supersample_factor))
 
-    # Apply additional Gaussian blur at high-res for extra smoothing based on edge smoother
-    # Higher edge smoother values = more aggressive smoothing
+    bbox_width = bbox_x_max - bbox_x_min
+    bbox_height = bbox_y_max - bbox_y_min
+    bbox_megapixels = (bbox_width * bbox_height) / 1_000_000
+
+    # Super-sample only the bounding box region
+    bbox_w_hires = int(bbox_width * supersample_factor)
+    bbox_h_hires = int(bbox_height * supersample_factor)
+    bbox_hires_megapixels = (bbox_w_hires * bbox_h_hires) / 1_000_000
+    bbox_hires_mb = (bbox_w_hires * bbox_h_hires * 3) / 1024 / 1024
+
+    logger.info(
+        f"[MOCKUP] Frame bounding box: {bbox_width}x{bbox_height} ({bbox_megapixels:.1f}MP) "
+        f"at ({bbox_x_min},{bbox_y_min})"
+    )
+    logger.info(
+        f"[MOCKUP] Super-sampled region: {bbox_w_hires}x{bbox_h_hires} ({bbox_hires_megapixels:.1f}MP, ~{bbox_hires_mb:.1f}MB)"
+    )
+
+    # Translate frame points to bbox-local coordinates and scale to super-sampled space
+    dst_pts_local = adjusted_dst_pts - np.array([bbox_x_min, bbox_y_min])
+    dst_pts_local_hires = dst_pts_local * supersample_factor
+
+    # Draw mask at high resolution (only for the bbox region)
+    mask_hires = np.zeros((bbox_h_hires, bbox_w_hires), dtype=np.uint8)
+    cv2.fillPoly(mask_hires, [dst_pts_local_hires.astype(np.int32)], 255, lineType=cv2.LINE_AA)
+
+    # Apply additional Gaussian blur at high-res for extra smoothing
     if edge_smoother > 3:
-        blur_strength = int((edge_smoother - 3) * 2)  # 0 at 3x, up to 34 at 20x
+        blur_strength = int((edge_smoother - 3) * 2)
         if blur_strength > 0:
             kernel_size = blur_strength * 2 + 1  # Ensure odd
             mask_hires = cv2.GaussianBlur(mask_hires, (kernel_size, kernel_size), sigmaX=blur_strength/2)
-            logger.info(f"[MOCKUP] Applied additional mask blur: {blur_strength}px for smoother edges")
+            logger.info(f"[MOCKUP] Applied additional mask blur: {blur_strength}px")
 
-    # Downsample to original resolution with high-quality interpolation
-    # INTER_AREA is best for downsampling - produces smooth anti-aliased edges
-    mask = cv2.resize(mask_hires, (billboard_image.shape[1], billboard_image.shape[0]),
-                     interpolation=cv2.INTER_AREA)
+    # Downsample bbox mask to original resolution
+    mask_bbox = cv2.resize(mask_hires, (bbox_width, bbox_height), interpolation=cv2.INTER_AREA)
+
+    # Create full-sized mask and paste bbox mask into it
+    mask = np.zeros((billboard_image.shape[0], billboard_image.shape[1]), dtype=np.uint8)
+    mask[bbox_y_min:bbox_y_max, bbox_x_min:bbox_x_max] = mask_bbox
+
+    # Clean up intermediate arrays
+    try: del mask_hires
+    except: pass
+    try: del mask_bbox
+    except: pass
+    try: del dst_pts_local
+    except: pass
+    try: del dst_pts_local_hires
+    except: pass
+    gc.collect()
 
     # Apply edge blur for additional smoothing (user-configurable)
     # Use config edge blur if provided
@@ -388,26 +414,63 @@ def warp_creative_to_billboard(
         # Bright edges against dark backgrounds need less feathering
 
         if edge_blur >= 8:
-            # Calculate luminance at edges
-            billboard_gray = cv2.cvtColor(billboard_image, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
-            warped_gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+            # OPTIMIZED: Only process luminance in frame bounding box region
+            # Calculate frame bbox with padding for blur spillover
+            y_indices, x_indices = np.where(mask_float > 0)
+            if len(y_indices) > 0:  # Only if mask has content
+                padding = 20  # Padding for blur spillover
+                y_min = max(0, y_indices.min() - padding)
+                y_max = min(billboard_image.shape[0], y_indices.max() + padding)
+                x_min = max(0, x_indices.min() - padding)
+                x_max = min(billboard_image.shape[1], x_indices.max() + padding)
 
-            # Find edges again for luminance comparison
-            edge_mask_binary = (mask_float > 0.1) & (mask_float < 0.9)
+                # Extract only the frame region
+                billboard_bbox = billboard_image[y_min:y_max, x_min:x_max]
+                warped_bbox = warped[y_min:y_max, x_min:x_max]
+                mask_bbox = mask_float[y_min:y_max, x_min:x_max]
 
-            # Calculate contrast at edges
-            billboard_lum_blur = cv2.GaussianBlur(billboard_gray, (15, 15), sigmaX=5)
-            warped_lum_blur = cv2.GaussianBlur(warped_gray, (15, 15), sigmaX=5)
+                # Calculate luminance only in frame region
+                billboard_gray_bbox = cv2.cvtColor(billboard_bbox, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+                warped_gray_bbox = cv2.cvtColor(warped_bbox, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
 
-            # High contrast edges can be sharper, low contrast needs more feather
-            lum_diff = np.abs(billboard_lum_blur - warped_lum_blur)
-            lum_diff_clipped = np.clip(lum_diff, 0, 1)
+                # Find edges in bbox region
+                edge_mask_binary_bbox = (mask_bbox > 0.1) & (mask_bbox < 0.9)
 
-            # Sharpen high-contrast edges, soften low-contrast edges
-            edge_adaptive = np.where(edge_mask_binary,
-                                    1.0 + (lum_diff_clipped * 0.3),  # Up to 30% sharper
-                                    1.0)
-            mask_float = np.clip(mask_float * edge_adaptive, 0, 1)
+                # Calculate contrast at edges (only in bbox)
+                billboard_lum_blur_bbox = cv2.GaussianBlur(billboard_gray_bbox, (15, 15), sigmaX=5)
+                warped_lum_blur_bbox = cv2.GaussianBlur(warped_gray_bbox, (15, 15), sigmaX=5)
+
+                # High contrast edges can be sharper, low contrast needs more feather
+                lum_diff_bbox = np.abs(billboard_lum_blur_bbox - warped_lum_blur_bbox)
+                lum_diff_clipped_bbox = np.clip(lum_diff_bbox, 0, 1)
+
+                # Sharpen high-contrast edges, soften low-contrast edges
+                edge_adaptive_bbox = np.where(edge_mask_binary_bbox,
+                                            1.0 + (lum_diff_clipped_bbox * 0.3),
+                                            1.0)
+
+                # Apply edge adaptive only in bbox region
+                mask_float[y_min:y_max, x_min:x_max] = np.clip(mask_bbox * edge_adaptive_bbox, 0, 1)
+
+                # Clean up bbox arrays
+                try: del billboard_bbox
+                except: pass
+                try: del warped_bbox
+                except: pass
+                try: del mask_bbox
+                except: pass
+                try: del billboard_gray_bbox
+                except: pass
+                try: del warped_gray_bbox
+                except: pass
+                try: del billboard_lum_blur_bbox
+                except: pass
+                try: del warped_lum_blur_bbox
+                except: pass
+                try: del lum_diff_bbox
+                except: pass
+                try: del edge_adaptive_bbox
+                except: pass
 
     else:
         edge_shadow = None
@@ -612,19 +675,47 @@ def warp_creative_to_billboard(
         # Convert sharpening percentage to strength (0-100 -> 1.0-1.5x)
         strength = 1.0 + (sharpening / 100.0) * 0.5
 
-        # Apply unsharp mask with user-defined strength
-        gaussian_blur = cv2.GaussianBlur(result, (0, 0), 2.0)
-        negative_weight = -(strength - 1.0)
-        unsharp_mask = cv2.addWeighted(result, strength, gaussian_blur, negative_weight, 0)
+        # OPTIMIZED: Only blur and sharpen the frame region, not entire billboard
+        # Calculate frame bbox with padding
+        mask_single = mask_3ch[:, :, 0]  # Get single channel from 3-channel mask
+        y_indices, x_indices = np.where(mask_single > 0)
 
-        # Apply only within frame region (using mask)
-        result = (result.astype(np.float32) * (1 - mask_3ch) +
-                  unsharp_mask.astype(np.float32) * mask_3ch).astype(np.uint8)
+        if len(y_indices) > 0:  # Only if mask has content
+            padding = 10  # Padding for blur spillover
+            y_min = max(0, y_indices.min() - padding)
+            y_max = min(result.shape[0], y_indices.max() + padding)
+            x_min = max(0, x_indices.min() - padding)
+            x_max = min(result.shape[1], x_indices.max() + padding)
 
-        logger.info(f"[MOCKUP] Applied sharpening: {sharpening}% (strength: {strength:.2f}x)")
+            # Extract only the frame region
+            result_bbox = result[y_min:y_max, x_min:x_max]
+            mask_bbox = mask_3ch[y_min:y_max, x_min:x_max]
 
-        # Cleanup sharpening intermediate arrays
-        del gaussian_blur, unsharp_mask
+            # Apply unsharp mask only to frame region
+            gaussian_blur_bbox = cv2.GaussianBlur(result_bbox, (0, 0), 2.0)
+            negative_weight = -(strength - 1.0)
+            unsharp_mask_bbox = cv2.addWeighted(result_bbox, strength, gaussian_blur_bbox, negative_weight, 0)
+
+            # Blend sharpened region with original using mask
+            result_bbox_blended = (result_bbox.astype(np.float32) * (1 - mask_bbox) +
+                                  unsharp_mask_bbox.astype(np.float32) * mask_bbox).astype(np.uint8)
+
+            # Paste sharpened bbox back into full result
+            result[y_min:y_max, x_min:x_max] = result_bbox_blended
+
+            logger.info(f"[MOCKUP] Applied sharpening: {sharpening}% (strength: {strength:.2f}x) to bbox region")
+
+            # Cleanup sharpening intermediate arrays
+            try: del result_bbox
+            except: pass
+            try: del mask_bbox
+            except: pass
+            try: del gaussian_blur_bbox
+            except: pass
+            try: del unsharp_mask_bbox
+            except: pass
+            try: del result_bbox_blended
+            except: pass
     else:
         logger.info(f"[MOCKUP] Sharpening disabled (0%)")
 
