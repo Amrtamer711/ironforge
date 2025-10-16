@@ -25,7 +25,6 @@ mockup_history: Dict[str, Dict[str, Any]] = {}
 
 def cleanup_expired_mockups():
     """Remove creative files that have expired (older than 30 minutes)"""
-    from datetime import datetime, timedelta
     import os
     import gc
 
@@ -68,7 +67,6 @@ def store_mockup_history(user_id: str, creative_paths: list, metadata: dict):
         creative_paths: List of Path objects to creative files (1-N files)
         metadata: Dict with location_key, location_name, num_frames, etc.
     """
-    from datetime import datetime
     import gc
 
     # Clean up old creative files for this user if exists
@@ -105,7 +103,6 @@ def get_mockup_history(user_id: str) -> Optional[Dict[str, Any]]:
     Returns:
         Dict with creative_paths (List[Path]), metadata, timestamp, or None if expired/not found
     """
-    from datetime import datetime, timedelta
     import gc
 
     if user_id not in mockup_history:
@@ -942,7 +939,6 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             mode = metadata.get("mode", "unknown")
 
             # Calculate time remaining
-            from datetime import datetime, timedelta
             timestamp = mockup_hist.get("timestamp")
             if timestamp:
                 time_remaining = 30 - int((datetime.now() - timestamp).total_seconds() / 60)
