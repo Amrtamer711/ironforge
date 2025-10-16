@@ -144,6 +144,18 @@ class MockupTaskQueue:
             logger.error(f"[QUEUE] Task {task.task_id} failed: {e}")
 
         finally:
+            # Force aggressive garbage collection before releasing slot
+            # This ensures memory from numpy arrays is freed before next task starts
+            import gc
+            gc.collect()  # Collect generation 0 (recent objects)
+            gc.collect()  # Collect generation 1
+            gc.collect()  # Collect generation 2 (full collection)
+
+            # Small delay to let OS reclaim memory (numpy arrays use malloc directly)
+            await asyncio.sleep(0.1)
+
+            logger.info(f"[QUEUE] Task {task.task_id} completed garbage collection sweep")
+
             # Release slot
             async with self.lock:
                 self.current_tasks -= 1
