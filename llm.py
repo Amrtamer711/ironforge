@@ -27,6 +27,7 @@ def cleanup_expired_mockups():
     """Remove creative files that have expired (older than 30 minutes)"""
     from datetime import datetime, timedelta
     import os
+    import gc
 
     now = datetime.now()
     expired_users = []
@@ -54,6 +55,11 @@ def cleanup_expired_mockups():
         del mockup_history[user_id]
         config.logger.info(f"[MOCKUP HISTORY] Removed user {user_id} from mockup history")
 
+    # Force garbage collection if we cleaned up any files
+    if expired_users:
+        gc.collect()
+        config.logger.info(f"[MOCKUP HISTORY] Forced garbage collection after cleanup")
+
 def store_mockup_history(user_id: str, creative_paths: list, metadata: dict):
     """Store creative files in user's history with 30-minute expiry
 
@@ -63,6 +69,7 @@ def store_mockup_history(user_id: str, creative_paths: list, metadata: dict):
         metadata: Dict with location_key, location_name, num_frames, etc.
     """
     from datetime import datetime
+    import gc
 
     # Clean up old creative files for this user if exists
     if user_id in mockup_history:
@@ -78,6 +85,8 @@ def store_mockup_history(user_id: str, creative_paths: list, metadata: dict):
                     config.logger.error(f"[MOCKUP HISTORY] Failed to delete old creative: {e}")
         if deleted_count > 0:
             config.logger.info(f"[MOCKUP HISTORY] Replaced {deleted_count} old creative file(s) for user {user_id}")
+            # Force garbage collection when replacing files
+            gc.collect()
 
     # Store new creative files
     mockup_history[user_id] = {
@@ -97,6 +106,7 @@ def get_mockup_history(user_id: str) -> Optional[Dict[str, Any]]:
         Dict with creative_paths (List[Path]), metadata, timestamp, or None if expired/not found
     """
     from datetime import datetime, timedelta
+    import gc
 
     if user_id not in mockup_history:
         return None
@@ -108,13 +118,21 @@ def get_mockup_history(user_id: str) -> Optional[Dict[str, Any]]:
     if timestamp and (datetime.now() - timestamp) > timedelta(minutes=30):
         # Expired - clean up all creative files
         creative_paths = data.get("creative_paths", [])
+        deleted_count = 0
         for creative_path in creative_paths:
             if creative_path and creative_path.exists():
                 try:
                     os.unlink(creative_path)
+                    deleted_count += 1
                 except:
                     pass
         del mockup_history[user_id]
+
+        # Force garbage collection if we deleted files
+        if deleted_count > 0:
+            gc.collect()
+            config.logger.info(f"[MOCKUP HISTORY] Auto-cleaned {deleted_count} expired file(s) for user {user_id}")
+
         return None
 
     return data
