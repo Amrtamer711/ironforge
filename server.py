@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 import config
 import db
-from llm import main_llm_loop
+from llm import main_llm_loop, _generate_mockup_queued
 from font_utils import install_custom_fonts
 
 # Install custom fonts on startup
@@ -220,7 +220,11 @@ async def metrics():
     
     # Get user history size
     from llm import user_history, pending_location_additions
-    
+
+    # Get mockup queue status
+    from task_queue import mockup_queue
+    queue_status = mockup_queue.get_queue_status()
+
     return {
         "memory": {
             "rss_mb": round(memory_info.rss / 1024 / 1024, 2),
@@ -234,11 +238,42 @@ async def metrics():
             "active": pdf_conversions_active,
             "max_concurrent": _CONVERT_SEMAPHORE._initial_value,
         },
+        "mockup_queue": queue_status,
         "cache_sizes": {
             "user_histories": len(user_history),
             "pending_locations": len(pending_location_additions),
             "templates_cached": len(config.get_location_mapping()),
         },
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@app.get("/api/queue/status")
+async def queue_status():
+    """Get current mockup generation queue status"""
+    from task_queue import mockup_queue
+
+    status = mockup_queue.get_queue_status()
+
+    return {
+        "queue": status,
+        "timestamp": datetime.now().isoformat()
+    }
+
+
+@app.post("/api/queue/update-limit")
+async def update_queue_limit(max_concurrent: int):
+    """Update the maximum concurrent mockup generation tasks (admin only)"""
+    from task_queue import mockup_queue
+
+    if max_concurrent < 1 or max_concurrent > 10:
+        raise HTTPException(status_code=400, detail="max_concurrent must be between 1 and 10")
+
+    await mockup_queue.update_max_concurrent(max_concurrent)
+
+    return {
+        "success": True,
+        "new_max_concurrent": max_concurrent,
         "timestamp": datetime.now().isoformat()
     }
 
@@ -786,8 +821,8 @@ Example analogy: If asked to create a "movie poster," you'd create the poster AR
         else:
             raise HTTPException(status_code=400, detail="Either ai_prompt or creative file must be provided")
 
-        # Generate mockup (pass as list) with time_of_day, finish, specific_photo, and config override
-        result_path, photo_used = mockup_generator.generate_mockup(
+        # Generate mockup (pass as list) with time_of_day, finish, specific_photo, and config override (queued)
+        result_path, photo_used = await _generate_mockup_queued(
             location_key,
             [creative_path],
             time_of_day=time_of_day,

@@ -12,6 +12,7 @@ import db
 from proposals import process_proposals
 from slack_formatting import SlackResponses
 from booking_parser import BookingOrderParser, ORIGINAL_DIR, PARSED_DIR
+from task_queue import mockup_queue
 
 user_history: Dict[str, list] = {}
 
@@ -244,6 +245,61 @@ async def _download_slack_file(file_info: Dict[str, Any]) -> Path:
         config.logger.error(f"[DOWNLOAD] File not found after write: {file_path}")
 
     return file_path
+
+
+async def _generate_mockup_queued(
+    location_key: str,
+    creative_paths: list,
+    time_of_day: str,
+    finish: str,
+    config_dict: dict = None,
+    specific_photo: str = None,
+    config_override: dict = None
+):
+    """
+    Wrapper function for mockup generation that runs through the task queue.
+    This limits concurrent mockup generation to prevent memory exhaustion.
+
+    Args:
+        location_key: Location identifier
+        creative_paths: List of creative file paths
+        time_of_day: Time of day variation
+        finish: Finish type
+        config_dict: Optional custom frame configuration (Slack)
+        specific_photo: Optional specific photo to use (Web API)
+        config_override: Optional config override (Web API)
+
+    Returns:
+        Tuple of (result_path, metadata)
+    """
+    import mockup_generator
+    import gc
+
+    logger = config.logger
+    logger.info(f"[QUEUE] Mockup generation requested for {location_key}")
+
+    # This function will be queued and executed when a slot is available
+    async def _generate():
+        try:
+            logger.info(f"[QUEUE] Starting mockup generation for {location_key}")
+            result_path, metadata = mockup_generator.generate_mockup(
+                location_key,
+                creative_paths,
+                time_of_day=time_of_day,
+                finish=finish,
+                config_dict=config_dict,
+                specific_photo=specific_photo,
+                config_override=config_override
+            )
+            logger.info(f"[QUEUE] Mockup generation completed for {location_key}")
+            gc.collect()
+            return result_path, metadata
+        except Exception as e:
+            logger.error(f"[QUEUE] Mockup generation failed for {location_key}: {e}")
+            raise
+
+    # Submit to queue and wait for result
+    return await mockup_queue.submit(_generate)
 
 
 async def _persist_location_upload(location_key: str, pptx_path: Path, metadata_text: str) -> None:
@@ -1770,8 +1826,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         )
 
                         try:
-                            # Generate mockup using stored creatives
-                            result_path, _ = mockup_generator.generate_mockup(
+                            # Generate mockup using stored creatives (queued)
+                            result_path, _ = await _generate_mockup_queued(
                                 location_key,
                                 stored_creative_paths,
                                 time_of_day=time_of_day,
@@ -1856,7 +1912,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     )
 
                     try:
-                        result_path, _ = mockup_generator.generate_mockup(
+                        # Generate mockup using uploaded creatives (queued)
+                        result_path, _ = await _generate_mockup_queued(
                             location_key,
                             uploaded_creatives,
                             time_of_day=time_of_day,
@@ -2096,8 +2153,8 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
 
                             ai_creative_paths.append(ai_creative_path)
 
-                        # Generate mockup with time_of_day and finish
-                        result_path, _ = mockup_generator.generate_mockup(
+                        # Generate mockup with time_of_day and finish (queued)
+                        result_path, _ = await _generate_mockup_queued(
                             location_key,
                             ai_creative_paths,
                             time_of_day=time_of_day,
