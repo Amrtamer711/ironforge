@@ -233,6 +233,9 @@ async def _download_slack_file(file_info: Dict[str, Any]) -> Path:
             with open(tmp.name, "wb") as f:
                 f.write(content)
 
+            # Immediately delete content bytes to free memory
+            del content
+
     # Verify file was written
     file_path = Path(tmp.name)
     if file_path.exists():

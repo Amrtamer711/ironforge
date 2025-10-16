@@ -977,6 +977,11 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
 
         logger.info(f"[AI_CREATIVE] Enhanced image saved to: {temp_file.name}")
 
+        # Cleanup all intermediate arrays to free memory immediately
+        del b64_image, image_data, pil_img, img_array, gaussian, sharpened, lab, l, a, b, enhanced
+        gc.collect()
+        logger.debug("[AI_CREATIVE] Cleaned up intermediate arrays and forced GC")
+
         return Path(temp_file.name)
 
     except Exception as e:
