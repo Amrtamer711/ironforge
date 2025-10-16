@@ -932,6 +932,29 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             user_message_content = f"{user_input}\n\n[User uploaded {len(image_files)} image file(s): {', '.join(image_files)}]"
             logger.info(f"[LLM] Detected {len(image_files)} uploaded image(s), informing LLM")
 
+    # Inject mockup history context ONLY if user did NOT upload new images (to avoid confusion)
+    if not image_files:
+        mockup_hist = get_mockup_history(user_id)
+        if mockup_hist:
+            metadata = mockup_hist.get("metadata", {})
+            stored_location = metadata.get("location_name", "unknown")
+            stored_frames = metadata.get("num_frames", 1)
+            mode = metadata.get("mode", "unknown")
+
+            # Calculate time remaining
+            from datetime import datetime, timedelta
+            timestamp = mockup_hist.get("timestamp")
+            if timestamp:
+                time_remaining = 30 - int((datetime.now() - timestamp).total_seconds() / 60)
+                time_remaining = max(0, time_remaining)
+
+                user_message_content = (
+                    f"{user_input}\n\n"
+                    f"[SYSTEM: User has {stored_frames}-frame creative(s) in memory from '{stored_location}' ({mode}). "
+                    f"Expires in {time_remaining} minutes. Can reuse for follow-up mockup requests on locations with {stored_frames} frame(s).]"
+                )
+                logger.info(f"[LLM] Injected mockup history context: {stored_frames} frames from {stored_location}, {time_remaining}min remaining")
+
     history = user_history.get(user_id, [])
     history.append({"role": "user", "content": user_message_content, "timestamp": datetime.now().isoformat()})
     history = history[-10:]
