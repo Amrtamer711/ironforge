@@ -406,9 +406,21 @@ async def test_preview_mockup(
 
         # CRITICAL: Explicitly delete large numpy arrays to free memory immediately
         # Preview endpoint is called repeatedly during setup, causing memory buildup
-        del billboard_data, billboard_array, billboard_img
-        del creative_data, creative_array, creative_img
-        del result
+        # Use individual dels to ensure all cleanup even if one fails
+        try: del billboard_data
+        except: pass
+        try: del billboard_array
+        except: pass
+        try: del billboard_img
+        except: pass
+        try: del creative_data
+        except: pass
+        try: del creative_array
+        except: pass
+        try: del creative_img
+        except: pass
+        try: del result
+        except: pass
         import gc
         gc.collect()
 
@@ -423,15 +435,23 @@ async def test_preview_mockup(
         raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
     except Exception as e:
         logger.error(f"[TEST PREVIEW] Error generating preview: {e}", exc_info=True)
-        # Cleanup on error path too
-        try:
-            del billboard_data, billboard_array, billboard_img
-            del creative_data, creative_array, creative_img
-            del result
-            import gc
-            gc.collect()
-        except:
-            pass
+        # Cleanup on error path too - individual dels to ensure all cleanup
+        try: del billboard_data
+        except: pass
+        try: del billboard_array
+        except: pass
+        try: del billboard_img
+        except: pass
+        try: del creative_data
+        except: pass
+        try: del creative_array
+        except: pass
+        try: del creative_img
+        except: pass
+        try: del result
+        except: pass
+        import gc
+        gc.collect()
         raise HTTPException(status_code=500, detail=str(e))
 
 

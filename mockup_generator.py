@@ -1056,7 +1056,29 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
         logger.info(f"[AI_CREATIVE] Enhanced image saved to: {temp_file.name}")
 
         # Cleanup all intermediate arrays to free memory immediately
-        del b64_image, image_data, pil_img, img_array, gaussian, sharpened, lab, l, a, b, enhanced
+        # Use individual try/except for each variable to ensure all deletions attempt
+        try: del b64_image
+        except: pass
+        try: del image_data
+        except: pass
+        try: del pil_img
+        except: pass
+        try: del img_array
+        except: pass
+        try: del gaussian
+        except: pass
+        try: del sharpened
+        except: pass
+        try: del lab
+        except: pass
+        try: del l
+        except: pass
+        try: del a
+        except: pass
+        try: del b
+        except: pass
+        try: del enhanced
+        except: pass
         gc.collect()
         logger.debug("[AI_CREATIVE] Cleaned up intermediate arrays and forced GC")
 
