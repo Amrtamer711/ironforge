@@ -148,9 +148,17 @@ def get_location_frame_count(location_key: str, time_of_day: str = "all", finish
         return None
 
     # Get the first available variation that matches time_of_day/finish
-    # or just get the first one if "all" is specified
-    for (tod, fin), photos in variations.items():
-        if (time_of_day == "all" or tod == time_of_day) and (finish == "all" or fin == finish):
+    # variations structure: {'day': ['gold', 'silver'], 'night': ['gold']}
+    for tod, finish_list in variations.items():
+        if time_of_day != "all" and tod != time_of_day:
+            continue
+
+        for fin in finish_list:
+            if finish != "all" and fin != finish:
+                continue
+
+            # Get all photos for this time_of_day/finish combination
+            photos = db.get_mockup_photos(location_key, tod, fin)
             if photos:
                 # Get frames data for the first photo
                 frames_data = db.get_mockup_frames(location_key, photos[0], tod, fin)
