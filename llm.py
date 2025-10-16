@@ -1,6 +1,6 @@
 import json
 import asyncio
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import os
 from pathlib import Path
 import aiohttp
@@ -17,6 +17,113 @@ user_history: Dict[str, list] = {}
 
 # Global for pending location additions (waiting for PPT upload)
 pending_location_additions: Dict[str, Dict[str, Any]] = {}
+
+# Global for mockup history (30-minute memory per user)
+# Structure: {user_id: {"path": Path, "metadata": dict, "timestamp": datetime, "cleanup_scheduled": bool}}
+mockup_history: Dict[str, Dict[str, Any]] = {}
+
+def cleanup_expired_mockups():
+    """Remove mockup files that have expired (older than 30 minutes)"""
+    from datetime import datetime, timedelta
+    import os
+
+    now = datetime.now()
+    expired_users = []
+
+    for user_id, data in mockup_history.items():
+        timestamp = data.get("timestamp")
+        if timestamp and (now - timestamp) > timedelta(minutes=30):
+            # Delete file
+            mockup_path = data.get("path")
+            if mockup_path and mockup_path.exists():
+                try:
+                    os.unlink(mockup_path)
+                    config.logger.info(f"[MOCKUP HISTORY] Cleaned up expired mockup for user {user_id}: {mockup_path}")
+                except Exception as e:
+                    config.logger.error(f"[MOCKUP HISTORY] Failed to delete {mockup_path}: {e}")
+
+            expired_users.append(user_id)
+
+    # Remove from memory
+    for user_id in expired_users:
+        del mockup_history[user_id]
+        config.logger.info(f"[MOCKUP HISTORY] Removed user {user_id} from mockup history")
+
+def store_mockup_history(user_id: str, mockup_path: Path, metadata: dict):
+    """Store mockup in user's history with 30-minute expiry"""
+    from datetime import datetime
+
+    # Clean up old mockup for this user if exists
+    if user_id in mockup_history:
+        old_data = mockup_history[user_id]
+        old_path = old_data.get("path")
+        if old_path and old_path.exists():
+            try:
+                os.unlink(old_path)
+                config.logger.info(f"[MOCKUP HISTORY] Replaced old mockup for user {user_id}")
+            except Exception as e:
+                config.logger.error(f"[MOCKUP HISTORY] Failed to delete old mockup: {e}")
+
+    # Store new mockup
+    mockup_history[user_id] = {
+        "path": mockup_path,
+        "metadata": metadata,
+        "timestamp": datetime.now(),
+        "cleanup_scheduled": False
+    }
+    config.logger.info(f"[MOCKUP HISTORY] Stored mockup for user {user_id}: {mockup_path}")
+
+    # Run cleanup to remove expired mockups from other users
+    cleanup_expired_mockups()
+
+def get_mockup_history(user_id: str) -> Optional[Dict[str, Any]]:
+    """Get user's mockup history if still valid (within 30 minutes)"""
+    from datetime import datetime, timedelta
+
+    if user_id not in mockup_history:
+        return None
+
+    data = mockup_history[user_id]
+    timestamp = data.get("timestamp")
+
+    # Check if expired
+    if timestamp and (datetime.now() - timestamp) > timedelta(minutes=30):
+        # Expired - clean up
+        mockup_path = data.get("path")
+        if mockup_path and mockup_path.exists():
+            try:
+                os.unlink(mockup_path)
+            except:
+                pass
+        del mockup_history[user_id]
+        return None
+
+    return data
+
+def get_location_frame_count(location_key: str, time_of_day: str = "all", finish: str = "all") -> Optional[int]:
+    """Get the number of frames for a specific location configuration.
+
+    Returns:
+        Number of frames, or None if location not found or no mockups configured
+    """
+    import db
+
+    # Get available variations for the location
+    variations = db.list_mockup_variations(location_key)
+    if not variations:
+        return None
+
+    # Get the first available variation that matches time_of_day/finish
+    # or just get the first one if "all" is specified
+    for (tod, fin), photos in variations.items():
+        if (time_of_day == "all" or tod == time_of_day) and (finish == "all" or fin == finish):
+            if photos:
+                # Get frames data for the first photo
+                frames_data = db.get_mockup_frames(location_key, photos[0], tod, fin)
+                if frames_data:
+                    return len(frames_data)
+
+    return None
 
 def _validate_powerpoint_file(file_path: Path) -> bool:
     """Validate that uploaded file is actually a PowerPoint presentation."""
@@ -1415,6 +1522,34 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     )
                     return
 
+                # Get frame count for this location to validate against history
+                new_location_frame_count = get_location_frame_count(location_key, time_of_day, finish)
+
+                # Check if user has a mockup in history and validate frame compatibility
+                user_history = get_mockup_history(user_id)
+                if user_history and not ai_prompt:  # Only check for follow-ups (not AI generation)
+                    stored_frames = user_history.get("metadata", {}).get("num_frames", 1)
+                    stored_location = user_history.get("metadata", {}).get("location_name", "unknown")
+
+                    # If requesting different location with mismatched frame count, warn user
+                    if location_key != user_history.get("metadata", {}).get("location_key"):
+                        if stored_frames != new_location_frame_count:
+                            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                            await config.slack_client.chat_postMessage(
+                                channel=channel,
+                                text=config.markdown_to_slack(
+                                    f"⚠️ **Frame Count Mismatch**\n\n"
+                                    f"I have your recent mockup from **{stored_location}** ({stored_frames} frame(s)) in memory, "
+                                    f"but **{location_name}** requires **{new_location_frame_count} frame(s)**.\n\n"
+                                    f"I cannot reuse creatives from a {stored_frames}-frame mockup for a {new_location_frame_count}-frame location.\n\n"
+                                    f"**Options:**\n"
+                                    f"• Upload {new_location_frame_count} new image(s) for {location_name}\n"
+                                    f"• Use AI generation by providing a creative description\n"
+                                    f"• Generate a mockup for a location with {stored_frames} frame(s)"
+                                )
+                            )
+                            return
+
                 # Check if user uploaded image(s) with the request
                 has_images = False
                 uploaded_creatives = []
@@ -1640,11 +1775,21 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                             )
                         )
 
-                        # Cleanup
+                        # Store mockup in 30-minute history for follow-ups
+                        store_mockup_history(user_id, result_path, {
+                            "location_key": location_key,
+                            "location_name": location_name,
+                            "time_of_day": time_of_day,
+                            "finish": finish,
+                            "mode": "ai_generated",
+                            "num_frames": num_ai_frames
+                        })
+                        logger.info(f"[MOCKUP] Stored AI mockup in history for user {user_id}")
+
+                        # Cleanup creative temp files only (keep result for history)
                         try:
                             for creative_path in ai_creative_paths:
                                 os.unlink(creative_path)
-                            os.unlink(result_path)
                         except:
                             pass
 
@@ -1694,11 +1839,25 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                             )
                         )
 
-                        # Cleanup
+                        # Get frame count for validation in follow-ups
+                        location_frame_count = get_location_frame_count(location_key, time_of_day, finish)
+
+                        # Store mockup in 30-minute history for follow-ups
+                        store_mockup_history(user_id, result_path, {
+                            "location_key": location_key,
+                            "location_name": location_name,
+                            "time_of_day": time_of_day,
+                            "finish": finish,
+                            "mode": "uploaded",
+                            "num_creatives": len(uploaded_creatives),
+                            "num_frames": location_frame_count or 1
+                        })
+                        logger.info(f"[MOCKUP] Stored uploaded mockup in history for user {user_id} ({location_frame_count} frames)")
+
+                        # Cleanup creative temp files only (keep result for history)
                         try:
                             for creative_file in uploaded_creatives:
                                 os.unlink(creative_file)
-                            os.unlink(result_path)
                         except:
                             pass
 
