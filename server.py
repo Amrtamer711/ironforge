@@ -326,6 +326,9 @@ async def save_mockup_frame(
         photo_path = mockup_generator.save_location_photo(location_key, final_filename, photo_data, time_of_day, finish)
         logger.info(f"[MOCKUP API] ✓ Photo saved to disk at: {photo_path}")
 
+        # Immediately delete photo_data to free memory
+        del photo_data
+
         # Verify the file exists immediately after saving
         import os
         if os.path.exists(photo_path):
@@ -375,6 +378,7 @@ async def test_preview_mockup(
         billboard_data = await billboard_photo.read()
         billboard_array = np.frombuffer(billboard_data, np.uint8)
         billboard_img = cv2.imdecode(billboard_array, cv2.IMREAD_COLOR)
+        del billboard_data  # Free memory immediately
 
         if billboard_img is None:
             raise HTTPException(status_code=400, detail="Invalid billboard photo")
@@ -383,6 +387,7 @@ async def test_preview_mockup(
         creative_data = await creative.read()
         creative_array = np.frombuffer(creative_data, np.uint8)
         creative_img = cv2.imdecode(creative_array, cv2.IMREAD_COLOR)
+        del creative_data  # Free memory immediately
 
         if creative_img is None:
             raise HTTPException(status_code=400, detail="Invalid creative image")
@@ -752,6 +757,7 @@ Example analogy: If asked to create a "movie poster," you'd create the poster AR
             creative_temp.write(creative_data)
             creative_temp.close()
             creative_path = Path(creative_temp.name)
+            del creative_data  # Free memory immediately
 
         else:
             raise HTTPException(status_code=400, detail="Either ai_prompt or creative file must be provided")
