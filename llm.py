@@ -158,7 +158,7 @@ def get_location_frame_count(location_key: str, time_of_day: str = "all", finish
                 continue
 
             # Get all photos for this time_of_day/finish combination
-            photos = db.get_mockup_photos(location_key, tod, fin)
+            photos = db.list_mockup_photos(location_key, tod, fin)
             if photos:
                 # Get frames data for the first photo
                 frames_data = db.get_mockup_frames(location_key, photos[0], tod, fin)
