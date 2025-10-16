@@ -1559,33 +1559,11 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     )
                     return
 
-                # Get frame count for this location to validate against history
+                # Get frame count for this location (needed for validation and storage)
                 new_location_frame_count = get_location_frame_count(location_key, time_of_day, finish)
 
-                # Check if user has a mockup in history and validate frame compatibility
+                # Get user's mockup history if exists (will validate later after checking for uploads)
                 user_history = get_mockup_history(user_id)
-                if user_history and not ai_prompt:  # Only check for follow-ups (not AI generation)
-                    stored_frames = user_history.get("metadata", {}).get("num_frames", 1)
-                    stored_location = user_history.get("metadata", {}).get("location_name", "unknown")
-
-                    # If requesting different location with mismatched frame count, warn user
-                    if location_key != user_history.get("metadata", {}).get("location_key"):
-                        if stored_frames != new_location_frame_count:
-                            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                            await config.slack_client.chat_postMessage(
-                                channel=channel,
-                                text=config.markdown_to_slack(
-                                    f"⚠️ **Frame Count Mismatch**\n\n"
-                                    f"I have your recent mockup from **{stored_location}** ({stored_frames} frame(s)) in memory, "
-                                    f"but **{location_name}** requires **{new_location_frame_count} frame(s)**.\n\n"
-                                    f"I cannot reuse creatives from a {stored_frames}-frame mockup for a {new_location_frame_count}-frame location.\n\n"
-                                    f"**Options:**\n"
-                                    f"• Upload {new_location_frame_count} new image(s) for {location_name}\n"
-                                    f"• Use AI generation by providing a creative description\n"
-                                    f"• Generate a mockup for a location with {stored_frames} frame(s)"
-                                )
-                            )
-                            return
 
                 # Check if user uploaded image(s) with the request
                 has_images = False
@@ -1616,13 +1594,56 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 # Determine mode based on what user provided
                 # Priority: 1) New upload 2) AI prompt 3) History reuse 4) Error
 
-                # EARLY FOLLOW-UP DETECTION: Check if this is a follow-up request (no upload, no AI, has history)
+                # Frame validation for follow-up requests (only if no new upload and no AI)
+                if user_history and not has_images and not ai_prompt:
+                    stored_frames = user_history.get("metadata", {}).get("num_frames", 1)
+                    stored_location = user_history.get("metadata", {}).get("location_name", "unknown")
+
+                    # If requesting different location with mismatched frame count, warn user
+                    if location_key != user_history.get("metadata", {}).get("location_key"):
+                        if stored_frames != new_location_frame_count:
+                            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                            await config.slack_client.chat_postMessage(
+                                channel=channel,
+                                text=config.markdown_to_slack(
+                                    f"⚠️ **Frame Count Mismatch**\n\n"
+                                    f"I have your recent mockup from **{stored_location}** ({stored_frames} frame(s)) in memory, "
+                                    f"but **{location_name}** requires **{new_location_frame_count} frame(s)**.\n\n"
+                                    f"I cannot reuse creatives from a {stored_frames}-frame mockup for a {new_location_frame_count}-frame location.\n\n"
+                                    f"**Options:**\n"
+                                    f"• Upload {new_location_frame_count} new image(s) for {location_name}\n"
+                                    f"• Use AI generation by providing a creative description\n"
+                                    f"• Generate a mockup for a location with {stored_frames} frame(s)"
+                                )
+                            )
+                            return
+
+                # FOLLOW-UP MODE: Check if this is a follow-up request (no upload, no AI, has history)
                 if not has_images and not ai_prompt and user_history:
-                    # FOLLOW-UP MODE: No upload, no AI prompt, but user has creatives in history
                     # This is a follow-up request to apply previous creatives to a different location
                     stored_frames = user_history.get("metadata", {}).get("num_frames", 1)
                     stored_creative_paths = user_history.get("creative_paths", [])
                     stored_location = user_history.get("metadata", {}).get("location_name", "unknown")
+
+                    # Verify all creative files still exist on disk
+                    missing_files = []
+                    for creative_path in stored_creative_paths:
+                        if not creative_path.exists():
+                            missing_files.append(str(creative_path))
+
+                    if missing_files:
+                        logger.error(f"[MOCKUP] Creative files missing from history: {missing_files}")
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            text=config.markdown_to_slack(
+                                f"❌ **Error:** Your previous creative files are no longer available.\n\n"
+                                f"Please upload new images or use AI generation."
+                            )
+                        )
+                        # Clean up corrupted history
+                        del mockup_history[user_id]
+                        return
 
                     # Validate frame count matches
                     if stored_frames == new_location_frame_count:
@@ -1987,6 +2008,15 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                             channel=channel,
                             text=config.markdown_to_slack(f"❌ **Error:** Failed to generate AI mockup. {str(e)}")
                         )
+
+                        # Cleanup any AI creative files that were generated before the error
+                        try:
+                            for creative_path in ai_creative_paths:
+                                if creative_path and creative_path.exists():
+                                    os.unlink(creative_path)
+                            logger.info(f"[MOCKUP] Cleaned up {len(ai_creative_paths)} AI creative file(s) after error")
+                        except Exception as cleanup_error:
+                            logger.error(f"[MOCKUP] Failed to cleanup AI creatives: {cleanup_error}")
 
                 else:
                     # NO AI PROMPT, NO IMAGE UPLOADED, NO HISTORY: Error - user needs to provide creative
