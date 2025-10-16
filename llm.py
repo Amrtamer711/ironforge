@@ -1812,6 +1812,11 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                             except:
                                 pass
 
+                            # Force garbage collection to free memory from numpy arrays
+                            import gc
+                            gc.collect()
+                            logger.debug(f"[MOCKUP] Follow-up mode: Forced garbage collection")
+
                             return  # Done with follow-up
 
                         except Exception as e:
@@ -1829,6 +1834,10 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                                     logger.info(f"[MOCKUP] Cleaned up partial result file after error")
                             except Exception as cleanup_error:
                                 logger.error(f"[MOCKUP] Failed to cleanup result file: {cleanup_error}")
+
+                            # Force garbage collection
+                            import gc
+                            gc.collect()
 
                             return
 
@@ -1891,6 +1900,11 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         except:
                             pass
 
+                        # Force garbage collection to free memory from numpy arrays
+                        import gc
+                        gc.collect()
+                        logger.debug(f"[MOCKUP] Upload mode: Forced garbage collection")
+
                     except Exception as e:
                         logger.error(f"[MOCKUP] Error generating mockup from upload: {e}", exc_info=True)
                         await config.slack_client.chat_delete(channel=channel, ts=status_ts)
@@ -1905,6 +1919,10 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                                 os.unlink(creative_file)
                         except:
                             pass
+
+                        # Force garbage collection
+                        import gc
+                        gc.collect()
 
                 elif ai_prompt:
                     # AI MODE: User provided a description for AI generation
@@ -2121,6 +2139,11 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                         except:
                             pass
 
+                        # Force garbage collection to free memory from numpy arrays
+                        import gc
+                        gc.collect()
+                        logger.debug(f"[MOCKUP] AI mode: Forced garbage collection")
+
                     except Exception as e:
                         logger.error(f"[MOCKUP] Error generating AI mockup: {e}", exc_info=True)
                         await config.slack_client.chat_delete(channel=channel, ts=status_ts)
@@ -2137,6 +2160,10 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                             logger.info(f"[MOCKUP] Cleaned up {len(ai_creative_paths)} AI creative file(s) after error")
                         except Exception as cleanup_error:
                             logger.error(f"[MOCKUP] Failed to cleanup AI creatives: {cleanup_error}")
+
+                        # Force garbage collection
+                        import gc
+                        gc.collect()
 
                 else:
                     # NO AI PROMPT, NO IMAGE UPLOADED, NO HISTORY: Error - user needs to provide creative
