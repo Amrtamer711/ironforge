@@ -909,13 +909,14 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
 
     # Check if user uploaded image files and append to message
     user_message_content = user_input
+    image_files = []  # Initialize outside conditional block
+
     if has_files and slack_event:
         files = slack_event.get("files", [])
         if not files and slack_event.get("subtype") == "file_share" and "file" in slack_event:
             files = [slack_event["file"]]
 
         # Check for image files
-        image_files = []
         for f in files:
             filetype = f.get("filetype", "")
             mimetype = f.get("mimetype", "")
