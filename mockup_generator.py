@@ -597,23 +597,100 @@ def warp_creative_to_billboard(
 
     # Cleanup ALL intermediate processing arrays to free memory immediately
     # After this point, only 'result' is needed for return
-    # Each del wrapped individually so one missing variable doesn't skip others
+    # CRITICAL: Must use actual del statements, not del locals()[var] which doesn't work!
     import gc
 
-    for var in ['creative_upscaled', 'warped', 'billboard_image', 'creative_image',
-                'mask_hires', 'mask', 'mask_3ch', 'billboard_filled', 'warped_enhanced',
-                'mask_float', 'mask_linear', 'mask_large', 'mask_small', 'mask_spread', 'mask_choked',
-                'mask_binary', 'dist_transform', 'edge_detect_kernel', 'dilated_mask', 'eroded_mask',
-                'edge_region', 'edge_region_3ch', 'edge_contact', 'edge_shadow', 'edge_mask_binary',
-                'edge_adaptive', 'billboard_edge_colors', 'billboard_colors_blur', 'billboard_gray',
-                'billboard_lum_blur', 'warped_float', 'warped_gray', 'warped_lum_blur', 'warped_uint',
-                'light_wrap_contribution', 'lighting_gradient', 'lighting_gradient_3ch',
-                'feather_normalized', 'feather_smooth', 'lum_diff', 'lum_diff_clipped',
-                'hsv', 'y_coords', 'x_coords', 'y_norm', 'gaussian_blur', 'unsharp_mask']:
-        try:
-            del locals()[var]
-        except:
-            pass
+    # Delete all intermediate arrays - using try/except for each since not all may exist
+    try: del creative_upscaled
+    except: pass
+    try: del warped
+    except: pass
+    try: del mask_hires
+    except: pass
+    try: del mask
+    except: pass
+    try: del mask_3ch
+    except: pass
+    try: del billboard_filled
+    except: pass
+    try: del warped_enhanced
+    except: pass
+    try: del mask_float
+    except: pass
+    try: del mask_linear
+    except: pass
+    try: del mask_large
+    except: pass
+    try: del mask_small
+    except: pass
+    try: del mask_spread
+    except: pass
+    try: del mask_choked
+    except: pass
+    try: del mask_binary
+    except: pass
+    try: del dist_transform
+    except: pass
+    try: del edge_detect_kernel
+    except: pass
+    try: del dilated_mask
+    except: pass
+    try: del eroded_mask
+    except: pass
+    try: del edge_region
+    except: pass
+    try: del edge_region_3ch
+    except: pass
+    try: del edge_contact
+    except: pass
+    try: del edge_shadow
+    except: pass
+    try: del edge_mask_binary
+    except: pass
+    try: del edge_adaptive
+    except: pass
+    try: del billboard_edge_colors
+    except: pass
+    try: del billboard_colors_blur
+    except: pass
+    try: del billboard_gray
+    except: pass
+    try: del billboard_lum_blur
+    except: pass
+    try: del warped_float
+    except: pass
+    try: del warped_gray
+    except: pass
+    try: del warped_lum_blur
+    except: pass
+    try: del warped_uint
+    except: pass
+    try: del light_wrap_contribution
+    except: pass
+    try: del lighting_gradient
+    except: pass
+    try: del lighting_gradient_3ch
+    except: pass
+    try: del feather_normalized
+    except: pass
+    try: del feather_smooth
+    except: pass
+    try: del lum_diff
+    except: pass
+    try: del lum_diff_clipped
+    except: pass
+    try: del hsv
+    except: pass
+    try: del y_coords
+    except: pass
+    try: del x_coords
+    except: pass
+    try: del y_norm
+    except: pass
+    try: del gaussian_blur
+    except: pass
+    try: del unsharp_mask
+    except: pass
 
     # Force immediate garbage collection
     gc.collect()
@@ -949,6 +1026,7 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
         # Load image from bytes
         pil_img = Image.open(io.BytesIO(image_data))
         img_array = np.array(pil_img)
+        pil_img.close()  # Close PIL Image to free resources
 
         # Convert RGB to BGR for OpenCV
         if len(img_array.shape) == 3 and img_array.shape[2] == 3:
