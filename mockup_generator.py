@@ -67,6 +67,9 @@ def extend_image_borders_smart(image: np.ndarray, extend_pixels: int, method: st
         inpaint_radius = min(10, extend_pixels // 2)
         result = cv2.inpaint(extended, mask, inpaint_radius, cv2.INPAINT_TELEA)
 
+        # Cleanup intermediate arrays
+        del extended, mask
+
         logger.info(f"[MOCKUP] Extended borders by {extend_pixels}px using inpainting")
         return result
 
@@ -640,6 +643,8 @@ def warp_creative_to_billboard(
     try: del edge_region
     except: pass
     try: del edge_region_3ch
+    except: pass
+    try: del eroded
     except: pass
     try: del edge_contact
     except: pass
