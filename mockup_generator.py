@@ -183,14 +183,38 @@ def warp_creative_to_billboard(
 
     # Create high-quality anti-aliased mask using super-sampling
     # Edge Smoother controls super-sampling factor (1-20x) for smooth edges
-    edge_smoother = 3  # Default
+    # ADAPTIVE: Automatically reduce super-sampling for large images to prevent memory exhaustion
+
+    # Calculate billboard size for adaptive super-sampling
+    total_pixels = billboard_image.shape[0] * billboard_image.shape[1]
+    megapixels = total_pixels / 1_000_000
+
     if config and 'edgeSmoother' in config:
+        # User explicitly set edge smoother, respect it
         edge_smoother = max(1, min(20, config['edgeSmoother']))
+        logger.info(f"[MOCKUP] Using config edge smoother: {edge_smoother}x")
+    else:
+        # Adaptive edge smoother based on billboard size to prevent memory spikes
+        # Super-sampled memory = (width × height × factor²) × 3 bytes
+        if total_pixels > 12_000_000:  # 12MP+ (e.g., 4000×3000)
+            edge_smoother = 1.5  # 1.5x → 27MP super-sampled (81MB)
+            logger.info(f"[MOCKUP] Large billboard ({megapixels:.1f}MP), adaptive edge smoother: {edge_smoother}x")
+        elif total_pixels > 8_000_000:  # 8-12MP (e.g., 3500×2500)
+            edge_smoother = 2  # 2x → 32-48MP super-sampled (96-144MB)
+            logger.info(f"[MOCKUP] Medium-large billboard ({megapixels:.1f}MP), adaptive edge smoother: {edge_smoother}x")
+        elif total_pixels > 5_000_000:  # 5-8MP (e.g., 3000×2000)
+            edge_smoother = 2.5  # 2.5x → 31-50MP super-sampled (93-150MB)
+            logger.info(f"[MOCKUP] Medium billboard ({megapixels:.1f}MP), adaptive edge smoother: {edge_smoother}x")
+        else:  # <5MP (e.g., 2000×2000 or smaller)
+            edge_smoother = 3  # 3x → full quality (108MB for 4MP image)
+            logger.info(f"[MOCKUP] Small billboard ({megapixels:.1f}MP), adaptive edge smoother: {edge_smoother}x")
 
     supersample_factor = edge_smoother
-    h_hires = billboard_image.shape[0] * supersample_factor
-    w_hires = billboard_image.shape[1] * supersample_factor
-    logger.info(f"[MOCKUP] Edge smoother set to {edge_smoother}x super-sampling")
+    h_hires = int(billboard_image.shape[0] * supersample_factor)
+    w_hires = int(billboard_image.shape[1] * supersample_factor)
+    hires_megapixels = (h_hires * w_hires) / 1_000_000
+    hires_mb_estimate = (h_hires * w_hires * 3) / 1024 / 1024  # 3 bytes per pixel
+    logger.info(f"[MOCKUP] Super-sampled mask size: {w_hires}×{h_hires} ({hires_megapixels:.1f}MP, ~{hires_mb_estimate:.1f}MB)")
 
     # Scale destination points to high-res space
     dst_pts_hires = adjusted_dst_pts * supersample_factor
@@ -1188,6 +1212,10 @@ def generate_mockup(
         return None, None
 
     # Load billboard
+    import psutil
+    process = psutil.Process()
+    ram_before_billboard = round(process.memory_info().rss / 1024 / 1024, 2)
+
     try:
         billboard = cv2.imread(str(photo_path))
         if billboard is None:
@@ -1197,8 +1225,20 @@ def generate_mockup(
         logger.error(f"[MOCKUP] Error loading billboard: {e}")
         return None, None
 
+    ram_after_billboard = round(process.memory_info().rss / 1024 / 1024, 2)
+    billboard_megapixels = (billboard.shape[0] * billboard.shape[1]) / 1_000_000
+    billboard_mb = (billboard.nbytes) / 1024 / 1024
+    logger.info(
+        f"[MOCKUP] Loaded billboard {billboard.shape[1]}x{billboard.shape[0]} "
+        f"({billboard_megapixels:.1f}MP, {billboard_mb:.1f}MB) "
+        f"(RAM: {ram_before_billboard}MB → {ram_after_billboard}MB, +{ram_after_billboard - ram_before_billboard:.2f}MB)"
+    )
+
     # Start with the billboard as the result
     result = billboard.copy()
+
+    ram_after_copy = round(process.memory_info().rss / 1024 / 1024, 2)
+    logger.info(f"[MOCKUP] Copied billboard for processing (RAM: {ram_after_billboard}MB → {ram_after_copy}MB, +{ram_after_copy - ram_after_billboard:.2f}MB)")
 
     # Apply each creative to each frame
     for i, frame_data in enumerate(frames_data):
