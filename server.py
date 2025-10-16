@@ -81,7 +81,11 @@ async def periodic_cleanup():
                 
             if expired_locations:
                 logger.info(f"[CLEANUP] Removed {len(expired_locations)} pending locations")
-            
+
+            # Clean mockup history (30-minute expiry for creative files)
+            from llm import cleanup_expired_mockups
+            cleanup_expired_mockups()
+
             # Clean up old temporary files
             import tempfile
             import time
@@ -92,8 +96,8 @@ async def periodic_cleanup():
             cleaned_files = 0
             for filename in os.listdir(temp_dir):
                 filepath = os.path.join(temp_dir, filename)
-                # Clean files older than 1 hour that match our patterns
-                if (filename.endswith(('.pptx', '.pdf', '.bin')) and 
+                # Clean files older than 1 hour that match our patterns (including images for mockups)
+                if (filename.endswith(('.pptx', '.pdf', '.bin', '.jpg', '.jpeg', '.png', '.gif')) and 
                     os.path.isfile(filepath) and 
                     os.stat(filepath).st_mtime < now - 3600):
                     try:
