@@ -19,11 +19,12 @@ user_history: Dict[str, list] = {}
 pending_location_additions: Dict[str, Dict[str, Any]] = {}
 
 # Global for mockup history (30-minute memory per user)
-# Structure: {user_id: {"path": Path, "metadata": dict, "timestamp": datetime, "cleanup_scheduled": bool}}
+# Structure: {user_id: {"creative_paths": List[Path], "metadata": dict, "timestamp": datetime}}
+# Stores individual creative files (1-N files) so they can be reused on different locations with matching frame count
 mockup_history: Dict[str, Dict[str, Any]] = {}
 
 def cleanup_expired_mockups():
-    """Remove mockup files that have expired (older than 30 minutes)"""
+    """Remove creative files that have expired (older than 30 minutes)"""
     from datetime import datetime, timedelta
     import os
 
@@ -33,15 +34,19 @@ def cleanup_expired_mockups():
     for user_id, data in mockup_history.items():
         timestamp = data.get("timestamp")
         if timestamp and (now - timestamp) > timedelta(minutes=30):
-            # Delete file
-            mockup_path = data.get("path")
-            if mockup_path and mockup_path.exists():
-                try:
-                    os.unlink(mockup_path)
-                    config.logger.info(f"[MOCKUP HISTORY] Cleaned up expired mockup for user {user_id}: {mockup_path}")
-                except Exception as e:
-                    config.logger.error(f"[MOCKUP HISTORY] Failed to delete {mockup_path}: {e}")
+            # Delete all creative files for this user
+            creative_paths = data.get("creative_paths", [])
+            deleted_count = 0
+            for creative_path in creative_paths:
+                if creative_path and creative_path.exists():
+                    try:
+                        os.unlink(creative_path)
+                        deleted_count += 1
+                    except Exception as e:
+                        config.logger.error(f"[MOCKUP HISTORY] Failed to delete {creative_path}: {e}")
 
+            if deleted_count > 0:
+                config.logger.info(f"[MOCKUP HISTORY] Cleaned up {deleted_count} expired creative file(s) for user {user_id}")
             expired_users.append(user_id)
 
     # Remove from memory
@@ -49,35 +54,48 @@ def cleanup_expired_mockups():
         del mockup_history[user_id]
         config.logger.info(f"[MOCKUP HISTORY] Removed user {user_id} from mockup history")
 
-def store_mockup_history(user_id: str, mockup_path: Path, metadata: dict):
-    """Store mockup in user's history with 30-minute expiry"""
+def store_mockup_history(user_id: str, creative_paths: list, metadata: dict):
+    """Store creative files in user's history with 30-minute expiry
+
+    Args:
+        user_id: Slack user ID
+        creative_paths: List of Path objects to creative files (1-N files)
+        metadata: Dict with location_key, location_name, num_frames, etc.
+    """
     from datetime import datetime
 
-    # Clean up old mockup for this user if exists
+    # Clean up old creative files for this user if exists
     if user_id in mockup_history:
         old_data = mockup_history[user_id]
-        old_path = old_data.get("path")
-        if old_path and old_path.exists():
-            try:
-                os.unlink(old_path)
-                config.logger.info(f"[MOCKUP HISTORY] Replaced old mockup for user {user_id}")
-            except Exception as e:
-                config.logger.error(f"[MOCKUP HISTORY] Failed to delete old mockup: {e}")
+        old_creative_paths = old_data.get("creative_paths", [])
+        deleted_count = 0
+        for old_path in old_creative_paths:
+            if old_path and old_path.exists():
+                try:
+                    os.unlink(old_path)
+                    deleted_count += 1
+                except Exception as e:
+                    config.logger.error(f"[MOCKUP HISTORY] Failed to delete old creative: {e}")
+        if deleted_count > 0:
+            config.logger.info(f"[MOCKUP HISTORY] Replaced {deleted_count} old creative file(s) for user {user_id}")
 
-    # Store new mockup
+    # Store new creative files
     mockup_history[user_id] = {
-        "path": mockup_path,
+        "creative_paths": creative_paths,
         "metadata": metadata,
-        "timestamp": datetime.now(),
-        "cleanup_scheduled": False
+        "timestamp": datetime.now()
     }
-    config.logger.info(f"[MOCKUP HISTORY] Stored mockup for user {user_id}: {mockup_path}")
+    config.logger.info(f"[MOCKUP HISTORY] Stored {len(creative_paths)} creative file(s) for user {user_id}")
 
-    # Run cleanup to remove expired mockups from other users
+    # Run cleanup to remove expired creatives from other users
     cleanup_expired_mockups()
 
 def get_mockup_history(user_id: str) -> Optional[Dict[str, Any]]:
-    """Get user's mockup history if still valid (within 30 minutes)"""
+    """Get user's creative files from history if still valid (within 30 minutes)
+
+    Returns:
+        Dict with creative_paths (List[Path]), metadata, timestamp, or None if expired/not found
+    """
     from datetime import datetime, timedelta
 
     if user_id not in mockup_history:
@@ -88,13 +106,14 @@ def get_mockup_history(user_id: str) -> Optional[Dict[str, Any]]:
 
     # Check if expired
     if timestamp and (datetime.now() - timestamp) > timedelta(minutes=30):
-        # Expired - clean up
-        mockup_path = data.get("path")
-        if mockup_path and mockup_path.exists():
-            try:
-                os.unlink(mockup_path)
-            except:
-                pass
+        # Expired - clean up all creative files
+        creative_paths = data.get("creative_paths", [])
+        for creative_path in creative_paths:
+            if creative_path and creative_path.exists():
+                try:
+                    os.unlink(creative_path)
+                except:
+                    pass
         del mockup_history[user_id]
         return None
 
@@ -1577,6 +1596,87 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                                 logger.error(f"[MOCKUP] Failed to download image: {e}")
 
                 # Determine mode based on what user provided
+                # Priority: 1) New upload 2) AI prompt 3) History reuse 4) Error
+
+                if has_images:
+                    # User uploaded new images - this takes priority, will replace history
+                    pass  # Fall through to upload mode below
+
+                elif not ai_prompt and user_history:
+                    # FOLLOW-UP MODE: No upload, no AI prompt, but user has creatives in history
+                    # This is a follow-up request to apply previous creatives to a different location
+                    stored_frames = user_history.get("metadata", {}).get("num_frames", 1)
+                    stored_creative_paths = user_history.get("creative_paths", [])
+                    stored_location = user_history.get("metadata", {}).get("location_name", "unknown")
+
+                    # Validate frame count matches
+                    if stored_frames == new_location_frame_count:
+                        logger.info(f"[MOCKUP] Follow-up request detected - reusing {len(stored_creative_paths)} creative(s) from history")
+
+                        await config.slack_client.chat_update(
+                            channel=channel,
+                            ts=status_ts,
+                            text=f"⏳ _Applying your previous creative(s) to {location_name}..._"
+                        )
+
+                        try:
+                            # Generate mockup using stored creatives
+                            result_path, _ = mockup_generator.generate_mockup(
+                                location_key,
+                                stored_creative_paths,
+                                time_of_day=time_of_day,
+                                finish=finish
+                            )
+
+                            if not result_path:
+                                raise Exception("Failed to generate mockup")
+
+                            # Upload mockup
+                            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                            variation_info = ""
+                            if time_of_day != "all" or finish != "all":
+                                variation_info = f" ({time_of_day}/{finish})"
+
+                            frames_info = f" ({stored_frames} frame(s))" if stored_frames > 1 else ""
+
+                            await config.slack_client.files_upload_v2(
+                                channel=channel,
+                                file=str(result_path),
+                                filename=f"mockup_{location_key}_{time_of_day}_{finish}.jpg",
+                                initial_comment=config.markdown_to_slack(
+                                    f"🎨 **Billboard Mockup Generated** (Follow-up)\n\n"
+                                    f"📍 New Location: {location_name}{variation_info}\n"
+                                    f"🔄 Using creative(s) from: {stored_location}{frames_info}\n"
+                                    f"✨ Your creative has been applied to this location."
+                                )
+                            )
+
+                            # Update history with new location (but keep same creatives)
+                            user_history["metadata"]["location_key"] = location_key
+                            user_history["metadata"]["location_name"] = location_name
+                            user_history["metadata"]["time_of_day"] = time_of_day
+                            user_history["metadata"]["finish"] = finish
+
+                            logger.info(f"[MOCKUP] Follow-up mockup generated successfully for user {user_id}")
+
+                            # Cleanup final mockup
+                            try:
+                                os.unlink(result_path)
+                            except:
+                                pass
+
+                            return  # Done with follow-up
+
+                        except Exception as e:
+                            logger.error(f"[MOCKUP] Error generating follow-up mockup: {e}", exc_info=True)
+                            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                            await config.slack_client.chat_postMessage(
+                                channel=channel,
+                                text=config.markdown_to_slack(f"❌ **Error:** Failed to generate follow-up mockup. {str(e)}")
+                            )
+                            return
+
+                # Now proceed with normal modes
                 if ai_prompt:
                     # AI MODE: User provided a description for AI generation
                     await config.slack_client.chat_update(
@@ -1775,8 +1875,8 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                             )
                         )
 
-                        # Store mockup in 30-minute history for follow-ups
-                        store_mockup_history(user_id, result_path, {
+                        # Store creative files in 30-minute history for follow-ups on other locations
+                        store_mockup_history(user_id, ai_creative_paths, {
                             "location_key": location_key,
                             "location_name": location_name,
                             "time_of_day": time_of_day,
@@ -1784,12 +1884,11 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                             "mode": "ai_generated",
                             "num_frames": num_ai_frames
                         })
-                        logger.info(f"[MOCKUP] Stored AI mockup in history for user {user_id}")
+                        logger.info(f"[MOCKUP] Stored {len(ai_creative_paths)} AI creative(s) in history for user {user_id}")
 
-                        # Cleanup creative temp files only (keep result for history)
+                        # Cleanup final mockup (we keep creatives in history, not the result)
                         try:
-                            for creative_path in ai_creative_paths:
-                                os.unlink(creative_path)
+                            os.unlink(result_path)
                         except:
                             pass
 
@@ -1842,22 +1941,20 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                         # Get frame count for validation in follow-ups
                         location_frame_count = get_location_frame_count(location_key, time_of_day, finish)
 
-                        # Store mockup in 30-minute history for follow-ups
-                        store_mockup_history(user_id, result_path, {
+                        # Store creative files in 30-minute history for follow-ups on other locations
+                        store_mockup_history(user_id, uploaded_creatives, {
                             "location_key": location_key,
                             "location_name": location_name,
                             "time_of_day": time_of_day,
                             "finish": finish,
                             "mode": "uploaded",
-                            "num_creatives": len(uploaded_creatives),
                             "num_frames": location_frame_count or 1
                         })
-                        logger.info(f"[MOCKUP] Stored uploaded mockup in history for user {user_id} ({location_frame_count} frames)")
+                        logger.info(f"[MOCKUP] Stored {len(uploaded_creatives)} uploaded creative(s) in history for user {user_id} ({location_frame_count} frames)")
 
-                        # Cleanup creative temp files only (keep result for history)
+                        # Cleanup final mockup (we keep creatives in history, not the result)
                         try:
-                            for creative_file in uploaded_creatives:
-                                os.unlink(creative_file)
+                            os.unlink(result_path)
                         except:
                             pass
 
@@ -1877,19 +1974,22 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                             pass
 
                 else:
-                    # NO AI PROMPT, NO IMAGE UPLOADED: Error - user should have uploaded with request
+                    # NO AI PROMPT, NO IMAGE UPLOADED, NO HISTORY: Error - user needs to provide creative
                     await config.slack_client.chat_delete(channel=channel, ts=status_ts)
                     await config.slack_client.chat_postMessage(
                         channel=channel,
                         text=config.markdown_to_slack(
                             f"❌ **Sorry!** You need to provide a creative for the mockup.\n\n"
-                            f"**Two ways to generate mockups:**\n\n"
+                            f"**Three ways to generate mockups:**\n\n"
                             f"1️⃣ **Upload Your Image:** Attach your creative when you send the request\n"
                             f"   Example: [Upload creative.jpg] + \"mockup for {location_name}\"\n\n"
                             f"2️⃣ **AI Generation (No upload needed):** Describe what you want\n"
                             f"   Example: \"mockup for {location_name} with luxury watch ad, gold and elegant typography\"\n"
                             f"   The AI will generate the creative for you!\n\n"
-                            f"Please try again with either an image attachment OR a creative description!"
+                            f"3️⃣ **Follow-up Request:** If you recently generated a mockup (within 30 min), just ask!\n"
+                            f"   Example: \"show me this on {location_name}\" or \"apply to {location_name}\"\n"
+                            f"   I'll reuse your previous creative(s) automatically.\n\n"
+                            f"Please try again with an image attachment, creative description, or generate a mockup first!"
                         )
                     )
 
