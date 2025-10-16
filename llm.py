@@ -1772,6 +1772,15 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                                 channel=channel,
                                 text=config.markdown_to_slack(f"❌ **Error:** Failed to generate follow-up mockup. {str(e)}")
                             )
+
+                            # Cleanup result file if it was created before error
+                            try:
+                                if 'result_path' in locals() and result_path and result_path.exists():
+                                    os.unlink(result_path)
+                                    logger.info(f"[MOCKUP] Cleaned up partial result file after error")
+                            except Exception as cleanup_error:
+                                logger.error(f"[MOCKUP] Failed to cleanup result file: {cleanup_error}")
+
                             return
 
                 # Now proceed with normal modes (Priority: Upload > AI > Error)
