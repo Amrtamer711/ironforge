@@ -677,6 +677,9 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
     static_list = ", ".join(static_locations) if static_locations else "None"
     digital_list = ", ".join(digital_locations) if digital_locations else "None"
 
+    # Check if user is admin for system prompt and tool filtering
+    is_admin = config.is_admin(user_id)
+
     prompt = (
         f"You are an AI sales assistant for BackLite Media. You provide comprehensive sales support tools including:\n"
         f"• Financial proposal generation for advertising locations\n"
@@ -968,9 +971,6 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
     # Remove timestamp from messages sent to OpenAI
     messages_for_openai = [{"role": msg["role"], "content": msg["content"]} for msg in history if "role" in msg and "content" in msg]
     messages = [{"role": "developer", "content": prompt}] + messages_for_openai
-
-    # Check if user is admin for tool filtering
-    is_admin = config.is_admin(user_id)
 
     # Base tools available to all users
     tools = [
