@@ -1625,7 +1625,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 new_location_frame_count = get_location_frame_count(location_key, time_of_day, finish)
 
                 # Get user's mockup history if exists (will validate later after checking for uploads)
-                user_history = get_mockup_history(user_id)
+                mockup_user_hist = get_mockup_history(user_id)
 
                 # Check if user uploaded image(s) with the request
                 has_images = False
@@ -1657,12 +1657,12 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 # Priority: 1) New upload 2) AI prompt 3) History reuse 4) Error
 
                 # Frame validation for follow-up requests (only if no new upload and no AI)
-                if user_history and not has_images and not ai_prompt:
-                    stored_frames = user_history.get("metadata", {}).get("num_frames", 1)
-                    stored_location = user_history.get("metadata", {}).get("location_name", "unknown")
+                if mockup_user_hist and not has_images and not ai_prompt:
+                    stored_frames = mockup_user_hist.get("metadata", {}).get("num_frames", 1)
+                    stored_location = mockup_user_hist.get("metadata", {}).get("location_name", "unknown")
 
                     # If requesting different location with mismatched frame count, warn user
-                    if location_key != user_history.get("metadata", {}).get("location_key"):
+                    if location_key != mockup_user_hist.get("metadata", {}).get("location_key"):
                         if stored_frames != new_location_frame_count:
                             await config.slack_client.chat_delete(channel=channel, ts=status_ts)
                             await config.slack_client.chat_postMessage(
@@ -1681,11 +1681,11 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                             return
 
                 # FOLLOW-UP MODE: Check if this is a follow-up request (no upload, no AI, has history)
-                if not has_images and not ai_prompt and user_history:
+                if not has_images and not ai_prompt and mockup_user_hist:
                     # This is a follow-up request to apply previous creatives to a different location
-                    stored_frames = user_history.get("metadata", {}).get("num_frames", 1)
-                    stored_creative_paths = user_history.get("creative_paths", [])
-                    stored_location = user_history.get("metadata", {}).get("location_name", "unknown")
+                    stored_frames = mockup_user_hist.get("metadata", {}).get("num_frames", 1)
+                    stored_creative_paths = mockup_user_hist.get("creative_paths", [])
+                    stored_location = mockup_user_hist.get("metadata", {}).get("location_name", "unknown")
 
                     # Verify all creative files still exist on disk
                     missing_files = []
@@ -1750,10 +1750,10 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                             )
 
                             # Update history with new location (but keep same creatives)
-                            user_history["metadata"]["location_key"] = location_key
-                            user_history["metadata"]["location_name"] = location_name
-                            user_history["metadata"]["time_of_day"] = time_of_day
-                            user_history["metadata"]["finish"] = finish
+                            mockup_user_hist["metadata"]["location_key"] = location_key
+                            mockup_user_hist["metadata"]["location_name"] = location_name
+                            mockup_user_hist["metadata"]["time_of_day"] = time_of_day
+                            mockup_user_hist["metadata"]["finish"] = finish
 
                             logger.info(f"[MOCKUP] Follow-up mockup generated successfully for user {user_id}")
 
