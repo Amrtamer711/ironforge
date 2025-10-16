@@ -1616,11 +1616,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 # Determine mode based on what user provided
                 # Priority: 1) New upload 2) AI prompt 3) History reuse 4) Error
 
-                if has_images:
-                    # User uploaded new images - this takes priority, will replace history
-                    pass  # Fall through to upload mode below
-
-                elif not ai_prompt and user_history:
+                # EARLY FOLLOW-UP DETECTION: Check if this is a follow-up request (no upload, no AI, has history)
+                if not has_images and not ai_prompt and user_history:
                     # FOLLOW-UP MODE: No upload, no AI prompt, but user has creatives in history
                     # This is a follow-up request to apply previous creatives to a different location
                     stored_frames = user_history.get("metadata", {}).get("num_frames", 1)
@@ -1694,8 +1691,81 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                             )
                             return
 
-                # Now proceed with normal modes
-                if ai_prompt:
+                # Now proceed with normal modes (Priority: Upload > AI > Error)
+                if has_images:
+                    # UPLOAD MODE: User uploaded image(s) - this takes priority over AI
+                    logger.info(f"[MOCKUP] Processing {len(uploaded_creatives)} uploaded image(s)")
+
+                    await config.slack_client.chat_update(
+                        channel=channel,
+                        ts=status_ts,
+                        text="⏳ _Generating mockup from uploaded image(s)..._"
+                    )
+
+                    try:
+                        result_path, _ = mockup_generator.generate_mockup(
+                            location_key,
+                            uploaded_creatives,
+                            time_of_day=time_of_day,
+                            finish=finish
+                        )
+
+                        if not result_path:
+                            raise Exception("Failed to generate mockup")
+
+                        # Delete status and upload mockup
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        variation_info = ""
+                        if time_of_day != "all" or finish != "all":
+                            variation_info = f" ({time_of_day}/{finish})"
+                        await config.slack_client.files_upload_v2(
+                            channel=channel,
+                            file=str(result_path),
+                            filename=f"mockup_{location_key}_{time_of_day}_{finish}.jpg",
+                            initial_comment=config.markdown_to_slack(
+                                f"🎨 **Billboard Mockup Generated**\n\n"
+                                f"📍 Location: {location_name}{variation_info}\n"
+                                f"🖼️ Creative(s): {len(uploaded_creatives)} image(s)\n"
+                                f"✨ Your creative has been applied to a billboard photo.{variation_note}"
+                            )
+                        )
+
+                        # Get frame count for validation in follow-ups
+                        location_frame_count = get_location_frame_count(location_key, time_of_day, finish)
+
+                        # Store creative files in 30-minute history for follow-ups on other locations
+                        store_mockup_history(user_id, uploaded_creatives, {
+                            "location_key": location_key,
+                            "location_name": location_name,
+                            "time_of_day": time_of_day,
+                            "finish": finish,
+                            "mode": "uploaded",
+                            "num_frames": location_frame_count or 1
+                        })
+                        logger.info(f"[MOCKUP] Stored {len(uploaded_creatives)} uploaded creative(s) in history for user {user_id} ({location_frame_count} frames)")
+
+                        # Cleanup final mockup (we keep creatives in history, not the result)
+                        try:
+                            os.unlink(result_path)
+                        except:
+                            pass
+
+                    except Exception as e:
+                        logger.error(f"[MOCKUP] Error generating mockup from upload: {e}", exc_info=True)
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            text=config.markdown_to_slack(f"❌ **Error:** Failed to generate mockup. {str(e)}")
+                        )
+
+                        # Cleanup uploaded creative files on error
+                        try:
+                            for creative_file in uploaded_creatives:
+                                os.unlink(creative_file)
+                        except:
+                            pass
+
+                elif ai_prompt:
                     # AI MODE: User provided a description for AI generation
                     await config.slack_client.chat_update(
                         channel=channel,
@@ -1917,79 +1987,6 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                             channel=channel,
                             text=config.markdown_to_slack(f"❌ **Error:** Failed to generate AI mockup. {str(e)}")
                         )
-
-                elif has_images:
-                    # IMAGE UPLOAD MODE: User uploaded image(s) with their request
-                    logger.info(f"[MOCKUP] Processing {len(uploaded_creatives)} uploaded image(s)")
-
-                    await config.slack_client.chat_update(
-                        channel=channel,
-                        ts=status_ts,
-                        text="⏳ _Generating mockup from uploaded image(s)..._"
-                    )
-
-                    try:
-                        result_path, _ = mockup_generator.generate_mockup(
-                            location_key,
-                            uploaded_creatives,
-                            time_of_day=time_of_day,
-                            finish=finish
-                        )
-
-                        if not result_path:
-                            raise Exception("Failed to generate mockup")
-
-                        # Delete status and upload mockup
-                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                        variation_info = ""
-                        if time_of_day != "all" or finish != "all":
-                            variation_info = f" ({time_of_day}/{finish})"
-                        await config.slack_client.files_upload_v2(
-                            channel=channel,
-                            file=str(result_path),
-                            filename=f"mockup_{location_key}_{time_of_day}_{finish}.jpg",
-                            initial_comment=config.markdown_to_slack(
-                                f"🎨 **Billboard Mockup Generated**\n\n"
-                                f"📍 Location: {location_name}{variation_info}\n"
-                                f"🖼️ Creative(s): {len(uploaded_creatives)} image(s)\n"
-                                f"✨ Your creative has been applied to a billboard photo.{variation_note}"
-                            )
-                        )
-
-                        # Get frame count for validation in follow-ups
-                        location_frame_count = get_location_frame_count(location_key, time_of_day, finish)
-
-                        # Store creative files in 30-minute history for follow-ups on other locations
-                        store_mockup_history(user_id, uploaded_creatives, {
-                            "location_key": location_key,
-                            "location_name": location_name,
-                            "time_of_day": time_of_day,
-                            "finish": finish,
-                            "mode": "uploaded",
-                            "num_frames": location_frame_count or 1
-                        })
-                        logger.info(f"[MOCKUP] Stored {len(uploaded_creatives)} uploaded creative(s) in history for user {user_id} ({location_frame_count} frames)")
-
-                        # Cleanup final mockup (we keep creatives in history, not the result)
-                        try:
-                            os.unlink(result_path)
-                        except:
-                            pass
-
-                    except Exception as e:
-                        logger.error(f"[MOCKUP] Error generating mockup from upload: {e}", exc_info=True)
-                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                        await config.slack_client.chat_postMessage(
-                            channel=channel,
-                            text=config.markdown_to_slack(f"❌ **Error:** Failed to generate mockup. {str(e)}")
-                        )
-
-                        # Cleanup
-                        try:
-                            for creative_file in uploaded_creatives:
-                                os.unlink(creative_file)
-                        except:
-                            pass
 
                 else:
                     # NO AI PROMPT, NO IMAGE UPLOADED, NO HISTORY: Error - user needs to provide creative
