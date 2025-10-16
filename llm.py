@@ -865,7 +865,49 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"- STATIC locations: ALWAYS ask for production fee - it's mandatory\n"
         f"- Mixed packages: Ask production fees only for static locations\n"
         f"- If confused about location type, check the lists above\n"
-        f"- ALWAYS collect client name - it's required for tracking"
+        f"- ALWAYS collect client name - it's required for tracking\n\n"
+
+        f"═══════════════════════════════════════════════════════════════════\n"
+        f"🎨 BILLBOARD MOCKUP GENERATION\n"
+        f"═══════════════════════════════════════════════════════════════════\n\n"
+
+        f"MOCKUP MEMORY SYSTEM (30-Minute Creative Storage):\n"
+        f"When a user generates a mockup, the system stores their creative files (NOT the final mockup) for 30 minutes.\n"
+        f"This enables FOLLOW-UP REQUESTS where users can apply the same creatives to different locations.\n\n"
+
+        f"FOLLOW-UP REQUEST DETECTION:\n"
+        f"If a user recently generated a mockup (within 30 min) and asks to see it on another location WITHOUT uploading new images or providing AI prompt:\n"
+        f"- Examples: 'show me this on Dubai Gateway', 'apply to The Landmark', 'how would it look at Oryx'\n"
+        f"- Just call generate_mockup with the new location name - the system automatically reuses stored creatives\n"
+        f"- DO NOT ask them to re-upload images or provide AI prompt again\n"
+        f"- The system validates frame count compatibility (3-frame creatives can't be used on 1-frame locations)\n\n"
+
+        f"FRAME COUNT VALIDATION:\n"
+        f"- Multi-frame locations (2, 3, or more frames) require matching number of creatives\n"
+        f"- If user has 3-frame creatives in memory but requests 1-frame location → system shows error automatically\n"
+        f"- If frame mismatch error occurs, explain user needs to upload correct number of images OR use AI generation\n\n"
+
+        f"MOCKUP GENERATION MODES:\n"
+        f"1. UPLOAD MODE: User uploads image file(s) → Call generate_mockup IMMEDIATELY, no questions\n"
+        f"   - Takes priority over everything else\n"
+        f"   - Replaces any stored creatives with new upload\n"
+        f"   - DO NOT ask for clarification if user uploads images with location mention\n\n"
+
+        f"2. AI MODE: User provides creative description (no upload) → Call generate_mockup with ai_prompt\n"
+        f"   - Example: 'mockup for Dubai Gateway with luxury watch ad, gold and elegant'\n"
+        f"   - For multi-frame locations, specify num_ai_frames parameter\n"
+        f"   - System generates flat artwork designs (NOT photos of billboards)\n\n"
+
+        f"3. FOLLOW-UP MODE: User requests different location (no upload, no AI, within 30 min)\n"
+        f"   - Example: 'show me this on The Landmark'\n"
+        f"   - Just call generate_mockup with new location - system handles rest\n"
+        f"   - User doesn't need to specify they want to reuse creatives\n\n"
+
+        f"CRITICAL MOCKUP RULES:\n"
+        f"- If user uploads images AND mentions location → Call generate_mockup IMMEDIATELY\n"
+        f"- Don't ask 'which mockup' or 'which creative' for follow-ups - system knows\n"
+        f"- Frame count errors are handled automatically - just relay system message\n"
+        f"- After 30 minutes, stored creatives expire - user must upload/generate again"
     )
 
     # Check if user uploaded image files and append to message
@@ -1013,7 +1055,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         {
             "type": "function",
             "name": "generate_mockup",
-            "description": "Generate a billboard mockup. IMPORTANT: If user uploads image file(s) and mentions a location for mockup, call this function IMMEDIATELY - do not ask for clarification. User can upload image(s) OR provide a text prompt for AI generation. System randomly selects billboard photo and warps creative(s) onto it. Supports multiple frames: 1 creative = duplicate across all, N creatives = match to N frames. Billboard variations can be specified with time_of_day (day/night/all) and finish (gold/silver/all). Use 'all' or omit to randomly select from all available variations.",
+            "description": "Generate a billboard mockup. IMPORTANT: If user uploads image file(s) and mentions a location for mockup, call this function IMMEDIATELY - do not ask for clarification. User can upload image(s) OR provide a text prompt for AI generation OR reuse creatives from recent mockup (within 30 min) by just specifying new location. System stores creative files for 30 minutes enabling follow-up requests on different locations. Supports multiple frames: 1 creative = duplicate across all, N creatives = match to N frames. System validates frame count compatibility automatically. Billboard variations can be specified with time_of_day (day/night/all) and finish (gold/silver/all). Use 'all' or omit to randomly select from all available variations.",
             "parameters": {
                 "type": "object",
                 "properties": {
