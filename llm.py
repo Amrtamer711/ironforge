@@ -260,7 +260,8 @@ async def _handle_booking_order_parse(
     channel: str,
     status_ts: str,
     user_notes: str,
-    user_id: str
+    user_id: str,
+    user_message: str = ""
 ):
     """Handle booking order parsing workflow"""
     logger = config.logger
@@ -299,7 +300,7 @@ async def _handle_booking_order_parse(
 
     # Classify document
     await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Classifying document..._")
-    classification = await parser.classify_document(tmp_file)
+    classification = await parser.classify_document(tmp_file, user_message=user_message)
     logger.info(f"[BOOKING] Classification: {classification}")
 
     # Check if it's actually a booking order
@@ -1601,7 +1602,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     channel=channel,
                     status_ts=status_ts,
                     user_notes=user_notes,
-                    user_id=user_id
+                    user_id=user_id,
+                    user_message=user_input
                 )
                 return
 

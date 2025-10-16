@@ -798,7 +798,9 @@ Example analogy: If asked to create a "movie poster," you'd create the poster AR
         from fastapi import BackgroundTasks
 
         def cleanup_files():
-            """Delete temp files after response is sent"""
+            """Delete temp files after response is sent and force garbage collection"""
+            import gc
+
             try:
                 if creative_path and creative_path.exists():
                     creative_path.unlink()
@@ -813,6 +815,10 @@ Example analogy: If asked to create a "movie poster," you'd create the poster AR
             except Exception as e:
                 logger.debug(f"[CLEANUP] Error deleting mockup: {e}")
 
+            # Force garbage collection to free memory from numpy arrays
+            gc.collect()
+            logger.debug(f"[CLEANUP] Forced garbage collection")
+
         # Schedule cleanup after response is sent
         background_tasks = BackgroundTasks()
         background_tasks.add_task(cleanup_files)
@@ -826,6 +832,8 @@ Example analogy: If asked to create a "movie poster," you'd create the poster AR
 
     except HTTPException as http_exc:
         # Cleanup temp files on HTTP exceptions (validation errors, etc.)
+        import gc
+
         try:
             if 'creative_path' in locals() and creative_path and creative_path.exists():
                 creative_path.unlink()
@@ -840,10 +848,14 @@ Example analogy: If asked to create a "movie poster," you'd create the poster AR
         except Exception as cleanup_error:
             logger.debug(f"[CLEANUP] Error deleting mockup after error: {cleanup_error}")
 
+        # Force garbage collection
+        gc.collect()
+
         raise http_exc
 
     except Exception as e:
         logger.error(f"[MOCKUP API] Error generating mockup: {e}", exc_info=True)
+        import gc
 
         # Cleanup temp files on unexpected errors
         try:
@@ -859,6 +871,9 @@ Example analogy: If asked to create a "movie poster," you'd create the poster AR
                 logger.debug(f"[CLEANUP] Deleted temp mockup after error: {result_path}")
         except Exception as cleanup_error:
             logger.debug(f"[CLEANUP] Error deleting mockup after error: {cleanup_error}")
+
+        # Force garbage collection
+        gc.collect()
 
         # Log failed attempt
         try:

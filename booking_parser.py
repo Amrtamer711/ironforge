@@ -54,12 +54,18 @@ class BookingOrderParser:
         else:
             return "unknown"
 
-    async def classify_document(self, file_path: Path) -> Dict[str, str]:
+    async def classify_document(self, file_path: Path, user_message: str = "") -> Dict[str, str]:
         """
         Classify document as BOOKING_ORDER or ARTWORK using OpenAI Responses API.
         Biased toward ARTWORK unless clear booking order fields present.
+
+        Args:
+            file_path: Path to the document file
+            user_message: Optional user's message/prompt that accompanied the file upload
         """
         logger.info(f"[BOOKING PARSER] Classifying document: {file_path}")
+        if user_message:
+            logger.info(f"[BOOKING PARSER] User message context: {user_message}")
 
         # Upload file to OpenAI
         try:
@@ -75,6 +81,8 @@ class BookingOrderParser:
             return {"classification": "UNKNOWN", "confidence": "low", "reasoning": str(e)}
 
         # Classification prompt - BIASED toward ARTWORK
+        user_context = f"\n\n**USER'S MESSAGE:** \"{user_message}\"\nUse this context to better understand the user's intent." if user_message else ""
+
         classification_prompt = f"""You are classifying a document as either a BOOKING_ORDER or ARTWORK.
 
 **IMPORTANT BIAS:** Default to classifying as ARTWORK unless you see CLEAR booking order characteristics.
@@ -92,12 +100,15 @@ class BookingOrderParser:
 - Brand assets, mockups, creative designs
 - Marketing materials
 - No tabular pricing/booking data
+{user_context}
 
 **Classification rules:**
 1. If you see ANY visual design elements → ARTWORK (high confidence)
 2. If you see a table with locations/dates/pricing → BOOKING_ORDER (high confidence)
 3. If unclear or minimal text → ARTWORK (medium confidence)
 4. If it's a mix → ARTWORK (low confidence)
+5. If user's message mentions "mockup", "billboard", "creative", "artwork" → ARTWORK (high confidence)
+6. If user's message mentions "booking order", "BO", "parse" → BOOKING_ORDER (higher confidence)
 
 Analyze the uploaded file and respond with:
 - classification: "BOOKING_ORDER" or "ARTWORK"
