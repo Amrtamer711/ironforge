@@ -9,8 +9,20 @@ from typing import Callable, Any, Optional
 from datetime import datetime
 from dataclasses import dataclass
 import uuid
+import psutil
+import os
 
 logger = logging.getLogger(__name__)
+
+
+def get_ram_usage_mb() -> dict:
+    """Get current RAM usage in MB."""
+    process = psutil.Process(os.getpid())
+    mem_info = process.memory_info()
+    return {
+        "rss_mb": round(mem_info.rss / 1024 / 1024, 2),
+        "vms_mb": round(mem_info.vms / 1024 / 1024, 2),
+    }
 
 
 @dataclass
@@ -119,9 +131,11 @@ class MockupTaskQueue:
                 self.active_tasks[pending_task.task_id] = pending_task
 
                 wait_time = (pending_task.started_at - pending_task.created_at).total_seconds()
+                ram_start = get_ram_usage_mb()
                 logger.info(
                     f"[QUEUE] Starting task {pending_task.task_id} "
-                    f"(waited {wait_time:.1f}s, active: {self.current_tasks}/{self.max_concurrent})"
+                    f"(waited {wait_time:.1f}s, active: {self.current_tasks}/{self.max_concurrent}, "
+                    f"RAM: {ram_start['rss_mb']}MB)"
                 )
 
                 # Run task in background
@@ -129,6 +143,9 @@ class MockupTaskQueue:
 
     async def _run_task(self, task: QueuedTask):
         """Run a task and handle completion."""
+        ram_before = get_ram_usage_mb()
+        logger.info(f"[QUEUE] Task {task.task_id} RAM before execution: {ram_before['rss_mb']}MB")
+
         try:
             # Execute the task
             result = await task.func(*task.args, **task.kwargs)
@@ -136,7 +153,13 @@ class MockupTaskQueue:
             task.completed_at = datetime.now()
 
             execution_time = (task.completed_at - task.started_at).total_seconds()
-            logger.info(f"[QUEUE] Task {task.task_id} finished (took {execution_time:.1f}s)")
+            ram_after = get_ram_usage_mb()
+            ram_delta = ram_after['rss_mb'] - ram_before['rss_mb']
+            logger.info(
+                f"[QUEUE] Task {task.task_id} finished (took {execution_time:.1f}s, "
+                f"RAM: {ram_before['rss_mb']}MB → {ram_after['rss_mb']}MB, "
+                f"delta: {ram_delta:+.2f}MB)"
+            )
 
         except Exception as e:
             task.error = e
@@ -147,6 +170,7 @@ class MockupTaskQueue:
             # Force aggressive garbage collection before releasing slot
             # This ensures memory from numpy arrays is freed before next task starts
             import gc
+            ram_before_gc = get_ram_usage_mb()
             gc.collect()  # Collect generation 0 (recent objects)
             gc.collect()  # Collect generation 1
             gc.collect()  # Collect generation 2 (full collection)
@@ -154,7 +178,13 @@ class MockupTaskQueue:
             # Small delay to let OS reclaim memory (numpy arrays use malloc directly)
             await asyncio.sleep(0.1)
 
-            logger.info(f"[QUEUE] Task {task.task_id} completed garbage collection sweep")
+            ram_after_gc = get_ram_usage_mb()
+            ram_freed = ram_before_gc['rss_mb'] - ram_after_gc['rss_mb']
+            logger.info(
+                f"[QUEUE] Task {task.task_id} GC complete "
+                f"(RAM: {ram_before_gc['rss_mb']}MB → {ram_after_gc['rss_mb']}MB, "
+                f"freed: {ram_freed:.2f}MB)"
+            )
 
             # Release slot
             async with self.lock:
@@ -162,9 +192,11 @@ class MockupTaskQueue:
                 if task.task_id in self.active_tasks:
                     del self.active_tasks[task.task_id]
 
+                ram_final = get_ram_usage_mb()
                 logger.info(
                     f"[QUEUE] Task {task.task_id} slot released "
-                    f"(active: {self.current_tasks}/{self.max_concurrent})"
+                    f"(active: {self.current_tasks}/{self.max_concurrent}, "
+                    f"RAM: {ram_final['rss_mb']}MB)"
                 )
 
             # Process next queued task

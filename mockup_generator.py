@@ -110,6 +110,11 @@ def warp_creative_to_billboard(
     time_of_day: str = "day"
 ) -> np.ndarray:
     """Apply perspective warp to place creative on billboard with optional enhancements."""
+    import psutil
+    process = psutil.Process()
+    ram_start = round(process.memory_info().rss / 1024 / 1024, 2)
+    logger.info(f"[MOCKUP WARP] Starting (RAM: {ram_start}MB)")
+
     # Order points consistently
     dst_pts = order_points(np.array(frame_points))
 
@@ -125,7 +130,8 @@ def warp_creative_to_billboard(
         fy=upscale_factor,
         interpolation=cv2.INTER_CUBIC
     )
-    logger.info(f"[MOCKUP] Upscaled creative {creative_image.shape[:2]} -> {creative_upscaled.shape[:2]}")
+    ram_after_upscale = round(process.memory_info().rss / 1024 / 1024, 2)
+    logger.info(f"[MOCKUP] Upscaled creative {creative_image.shape[:2]} -> {creative_upscaled.shape[:2]} (RAM: {ram_start}MB → {ram_after_upscale}MB, +{ram_after_upscale - ram_start:.2f}MB)")
 
     # Apply optional image blur AFTER upscaling (so blur effect is preserved)
     image_blur = config.get('imageBlur', 0) if config else 0
@@ -700,6 +706,10 @@ def warp_creative_to_billboard(
     # Force immediate garbage collection
     gc.collect()
 
+    ram_end = round(process.memory_info().rss / 1024 / 1024, 2)
+    ram_delta = ram_end - ram_start
+    logger.info(f"[MOCKUP WARP] Complete (RAM: {ram_start}MB → {ram_end}MB, delta: {ram_delta:+.2f}MB)")
+
     return result
 
 
@@ -1021,8 +1031,13 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
         )
 
         # Extract base64 image data (automatically returned by gpt-image-1)
+        import psutil
+        process = psutil.Process()
+        ram_start = round(process.memory_info().rss / 1024 / 1024, 2)
+
         b64_image = img.data[0].b64_json
         image_data = base64.b64decode(b64_image)
+        logger.info(f"[AI_CREATIVE] Decoded base64 (RAM: {ram_start}MB)")
 
         # Apply sharpening and quality enhancement to AI-generated image
         import io
@@ -1032,6 +1047,9 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
         pil_img = Image.open(io.BytesIO(image_data))
         img_array = np.array(pil_img)
         pil_img.close()  # Close PIL Image to free resources
+
+        ram_after_decode = round(process.memory_info().rss / 1024 / 1024, 2)
+        logger.info(f"[AI_CREATIVE] PIL → NumPy conversion (RAM: {ram_start}MB → {ram_after_decode}MB, +{ram_after_decode - ram_start:.2f}MB)")
 
         # Convert RGB to BGR for OpenCV
         if len(img_array.shape) == 3 and img_array.shape[2] == 3:
@@ -1043,6 +1061,9 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
         gaussian = cv2.GaussianBlur(img_array, (0, 0), 2.0)
         sharpened = cv2.addWeighted(img_array, 1.2, gaussian, -0.2, 0)
 
+        ram_after_sharpen = round(process.memory_info().rss / 1024 / 1024, 2)
+        logger.info(f"[AI_CREATIVE] Sharpening applied (RAM: {ram_after_decode}MB → {ram_after_sharpen}MB, +{ram_after_sharpen - ram_after_decode:.2f}MB)")
+
         # Apply very subtle contrast enhancement
         lab = cv2.cvtColor(sharpened, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
@@ -1051,7 +1072,8 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
         enhanced = cv2.merge([l, a, b])
         enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
-        logger.info("[AI_CREATIVE] Applied subtle sharpening (1.2x) and contrast enhancement to AI image")
+        ram_after_enhance = round(process.memory_info().rss / 1024 / 1024, 2)
+        logger.info(f"[AI_CREATIVE] Contrast enhancement (RAM: {ram_after_sharpen}MB → {ram_after_enhance}MB, +{ram_after_enhance - ram_after_sharpen:.2f}MB)")
 
         # Save enhanced image to temp file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
@@ -1085,7 +1107,10 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
         try: del enhanced
         except: pass
         gc.collect()
-        logger.debug("[AI_CREATIVE] Cleaned up intermediate arrays and forced GC")
+
+        ram_after_cleanup = round(process.memory_info().rss / 1024 / 1024, 2)
+        ram_freed = ram_after_enhance - ram_after_cleanup
+        logger.info(f"[AI_CREATIVE] Cleanup complete (RAM: {ram_after_enhance}MB → {ram_after_cleanup}MB, freed: {ram_freed:.2f}MB)")
 
         return Path(temp_file.name)
 
