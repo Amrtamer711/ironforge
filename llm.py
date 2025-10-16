@@ -252,7 +252,6 @@ async def _generate_mockup_queued(
     creative_paths: list,
     time_of_day: str,
     finish: str,
-    config_dict: dict = None,
     specific_photo: str = None,
     config_override: dict = None
 ):
@@ -265,9 +264,8 @@ async def _generate_mockup_queued(
         creative_paths: List of creative file paths
         time_of_day: Time of day variation
         finish: Finish type
-        config_dict: Optional custom frame configuration (Slack)
-        specific_photo: Optional specific photo to use (Web API)
-        config_override: Optional config override (Web API)
+        specific_photo: Optional specific photo to use
+        config_override: Optional config override
 
     Returns:
         Tuple of (result_path, metadata)
@@ -287,7 +285,6 @@ async def _generate_mockup_queued(
                 creative_paths,
                 time_of_day=time_of_day,
                 finish=finish,
-                config_dict=config_dict,
                 specific_photo=specific_photo,
                 config_override=config_override
             )
