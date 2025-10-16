@@ -845,6 +845,16 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"- EDIT TASKS: Modify task management workflows\n\n"
 
         f"═══════════════════════════════════════════════════════════════════\n"
+        f"👤 USER PERMISSIONS\n"
+        f"═══════════════════════════════════════════════════════════════════\n\n"
+        f"Current User: {'ADMIN' if is_admin else 'STANDARD USER'}\n\n"
+        f"{'✅ ADMIN TOOLS AVAILABLE:' if is_admin else '❌ ADMIN TOOLS NOT AVAILABLE:'}\n"
+        f"- Booking Order Parsing (parse_booking_order, retrieve_booking_order)\n"
+        f"- Location Management (add_location, delete_location)\n"
+        f"- Database Export (export_proposals_to_excel)\n\n"
+        f"{'You have access to all admin-only tools listed above.' if is_admin else 'You do NOT have access to admin-only tools. Do not attempt to use or reference admin-only functions like booking order parsing, location management, or database export.'}\n\n"
+
+        f"═══════════════════════════════════════════════════════════════════\n"
         f"⚙️ SYSTEM GUIDELINES\n"
         f"═══════════════════════════════════════════════════════════════════\n\n"
         f"IMPORTANT:\n"
@@ -959,6 +969,10 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
     messages_for_openai = [{"role": msg["role"], "content": msg["content"]} for msg in history if "role" in msg and "content" in msg]
     messages = [{"role": "developer", "content": prompt}] + messages_for_openai
 
+    # Check if user is admin for tool filtering
+    is_admin = config.is_admin(user_id)
+
+    # Base tools available to all users
     tools = [
         {
             "type": "function", 
@@ -1036,9 +1050,9 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         {"type": "function", "name": "refresh_templates", "parameters": {"type": "object", "properties": {}}},
         {"type": "function", "name": "edit_task_flow", "parameters": {"type": "object", "properties": {"task_number": {"type": "integer"}, "task_data": {"type": "object"}}, "required": ["task_number", "task_data"]}},
         {
-            "type": "function", 
-            "name": "add_location", 
-            "description": "Add a new location. Admin must provide ALL required metadata upfront. Digital locations require: sov, spot_duration, loop_duration, upload_fee. Static locations don't need these fields.", 
+            "type": "function",
+            "name": "add_location",
+            "description": "Add a new location. Admin must provide ALL required metadata upfront. Digital locations require: sov, spot_duration, loop_duration, upload_fee. Static locations don't need these fields. ADMIN ONLY.", 
             "parameters": {
                 "type": "object", 
                 "properties": {
@@ -1061,7 +1075,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         {
             "type": "function",
             "name": "delete_location",
-            "description": "Delete an existing location (admin only, requires confirmation)",
+            "description": "Delete an existing location (admin only, requires confirmation). ADMIN ONLY.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1070,7 +1084,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 "required": ["location_key"]
             }
         },
-        {"type": "function", "name": "export_proposals_to_excel", "description": "Export all proposals from the backend database to Excel and send to user", "parameters": {"type": "object", "properties": {}}},
+        {"type": "function", "name": "export_proposals_to_excel", "description": "Export all proposals from the backend database to Excel and send to user. ADMIN ONLY.", "parameters": {"type": "object", "properties": {}}},
         {"type": "function", "name": "get_proposals_stats", "description": "Get summary statistics of proposals from the database", "parameters": {"type": "object", "properties": {}}},
         {
             "type": "function",
@@ -1089,50 +1103,57 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             }
         },
         {
-            "type": "function",
-            "name": "parse_booking_order",
-            "description": "Parse a booking order document (Excel, PDF, or image) for MMG Backlite or Viola. Extracts client, campaign, locations, pricing, dates, and financial data. Biased toward classifying uploads as ARTWORK unless clearly a booking order.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "company": {
-                        "type": "string",
-                        "enum": ["mmg_backlite", "viola"],
-                        "description": "Company name - either 'mmg_backlite' or 'viola'"
-                    },
-                    "user_notes": {
-                        "type": "string",
-                        "description": "Optional notes or instructions from user about the booking order"
-                    }
-                },
-                "required": ["company"]
-            }
-        },
-        {
-            "type": "function",
-            "name": "retrieve_booking_order",
-            "description": "Retrieve an existing booking order by its reference number (e.g., BO-2025-0001). Returns parsed Excel and summary.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "bo_ref": {
-                        "type": "string",
-                        "description": "Booking order reference number (format: BO-YYYY-NNNN)"
-                    },
-                    "include_original": {
-                        "type": "boolean",
-                        "description": "Whether to include the original uploaded file (default: false)",
-                        "default": False
-                    }
-                },
-                "required": ["bo_ref"]
-            }
-        },
-        {
             "type": "code_interpreter",
             "container": {"type": "auto"}
         }
     ]
+
+    # Admin-only tools
+    if is_admin:
+        admin_tools = [
+            {
+                "type": "function",
+                "name": "parse_booking_order",
+                "description": "Parse a booking order document (Excel, PDF, or image) for MMG Backlite or Viola. Extracts client, campaign, locations, pricing, dates, and financial data. Biased toward classifying uploads as ARTWORK unless clearly a booking order. ADMIN ONLY.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "company": {
+                            "type": "string",
+                            "enum": ["mmg_backlite", "viola"],
+                            "description": "Company name - either 'mmg_backlite' or 'viola'"
+                        },
+                        "user_notes": {
+                            "type": "string",
+                            "description": "Optional notes or instructions from user about the booking order"
+                        }
+                    },
+                    "required": ["company"]
+                }
+            },
+            {
+                "type": "function",
+                "name": "retrieve_booking_order",
+                "description": "Retrieve an existing booking order by its reference number (e.g., BO-2025-0001). Returns parsed Excel and summary. ADMIN ONLY.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "bo_ref": {
+                            "type": "string",
+                            "description": "Booking order reference number (format: BO-YYYY-NNNN)"
+                        },
+                        "include_original": {
+                            "type": "boolean",
+                            "description": "Whether to include the original uploaded file (default: false)",
+                            "default": False
+                        }
+                    },
+                    "required": ["bo_ref"]
+                }
+            }
+        ]
+        tools.extend(admin_tools)
+        logger.info(f"[LLM] Admin user {user_id} - added {len(admin_tools)} admin-only tools")
 
     try:
         res = await config.openai_client.responses.create(model=config.OPENAI_MODEL, input=messages, tools=tools, tool_choice="auto")
@@ -1553,6 +1574,15 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     logger.error(f"[STATS] Error: {e}", exc_info=True)
 
             elif msg.name == "parse_booking_order":
+                # Admin-only check
+                if not config.is_admin(user_id):
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await config.slack_client.chat_postMessage(
+                        channel=channel,
+                        text=config.markdown_to_slack("❌ **Access Denied:** Booking order parsing is restricted to administrators only.")
+                    )
+                    return
+
                 args = json.loads(msg.arguments)
                 company = args.get("company")
                 user_notes = args.get("user_notes", "")
@@ -1568,6 +1598,15 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 return
 
             elif msg.name == "retrieve_booking_order":
+                # Admin-only check
+                if not config.is_admin(user_id):
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await config.slack_client.chat_postMessage(
+                        channel=channel,
+                        text=config.markdown_to_slack("❌ **Access Denied:** Booking order retrieval is restricted to administrators only.")
+                    )
+                    return
+
                 args = json.loads(msg.arguments)
                 await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Retrieving booking order..._")
                 response = await _handle_booking_order_retrieve(args, channel)
