@@ -16,6 +16,7 @@ Thread lifecycle: Created on upload, stays alive through coordinator→HoS stage
 
 import json
 import asyncio
+import os
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -30,8 +31,11 @@ logger = logging.getLogger("proposal-bot")
 # In-memory cache for active approval workflows
 approval_workflows: Dict[str, Dict[str, Any]] = {}
 
-# Config file path
-CONFIG_PATH = Path(__file__).parent / "render_main_data" / "hos_config.json"
+# Config file path - use production path if /data/ exists, otherwise development
+if os.path.exists("/data/"):
+    CONFIG_PATH = Path("/data/hos_config.json")
+else:
+    CONFIG_PATH = Path(__file__).parent / "render_main_data" / "hos_config.json"
 
 
 def load_stakeholders_config() -> Dict[str, Any]:
