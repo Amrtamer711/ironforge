@@ -1458,6 +1458,20 @@
       return { x, y, w, h, s };
     }
 
+    // Helper: Check if point is inside polygon (ray casting algorithm for image coordinates)
+    function isPointInPolygon(x, y, points) {
+      let inside = false;
+      for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+        const xi = points[i][0], yi = points[i][1];
+        const xj = points[j][0], yj = points[j][1];
+
+        const intersect = ((yi > y) !== (yj > y))
+            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
     // Detect green screen and extract actual corner coordinates (handles perspective/angled billboards)
     function detectGreenScreen(imageData) {
       const data = imageData.data;
@@ -1474,6 +1488,7 @@
       const colorTolerance = parseInt(document.getElementById('color-tolerance').value);
 
       console.log(`[Green Screen] Target color: ${targetHex} (RGB: ${targetR}, ${targetG}, ${targetB}), Tolerance: ${colorTolerance}`);
+      console.log(`[Green Screen] Excluding ${allFrames.length} already-marked frame(s) from detection`);
 
       // Sample center pixel to help debug
       const centerIdx = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4;
@@ -1482,7 +1497,22 @@
       const sampleB = data[centerIdx + 2];
       console.log(`[Green Screen] Sample pixel at center (RGB: ${sampleR}, ${sampleG}, ${sampleB})`);
 
-      // Create binary mask of matching pixels
+      // Create exclusion mask for already-marked frames
+      const exclusionMask = new Uint8Array(width * height);
+      allFrames.forEach((frameData, idx) => {
+        const pts = frameData.points;
+        // Mark all pixels inside this frame polygon as excluded
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            if (isPointInPolygon(x, y, pts)) {
+              exclusionMask[y * width + x] = 1;
+            }
+          }
+        }
+        console.log(`[Green Screen] Excluded frame ${idx + 1} from detection`);
+      });
+
+      // Create binary mask of matching pixels (excluding already-marked frames)
       const mask = new Uint8Array(width * height);
       let matchedPixelCount = 0;
       let minDistance = Infinity;
@@ -1490,7 +1520,15 @@
 
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-          const i = (y * width + x) * 4;
+          const pixelIdx = y * width + x;
+
+          // Skip pixels inside already-marked frames
+          if (exclusionMask[pixelIdx] === 1) {
+            mask[pixelIdx] = 0;
+            continue;
+          }
+
+          const i = pixelIdx * 4;
           const r = data[i];
           const g = data[i + 1];
           const b = data[i + 2];
@@ -1507,10 +1545,10 @@
 
           // Check if within tolerance
           if (distance <= colorTolerance) {
-            mask[y * width + x] = 255;
+            mask[pixelIdx] = 255;
             matchedPixelCount++;
           } else {
-            mask[y * width + x] = 0;
+            mask[pixelIdx] = 0;
           }
         }
       }
