@@ -746,7 +746,7 @@ def get_random_location_photo(location_key: str, time_of_day: str = "all", finis
 
 
 def is_portrait_location(location_key: str) -> bool:
-    """Check if a location has portrait orientation based on height/width metadata.
+    """Check if a location has portrait orientation based on actual frame dimensions from database.
 
     Args:
         location_key: Location identifier
@@ -754,33 +754,48 @@ def is_portrait_location(location_key: str) -> bool:
     Returns:
         True if height > width (portrait), False otherwise (landscape or unknown)
     """
-    if location_key not in config.LOCATION_METADATA:
-        logger.warning(f"[ORIENTATION] Location '{location_key}' not found in metadata")
-        return False
+    # Get any frame from this location to check dimensions
+    variations = db.list_mockup_variations(location_key)
+    if not variations:
+        logger.warning(f"[ORIENTATION] No mockup frames found for '{location_key}'")
+        return False  # Default to landscape if no frames
 
-    meta = config.LOCATION_METADATA[location_key]
-    height_str = str(meta.get("height", "")).strip()
-    width_str = str(meta.get("width", "")).strip()
+    # Get first available variation
+    for time_of_day, finishes in variations.items():
+        if finishes:
+            finish = finishes[0]
+            # Get any photo for this location
+            photos = db.list_mockup_photos(location_key, time_of_day, finish)
+            if photos:
+                # Get frames from first photo
+                frames_data = db.get_mockup_frames(location_key, photos[0], time_of_day, finish)
+                if frames_data and len(frames_data) > 0:
+                    # Extract first frame points: [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
+                    points = frames_data[0]["points"]
 
-    # Extract numeric values from strings like "14m", "7m", "6ft", etc.
-    import re
-    height_match = re.search(r'(\d+\.?\d*)', height_str)
-    width_match = re.search(r'(\d+\.?\d*)', width_str)
+                    # Calculate width and height from the 4 corner points
+                    # Width = average of top edge and bottom edge
+                    # Height = average of left edge and right edge
+                    import math
 
-    if not height_match or not width_match:
-        logger.debug(f"[ORIENTATION] Could not parse dimensions for '{location_key}': height={height_str}, width={width_str}")
-        return False  # Default to landscape if can't parse
+                    # Top edge length (point 0 to point 1)
+                    top_width = math.sqrt((points[1][0] - points[0][0])**2 + (points[1][1] - points[0][1])**2)
+                    # Bottom edge length (point 3 to point 2)
+                    bottom_width = math.sqrt((points[2][0] - points[3][0])**2 + (points[2][1] - points[3][1])**2)
+                    # Left edge length (point 0 to point 3)
+                    left_height = math.sqrt((points[3][0] - points[0][0])**2 + (points[3][1] - points[0][1])**2)
+                    # Right edge length (point 1 to point 2)
+                    right_height = math.sqrt((points[2][0] - points[1][0])**2 + (points[2][1] - points[1][1])**2)
 
-    try:
-        height = float(height_match.group(1))
-        width = float(width_match.group(1))
+                    avg_width = (top_width + bottom_width) / 2
+                    avg_height = (left_height + right_height) / 2
 
-        is_portrait = height > width
-        logger.info(f"[ORIENTATION] Location '{location_key}': {height}x{width} → {'PORTRAIT' if is_portrait else 'LANDSCAPE'}")
-        return is_portrait
-    except ValueError:
-        logger.warning(f"[ORIENTATION] Failed to convert dimensions to numbers: height={height_str}, width={width_str}")
-        return False
+                    is_portrait = avg_height > avg_width
+                    logger.info(f"[ORIENTATION] Location '{location_key}': frame dimensions {avg_width:.0f}x{avg_height:.0f}px → {'PORTRAIT' if is_portrait else 'LANDSCAPE'}")
+                    return is_portrait
+
+    logger.warning(f"[ORIENTATION] Could not determine orientation for '{location_key}'")
+    return False  # Default to landscape if can't determine
 
 
 async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_key: Optional[str] = None) -> Optional[Path]:
