@@ -104,9 +104,19 @@ class MockupTaskQueue:
         # Task completed, check for errors
         if task.error:
             logger.error(f"[QUEUE] Task {task_id} failed: {task.error}")
+            # Clean up task from queue before raising error
+            async with self.lock:
+                if task in self.queue:
+                    self.queue.remove(task)
             raise task.error
 
         logger.info(f"[QUEUE] Task {task_id} completed successfully")
+
+        # Clean up completed task from queue to prevent memory leak
+        async with self.lock:
+            if task in self.queue:
+                self.queue.remove(task)
+
         return task.result
 
     async def _process_queue(self):
