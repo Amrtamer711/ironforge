@@ -1554,28 +1554,40 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"- After 30 minutes, stored creatives expire - user must upload/generate again"
     )
 
-    # Check if user uploaded image files and append to message
+    # Check if user uploaded files and append to message
     user_message_content = user_input
     image_files = []  # Initialize outside conditional block
+    document_files = []  # For PDFs, Excel, etc.
 
     if has_files and slack_event:
         files = slack_event.get("files", [])
         if not files and slack_event.get("subtype") == "file_share" and "file" in slack_event:
             files = [slack_event["file"]]
 
-        # Check for image files
+        # Check for image files and document files
         for f in files:
             filetype = f.get("filetype", "")
             mimetype = f.get("mimetype", "")
             filename = f.get("name", "").lower()
+
+            # Image files (for mockups)
             if (filetype in ["jpg", "jpeg", "png", "gif", "bmp"] or
                 mimetype.startswith("image/") or
                 any(filename.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp"])):
                 image_files.append(f.get("name", "image"))
+            # Document files (for booking orders, proposals, etc.)
+            elif (filetype in ["pdf", "xlsx", "xls", "csv", "docx", "doc"] or
+                  mimetype in ["application/pdf", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"] or
+                  any(filename.endswith(ext) for ext in [".pdf", ".xlsx", ".xls", ".csv", ".docx", ".doc"])):
+                document_files.append(f.get("name", "document"))
 
+        # Inform LLM about uploaded files
         if image_files:
             user_message_content = f"{user_input}\n\n[User uploaded {len(image_files)} image file(s): {', '.join(image_files)}]"
             logger.info(f"[LLM] Detected {len(image_files)} uploaded image(s), informing LLM")
+        elif document_files:
+            user_message_content = f"{user_input}\n\n[User uploaded {len(document_files)} document file(s): {', '.join(document_files)}]"
+            logger.info(f"[LLM] Detected {len(document_files)} uploaded document(s), informing LLM")
 
     # Inject mockup history context ONLY if user did NOT upload new images (to avoid confusion)
     if not image_files:
