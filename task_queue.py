@@ -220,6 +220,17 @@ class MockupTaskQueue:
             gc.collect()  # Collect generation 1
             gc.collect()  # Collect generation 2 (full collection)
 
+            # CRITICAL: Force Python to return freed memory to OS (Linux only)
+            # Without this, Python hoards freed memory causing slow memory leak
+            try:
+                import ctypes
+                libc = ctypes.CDLL("libc.so.6")
+                libc.malloc_trim(0)  # Return all free memory to OS
+                logger.debug(f"[QUEUE] Task {task.task_id} malloc_trim() called")
+            except Exception as e:
+                # Not on Linux or malloc_trim unavailable - that's okay
+                logger.debug(f"[QUEUE] malloc_trim() not available: {e}")
+
             # Small delay to let OS reclaim memory (numpy arrays use malloc directly)
             await asyncio.sleep(0.1)
 

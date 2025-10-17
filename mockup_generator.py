@@ -1299,7 +1299,19 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
         except: pass
         try: del enhanced
         except: pass
+
+        # Aggressive garbage collection (multiple generations)
         gc.collect()
+        gc.collect()
+        gc.collect()
+
+        # Force Python to return freed memory to OS (Linux only)
+        try:
+            import ctypes
+            libc = ctypes.CDLL("libc.so.6")
+            libc.malloc_trim(0)
+        except:
+            pass  # Not on Linux, ignore
 
         ram_after_cleanup = round(process.memory_info().rss / 1024 / 1024, 2)
         ram_freed = ram_after_enhance - ram_after_cleanup
