@@ -1061,7 +1061,6 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         pending_data = pending_location_additions[user_id]
 
         # Check if pending request is still valid (10 minute window)
-        from datetime import datetime, timedelta
         timestamp = pending_data.get("timestamp")
         if timestamp and (datetime.now() - timestamp) > timedelta(minutes=10):
             del pending_location_additions[user_id]
