@@ -1095,20 +1095,26 @@ def is_portrait_location(location_key: str) -> bool:
     """
     import db
 
-    # Get all variations for this location
+    # Get all variations for this location (returns dict like {'day': ['gold', 'silver']})
     variations = db.list_mockup_variations(location_key)
     if not variations:
         logger.warning(f"[ORIENTATION] Location '{location_key}' has no mockup frames configured")
         return False
 
-    # Get the first variation's first frame to check orientation
-    first_variation = variations[0]  # {'time_of_day': 'day', 'finish': 'gold', 'photo_filename': 'Uae18_1.jpg'}
-    frames_data = db.get_mockup_frames(
-        location_key,
-        first_variation['photo_filename'],
-        first_variation['time_of_day'],
-        first_variation['finish']
-    )
+    # Get first time_of_day and first finish from variations dict
+    first_time_of_day = list(variations.keys())[0]
+    first_finish = variations[first_time_of_day][0]
+
+    # Get any photo for this variation to check frame orientation
+    photo_result = get_random_location_photo(location_key, first_time_of_day, first_finish)
+    if not photo_result:
+        logger.warning(f"[ORIENTATION] No photos found for '{location_key}/{first_time_of_day}/{first_finish}'")
+        return False
+
+    photo_filename, time_of_day, finish, _ = photo_result
+
+    # Get frame data for this photo
+    frames_data = db.get_mockup_frames(location_key, photo_filename, time_of_day, finish)
 
     if not frames_data or len(frames_data) == 0:
         logger.warning(f"[ORIENTATION] No frame data found for '{location_key}'")
