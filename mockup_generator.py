@@ -266,19 +266,29 @@ def warp_creative_to_billboard(
     # Downsample bbox mask to original resolution
     mask_bbox = cv2.resize(mask_hires, (bbox_width, bbox_height), interpolation=cv2.INTER_AREA)
 
+    # Delete high-res mask immediately to free 29MB before next allocation
+    try:
+        del mask_hires
+    except:
+        pass
+
     # Create full-sized mask and paste bbox mask into it
     mask = np.zeros((billboard_image.shape[0], billboard_image.shape[1]), dtype=np.uint8)
     mask[bbox_y_min:bbox_y_max, bbox_x_min:bbox_x_max] = mask_bbox
 
-    # Clean up intermediate arrays
-    try: del mask_hires
-    except: pass
-    try: del mask_bbox
-    except: pass
-    try: del dst_pts_local
-    except: pass
-    try: del dst_pts_local_hires
-    except: pass
+    # Clean up remaining intermediate arrays
+    try:
+        del mask_bbox
+    except:
+        pass
+    try:
+        del dst_pts_local
+    except:
+        pass
+    try:
+        del dst_pts_local_hires
+    except:
+        pass
     gc.collect()
 
     # Apply edge blur for additional smoothing (user-configurable)
