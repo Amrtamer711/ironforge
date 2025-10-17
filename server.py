@@ -247,22 +247,8 @@ async def slack_interactive(request: Request):
 
         _button_clicks[user_id][action_key] = current_time
 
-        # Route to appropriate handler
-        if action_id == "approve_bo_hos":
-            # Send wait message
-            await bo_slack_messaging.post_response_url(response_url, {
-                "replace_original": True,
-                "text": "⏳ Please wait... Processing approval..."
-            })
-            # Process asynchronously
-            asyncio.create_task(bo_approval_workflow.handle_hos_approval(workflow_id, user_id, response_url))
-
-        elif action_id == "reject_bo_hos":
-            # For now, simple rejection - TODO: Add modal for rejection reason
-            rejection_reason = "Rejected by Head of Sales"
-            asyncio.create_task(bo_approval_workflow.handle_hos_rejection(workflow_id, user_id, response_url, rejection_reason))
-
-        elif action_id == "approve_bo_coordinator":
+        # Route to appropriate handler (admin is HoS, so only coordinator buttons exist)
+        if action_id == "approve_bo_coordinator":
             # Send wait message
             await bo_slack_messaging.post_response_url(response_url, {
                 "replace_original": True,

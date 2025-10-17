@@ -678,16 +678,16 @@ IMPORTANT: Use natural language in messages. Be friendly and conversational.
         message = decision.get('message', '')
 
         if action == 'approve':
-            # Start approval workflow - send to Head of Sales
+            # Start approval workflow - send directly to Sales Coordinator (admin is HoS)
             try:
                 import bo_approval_workflow
                 import bo_slack_messaging
 
-                # Generate temp Excel for HoS review
+                # Generate temp Excel for coordinator review
                 parser = BookingOrderParser(company=edit_data.get("company"))
                 temp_excel = await parser.generate_excel(current_data, f"DRAFT_{edit_data.get('company')}")
 
-                # Create approval workflow
+                # Create approval workflow (start at coordinator stage since admin is HoS)
                 workflow_id = await bo_approval_workflow.create_approval_workflow(
                     user_id=user_id,
                     company=edit_data.get("company"),
@@ -700,31 +700,29 @@ IMPORTANT: Use natural language in messages. Be friendly and conversational.
                     user_notes=edit_data.get("user_notes", "")
                 )
 
-                # Get Head of Sales channel
-                hos_channel = bo_approval_workflow.get_head_of_sales_channel()
-                if not hos_channel:
-                    return "❌ **Error:** Head of Sales not configured. Please update stakeholders_config.json"
+                # Get coordinator channel
+                coordinator_channel = bo_approval_workflow.get_coordinator_channel(edit_data.get("company"))
+                if not coordinator_channel:
+                    return f"❌ **Error:** Sales Coordinator for {edit_data.get('company')} not configured. Please update hos_config.json"
 
-                # Send to Head of Sales with buttons
-                result = await bo_slack_messaging.send_to_head_of_sales(
-                    channel=hos_channel,
+                # Send to Sales Coordinator with buttons
+                result = await bo_slack_messaging.send_to_coordinator(
+                    channel=coordinator_channel,
                     workflow_id=workflow_id,
                     company=edit_data.get("company"),
                     data=current_data,
-                    warnings=warnings,
-                    missing_required=missing_required,
                     excel_path=str(temp_excel)
                 )
 
-                # Update workflow with HoS message info
+                # Update workflow with coordinator message info
                 await bo_approval_workflow.update_workflow(workflow_id, {
-                    "hos_msg_ts": result["message_id"]
+                    "coordinator_msg_ts": result["message_id"]
                 })
 
                 # Clean up edit session
                 del pending_booking_orders[user_id]
 
-                return f"✅ **Booking Order Submitted for Approval**\n\n**Client:** {current_data.get('client', 'N/A')}\n**Campaign:** {current_data.get('brand_campaign', 'N/A')}\n**Gross Total:** AED {current_data.get('gross_calc', 0):,.2f}\n\nSent to Head of Sales for approval. You'll be notified once the approval process is complete."
+                return f"✅ **Booking Order Submitted for Approval**\n\n**Client:** {current_data.get('client', 'N/A')}\n**Campaign:** {current_data.get('brand_campaign', 'N/A')}\n**Gross Total:** AED {current_data.get('gross_calc', 0):,.2f}\n\nSent to Sales Coordinator for approval. You'll be notified once the approval process is complete."
 
             except Exception as e:
                 config.logger.error(f"[BOOKING ORDER] Error starting approval workflow: {e}")
