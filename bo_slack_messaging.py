@@ -10,6 +10,60 @@ import config
 logger = logging.getLogger("proposal-bot")
 
 
+async def send_coordinator_approval_buttons(
+    channel: str,
+    workflow_id: str,
+    data: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Send Approve/Reject buttons to Sales Coordinator for initial review
+
+    Returns: {"ts": message_timestamp}
+    """
+
+    # Build message text
+    text = "📎 **Please review the Excel file above, then:**"
+
+    # Create blocks with buttons
+    blocks = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": text
+            }
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "✅ Approve"},
+                    "style": "primary",
+                    "value": workflow_id,
+                    "action_id": "approve_bo_coordinator"
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "❌ Reject"},
+                    "style": "danger",
+                    "value": workflow_id,
+                    "action_id": "reject_bo_coordinator"
+                }
+            ]
+        }
+    ]
+
+    # Post buttons as separate message
+    button_result = await config.slack_client.chat_postMessage(
+        channel=channel,
+        text="Please review and approve or reject:",
+        blocks=blocks
+    )
+
+    return {"ts": button_result.get("ts")}
+
+
 async def send_to_head_of_sales(
     channel: str,
     workflow_id: str,

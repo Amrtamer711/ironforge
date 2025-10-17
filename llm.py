@@ -633,12 +633,15 @@ async def _handle_booking_order_parse(
         tmp_file.unlink(missing_ok=True)
         return
 
-    # NEW FLOW: Skip edit phase, send directly to coordinator in thread
-    await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Creating approval workflow..._")
+    # NEW FLOW: Generate Excel immediately and send with Approve/Reject buttons
+    await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Generating Excel file..._")
 
     try:
-        # Create approval workflow
+        # Generate Excel immediately
         import bo_approval_workflow
+        excel_path = await parser.generate_excel(result.data, f"DRAFT_{company}_REVIEW")
+
+        # Create approval workflow
         workflow_id = await bo_approval_workflow.create_approval_workflow(
             user_id=user_id,
             company=company,
@@ -661,8 +664,8 @@ async def _handle_booking_order_parse(
             )
             return
 
-        # Send parsed data to coordinator IN THREAD (not Excel yet)
-        preview_text = f"📋 **New Booking Order - Review Required**\n\n"
+        # Send Excel + summary + Approve/Reject buttons to coordinator
+        preview_text = f"📋 **New Booking Order - Ready for Approval**\n\n"
         preview_text += f"**Company:** {company.upper()}\n"
         preview_text += f"**Submitted by:** <@{user_id}>\n\n"
         preview_text += f"**Client:** {result.data.get('client', 'N/A')}\n"
@@ -688,23 +691,40 @@ async def _handle_booking_order_parse(
         if user_notes:
             preview_text += f"\n📝 **Sales Notes:** {user_notes}\n"
 
-        preview_text += "\n\n**Instructions:**\n"
-        preview_text += "• Review the data above carefully\n"
-        preview_text += "• Tell me any changes needed (e.g., 'Change client to Acme Corp', 'Net should be 150,000')\n"
-        preview_text += "• Say 'execute' when ready to generate Excel and approval buttons"
+        preview_text += "\n\n📎 **Please review the Excel file attached below, then:**\n"
+        preview_text += "• Press **Approve** to send to Head of Sales\n"
+        preview_text += "• Press **Reject** to request changes in a thread"
 
-        # Create thread in coordinator channel
-        thread_result = await config.slack_client.chat_postMessage(
+        # Upload Excel file to coordinator
+        await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Uploading Excel to coordinator..._")
+
+        file_upload = await config.slack_client.files_upload_v2(
             channel=coordinator_channel,
-            text=config.markdown_to_slack(preview_text)
+            file=str(excel_path),
+            title=f"BO Draft - {result.data.get('client', 'Unknown')}",
+            initial_comment=config.markdown_to_slack(preview_text)
         )
 
-        thread_ts = thread_result.get("ts")
+        # Get the message timestamp from file upload
+        file_msg_ts = file_upload.get("file", {}).get("shares", {}).get("private", {}).get(coordinator_channel, [{}])[0].get("ts")
+        if not file_msg_ts:
+            file_msg_ts = file_upload.get("file", {}).get("shares", {}).get("public", {}).get(coordinator_channel, [{}])[0].get("ts")
 
-        # Update workflow with thread info
+        # Send approval buttons as a separate message (to ensure they appear after the file)
+        import bo_slack_messaging
+        button_result = await bo_slack_messaging.send_coordinator_approval_buttons(
+            channel=coordinator_channel,
+            workflow_id=workflow_id,
+            data=result.data
+        )
+
+        coordinator_msg_ts = button_result.get("ts")
+
+        # Update workflow with coordinator message info
         await bo_approval_workflow.update_workflow(workflow_id, {
-            "coordinator_thread_ts": thread_ts,
-            "coordinator_thread_channel": coordinator_channel
+            "coordinator_thread_channel": coordinator_channel,
+            "coordinator_msg_ts": coordinator_msg_ts,
+            "excel_path": str(excel_path)
         })
 
         # Notify sales person
@@ -716,12 +736,12 @@ async def _handle_booking_order_parse(
                 f"**Client:** {result.data.get('client', 'N/A')}\n"
                 f"**Campaign:** {result.data.get('brand_campaign', 'N/A')}\n"
                 f"**Gross Total:** AED {result.data.get('gross_calc', 0):,.2f}\n\n"
-                f"Your booking order has been sent to the Sales Coordinator for review. "
+                f"Your booking order has been sent to the Sales Coordinator with an Excel file for immediate review. "
                 f"You'll be notified once the approval process is complete."
             )
         )
 
-        logger.info(f"[BO APPROVAL] Sent {workflow_id} to coordinator in thread {thread_ts}")
+        logger.info(f"[BO APPROVAL] Sent {workflow_id} to coordinator with Excel and approval buttons")
 
     except Exception as e:
         logger.error(f"[BO APPROVAL] Error creating workflow: {e}", exc_info=True)

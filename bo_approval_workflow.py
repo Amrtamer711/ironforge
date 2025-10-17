@@ -1,17 +1,20 @@
 """
 Booking Order Approval Workflow System - REFACTORED
 
-NEW Multi-stage approval chain:
-1. ANY sales person uploads BO → Auto-parse → Send to Sales Coordinator immediately (NO edit phase)
-2. Coordinator reviews parsed data in THREAD (not Excel yet)
-3. Coordinator can edit via natural language in thread
-4. When ready, coordinator says "execute" → Get Excel + Approve/Reject buttons IN THREAD
-5. If coordinator rejects → Stay in same thread, continue editing
-6. If coordinator approves → Send to Head of Sales (company-specific: Backlite or Viola)
-7. If HoS approves → Send to Finance + Save to permanent database with BO reference
-8. If HoS rejects → Modal with reason → REVIVE coordinator thread with rejection message
+NEW Multi-stage approval chain (IMMEDIATE EXCEL FLOW):
+1. ANY sales person uploads BO → Auto-parse → Generate Excel immediately
+2. Send Excel + Summary + Approve/Reject buttons to Sales Coordinator
+3. Coordinator reviews Excel and clicks:
+   a. APPROVE → Moves to Head of Sales for approval
+   b. REJECT → Opens thread on button message for natural language edits
+4. If coordinator rejects: Thread opens for editing
+   - Coordinator makes changes via natural language in thread
+   - Says "execute" to regenerate Excel + new approval buttons in same thread
+5. If coordinator approves → Send Excel + buttons to Head of Sales (company-specific: Backlite or Viola)
+6. If HoS approves → Send to Finance + Save to permanent database with BO reference
+7. If HoS rejects → Modal with reason → REVIVE coordinator thread with rejection message
 
-Thread lifecycle: Created on upload, stays alive through coordinator→HoS stages, revived on HoS rejection, closed on HoS approval
+Thread lifecycle: Created only on rejection, used for edits, revived on HoS rejection
 """
 
 import json
@@ -235,6 +238,7 @@ def is_coordinator_thread_active(workflow: Dict[str, Any], thread_ts: str) -> bo
 async def handle_coordinator_approval(workflow_id: str, user_id: str, response_url: str):
     """
     Handle Sales Coordinator approval
+    - Update button message to show approval
     - Move to HoS stage
     - Send to appropriate Head of Sales with buttons
     """
@@ -257,15 +261,16 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
         "status": "pending"
     })
 
-    # Update button message in thread
-    coordinator_thread = workflow.get("coordinator_thread_ts")
+    # Update button message to show approval
+    coordinator_msg_ts = workflow.get("coordinator_msg_ts")
     coordinator_channel = workflow.get("coordinator_thread_channel")
 
-    if coordinator_thread and coordinator_channel:
-        await config.slack_client.chat_postMessage(
+    if coordinator_msg_ts and coordinator_channel:
+        await bo_slack_messaging.update_button_message(
             channel=coordinator_channel,
-            thread_ts=coordinator_thread,
-            text=config.markdown_to_slack("✅ **Coordinator Approved**\n\nMoving to Head of Sales for review...")
+            message_ts=coordinator_msg_ts,
+            new_text=f"✅ **APPROVED** by <@{user_id}>\n\nMoving to Head of Sales for review...",
+            approved=True
         )
 
     # Generate temp Excel for HoS review
@@ -300,8 +305,8 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
 async def handle_coordinator_rejection(workflow_id: str, user_id: str, response_url: str, rejection_reason: str, channel: str, message_ts: str):
     """
     Handle Sales Coordinator rejection
-    - Stay in thread and continue editing
-    - No thread revival needed (already in thread)
+    - Create thread on the button message for editing
+    - Allow coordinator to make natural language edits
     """
     import bo_slack_messaging
 
@@ -311,29 +316,45 @@ async def handle_coordinator_rejection(workflow_id: str, user_id: str, response_
 
     logger.info(f"[BO APPROVAL] ❌ Coordinator {user_id} rejected {workflow_id} - Client: {workflow['data'].get('client', 'N/A')} - Reason: {rejection_reason[:100]}")
 
-    # Update workflow (stays in coordinator stage)
+    # Update workflow
     await update_workflow(workflow_id, {
-        "status": "rejected",
+        "status": "coordinator_rejected",
         "coordinator_rejection_reason": rejection_reason,
         "coordinator_rejected_by": user_id,
-        "coordinator_rejected_at": datetime.now().isoformat()
+        "coordinator_rejected_at": datetime.now().isoformat(),
+        "coordinator_thread_ts": message_ts,  # Use button message as thread root
+        "coordinator_thread_channel": channel
     })
 
-    # Post rejection message in thread
-    coordinator_thread = workflow.get("coordinator_thread_ts")
-    coordinator_channel = workflow.get("coordinator_thread_channel")
+    # Update the button message to show rejection
+    await bo_slack_messaging.update_button_message(
+        channel=channel,
+        message_ts=message_ts,
+        new_text=f"❌ **REJECTED** by <@{user_id}>",
+        approved=False
+    )
 
-    if coordinator_thread and coordinator_channel:
-        await config.slack_client.chat_postMessage(
-            channel=coordinator_channel,
-            thread_ts=coordinator_thread,
-            text=config.markdown_to_slack(
-                f"❌ **Rejected**\n\n**Reason:** {rejection_reason}\n\n"
-                f"Please continue editing by telling me what changes are needed."
-            )
+    # Post rejection message in thread with edit instructions
+    await config.slack_client.chat_postMessage(
+        channel=channel,
+        thread_ts=message_ts,
+        text=config.markdown_to_slack(
+            f"❌ **Booking Order Rejected**\n\n"
+            f"**Reason:** {rejection_reason}\n\n"
+            f"**Current Details:**\n"
+            f"• Client: {workflow['data'].get('client', 'N/A')}\n"
+            f"• Campaign: {workflow['data'].get('brand_campaign', 'N/A')}\n"
+            f"• Gross Total: AED {workflow['data'].get('gross_calc', 0):,.2f}\n\n"
+            f"💬 **Please tell me what changes are needed:**\n"
+            f"Examples:\n"
+            f"• 'Change client to Acme Corp'\n"
+            f"• 'Net should be 150,000'\n"
+            f"• 'Add location: Dubai Mall, start 2025-03-01, end 2025-03-31, net 50000'\n\n"
+            f"When ready, say **'execute'** to regenerate the Excel and approval buttons."
         )
+    )
 
-    logger.info(f"[BO APPROVAL] Coordinator continues editing in thread {coordinator_thread}")
+    logger.info(f"[BO APPROVAL] Created editing thread at {message_ts} in {channel}")
 
 
 async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str):
