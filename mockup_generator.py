@@ -1364,11 +1364,9 @@ def generate_mockup(
         f"(RAM: {ram_before_billboard}MB → {ram_after_billboard}MB, +{ram_after_billboard - ram_before_billboard:.2f}MB)"
     )
 
-    # Start with the billboard as the result
-    result = billboard.copy()
-
-    ram_after_copy = round(process.memory_info().rss / 1024 / 1024, 2)
-    logger.info(f"[MOCKUP] Copied billboard for processing (RAM: {ram_after_billboard}MB → {ram_after_copy}MB, +{ram_after_copy - ram_after_billboard:.2f}MB)")
+    # Use billboard directly as result (no copy needed - saves 128MB for 8K images!)
+    # We modify it in place, which is fine since we're done loading it
+    result = billboard
 
     # Apply each creative to each frame
     for i, frame_data in enumerate(frames_data):
@@ -1411,8 +1409,15 @@ def generate_mockup(
             logger.info(f"[MOCKUP] Applied creative {i+1}/{num_frames} to frame {i+1} (edge blur: {edge_blur}px, image blur: {image_blur})")
         except Exception as e:
             logger.error(f"[MOCKUP] Error warping creative {i}: {e}")
-            # Cleanup on error
-            del billboard, result, creative
+            # Cleanup on error (billboard and result are same object now)
+            try:
+                del result
+            except:
+                pass
+            try:
+                del creative
+            except:
+                pass
             gc.collect()
             return None, None
 
@@ -1429,7 +1434,11 @@ def generate_mockup(
         logger.info(f"[MOCKUP] Generated mockup saved to: {output_path}")
 
         # Cleanup large numpy arrays to free memory immediately
-        del billboard, result
+        # billboard and result are same object now, only delete once
+        try:
+            del result
+        except:
+            pass
         gc.collect()
 
         return output_path, photo_filename
@@ -1437,7 +1446,7 @@ def generate_mockup(
         logger.error(f"[MOCKUP] Error saving mockup: {e}")
         # Cleanup on error
         try:
-            del billboard, result
+            del result
         except:
             pass
         gc.collect()
