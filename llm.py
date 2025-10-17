@@ -6,6 +6,8 @@ from pathlib import Path
 import aiohttp
 from datetime import datetime, timedelta
 from pptx import Presentation
+import re
+import shutil
 
 import config
 import db
@@ -23,6 +25,11 @@ pending_location_additions: Dict[str, Dict[str, Any]] = {}
 # Structure: {user_id: {"creative_paths": List[Path], "metadata": dict, "timestamp": datetime}}
 # Stores individual creative files (1-N files) so they can be reused on different locations with matching frame count
 mockup_history: Dict[str, Dict[str, Any]] = {}
+
+# Global for booking order draft review sessions (active until approved/cancelled)
+# Structure: {user_id: {"data": dict, "warnings": List[str], "missing_required": List[str],
+#                        "original_file_path": Path, "company": str, "file_type": str}}
+pending_booking_orders: Dict[str, Dict[str, Any]] = {}
 
 def cleanup_expired_mockups():
     """Remove creative files that have expired (older than 30 minutes)"""
@@ -488,82 +495,49 @@ async def _handle_booking_order_parse(
         tmp_file.unlink(missing_ok=True)
         return
 
-    # Check for missing required fields
-    if result.missing_required:
-        missing_list = "\n".join(f"• {item}" for item in result.missing_required)
-        await config.slack_client.chat_update(
-            channel=channel,
-            ts=status_ts,
-            text=config.markdown_to_slack(
-                f"⚠️ **Missing Required Information:**\n{missing_list}\n\n"
-                f"Please provide the missing details so I can complete the booking order."
-            )
-        )
-        tmp_file.unlink(missing_ok=True)
-        return
-
-    # Generate BO reference
-    bo_ref = db.generate_next_bo_ref()
-    logger.info(f"[BOOKING] Generated BO ref: {bo_ref}")
-
-    # Store original file
-    original_ext = tmp_file.suffix
-    original_path = ORIGINAL_DIR / f"{bo_ref}{original_ext}"
-    tmp_file.rename(original_path)
-    logger.info(f"[BOOKING] Stored original: {original_path}")
-
-    # Generate Excel
-    await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Generating Excel..._")
-    excel_path = await parser.generate_excel(result.data, bo_ref)
-
-    # Prepare database record
-    db_data = result.data.copy()
-    db_data.update({
-        "bo_ref": bo_ref,
-        "company": company,
-        "original_file_path": str(original_path),
-        "original_file_type": file_type,
-        "original_file_size": original_path.stat().st_size,
-        "original_filename": file_info.get("name"),
-        "parsed_excel_path": str(excel_path),
-        "parsed_by": user_id,
-        "source_classification": classification.get("classification"),
-        "classification_confidence": classification.get("confidence"),
+    # Store draft in pending_booking_orders for review/editing
+    pending_booking_orders[user_id] = {
+        "data": result.data,
         "warnings": result.warnings,
         "missing_required": result.missing_required,
-        "needs_review": result.needs_review,
-    })
+        "original_file_path": tmp_file,  # Keep temp file until approved
+        "original_filename": file_info.get("name"),
+        "company": company,
+        "file_type": file_type,
+        "user_notes": user_notes
+    }
 
-    # Save to database
-    try:
-        db.save_booking_order(db_data)
-        logger.info(f"[BOOKING] Saved to database: {bo_ref}")
-    except Exception as e:
-        logger.error(f"[BOOKING] Database save failed: {e}", exc_info=True)
-        await config.slack_client.chat_update(
-            channel=channel,
-            ts=status_ts,
-            text=config.markdown_to_slack(f"❌ Failed to save to database: {e}")
-        )
-        return
+    # Show preview with edit instructions
+    preview = "📋 **Booking Order Draft - Review & Edit**\n\n"
+    preview += f"**Company:** {company.upper()}\n"
+    preview += f"**Client:** {result.data.get('client', 'N/A')}\n"
+    preview += f"**Campaign:** {result.data.get('brand_campaign', 'N/A')}\n"
+    preview += f"**Net (pre-VAT):** AED {result.data.get('net_pre_vat', 0):,.2f}\n"
+    preview += f"**VAT (5%):** AED {result.data.get('vat_calc', 0):,.2f}\n"
+    preview += f"**Gross Total:** AED {result.data.get('gross_calc', 0):,.2f}\n"
 
-    # Upload Excel to Slack
-    await config.slack_client.files_upload_v2(
-        channel=channel,
-        file=str(excel_path),
-        title=f"{bo_ref} - Booking Order",
-        initial_comment=config.markdown_to_slack(f"✅ **Booking Order Parsed: {bo_ref}**")
-    )
+    if result.data.get("locations"):
+        preview += f"\n**Locations:** {len(result.data['locations'])}\n"
+        for loc in result.data["locations"][:3]:  # Show first 3
+            preview += f"  • {loc.get('name', 'Unknown')}: {loc.get('start_date', '?')} to {loc.get('end_date', '?')} (AED {loc.get('net_amount', 0):,.2f})\n"
+        if len(result.data["locations"]) > 3:
+            preview += f"  ...and {len(result.data['locations']) - 3} more\n"
 
-    # Send summary
-    summary = parser.format_for_slack(result.data, bo_ref)
     if result.warnings:
-        summary += "\n\n⚠️ **Warnings:**\n" + "\n".join(f"• {w}" for w in result.warnings)
+        preview += "\n⚠️ **Warnings:**\n" + "\n".join(f"• {w}" for w in result.warnings)
+
+    if result.missing_required:
+        preview += "\n❌ **Missing Required:**\n" + "\n".join(f"• {m}" for m in result.missing_required)
+
+    preview += "\n\n**What would you like to do?**\n"
+    preview += "• Tell me any corrections (e.g., 'Change client to Acme Corp', 'Net should be 150,000')\n"
+    preview += "• Say 'approve' or 'save it' to save to database\n"
+    preview += "• Say 'cancel' to discard this draft"
 
     await config.slack_client.chat_delete(channel=channel, ts=status_ts)
     await config.slack_client.chat_postMessage(
         channel=channel,
-        text=config.markdown_to_slack(summary)
+        text=config.markdown_to_slack(preview)
     )
 
 
@@ -609,6 +583,235 @@ async def _handle_booking_order_retrieve(args: Dict[str, Any], channel: str) -> 
     return summary
 
 
+async def handle_booking_order_edit_flow(channel: str, user_id: str, user_input: str) -> str:
+    """Handle booking order edit flow with structured LLM response"""
+    try:
+        edit_data = pending_booking_orders.get(user_id, {})
+        current_data = edit_data.get("data", {})
+        warnings = edit_data.get("warnings", [])
+        missing_required = edit_data.get("missing_required", [])
+
+        # Build system prompt for LLM to parse user intent
+        system_prompt = f"""
+You are helping review a booking order draft. The user said: "{user_input}"
+
+Determine their intent and parse any field updates:
+- If they want to approve/save/confirm/submit: action = 'approve'
+- If they want to cancel/discard/abort: action = 'cancel'
+- If they want to see current values: action = 'view'
+- If they're making changes/corrections: action = 'edit' and parse the field updates
+
+Current booking order data: {json.dumps(current_data, indent=2)}
+Warnings: {warnings}
+Missing required fields: {missing_required}
+
+Field mapping (use these exact keys when updating):
+- Client/client name/customer → "client"
+- Campaign/campaign name/brand → "brand_campaign"
+- BO number/booking order number → "bo_number"
+- BO date/booking order date → "bo_date"
+- Net/net amount/net pre-VAT → "net_pre_vat"
+- VAT/vat amount → "vat_calc"
+- Gross/gross amount/total → "gross_calc"
+- Agency/agency name → "agency"
+- Sales person/salesperson → "sales_person"
+- SLA percentage → "sla_pct"
+- Payment terms → "payment_terms"
+- Commission percentage → "commission_pct"
+- Notes → "notes"
+- Category → "category"
+- Asset → "asset"
+
+For locations array updates, user can say things like:
+- "Add location X" → append to locations
+- "Remove location Y" → remove from locations
+- "Change location 1 to X" → update by index
+
+Return JSON with: action, fields (only changed fields), message (natural language response to user).
+IMPORTANT: Use natural language in messages. Be friendly and conversational.
+"""
+
+        res = await config.openai_client.responses.create(
+            model=config.OPENAI_MODEL,
+            input=[{"role": "system", "content": system_prompt}],
+            text={
+                'format': {
+                    'type': 'json_schema',
+                    'name': 'booking_order_edit_response',
+                    'strict': False,
+                    'schema': {
+                        'type': 'object',
+                        'properties': {
+                            'action': {'type': 'string', 'enum': ['approve', 'cancel', 'edit', 'view']},
+                            'fields': {
+                                'type': 'object',
+                                'properties': {
+                                    'client': {'type': 'string'},
+                                    'brand_campaign': {'type': 'string'},
+                                    'bo_number': {'type': 'string'},
+                                    'bo_date': {'type': 'string'},
+                                    'net_pre_vat': {'type': 'number'},
+                                    'vat_calc': {'type': 'number'},
+                                    'gross_calc': {'type': 'number'},
+                                    'agency': {'type': 'string'},
+                                    'sales_person': {'type': 'string'},
+                                    'sla_pct': {'type': 'number'},
+                                    'payment_terms': {'type': 'string'},
+                                    'commission_pct': {'type': 'number'},
+                                    'notes': {'type': 'string'},
+                                    'category': {'type': 'string'},
+                                    'asset': {'type': 'string'}
+                                },
+                                'additionalProperties': True  # Allow locations and other fields
+                            },
+                            'message': {'type': 'string'}
+                        },
+                        'required': ['action'],
+                        'additionalProperties': False
+                    }
+                }
+            },
+            store=False
+        )
+
+        decision = json.loads(res.output[0].content[-1].text)
+        action = decision.get('action')
+        message = decision.get('message', '')
+
+        if action == 'approve':
+            # Save booking order to database
+            try:
+                # Generate BO reference
+                bo_ref = await db.generate_next_bo_ref()
+
+                # Move temp file to ORIGINAL_DIR
+                original_file_path = edit_data.get("original_file_path")
+                company = edit_data.get("company")
+                file_type = edit_data.get("file_type")
+                original_filename = edit_data.get("original_filename", "booking_order")
+
+                # Create company-specific subdirectory
+                company_dir = ORIGINAL_DIR / company
+                company_dir.mkdir(parents=True, exist_ok=True)
+
+                # Move file with BO reference in filename
+                safe_filename = re.sub(r'[^\w\-_\.]', '_', original_filename)
+                final_path = company_dir / f"{bo_ref}_{safe_filename}"
+                shutil.move(str(original_file_path), str(final_path))
+
+                # Generate Excel
+                parser = BookingOrderParser()
+                excel_path = await parser.generate_excel(current_data, bo_ref)
+
+                # Save to database
+                await db.save_booking_order(
+                    bo_ref=bo_ref,
+                    company=company,
+                    data=current_data,
+                    warnings=warnings,
+                    missing_required=missing_required,
+                    file_type=file_type,
+                    original_file_path=str(final_path),
+                    parsed_excel_path=str(excel_path),
+                    user_notes=edit_data.get("user_notes", "")
+                )
+
+                # Upload Excel to Slack
+                await config.slack_client.files_upload_v2(
+                    channel=channel,
+                    file=str(excel_path),
+                    title=f"{bo_ref} - Parsed Booking Order",
+                    initial_comment=f"✅ **Booking Order Saved: {bo_ref}**\n\nClient: {current_data.get('client', 'N/A')}\nCampaign: {current_data.get('brand_campaign', 'N/A')}\nGross Total: AED {current_data.get('gross_calc', 0):,.2f}"
+                )
+
+                # Clean up session
+                del pending_booking_orders[user_id]
+
+                return f"✅ **Booking Order Approved & Saved**\n\n**Reference:** {bo_ref}\n**Client:** {current_data.get('client', 'N/A')}\n**Campaign:** {current_data.get('brand_campaign', 'N/A')}\n**Gross Total:** AED {current_data.get('gross_calc', 0):,.2f}\n\nParsed Excel uploaded above."
+
+            except Exception as e:
+                config.logger.error(f"[BOOKING ORDER] Error saving approved booking order: {e}")
+                return f"❌ **Error saving booking order:** {str(e)}\n\nPlease try again or say 'cancel' to discard."
+
+        elif action == 'cancel':
+            # Clean up temp file and session
+            try:
+                original_file_path = edit_data.get("original_file_path")
+                if original_file_path and Path(original_file_path).exists():
+                    Path(original_file_path).unlink()
+            except Exception as e:
+                config.logger.error(f"[BOOKING ORDER] Error deleting temp file: {e}")
+
+            del pending_booking_orders[user_id]
+            return message or "❌ **Booking order draft discarded.**"
+
+        elif action == 'view':
+            # Show current draft
+            preview = "📋 **Current Booking Order Draft**\n\n"
+
+            # Core fields
+            preview += f"**Client:** {current_data.get('client', 'N/A')}\n"
+            preview += f"**Campaign:** {current_data.get('brand_campaign', 'N/A')}\n"
+            preview += f"**BO Number:** {current_data.get('bo_number', 'N/A')}\n"
+            preview += f"**BO Date:** {current_data.get('bo_date', 'N/A')}\n"
+            preview += f"**Net (pre-VAT):** AED {current_data.get('net_pre_vat', 0):,.2f}\n"
+            preview += f"**VAT (5%):** AED {current_data.get('vat_calc', 0):,.2f}\n"
+            preview += f"**Gross Total:** AED {current_data.get('gross_calc', 0):,.2f}\n\n"
+
+            # Locations
+            locations = current_data.get('locations', [])
+            if locations:
+                preview += f"**Locations ({len(locations)}):**\n"
+                for i, loc in enumerate(locations, 1):
+                    preview += f"{i}. {loc.get('name', 'Unknown')}: {loc.get('start_date', '?')} to {loc.get('end_date', '?')} (AED {loc.get('net_amount', 0):,.2f})\n"
+
+            if warnings:
+                preview += f"\n⚠️ **Warnings ({len(warnings)}):**\n"
+                for w in warnings[:3]:
+                    preview += f"• {w}\n"
+
+            if missing_required:
+                preview += f"\n❗ **Missing Required Fields:** {', '.join(missing_required)}\n"
+
+            preview += "\n**What would you like to do?**\n"
+            preview += "• Tell me any corrections\n"
+            preview += "• Say 'approve' to save\n"
+            preview += "• Say 'cancel' to discard"
+
+            return preview
+
+        elif action == 'edit':
+            # Apply field updates
+            fields = decision.get('fields', {})
+            if fields:
+                # Update the draft data
+                for field, value in fields.items():
+                    current_data[field] = value
+
+                # Recalculate VAT and gross if net changed
+                if 'net_pre_vat' in fields:
+                    current_data['vat_calc'] = round(current_data['net_pre_vat'] * 0.05, 2)
+                    current_data['gross_calc'] = round(current_data['net_pre_vat'] + current_data['vat_calc'], 2)
+
+                # Save updated draft
+                pending_booking_orders[user_id]["data"] = current_data
+
+                response = message or "✅ **Changes applied:**\n"
+                for field, value in fields.items():
+                    response += f"• {field}: {value}\n"
+                response += "\nSay 'approve' to save or continue editing."
+                return response
+            else:
+                return message or "I didn't catch any changes. What would you like to update?"
+
+        else:
+            return "I didn't understand. Please tell me what to change, or say 'approve' to save or 'cancel' to discard."
+
+    except Exception as e:
+        config.logger.error(f"[BOOKING ORDER] Error in edit flow: {e}")
+        return f"❌ **Error processing your request:** {str(e)}\n\nPlease try again."
+
+
 async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event: Dict[str, Any] = None):
     logger = config.logger
     
@@ -625,7 +828,26 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         text="⏳ _Please wait..._"
     )
     status_ts = status_message.get("ts")
-    
+
+    # Check if user has a pending booking order review session
+    if user_id in pending_booking_orders:
+        logger.info(f"[BOOKING ORDER] User {user_id} in edit mode")
+        try:
+            answer = await handle_booking_order_edit_flow(channel, user_id, user_input)
+            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+            await config.slack_client.chat_postMessage(
+                channel=channel,
+                text=config.markdown_to_slack(answer)
+            )
+        except Exception as e:
+            logger.error(f"[BOOKING ORDER] Error in edit flow: {e}")
+            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+            await config.slack_client.chat_postMessage(
+                channel=channel,
+                text=config.markdown_to_slack(f"❌ **Error:** {str(e)}")
+            )
+        return
+
     # Check if user has a pending location addition or mockup request and uploaded a file
     # Also check for file_share events which Slack sometimes uses
     has_files = slack_event and ("files" in slack_event or (slack_event.get("subtype") == "file_share"))
