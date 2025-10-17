@@ -37,6 +37,15 @@ class QueuedTask:
     completed_at: Optional[datetime] = None
     result: Any = None
     error: Optional[Exception] = None
+    started_event: asyncio.Event = None
+    completed_event: asyncio.Event = None
+
+    def __post_init__(self):
+        """Initialize events after dataclass creation."""
+        if self.started_event is None:
+            self.started_event = asyncio.Event()
+        if self.completed_event is None:
+            self.completed_event = asyncio.Event()
 
 
 class MockupTaskQueue:
@@ -93,13 +102,32 @@ class MockupTaskQueue:
         # Process queue (start tasks if slots available)
         await self._process_queue()
 
-        # Wait for this task to start
-        while task.started_at is None:
-            await asyncio.sleep(0.1)
+        # Wait for this task to start (with timeout)
+        try:
+            await asyncio.wait_for(task.started_event.wait(), timeout=30.0)
+        except asyncio.TimeoutError:
+            logger.error(f"[QUEUE] Task {task_id} failed to start within 30s")
+            async with self.lock:
+                if task in self.queue:
+                    self.queue.remove(task)
+            raise TimeoutError(f"Task {task_id} failed to start within 30 seconds")
 
-        # Task is now running, wait for completion
-        while task.completed_at is None:
-            await asyncio.sleep(0.1)
+        # Task is now running, wait for completion (with timeout: 10 minutes max)
+        try:
+            await asyncio.wait_for(task.completed_event.wait(), timeout=600.0)
+        except asyncio.TimeoutError:
+            logger.error(f"[QUEUE] Task {task_id} timed out after 10 minutes")
+            # Mark as error and clean up
+            task.error = TimeoutError(f"Task {task_id} timed out after 10 minutes")
+            task.completed_at = datetime.now()
+            async with self.lock:
+                if task in self.queue:
+                    self.queue.remove(task)
+                # Release the slot
+                self.current_tasks -= 1
+                if task_id in self.active_tasks:
+                    del self.active_tasks[task_id]
+            raise task.error
 
         # Task completed, check for errors
         if task.error:
@@ -148,6 +176,9 @@ class MockupTaskQueue:
                     f"RAM: {ram_start['rss_mb']}MB)"
                 )
 
+                # Signal that task has started
+                pending_task.started_event.set()
+
                 # Run task in background
                 asyncio.create_task(self._run_task(pending_task))
 
@@ -177,6 +208,10 @@ class MockupTaskQueue:
             logger.error(f"[QUEUE] Task {task.task_id} failed: {e}")
 
         finally:
+            # Signal task completion (success or failure)
+            task.completed_event.set()
+
+            # Continue with cleanup
             # Force aggressive garbage collection before releasing slot
             # This ensures memory from numpy arrays is freed before next task starts
             import gc
