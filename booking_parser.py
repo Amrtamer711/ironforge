@@ -74,15 +74,22 @@ class BookingOrderParser:
         if user_message:
             logger.info(f"[BOOKING PARSER] User message context: {user_message}")
 
-        # Upload file to OpenAI with purpose="vision" for document analysis
+        # Upload file to OpenAI
+        # Use "vision" for images, "assistants" for PDFs/Excel (code_interpreter needs assistants purpose)
+        file_type_detected = self.detect_file_type(file_path)
+        if file_type_detected in ["pdf", "excel"]:
+            purpose = "assistants"
+        else:
+            purpose = "vision"
+
         try:
             with open(file_path, "rb") as f:
                 file_obj = await config.openai_client.files.create(
                     file=f,
-                    purpose="vision"
+                    purpose=purpose
                 )
             file_id = file_obj.id
-            logger.info(f"[BOOKING PARSER] Uploaded file to OpenAI: {file_id}")
+            logger.info(f"[BOOKING PARSER] Uploaded file to OpenAI (purpose={purpose}): {file_id}")
         except Exception as e:
             logger.error(f"[BOOKING PARSER] Failed to upload file: {e}")
             return {"classification": "UNKNOWN", "confidence": "low", "reasoning": str(e)}
@@ -124,19 +131,43 @@ Analyze the uploaded file and respond with:
 """
 
         try:
-            response = await config.openai_client.responses.create(
-                model=config.OPENAI_MODEL,
-                input=[
-                    {"role": "system", "content": "You are a document classifier. Analyze the file and provide classification."},
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": classification_prompt},
-                            {"type": "input_file", "input_file": {"file_id": file_id}}
-                        ]
-                    }
-                ],
-            )
+            # For PDFs/Excel, use code_interpreter tool with file in container
+            # For images, use input_file in content
+            if purpose == "assistants":
+                response = await config.openai_client.responses.create(
+                    model=config.OPENAI_MODEL,
+                    input=[
+                        {"role": "system", "content": "You are a document classifier. Analyze the file and provide classification."},
+                        {"role": "user", "content": classification_prompt}
+                    ],
+                    tools=[
+                        {
+                            "type": "code_interpreter",
+                            "container": {
+                                "type": "auto",
+                                "file_ids": [file_id]
+                            }
+                        }
+                    ],
+                    max_output_tokens=500,
+                    temperature=0.1
+                )
+            else:
+                response = await config.openai_client.responses.create(
+                    model=config.OPENAI_MODEL,
+                    input=[
+                        {"role": "system", "content": "You are a document classifier. Analyze the file and provide classification."},
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": classification_prompt},
+                                {"type": "input_file", "input_file": {"file_id": file_id}}
+                            ]
+                        }
+                    ],
+                    max_output_tokens=500,
+                    temperature=0.1
+                )
 
             if not response.output or len(response.output) == 0:
                 logger.warning("[BOOKING PARSER] Empty classification response")
@@ -183,15 +214,22 @@ Analyze the uploaded file and respond with:
         """
         logger.info(f"[BOOKING PARSER] Parsing {file_type} file: {file_path}")
 
-        # Upload file to OpenAI with purpose="vision" for document parsing
+        # Upload file to OpenAI
+        # Use "vision" for images, "assistants" for PDFs/Excel (code_interpreter needs assistants purpose)
+        file_type_detected = self.detect_file_type(file_path)
+        if file_type_detected in ["pdf", "excel"]:
+            purpose = "assistants"
+        else:
+            purpose = "vision"
+
         try:
             with open(file_path, "rb") as f:
                 file_obj = await config.openai_client.files.create(
                     file=f,
-                    purpose="vision"
+                    purpose=purpose
                 )
             file_id = file_obj.id
-            logger.info(f"[BOOKING PARSER] Uploaded file for parsing: {file_id}")
+            logger.info(f"[BOOKING PARSER] Uploaded file for parsing (purpose={purpose}): {file_id}")
         except Exception as e:
             logger.error(f"[BOOKING PARSER] Failed to upload file for parsing: {e}")
             raise
@@ -200,21 +238,43 @@ Analyze the uploaded file and respond with:
         parsing_prompt = self._build_parsing_prompt()
 
         try:
-            response = await config.openai_client.responses.create(
-                model=config.OPENAI_MODEL,
-                input=[
-                    {"role": "system", "content": "You are a booking order data extractor. Extract ONLY what is clearly visible. Use null for missing fields. No hallucinations."},
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": parsing_prompt},
-                            {"type": "input_file", "input_file": {"file_id": file_id}}
-                        ]
-                    }
-                ],
-                max_output_tokens=4000,
-                temperature=0.1
-            )
+            # For PDFs/Excel, use code_interpreter tool with file in container
+            # For images, use input_file in content
+            if purpose == "assistants":
+                response = await config.openai_client.responses.create(
+                    model=config.OPENAI_MODEL,
+                    input=[
+                        {"role": "system", "content": "You are a booking order data extractor. Extract ONLY what is clearly visible. Use null for missing fields. No hallucinations."},
+                        {"role": "user", "content": parsing_prompt}
+                    ],
+                    tools=[
+                        {
+                            "type": "code_interpreter",
+                            "container": {
+                                "type": "auto",
+                                "file_ids": [file_id]
+                            }
+                        }
+                    ],
+                    max_output_tokens=4000,
+                    temperature=0.1
+                )
+            else:
+                response = await config.openai_client.responses.create(
+                    model=config.OPENAI_MODEL,
+                    input=[
+                        {"role": "system", "content": "You are a booking order data extractor. Extract ONLY what is clearly visible. Use null for missing fields. No hallucinations."},
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": parsing_prompt},
+                                {"type": "input_file", "input_file": {"file_id": file_id}}
+                            ]
+                        }
+                    ],
+                    max_output_tokens=4000,
+                    temperature=0.1
+                )
 
             if not response.output or len(response.output) == 0:
                 raise ValueError("Empty parsing response from model")
