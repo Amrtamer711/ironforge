@@ -201,14 +201,29 @@ def _validate_powerpoint_file(file_path: Path) -> bool:
         # Try to open as PowerPoint - this will fail if not a valid PPTX
         pres = Presentation(str(file_path))
         # Basic validation: must have at least 1 slide
-        if len(pres.slides) < 1:
+        slide_count = len(pres.slides)
+
+        # CRITICAL: Delete presentation object to free memory
+        # python-pptx loads entire PPT into RAM (50-100MB+)
+        del pres
+        import gc
+        gc.collect()
+
+        if slide_count < 1:
             config.logger.warning(f"[VALIDATION] PowerPoint file has no slides: {file_path}")
             return False
 
-        config.logger.info(f"[VALIDATION] PowerPoint validation successful: {len(pres.slides)} slides")
+        config.logger.info(f"[VALIDATION] PowerPoint validation successful: {slide_count} slides")
         return True
     except Exception as e:
         config.logger.warning(f"[VALIDATION] PowerPoint validation failed: {e}")
+        # Cleanup on error path too
+        try:
+            del pres
+        except:
+            pass
+        import gc
+        gc.collect()
         return False
 
 

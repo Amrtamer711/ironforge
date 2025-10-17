@@ -1085,41 +1085,57 @@ Now parse the user's prompt into {num_frames} distinct variations. Output ONLY t
         return [prompt] * num_frames  # Fallback: duplicate the same prompt
 
 def is_portrait_location(location_key: str) -> bool:
-    """Check if a location has portrait orientation based on height/width metadata.
+    """Check if a location has portrait orientation based on actual frame dimensions.
 
     Args:
         location_key: Location identifier
 
     Returns:
-        True if height > width (portrait), False otherwise (landscape or unknown)
+        True if frame height > width (portrait), False otherwise (landscape or unknown)
     """
-    if location_key not in config.LOCATION_METADATA:
-        logger.warning(f"[ORIENTATION] Location '{location_key}' not found in metadata")
+    import db
+
+    # Get all variations for this location
+    variations = db.list_mockup_variations(location_key)
+    if not variations:
+        logger.warning(f"[ORIENTATION] Location '{location_key}' has no mockup frames configured")
         return False
 
-    meta = config.LOCATION_METADATA[location_key]
-    height_str = str(meta.get("height", "")).strip()
-    width_str = str(meta.get("width", "")).strip()
+    # Get the first variation's first frame to check orientation
+    first_variation = variations[0]  # {'time_of_day': 'day', 'finish': 'gold', 'photo_filename': 'Uae18_1.jpg'}
+    frames_data = db.get_mockup_frames(
+        location_key,
+        first_variation['photo_filename'],
+        first_variation['time_of_day'],
+        first_variation['finish']
+    )
 
-    # Extract numeric values from strings like "14m", "7m", "6ft", etc.
-    import re
-    height_match = re.search(r'(\d+\.?\d*)', height_str)
-    width_match = re.search(r'(\d+\.?\d*)', width_str)
-
-    if not height_match or not width_match:
-        logger.debug(f"[ORIENTATION] Could not parse dimensions for '{location_key}': height={height_str}, width={width_str}")
-        return False  # Default to landscape if can't parse
-
-    try:
-        height = float(height_match.group(1))
-        width = float(width_match.group(1))
-
-        is_portrait = height > width
-        logger.info(f"[ORIENTATION] Location '{location_key}': {height}x{width} → {'PORTRAIT' if is_portrait else 'LANDSCAPE'}")
-        return is_portrait
-    except ValueError:
-        logger.warning(f"[ORIENTATION] Failed to convert dimensions to numbers: height={height_str}, width={width_str}")
+    if not frames_data or len(frames_data) == 0:
+        logger.warning(f"[ORIENTATION] No frame data found for '{location_key}'")
         return False
+
+    # Get first frame points
+    first_frame = frames_data[0]
+    frame_points = first_frame.get('points', [])
+
+    if len(frame_points) != 4:
+        logger.warning(f"[ORIENTATION] Invalid frame points for '{location_key}': expected 4 points, got {len(frame_points)}")
+        return False
+
+    # Calculate frame bounding box from points
+    x_coords = [p[0] for p in frame_points]
+    y_coords = [p[1] for p in frame_points]
+
+    frame_width = max(x_coords) - min(x_coords)
+    frame_height = max(y_coords) - min(y_coords)
+
+    is_portrait = frame_height > frame_width
+    logger.info(
+        f"[ORIENTATION] Location '{location_key}': "
+        f"Frame dimensions {int(frame_width)}x{int(frame_height)} → "
+        f"{'PORTRAIT' if is_portrait else 'LANDSCAPE'}"
+    )
+    return is_portrait
 
 
 async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_key: Optional[str] = None) -> Optional[Path]:
