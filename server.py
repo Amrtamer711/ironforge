@@ -245,6 +245,7 @@ async def slack_interactive(request: Request):
 
         # Route to appropriate handler
         if action_id == "approve_bo_coordinator":
+            logger.info(f"[BO APPROVAL] Coordinator {user_id} clicked APPROVE for workflow {workflow_id}")
             # Send wait message
             await bo_slack_messaging.post_response_url(response_url, {
                 "replace_original": True,
@@ -254,6 +255,7 @@ async def slack_interactive(request: Request):
             asyncio.create_task(bo_approval_workflow.handle_coordinator_approval(workflow_id, user_id, response_url))
 
         elif action_id == "reject_bo_coordinator":
+            logger.info(f"[BO APPROVAL] Coordinator {user_id} clicked REJECT for workflow {workflow_id}, opening modal")
             # Open modal for rejection reason
             await config.slack_client.views_open(
                 trigger_id=payload.get("trigger_id"),
@@ -280,6 +282,7 @@ async def slack_interactive(request: Request):
             )
 
         elif action_id == "approve_bo_hos":
+            logger.info(f"[BO APPROVAL] Head of Sales {user_id} clicked APPROVE for workflow {workflow_id}")
             # Send wait message
             await bo_slack_messaging.post_response_url(response_url, {
                 "replace_original": True,
@@ -289,6 +292,7 @@ async def slack_interactive(request: Request):
             asyncio.create_task(bo_approval_workflow.handle_hos_approval(workflow_id, user_id, response_url))
 
         elif action_id == "reject_bo_hos":
+            logger.info(f"[BO APPROVAL] Head of Sales {user_id} clicked REJECT for workflow {workflow_id}, opening modal")
             # Open modal for rejection reason
             await config.slack_client.views_open(
                 trigger_id=payload.get("trigger_id"),
@@ -330,6 +334,8 @@ async def slack_interactive(request: Request):
             values = payload.get("view", {}).get("state", {}).get("values", {})
             rejection_reason = values.get("rejection_reason", {}).get("reason_input", {}).get("value", "No reason provided")
 
+            logger.info(f"[BO APPROVAL] Coordinator {user_id} submitted rejection modal for {workflow_id}: {rejection_reason[:50]}...")
+
             # Process rejection asynchronously
             asyncio.create_task(bo_approval_workflow.handle_coordinator_rejection(
                 workflow_id, user_id, None, rejection_reason, channel, message_ts
@@ -343,6 +349,8 @@ async def slack_interactive(request: Request):
             # Extract rejection reason from modal
             values = payload.get("view", {}).get("state", {}).get("values", {})
             rejection_reason = values.get("rejection_reason", {}).get("reason_input", {}).get("value", "No reason provided")
+
+            logger.info(f"[BO APPROVAL] Head of Sales {user_id} submitted rejection modal for {workflow_id}: {rejection_reason[:50]}...")
 
             # Process rejection asynchronously
             asyncio.create_task(bo_approval_workflow.handle_hos_rejection(

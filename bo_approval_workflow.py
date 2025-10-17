@@ -257,7 +257,7 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
         logger.error(f"[BO APPROVAL] Workflow {workflow_id} not found")
         return
 
-    logger.info(f"[BO APPROVAL] Coordinator approved {workflow_id}")
+    logger.info(f"[BO APPROVAL] ✅ Coordinator {user_id} approved {workflow_id} - Client: {workflow['data'].get('client', 'N/A')}, Gross: AED {workflow['data'].get('gross_calc', 0):,.2f}")
 
     # Update workflow
     await update_workflow(workflow_id, {
@@ -320,7 +320,7 @@ async def handle_coordinator_rejection(workflow_id: str, user_id: str, response_
     if not workflow:
         return
 
-    logger.info(f"[BO APPROVAL] Coordinator rejected {workflow_id}: {rejection_reason}")
+    logger.info(f"[BO APPROVAL] ❌ Coordinator {user_id} rejected {workflow_id} - Client: {workflow['data'].get('client', 'N/A')} - Reason: {rejection_reason[:100]}")
 
     # Update workflow (stays in coordinator stage)
     await update_workflow(workflow_id, {
@@ -365,7 +365,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     if not workflow:
         return
 
-    logger.info(f"[BO APPROVAL] Head of Sales approved {workflow_id}")
+    logger.info(f"[BO APPROVAL] ✅ Head of Sales {user_id} approved {workflow_id} - Client: {workflow['data'].get('client', 'N/A')}, Gross: AED {workflow['data'].get('gross_calc', 0):,.2f}")
 
     # Generate final BO reference
     bo_ref = await db.generate_next_bo_ref()
@@ -461,7 +461,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
             )
         )
 
-    logger.info(f"[BO APPROVAL] {workflow_id} complete - BO Reference: {bo_ref}")
+    logger.info(f"[BO APPROVAL] ✅ COMPLETE - BO Reference: {bo_ref} - Client: {workflow['data'].get('client', 'N/A')}, Gross: AED {workflow['data'].get('gross_calc', 0):,.2f} - Workflow: {workflow_id}")
 
 
 async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str, rejection_reason: str):
@@ -475,7 +475,7 @@ async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str
     if not workflow:
         return
 
-    logger.info(f"[BO APPROVAL] Head of Sales rejected {workflow_id}: {rejection_reason}")
+    logger.info(f"[BO APPROVAL] ❌ Head of Sales {user_id} rejected {workflow_id} - Client: {workflow['data'].get('client', 'N/A')} - Reason: {rejection_reason[:100]}")
 
     # Update workflow - move back to coordinator stage
     await update_workflow(workflow_id, {
@@ -541,11 +541,14 @@ async def handle_coordinator_thread_message(
     """
     workflow = await get_workflow_with_cache(workflow_id)
     if not workflow:
+        logger.error(f"[BO APPROVAL] Coordinator thread message: workflow {workflow_id} not found")
         return "Error: Workflow not found"
 
     current_data = workflow["data"]
     warnings = workflow.get("warnings", [])
     missing_required = workflow.get("missing_required", [])
+
+    logger.info(f"[BO APPROVAL] Coordinator {user_id} message in thread {thread_ts}: '{user_input[:50]}...' for workflow {workflow_id}")
 
     # Build system prompt for OpenAI Responses API
     system_prompt = f"""
@@ -629,6 +632,8 @@ IMPORTANT: Use natural language in messages. Be friendly and conversational.
         action = decision.get('action')
         message = decision.get('message', '')
 
+        logger.info(f"[BO APPROVAL] Coordinator thread action: {action} for {workflow_id}")
+
         if action == 'execute':
             # Generate Excel with updated data
             parser = BookingOrderParser(company=workflow["company"])
@@ -692,6 +697,7 @@ IMPORTANT: Use natural language in messages. Be friendly and conversational.
             # Apply field updates
             fields = decision.get('fields', {})
             if fields:
+                logger.info(f"[BO APPROVAL] Coordinator editing {len(fields)} fields in {workflow_id}: {list(fields.keys())}")
                 # Update the data
                 for field, value in fields.items():
                     current_data[field] = value
