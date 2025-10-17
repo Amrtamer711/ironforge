@@ -220,9 +220,9 @@ Analyze the uploaded file and respond with:
                         "type": "code_interpreter"
                     }
                 ],
-                response_format={
-                    "type": "json_schema",
-                    "json_schema": {
+                text={
+                    "format": {
+                        "type": "json_schema",
                         "name": "booking_order_extraction",
                         "strict": True,
                         "schema": {
