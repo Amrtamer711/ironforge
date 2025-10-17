@@ -198,11 +198,11 @@ Analyze the uploaded file and respond with:
             logger.error(f"[BOOKING PARSER] Failed to upload file for parsing: {e}")
             raise
 
-        # Parsing prompt for structured extraction
+        # Parsing prompt for structured extraction (no schema in prompt)
         parsing_prompt = self._build_parsing_prompt()
 
         try:
-            # Use VendorAI syntax: {"type": "input_file", "file_id": ...} and {"type": "input_text", "text": ...}
+            # Use structured outputs with JSON schema
             response = await config.openai_client.responses.create(
                 model=config.OPENAI_MODEL,
                 input=[
@@ -215,18 +215,72 @@ Analyze the uploaded file and respond with:
                         ]
                     }
                 ],
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "booking_order_extraction",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "bo_number": {"type": ["string", "null"]},
+                                "bo_date": {"type": ["string", "null"]},
+                                "client": {"type": ["string", "null"]},
+                                "agency": {"type": ["string", "null"]},
+                                "brand_campaign": {"type": ["string", "null"]},
+                                "category": {"type": ["string", "null"]},
+                                "asset": {
+                                    "anyOf": [
+                                        {"type": "string"},
+                                        {"type": "array", "items": {"type": "string"}},
+                                        {"type": "null"}
+                                    ]
+                                },
+                                "payment_terms": {"type": ["string", "null"]},
+                                "sales_person": {"type": ["string", "null"]},
+                                "commission_pct": {"type": ["number", "null"]},
+                                "sla_pct": {"type": ["number", "null"]},
+                                "net_pre_vat": {"type": ["number", "null"]},
+                                "vat_value": {"type": ["number", "null"]},
+                                "gross_amount": {"type": ["number", "null"]},
+                                "notes": {"type": ["string", "null"]},
+                                "locations": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "name": {"type": "string"},
+                                            "asset": {"type": ["string", "null"]},
+                                            "start_date": {"type": "string"},
+                                            "end_date": {"type": "string"},
+                                            "campaign_duration": {"type": "string"},
+                                            "campaign_cost": {"type": ["number", "null"]},
+                                            "production_upload_cost": {"type": ["number", "null"]},
+                                            "dm_fee": {"type": ["number", "null"]},
+                                            "net_amount": {"type": "number"}
+                                        },
+                                        "required": ["name", "start_date", "end_date", "campaign_duration", "net_amount"],
+                                        "additionalProperties": False
+                                    }
+                                }
+                            },
+                            "required": ["locations"],
+                            "additionalProperties": False
+                        }
+                    }
+                },
                 store=False
             )
 
             if not response.output or len(response.output) == 0:
                 raise ValueError("Empty parsing response from model")
 
-            # Extract JSON from response
+            # Extract JSON from structured output
             result_text = response.output[0].content[0].text if hasattr(response.output[0], 'content') else str(response.output[0])
             logger.info(f"[BOOKING PARSER] Parse response length: {len(result_text)} chars")
 
-            # Try to extract JSON from response
-            parsed_data = self._extract_json_from_response(result_text)
+            # Parse JSON (should be valid JSON from structured outputs)
+            parsed_data = json.loads(result_text)
 
             # Post-process and validate
             processed = self._post_process_data(parsed_data)
@@ -308,48 +362,12 @@ IMPORTANT: The location's net_amount should be the TOTAL for that location.
 - Sales person name
 - Commission % (salesperson commission percentage)
 
-**REQUIRED JSON OUTPUT FORMAT:**
-```json
-{{
-  "bo_number": "string (e.g., 'DPD-112652') or null",
-  "bo_date": "YYYY-MM-DD or null",
-  "client": "string or null",
-  "agency": "string or null",
-  "brand_campaign": "string or null",
-  "category": "string or null",
-  "asset": "string or list of strings (e.g., ['UAE02', 'UAE03'] if multiple) or null",
-  "payment_terms": "string or null",
-  "sales_person": "string or null",
-  "commission_pct": "number as decimal (e.g., 0.004 for 0.4%) or null",
-  "sla_pct": "number as decimal (e.g., 0.05 for 5%) or null",
-  "net_pre_vat": "number (total net if shown) or null",
-  "vat_value": "number (VAT amount if shown) or null",
-  "gross_amount": "number (gross total if shown) or null",
-  "notes": "string (any additional notes) or null",
-  "locations": [
-    {{
-      "name": "string (location/site identifier)",
-      "asset": "string (asset code for this location, if different from global) or null",
-      "start_date": "YYYY-MM-DD",
-      "end_date": "YYYY-MM-DD",
-      "campaign_duration": "string (e.g., '1 month', '30 days')",
-      "campaign_cost": "number (main media/advertising cost) or null",
-      "production_upload_cost": "number (production/upload fee) or null",
-      "dm_fee": "number (digital marketing fee) or null",
-      "net_amount": "number (total for this location: campaign_cost + production + dm_fee)"
-    }}
-  ]
-}}
-```
-
 **IMPORTANT NOTES:**
 - If you see multiple locations in a table, create one object per location in the "locations" array
 - Each location should have its own dates, costs, and duration
 - The net_amount for each location is the sum of that location's costs
 - If a document shows "N/A" or blank for a cost field, use null
-- Asset codes like "UAE02", "UAE03", "UAE21" should be extracted as a list: ["UAE02", "UAE03", "UAE21"]
-
-Return ONLY the JSON object, no additional text or explanation."""
+- Asset codes like "UAE02", "UAE03", "UAE21" should be extracted as a list: ["UAE02", "UAE03", "UAE21"]"""
 
     def _extract_json_from_response(self, text: str) -> Dict[str, Any]:
         """Extract JSON from LLM response (may have markdown code blocks)"""
