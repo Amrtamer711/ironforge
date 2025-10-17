@@ -215,18 +215,36 @@ def warp_creative_to_billboard(
     bbox_height = bbox_y_max - bbox_y_min
     bbox_megapixels = (bbox_width * bbox_height) / 1_000_000
 
+    # AGGRESSIVE MEMORY CAP: Reduce supersample factor if bbox region would be too large
+    # Target: Keep super-sampled mask under 30MB to prevent OOM on 2GB instances
+    MAX_SUPERSAMPLE_MB = 30
+    bbox_w_hires_test = int(bbox_width * supersample_factor)
+    bbox_h_hires_test = int(bbox_height * supersample_factor)
+    bbox_hires_mb_test = (bbox_w_hires_test * bbox_h_hires_test) / 1024 / 1024  # Grayscale mask
+
+    if bbox_hires_mb_test > MAX_SUPERSAMPLE_MB:
+        # Calculate safe factor that keeps us under cap
+        safe_factor = int(np.sqrt(MAX_SUPERSAMPLE_MB * 1024 * 1024 / (bbox_width * bbox_height)))
+        safe_factor = max(1, safe_factor)  # At least 1x (no super-sampling)
+        logger.info(
+            f"[MOCKUP] Super-sample would use {bbox_hires_mb_test:.1f}MB, reducing from {supersample_factor}x to {safe_factor}x "
+            f"to stay under {MAX_SUPERSAMPLE_MB}MB cap"
+        )
+        supersample_factor = safe_factor
+
     # Super-sample only the bounding box region
     bbox_w_hires = int(bbox_width * supersample_factor)
     bbox_h_hires = int(bbox_height * supersample_factor)
     bbox_hires_megapixels = (bbox_w_hires * bbox_h_hires) / 1_000_000
-    bbox_hires_mb = (bbox_w_hires * bbox_h_hires * 3) / 1024 / 1024
+    bbox_hires_mb = (bbox_w_hires * bbox_h_hires) / 1024 / 1024  # Grayscale mask
 
     logger.info(
         f"[MOCKUP] Frame bounding box: {bbox_width}x{bbox_height} ({bbox_megapixels:.1f}MP) "
         f"at ({bbox_x_min},{bbox_y_min})"
     )
     logger.info(
-        f"[MOCKUP] Super-sampled region: {bbox_w_hires}x{bbox_h_hires} ({bbox_hires_megapixels:.1f}MP, ~{bbox_hires_mb:.1f}MB)"
+        f"[MOCKUP] Super-sampled region: {bbox_w_hires}x{bbox_h_hires} ({bbox_hires_megapixels:.1f}MP, ~{bbox_hires_mb:.1f}MB) "
+        f"[factor: {supersample_factor}x]"
     )
 
     # Translate frame points to bbox-local coordinates and scale to super-sampled space
