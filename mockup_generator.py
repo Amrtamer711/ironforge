@@ -722,7 +722,6 @@ def warp_creative_to_billboard(
     # Cleanup ALL intermediate processing arrays to free memory immediately
     # After this point, only 'result' is needed for return
     # CRITICAL: Must use actual del statements, not del locals()[var] which doesn't work!
-    import gc
 
     # Delete all intermediate arrays - using try/except for each since not all may exist
     try: del creative_upscaled
