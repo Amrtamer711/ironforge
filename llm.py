@@ -1742,29 +1742,31 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         }
     ]
 
+    # Booking order parsing - Available to all users
+    tools.append({
+        "type": "function",
+        "name": "parse_booking_order",
+        "description": "Parse a booking order document (Excel, PDF, or image) for Backlite or Viola. Available to ALL users. Extracts client, campaign, locations, pricing, dates, and financial data. Infer the company from document content (e.g., letterhead, branding, or 'BackLite'/'Viola' text) - default to 'backlite' if unclear. Biased toward classifying uploads as ARTWORK unless clearly a booking order.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "company": {
+                    "type": "string",
+                    "enum": ["backlite", "viola"],
+                    "description": "Company name - either 'backlite' or 'viola'. Infer from document branding/letterhead. Default to 'backlite' if unclear."
+                },
+                "user_notes": {
+                    "type": "string",
+                    "description": "Optional notes or instructions from user about the booking order"
+                }
+            },
+            "required": ["company"]
+        }
+    })
+
     # Admin-only tools
     if is_admin:
         admin_tools = [
-            {
-                "type": "function",
-                "name": "parse_booking_order",
-                "description": "Parse a booking order document (Excel, PDF, or image) for Backlite or Viola. Extracts client, campaign, locations, pricing, dates, and financial data. Biased toward classifying uploads as ARTWORK unless clearly a booking order. ADMIN ONLY.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "company": {
-                            "type": "string",
-                            "enum": ["backlite", "viola"],
-                            "description": "Company name - either 'backlite' or 'viola'"
-                        },
-                        "user_notes": {
-                            "type": "string",
-                            "description": "Optional notes or instructions from user about the booking order"
-                        }
-                    },
-                    "required": ["company"]
-                }
-            },
             {
                 "type": "function",
                 "name": "retrieve_booking_order",
@@ -2208,15 +2210,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     logger.error(f"[STATS] Error: {e}", exc_info=True)
 
             elif msg.name == "parse_booking_order":
-                # Admin-only check
-                if not config.is_admin(user_id):
-                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                    await config.slack_client.chat_postMessage(
-                        channel=channel,
-                        text=config.markdown_to_slack("❌ **Access Denied:** Booking order parsing is restricted to administrators only.")
-                    )
-                    return
-
+                # Available to all users (admin check removed per new workflow)
                 args = json.loads(msg.arguments)
                 company = args.get("company")
                 user_notes = args.get("user_notes", "")
