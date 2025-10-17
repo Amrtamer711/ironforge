@@ -202,7 +202,7 @@ Analyze the uploaded file and respond with:
         parsing_prompt = self._build_parsing_prompt()
 
         try:
-            # Use structured outputs with JSON schema
+            # Use structured outputs with JSON schema + code_interpreter for better table parsing
             response = await config.openai_client.responses.create(
                 model=config.OPENAI_MODEL,
                 input=[
@@ -213,6 +213,11 @@ Analyze the uploaded file and respond with:
                             {"type": "input_file", "file_id": file_id},
                             {"type": "input_text", "text": parsing_prompt}
                         ]
+                    }
+                ],
+                tools=[
+                    {
+                        "type": "code_interpreter"
                     }
                 ],
                 response_format={
