@@ -174,6 +174,147 @@ def get_location_frame_count(location_key: str, time_of_day: str = "all", finish
 
     return None
 
+def _validate_pdf_file(file_path: Path) -> bool:
+    """Validate that uploaded file is actually a PDF."""
+    try:
+        # Check if file exists first
+        if not file_path.exists():
+            config.logger.error(f"[VALIDATION] File does not exist: {file_path}")
+            return False
+
+        file_size = file_path.stat().st_size
+        config.logger.info(f"[VALIDATION] Validating PDF file: {file_path} (size: {file_size} bytes)")
+
+        # Quick sanity checks before invoking PyMuPDF
+        if file_size <= 0:
+            config.logger.warning(f"[VALIDATION] PDF file is empty: {file_path}")
+            return False
+
+        # Try to open with PyMuPDF
+        import fitz
+        doc = fitz.open(file_path)
+        page_count = len(doc)
+        doc.close()
+
+        if page_count <= 0:
+            config.logger.warning(f"[VALIDATION] PDF has no pages: {file_path}")
+            return False
+
+        config.logger.info(f"[VALIDATION] ✓ Valid PDF with {page_count} pages")
+        return True
+    except Exception as e:
+        config.logger.error(f"[VALIDATION] Invalid PDF file: {e}")
+        return False
+
+
+async def _convert_pdf_to_pptx(pdf_path: Path) -> Optional[Path]:
+    """Convert PDF to PowerPoint with maximum quality (300 DPI).
+
+    Args:
+        pdf_path: Path to input PDF file
+
+    Returns:
+        Path to converted PPTX file, or None if conversion failed
+    """
+    try:
+        import fitz  # PyMuPDF
+        from pptx import Presentation
+        from pptx.util import Inches
+        from PIL import Image
+        import tempfile
+        import os
+
+        config.logger.info(f"[PDF_CONVERT] Starting PDF to PPTX conversion: {pdf_path}")
+
+        # Open PDF
+        doc = fitz.open(pdf_path)
+        page_count = len(doc)
+        config.logger.info(f"[PDF_CONVERT] PDF has {page_count} pages")
+
+        # Create temporary directory for images
+        temp_dir = tempfile.mkdtemp(prefix="pdf_convert_")
+
+        # Convert pages to high-resolution images (4x zoom = ~300 DPI)
+        zoom = 4.0
+        matrix = fitz.Matrix(zoom, zoom)
+        image_paths = []
+
+        for page_num in range(page_count):
+            page = doc[page_num]
+            pix = page.get_pixmap(matrix=matrix, alpha=False)
+
+            # Save as PNG
+            img_path = os.path.join(temp_dir, f"page_{page_num + 1}.png")
+            pix.save(img_path)
+            image_paths.append(img_path)
+            config.logger.info(f"[PDF_CONVERT] Extracted page {page_num + 1}/{page_count} ({pix.width}x{pix.height}px)")
+
+        doc.close()
+
+        # Create PowerPoint presentation
+        config.logger.info("[PDF_CONVERT] Creating PowerPoint presentation...")
+        prs = Presentation()
+
+        # Set slide size to 16:9 widescreen
+        prs.slide_width = Inches(13.333)
+        prs.slide_height = Inches(7.5)
+
+        # Add pages as slides
+        for i, img_path in enumerate(image_paths, 1):
+            # Add blank slide
+            blank_slide_layout = prs.slide_layouts[6]
+            slide = prs.slides.add_slide(blank_slide_layout)
+
+            # Get image dimensions
+            img = Image.open(img_path)
+            img_width, img_height = img.size
+            img_aspect = img_width / img_height
+            slide_aspect = float(prs.slide_width) / float(prs.slide_height)
+
+            # Calculate dimensions to fill slide while maintaining aspect ratio
+            if img_aspect > slide_aspect:
+                # Image is wider - fit to width
+                width = prs.slide_width
+                height = int(float(prs.slide_width) / img_aspect)
+                left = 0
+                top = int((prs.slide_height - height) / 2)
+            else:
+                # Image is taller - fit to height
+                height = prs.slide_height
+                width = int(float(prs.slide_height) * img_aspect)
+                left = int((prs.slide_width - width) / 2)
+                top = 0
+
+            # Add image to slide
+            slide.shapes.add_picture(img_path, left, top, width, height)
+            config.logger.info(f"[PDF_CONVERT] Added slide {i}/{page_count}")
+
+        # Save PPTX to temporary file
+        pptx_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pptx")
+        prs.save(pptx_temp.name)
+        pptx_temp.close()
+
+        # Cleanup temporary images
+        for img_path in image_paths:
+            try:
+                os.remove(img_path)
+            except:
+                pass
+        try:
+            os.rmdir(temp_dir)
+        except:
+            pass
+
+        file_size_mb = os.path.getsize(pptx_temp.name) / (1024 * 1024)
+        config.logger.info(f"[PDF_CONVERT] ✓ Conversion complete: {pptx_temp.name} ({file_size_mb:.1f} MB, {page_count} slides, 300 DPI)")
+
+        return Path(pptx_temp.name)
+
+    except Exception as e:
+        config.logger.error(f"[PDF_CONVERT] Conversion failed: {e}", exc_info=True)
+        return None
+
+
 def _validate_powerpoint_file(file_path: Path) -> bool:
     """Validate that uploaded file is actually a PowerPoint presentation."""
     try:
@@ -882,44 +1023,86 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
 
     if user_id in pending_location_additions and has_files:
         pending_data = pending_location_additions[user_id]
+
+        # Check if pending request is still valid (10 minute window)
+        from datetime import datetime, timedelta
+        timestamp = pending_data.get("timestamp")
+        if timestamp and (datetime.now() - timestamp) > timedelta(minutes=10):
+            del pending_location_additions[user_id]
+            logger.warning(f"[LOCATION_ADD] Pending location expired for user {user_id}")
+            await config.slack_client.chat_postMessage(
+                channel=channel,
+                text=config.markdown_to_slack("❌ **Error:** Location upload session expired (10 minute limit). Please restart the location addition process.")
+            )
+            return
+
         logger.info(f"[LOCATION_ADD] Found pending location for user {user_id}: {pending_data['location_key']}")
         logger.info(f"[LOCATION_ADD] Files in event: {len(slack_event.get('files', []))}")
         
-        # Check if any of the files is a PPT
+        # Check if any of the files is a PDF (we'll convert it to PPTX)
         pptx_file = None
         files = slack_event.get("files", [])
-        
+
         # If it's a file_share event, files might be structured differently
         if not files and slack_event.get("subtype") == "file_share" and "file" in slack_event:
             files = [slack_event["file"]]
             logger.info(f"[LOCATION_ADD] Using file from file_share event")
-        
+
         for f in files:
             logger.info(f"[LOCATION_ADD] Checking file: name={f.get('name')}, filetype={f.get('filetype')}, mimetype={f.get('mimetype')}")
-            if f.get("filetype") == "pptx" or f.get("mimetype", "").endswith("powerpoint") or f.get("name", "").lower().endswith(".pptx"):
+
+            # Accept PDF files (new) - will be converted to PPTX
+            if f.get("filetype") == "pdf" or f.get("mimetype") == "application/pdf" or f.get("name", "").lower().endswith(".pdf"):
                 try:
-                    pptx_file = await _download_slack_file(f)
+                    pdf_file = await _download_slack_file(f)
                 except Exception as e:
-                    logger.error(f"Failed to download PPT file: {e}")
+                    logger.error(f"Failed to download PDF file: {e}")
                     await config.slack_client.chat_postMessage(
                         channel=channel,
-                        text=config.markdown_to_slack("❌ **Error:** Failed to download the PowerPoint file. Please try again.")
+                        text=config.markdown_to_slack("❌ **Error:** Failed to download the PDF file. Please try again.")
                     )
                     return
 
-                # Validate it's actually a PowerPoint file (separate from download errors)
-                if not _validate_powerpoint_file(pptx_file):
-                    logger.error(f"Invalid PowerPoint file: {f.get('name')}")
+                # Validate it's actually a PDF file
+                if not _validate_pdf_file(pdf_file):
+                    logger.error(f"Invalid PDF file: {f.get('name')}")
                     try:
-                        os.unlink(pptx_file)
+                        os.unlink(pdf_file)
                     except:
                         pass
                     await config.slack_client.chat_postMessage(
                         channel=channel,
-                        text=config.markdown_to_slack("❌ **Error:** The uploaded file is not a valid PowerPoint presentation. Please upload a .pptx file.")
+                        text=config.markdown_to_slack("❌ **Error:** The uploaded file is not a valid PDF. Please upload a .pdf file.")
                     )
                     return
 
+                # Post status message about conversion
+                conversion_status = await config.slack_client.chat_postMessage(
+                    channel=channel,
+                    text="⏳ _Converting PDF to PowerPoint with maximum quality (300 DPI)..._"
+                )
+
+                # Convert PDF to PPTX
+                logger.info(f"[LOCATION_ADD] Converting PDF to PPTX...")
+                pptx_file = await _convert_pdf_to_pptx(pdf_file)
+
+                # Clean up original PDF
+                try:
+                    os.unlink(pdf_file)
+                except:
+                    pass
+
+                # Delete conversion status message
+                await config.slack_client.chat_delete(channel=channel, ts=conversion_status["ts"])
+
+                if not pptx_file:
+                    await config.slack_client.chat_postMessage(
+                        channel=channel,
+                        text=config.markdown_to_slack("❌ **Error:** Failed to convert PDF to PowerPoint. Please try again or contact support.")
+                    )
+                    return
+
+                logger.info(f"[LOCATION_ADD] ✓ PDF converted to PPTX: {pptx_file}")
                 break
         
         if pptx_file:
@@ -1823,7 +2006,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         f"• Upload Fee: AED {upload_fee}\n"
                     )
                 
-                summary_text += "\n📎 **Please upload the PowerPoint template file now.**"
+                summary_text += "\n📎 **Please upload the PDF template file now.** (Will be converted to PowerPoint at maximum quality)\n\n⏱️ _You have 10 minutes to upload the file._"
                 
                 await config.slack_client.chat_delete(channel=channel, ts=status_ts)
                 await config.slack_client.chat_postMessage(
