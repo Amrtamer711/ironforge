@@ -745,11 +745,65 @@ def get_random_location_photo(location_key: str, time_of_day: str = "all", finis
     return photo_filename, time_of_day, finish, photo_path
 
 
-async def generate_ai_creative(prompt: str, size: str = "1536x1024") -> Optional[Path]:
-    """Generate a creative using OpenAI gpt-image-1 API."""
+def is_portrait_location(location_key: str) -> bool:
+    """Check if a location has portrait orientation based on height/width metadata.
+
+    Args:
+        location_key: Location identifier
+
+    Returns:
+        True if height > width (portrait), False otherwise (landscape or unknown)
+    """
+    if location_key not in config.LOCATION_METADATA:
+        logger.warning(f"[ORIENTATION] Location '{location_key}' not found in metadata")
+        return False
+
+    meta = config.LOCATION_METADATA[location_key]
+    height_str = str(meta.get("height", "")).strip()
+    width_str = str(meta.get("width", "")).strip()
+
+    # Extract numeric values from strings like "14m", "7m", "6ft", etc.
+    import re
+    height_match = re.search(r'(\d+\.?\d*)', height_str)
+    width_match = re.search(r'(\d+\.?\d*)', width_str)
+
+    if not height_match or not width_match:
+        logger.debug(f"[ORIENTATION] Could not parse dimensions for '{location_key}': height={height_str}, width={width_str}")
+        return False  # Default to landscape if can't parse
+
+    try:
+        height = float(height_match.group(1))
+        width = float(width_match.group(1))
+
+        is_portrait = height > width
+        logger.info(f"[ORIENTATION] Location '{location_key}': {height}x{width} → {'PORTRAIT' if is_portrait else 'LANDSCAPE'}")
+        return is_portrait
+    except ValueError:
+        logger.warning(f"[ORIENTATION] Failed to convert dimensions to numbers: height={height_str}, width={width_str}")
+        return False
+
+
+async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_key: Optional[str] = None) -> Optional[Path]:
+    """Generate a creative using OpenAI gpt-image-1 API.
+
+    Args:
+        prompt: Text description for image generation
+        size: Image size (default landscape "1536x1024")
+        location_key: Optional location key to auto-detect portrait orientation
+
+    Returns:
+        Path to generated image, or None if failed
+    """
     import tempfile
     import base64
     from openai import AsyncOpenAI
+
+    # Auto-detect portrait orientation if location_key provided
+    if location_key and is_portrait_location(location_key):
+        size = "1024x1536"  # Portrait aspect ratio
+        logger.info(f"[AI_CREATIVE] Auto-detected portrait orientation for '{location_key}', using size {size}")
+    else:
+        logger.info(f"[AI_CREATIVE] Using landscape orientation, size {size}")
 
     logger.info(f"[AI_CREATIVE] Generating image from prompt: {prompt[:100]}...")
 

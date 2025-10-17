@@ -364,7 +364,7 @@ async def _generate_ai_mockup_queued(
                     logger.info(f"[AI QUEUE] Generating creative {i}/{num_ai_frames}")
                     creative_path = await mockup_generator.generate_ai_creative(
                         prompt=enhanced_prompt.replace(ai_prompt, variation_prompt),
-                        size="1536x1024"
+                        location_key=location_key
                     )
                     if not creative_path:
                         raise Exception(f"Failed to generate AI creative {i}/{num_ai_frames}")
@@ -373,7 +373,7 @@ async def _generate_ai_mockup_queued(
                 # Single frame
                 creative_path = await mockup_generator.generate_ai_creative(
                     prompt=enhanced_prompt,
-                    size="1536x1024"
+                    location_key=location_key
                 )
                 if not creative_path:
                     raise Exception("Failed to generate AI creative")
@@ -2372,6 +2372,25 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     )
 
                     try:
+                        # Detect orientation for this location
+                        import mockup_generator
+                        is_portrait = mockup_generator.is_portrait_location(location_key)
+
+                        if is_portrait:
+                            orientation_text = """📐 FORMAT & DIMENSIONS:
+- Aspect ratio: Tall portrait (roughly 2:3 ratio)
+- Orientation: Vertical/portrait ONLY
+- Canvas: Perfectly flat, rectangular, no warping or perspective
+- Fill entire frame edge-to-edge with design
+- No white borders, frames, or margins around the design"""
+                        else:
+                            orientation_text = """📐 FORMAT & DIMENSIONS:
+- Aspect ratio: Wide landscape (roughly 3:2 ratio)
+- Orientation: Horizontal/landscape ONLY
+- Canvas: Perfectly flat, rectangular, no warping or perspective
+- Fill entire frame edge-to-edge with design
+- No white borders, frames, or margins around the design"""
+
                         # Extensive system prompt for billboard artwork generation
                         enhanced_prompt = f"""Create a professional outdoor advertising billboard creative - IMPORTANT: This is the FLAT 2D ARTWORK FILE that will be printed and placed ON a billboard, NOT a photograph of an existing billboard.
 
@@ -2399,12 +2418,7 @@ CRITICAL DISTINCTIONS:
 DETAILED DESIGN REQUIREMENTS:
 ═══════════════════════════════════════════════════════════
 
-📐 FORMAT & DIMENSIONS:
-- Aspect ratio: Wide landscape (roughly 3:2 ratio)
-- Orientation: Horizontal/landscape ONLY
-- Canvas: Perfectly flat, rectangular, no warping or perspective
-- Fill entire frame edge-to-edge with design
-- No white borders, frames, or margins around the design
+{orientation_text}
 
 🎨 VISUAL DESIGN PRINCIPLES:
 - Bold, high-impact composition that catches attention immediately
@@ -2437,9 +2451,9 @@ DETAILED DESIGN REQUIREMENTS:
 - Vibrant, saturated colors (avoid pastels or muted tones)
 - High contrast pairings: dark on light or light on dark
 - Colors that work in bright sunlight and shadows
-- Consistent brand color palette if applicable
+- Use colors appropriate to the brand and message
 - Background should enhance, not compete with message
-- Consider: bright blues, bold reds, energetic oranges, fresh greens
+- Avoid repetitive color schemes - vary your palette based on the creative brief
 
 🔍 QUALITY STANDARDS:
 - Sharp, crisp graphics (no blur, pixelation, or artifacts)
