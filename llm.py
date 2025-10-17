@@ -633,50 +633,103 @@ async def _handle_booking_order_parse(
         tmp_file.unlink(missing_ok=True)
         return
 
-    # Store draft in pending_booking_orders for review/editing
-    pending_booking_orders[user_id] = {
-        "data": result.data,
-        "warnings": result.warnings,
-        "missing_required": result.missing_required,
-        "original_file_path": tmp_file,  # Keep temp file until approved
-        "original_filename": file_info.get("name"),
-        "company": company,
-        "file_type": file_type,
-        "user_notes": user_notes
-    }
+    # NEW FLOW: Skip edit phase, send directly to coordinator in thread
+    await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Creating approval workflow..._")
 
-    # Show preview with edit instructions
-    preview = "📋 **Booking Order Draft - Review & Edit**\n\n"
-    preview += f"**Company:** {company.upper()}\n"
-    preview += f"**Client:** {result.data.get('client', 'N/A')}\n"
-    preview += f"**Campaign:** {result.data.get('brand_campaign', 'N/A')}\n"
-    preview += f"**Net (pre-VAT):** AED {result.data.get('net_pre_vat', 0):,.2f}\n"
-    preview += f"**VAT (5%):** AED {result.data.get('vat_calc', 0):,.2f}\n"
-    preview += f"**Gross Total:** AED {result.data.get('gross_calc', 0):,.2f}\n"
+    try:
+        # Create approval workflow
+        import bo_approval_workflow
+        workflow_id = await bo_approval_workflow.create_approval_workflow(
+            user_id=user_id,
+            company=company,
+            data=result.data,
+            warnings=result.warnings,
+            missing_required=result.missing_required,
+            original_file_path=tmp_file,
+            original_filename=file_info.get("name"),
+            file_type=file_type,
+            user_notes=user_notes
+        )
 
-    if result.data.get("locations"):
-        preview += f"\n**Locations:** {len(result.data['locations'])}\n"
-        for loc in result.data["locations"][:3]:  # Show first 3
-            preview += f"  • {loc.get('name', 'Unknown')}: {loc.get('start_date', '?')} to {loc.get('end_date', '?')} (AED {loc.get('net_amount', 0):,.2f})\n"
-        if len(result.data["locations"]) > 3:
-            preview += f"  ...and {len(result.data['locations']) - 3} more\n"
+        # Get coordinator channel
+        coordinator_channel = bo_approval_workflow.get_coordinator_channel(company)
+        if not coordinator_channel:
+            await config.slack_client.chat_update(
+                channel=channel,
+                ts=status_ts,
+                text=config.markdown_to_slack(f"❌ **Error:** Sales Coordinator for {company} not configured. Please update hos_config.json")
+            )
+            return
 
-    if result.warnings:
-        preview += "\n⚠️ **Warnings:**\n" + "\n".join(f"• {w}" for w in result.warnings)
+        # Send parsed data to coordinator IN THREAD (not Excel yet)
+        preview_text = f"📋 **New Booking Order - Review Required**\n\n"
+        preview_text += f"**Company:** {company.upper()}\n"
+        preview_text += f"**Submitted by:** <@{user_id}>\n\n"
+        preview_text += f"**Client:** {result.data.get('client', 'N/A')}\n"
+        preview_text += f"**Campaign:** {result.data.get('brand_campaign', 'N/A')}\n"
+        preview_text += f"**BO Number:** {result.data.get('bo_number', 'N/A')}\n"
+        preview_text += f"**Net (pre-VAT):** AED {result.data.get('net_pre_vat', 0):,.2f}\n"
+        preview_text += f"**VAT (5%):** AED {result.data.get('vat_calc', 0):,.2f}\n"
+        preview_text += f"**Gross Total:** AED {result.data.get('gross_calc', 0):,.2f}\n"
 
-    if result.missing_required:
-        preview += "\n❌ **Missing Required:**\n" + "\n".join(f"• {m}" for m in result.missing_required)
+        if result.data.get("locations"):
+            preview_text += f"\n**Locations:** {len(result.data['locations'])}\n"
+            for loc in result.data["locations"][:3]:  # Show first 3
+                preview_text += f"  • {loc.get('name', 'Unknown')}: {loc.get('start_date', '?')} to {loc.get('end_date', '?')} (AED {loc.get('net_amount', 0):,.2f})\n"
+            if len(result.data["locations"]) > 3:
+                preview_text += f"  ...and {len(result.data['locations']) - 3} more\n"
 
-    preview += "\n\n**What would you like to do?**\n"
-    preview += "• Tell me any corrections (e.g., 'Change client to Acme Corp', 'Net should be 150,000')\n"
-    preview += "• Say 'approve' to submit for coordinator approval\n"
-    preview += "• Say 'cancel' to discard this draft"
+        if result.warnings:
+            preview_text += "\n⚠️ **Warnings:**\n" + "\n".join(f"• {w}" for w in result.warnings)
 
-    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-    await config.slack_client.chat_postMessage(
-        channel=channel,
-        text=config.markdown_to_slack(preview)
-    )
+        if result.missing_required:
+            preview_text += "\n❌ **Missing Required:**\n" + "\n".join(f"• {m}" for m in result.missing_required)
+
+        if user_notes:
+            preview_text += f"\n📝 **Sales Notes:** {user_notes}\n"
+
+        preview_text += "\n\n**Instructions:**\n"
+        preview_text += "• Review the data above carefully\n"
+        preview_text += "• Tell me any changes needed (e.g., 'Change client to Acme Corp', 'Net should be 150,000')\n"
+        preview_text += "• Say 'execute' when ready to generate Excel and approval buttons"
+
+        # Create thread in coordinator channel
+        thread_result = await config.slack_client.chat_postMessage(
+            channel=coordinator_channel,
+            text=config.markdown_to_slack(preview_text)
+        )
+
+        thread_ts = thread_result.get("ts")
+
+        # Update workflow with thread info
+        await bo_approval_workflow.update_workflow(workflow_id, {
+            "coordinator_thread_ts": thread_ts,
+            "coordinator_thread_channel": coordinator_channel
+        })
+
+        # Notify sales person
+        await config.slack_client.chat_update(
+            channel=channel,
+            ts=status_ts,
+            text=config.markdown_to_slack(
+                f"✅ **Booking Order Submitted**\n\n"
+                f"**Client:** {result.data.get('client', 'N/A')}\n"
+                f"**Campaign:** {result.data.get('brand_campaign', 'N/A')}\n"
+                f"**Gross Total:** AED {result.data.get('gross_calc', 0):,.2f}\n\n"
+                f"Your booking order has been sent to the Sales Coordinator for review. "
+                f"You'll be notified once the approval process is complete."
+            )
+        )
+
+        logger.info(f"[BO APPROVAL] Sent {workflow_id} to coordinator in thread {thread_ts}")
+
+    except Exception as e:
+        logger.error(f"[BO APPROVAL] Error creating workflow: {e}", exc_info=True)
+        await config.slack_client.chat_update(
+            channel=channel,
+            ts=status_ts,
+            text=config.markdown_to_slack(f"❌ **Error starting approval workflow:** {str(e)}\n\nPlease try again.")
+        )
 
 
 async def _handle_booking_order_retrieve(args: Dict[str, Any], channel: str) -> str:
@@ -956,16 +1009,16 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         if "files" in slack_event:
             logger.info(f"[MAIN_LLM] Files found: {len(slack_event['files'])}")
     
-    # Check if message is in a coordinator rejection thread (before sending status message)
+    # Check if message is in a coordinator thread (before sending status message)
     thread_ts = slack_event.get("thread_ts") if slack_event else None
     if thread_ts:
-        # Check if this thread is an active rejection thread
+        # Check if this thread is an active coordinator thread
         import bo_approval_workflow
 
-        # Find workflow with matching rejection thread
+        # Find workflow with matching coordinator thread
         for workflow_id, workflow in bo_approval_workflow.approval_workflows.items():
-            if bo_approval_workflow.is_rejection_thread_active(workflow, thread_ts):
-                logger.info(f"[BO APPROVAL] Message in active rejection thread for {workflow_id}")
+            if bo_approval_workflow.is_coordinator_thread_active(workflow, thread_ts):
+                logger.info(f"[BO APPROVAL] Message in active coordinator thread for {workflow_id}")
                 try:
                     answer = await bo_approval_workflow.handle_coordinator_thread_message(
                         workflow_id=workflow_id,
@@ -980,7 +1033,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         text=config.markdown_to_slack(answer)
                     )
                 except Exception as e:
-                    logger.error(f"[BO APPROVAL] Error in rejection thread handler: {e}")
+                    logger.error(f"[BO APPROVAL] Error in coordinator thread handler: {e}")
                     await config.slack_client.chat_postMessage(
                         channel=channel,
                         thread_ts=thread_ts,
@@ -995,24 +1048,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
     )
     status_ts = status_message.get("ts")
 
-    # Check if user has a pending booking order review session
-    if user_id in pending_booking_orders:
-        logger.info(f"[BOOKING ORDER] User {user_id} in edit mode")
-        try:
-            answer = await handle_booking_order_edit_flow(channel, user_id, user_input)
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(
-                channel=channel,
-                text=config.markdown_to_slack(answer)
-            )
-        except Exception as e:
-            logger.error(f"[BOOKING ORDER] Error in edit flow: {e}")
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(
-                channel=channel,
-                text=config.markdown_to_slack(f"❌ **Error:** {str(e)}")
-            )
-        return
+    # OLD EDIT FLOW REMOVED - Now coordinators edit directly in threads
 
     # Check if user has a pending location addition or mockup request and uploaded a file
     # Also check for file_share events which Slack sometimes uses
@@ -1448,10 +1484,13 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"═══════════════════════════════════════════════════════════════════\n\n"
         f"Current User: {'ADMIN' if is_admin else 'STANDARD USER'}\n\n"
         f"{'✅ ADMIN TOOLS AVAILABLE:' if is_admin else '❌ ADMIN TOOLS NOT AVAILABLE:'}\n"
-        f"- Booking Order Parsing (parse_booking_order, retrieve_booking_order)\n"
         f"- Location Management (add_location, delete_location)\n"
-        f"- Database Export (export_proposals_to_excel)\n\n"
-        f"{'You have access to all admin-only tools listed above.' if is_admin else 'You do NOT have access to admin-only tools. Do not attempt to use or reference admin-only functions like booking order parsing, location management, or database export.'}\n\n"
+        f"- Database Export (export_proposals_to_excel)\n"
+        f"- Retrieve Booking Orders (retrieve_booking_order)\n\n"
+        f"✅ AVAILABLE TO ALL USERS:\n"
+        f"- Booking Order Upload & Parsing (parse_booking_order)\n"
+        f"- Any sales person can upload booking orders for approval\n\n"
+        f"{'You have access to all admin-only tools listed above.' if is_admin else 'You do NOT have access to admin-only tools like location management or database export, but you CAN upload and parse booking orders.'}\n\n"
 
         f"═══════════════════════════════════════════════════════════════════\n"
         f"⚙️ SYSTEM GUIDELINES\n"

@@ -243,21 +243,110 @@ async def slack_interactive(request: Request):
 
         _button_clicks[user_id][action_key] = current_time
 
-        # Route to appropriate handler (admin is HoS, so only coordinator buttons exist)
+        # Route to appropriate handler
         if action_id == "approve_bo_coordinator":
             # Send wait message
             await bo_slack_messaging.post_response_url(response_url, {
                 "replace_original": True,
-                "text": "⏳ Please wait... Processing approval and saving to database..."
+                "text": "⏳ Please wait... Processing coordinator approval..."
             })
             # Process asynchronously
             asyncio.create_task(bo_approval_workflow.handle_coordinator_approval(workflow_id, user_id, response_url))
 
         elif action_id == "reject_bo_coordinator":
-            # For now, simple rejection - TODO: Add modal for rejection reason
-            rejection_reason = "Rejected by Sales Coordinator - please make amendments"
+            # Open modal for rejection reason
+            await config.slack_client.views_open(
+                trigger_id=payload.get("trigger_id"),
+                view={
+                    "type": "modal",
+                    "callback_id": f"reject_bo_coordinator_modal:{workflow_id}:{channel}:{message_ts}",
+                    "title": {"type": "plain_text", "text": "Reject BO"},
+                    "submit": {"type": "plain_text", "text": "Submit"},
+                    "close": {"type": "plain_text", "text": "Cancel"},
+                    "blocks": [
+                        {
+                            "type": "input",
+                            "block_id": "rejection_reason",
+                            "label": {"type": "plain_text", "text": "Rejection Reason"},
+                            "element": {
+                                "type": "plain_text_input",
+                                "action_id": "reason_input",
+                                "multiline": True,
+                                "placeholder": {"type": "plain_text", "text": "Explain why you're rejecting this booking order..."}
+                            }
+                        }
+                    ]
+                }
+            )
+
+        elif action_id == "approve_bo_hos":
+            # Send wait message
+            await bo_slack_messaging.post_response_url(response_url, {
+                "replace_original": True,
+                "text": "⏳ Please wait... Processing HoS approval and saving to database..."
+            })
+            # Process asynchronously
+            asyncio.create_task(bo_approval_workflow.handle_hos_approval(workflow_id, user_id, response_url))
+
+        elif action_id == "reject_bo_hos":
+            # Open modal for rejection reason
+            await config.slack_client.views_open(
+                trigger_id=payload.get("trigger_id"),
+                view={
+                    "type": "modal",
+                    "callback_id": f"reject_bo_hos_modal:{workflow_id}",
+                    "title": {"type": "plain_text", "text": "Reject BO"},
+                    "submit": {"type": "plain_text", "text": "Submit"},
+                    "close": {"type": "plain_text", "text": "Cancel"},
+                    "blocks": [
+                        {
+                            "type": "input",
+                            "block_id": "rejection_reason",
+                            "label": {"type": "plain_text", "text": "Rejection Reason"},
+                            "element": {
+                                "type": "plain_text_input",
+                                "action_id": "reason_input",
+                                "multiline": True,
+                                "placeholder": {"type": "plain_text", "text": "Explain why you're rejecting this booking order..."}
+                            }
+                        }
+                    ]
+                }
+            )
+
+    elif interaction_type == "view_submission":
+        # Modal submission
+        callback_id = payload.get("view", {}).get("callback_id", "")
+        user_id = payload["user"]["id"]
+
+        # Handle coordinator rejection modal
+        if callback_id.startswith("reject_bo_coordinator_modal:"):
+            parts = callback_id.split(":")
+            workflow_id = parts[1]
+            channel = parts[2]
+            message_ts = parts[3]
+
+            # Extract rejection reason from modal
+            values = payload.get("view", {}).get("state", {}).get("values", {})
+            rejection_reason = values.get("rejection_reason", {}).get("reason_input", {}).get("value", "No reason provided")
+
+            # Process rejection asynchronously
             asyncio.create_task(bo_approval_workflow.handle_coordinator_rejection(
-                workflow_id, user_id, response_url, rejection_reason, channel, message_ts
+                workflow_id, user_id, None, rejection_reason, channel, message_ts
+            ))
+
+        # Handle HoS rejection modal
+        elif callback_id.startswith("reject_bo_hos_modal:"):
+            parts = callback_id.split(":")
+            workflow_id = parts[1]
+
+            # Extract rejection reason from modal
+            values = payload.get("view", {}).get("state", {}).get("values", {})
+            rejection_reason = values.get("rejection_reason", {}).get("reason_input", {}).get("value", "No reason provided")
+
+            # Process rejection asynchronously
+            asyncio.create_task(bo_approval_workflow.handle_hos_rejection(
+                workflow_id, user_id, None, rejection_reason
             ))
 
     return JSONResponse({"status": "ok"})
