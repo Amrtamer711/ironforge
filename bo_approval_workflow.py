@@ -149,17 +149,11 @@ async def create_approval_workflow(
 async def save_workflow_to_db(workflow_id: str, workflow_data: Dict[str, Any]):
     """Persist workflow to database"""
     try:
-        conn = db.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            INSERT OR REPLACE INTO bo_approval_workflows
-            (workflow_id, workflow_data, updated_at)
-            VALUES (?, ?, ?)
-        """, (workflow_id, json.dumps(workflow_data), datetime.now().isoformat()))
-
-        conn.commit()
-        conn.close()
+        db.save_bo_workflow(
+            workflow_id=workflow_id,
+            workflow_data=json.dumps(workflow_data),
+            updated_at=datetime.now().isoformat()
+        )
     except Exception as e:
         logger.error(f"[BO APPROVAL] Failed to save workflow {workflow_id}: {e}")
 
@@ -167,18 +161,9 @@ async def save_workflow_to_db(workflow_id: str, workflow_data: Dict[str, Any]):
 async def get_workflow_from_db(workflow_id: str) -> Optional[Dict[str, Any]]:
     """Retrieve workflow from database"""
     try:
-        conn = db.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT workflow_data FROM bo_approval_workflows WHERE workflow_id = ?
-        """, (workflow_id,))
-
-        row = cursor.fetchone()
-        conn.close()
-
-        if row:
-            return json.loads(row[0])
+        workflow_json = db.get_bo_workflow(workflow_id)
+        if workflow_json:
+            return json.loads(workflow_json)
         return None
     except Exception as e:
         logger.error(f"[BO APPROVAL] Failed to retrieve workflow {workflow_id}: {e}")

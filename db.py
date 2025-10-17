@@ -724,5 +724,43 @@ def export_mockup_usage_to_excel() -> str:
         conn.close()
 
 
+def save_bo_workflow(workflow_id: str, workflow_data: str, updated_at: str) -> None:
+    """Save or update a booking order approval workflow."""
+    conn = _connect()
+    try:
+        conn.execute("BEGIN")
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO bo_approval_workflows
+            (workflow_id, workflow_data, updated_at)
+            VALUES (?, ?, ?)
+            """,
+            (workflow_id, workflow_data, updated_at),
+        )
+        conn.execute("COMMIT")
+        logger.info(f"[DB] Saved BO workflow: {workflow_id}")
+    except Exception as e:
+        conn.execute("ROLLBACK")
+        logger.error(f"[DB] Error saving BO workflow: {e}", exc_info=True)
+        raise
+    finally:
+        conn.close()
+
+
+def get_bo_workflow(workflow_id: str) -> Optional[str]:
+    """Retrieve a booking order approval workflow by ID. Returns workflow_data JSON string."""
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT workflow_data FROM bo_approval_workflows WHERE workflow_id = ?",
+            (workflow_id,)
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
+
 # Initialize DB on import
 init_db() 
