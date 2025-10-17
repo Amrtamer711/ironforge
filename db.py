@@ -111,6 +111,15 @@ CREATE INDEX IF NOT EXISTS idx_booking_orders_bo_ref ON booking_orders(bo_ref);
 CREATE INDEX IF NOT EXISTS idx_booking_orders_company ON booking_orders(company);
 CREATE INDEX IF NOT EXISTS idx_booking_orders_client ON booking_orders(client);
 CREATE INDEX IF NOT EXISTS idx_booking_orders_parsed_at ON booking_orders(parsed_at);
+
+CREATE TABLE IF NOT EXISTS bo_approval_workflows (
+    workflow_id TEXT PRIMARY KEY,
+    workflow_data TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_bo_workflows_updated ON bo_approval_workflows(updated_at);
 """
 
 

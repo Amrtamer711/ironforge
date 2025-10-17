@@ -20,6 +20,13 @@ BOOKING_ORDERS_BASE = Path("/data/booking_orders") if os.path.exists("/data") el
 ORIGINAL_DIR = BOOKING_ORDERS_BASE / "original_bos"
 PARSED_DIR = BOOKING_ORDERS_BASE / "parsed_bos"
 
+# BO Template files (for future use - not currently used)
+# These are the actual branded templates for MMG Backlite and Viola
+# Currently using simple Excel generation, will switch to template-based when ready
+TEMPLATES_DIR = Path(__file__).parent / "bo_templates"
+TEMPLATE_BACKLITE = TEMPLATES_DIR / "backlite_bo_template.xlsx"
+TEMPLATE_VIOLA = TEMPLATES_DIR / "viola_bo_template.xlsx"
+
 # Ensure directories exist
 ORIGINAL_DIR.mkdir(parents=True, exist_ok=True)
 PARSED_DIR.mkdir(parents=True, exist_ok=True)
@@ -410,7 +417,13 @@ Extract all data visible in the document. Return ONLY valid JSON, no additional 
         return "\n".join(lines)
 
     async def generate_excel(self, data: Dict[str, Any], bo_ref: str) -> Path:
-        """Generate standardized Excel output - single sheet, field/value format"""
+        """
+        Generate standardized Excel output - single sheet, field/value format
+
+        NOTE: This is a simple format for initial testing.
+        TODO: Switch to using branded templates (TEMPLATE_BACKLITE or TEMPLATE_VIOLA)
+              when ready to use the actual company-specific formats in bo_templates/
+        """
         import openpyxl
         from openpyxl.styles import Font, PatternFill
 

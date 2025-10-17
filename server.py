@@ -187,6 +187,82 @@ async def slack_events(request: Request):
     return JSONResponse({"status": "ok"})
 
 
+@app.post("/slack/interactive")
+async def slack_interactive(request: Request):
+    """Handle Slack interactive components (buttons, modals, etc.)"""
+    import json
+    import time
+    from collections import defaultdict
+    import bo_approval_workflow
+    import bo_slack_messaging
+
+    # Verify signature
+    body = await request.body()
+    timestamp = request.headers.get("X-Slack-Request-Timestamp")
+    signature = request.headers.get("X-Slack-Signature")
+
+    if not config.signature_verifier.is_valid(body.decode(), timestamp, signature):
+        raise HTTPException(status_code=403, detail="Invalid Slack signature")
+
+    # Parse form data
+    form_data = {}
+    for line in body.decode().split('&'):
+        if '=' in line:
+            key, value = line.split('=', 1)
+            from urllib.parse import unquote_plus
+            form_data[key] = unquote_plus(value)
+
+    payload = json.loads(form_data.get("payload", "{}"))
+    interaction_type = payload.get("type")
+
+    if interaction_type == "block_actions":
+        # Button click
+        user_id = payload["user"]["id"]
+        actions = payload.get("actions", [])
+        response_url = payload.get("response_url")
+        channel = payload.get("container", {}).get("channel_id") or payload.get("channel", {}).get("id")
+        message_ts = payload.get("container", {}).get("message_ts")
+
+        if not actions:
+            return JSONResponse({"status": "ok"})
+
+        action = actions[0]
+        action_id = action.get("action_id")
+        workflow_id = action.get("value")
+
+        # Debounce spam clicks (3 second window)
+        _button_clicks = defaultdict(lambda: defaultdict(float))
+        DEBOUNCE_WINDOW = 3
+        current_time = time.time()
+        action_key = f"{action_id}:{workflow_id}"
+        last_click = _button_clicks[user_id][action_key]
+
+        if current_time - last_click < DEBOUNCE_WINDOW:
+            logger.warning(f"[BO APPROVAL] Spam click detected from {user_id}")
+            return JSONResponse({"status": "ok"})
+
+        _button_clicks[user_id][action_key] = current_time
+
+        # Route to appropriate handler (admin is HoS, so only coordinator buttons exist)
+        if action_id == "approve_bo_coordinator":
+            # Send wait message
+            await bo_slack_messaging.post_response_url(response_url, {
+                "replace_original": True,
+                "text": "⏳ Please wait... Processing approval and saving to database..."
+            })
+            # Process asynchronously
+            asyncio.create_task(bo_approval_workflow.handle_coordinator_approval(workflow_id, user_id, response_url))
+
+        elif action_id == "reject_bo_coordinator":
+            # For now, simple rejection - TODO: Add modal for rejection reason
+            rejection_reason = "Rejected by Sales Coordinator - please make amendments"
+            asyncio.create_task(bo_approval_workflow.handle_coordinator_rejection(
+                workflow_id, user_id, response_url, rejection_reason, channel, message_ts
+            ))
+
+    return JSONResponse({"status": "ok"})
+
+
 @app.get("/health")
 async def health():
     import os
