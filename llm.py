@@ -1862,29 +1862,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 # Determine mode based on what user provided
                 # Priority: 1) New upload 2) AI prompt 3) History reuse 4) Error
 
-                # Frame validation for follow-up requests (only if no new upload and no AI)
-                if mockup_user_hist and not has_images and not ai_prompt:
-                    stored_frames = mockup_user_hist.get("metadata", {}).get("num_frames", 1)
-                    stored_location = mockup_user_hist.get("metadata", {}).get("location_name", "unknown")
-
-                    # If requesting different location with mismatched frame count, warn user
-                    if location_key != mockup_user_hist.get("metadata", {}).get("location_key"):
-                        if stored_frames != new_location_frame_count:
-                            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                            await config.slack_client.chat_postMessage(
-                                channel=channel,
-                                text=config.markdown_to_slack(
-                                    f"⚠️ **Frame Count Mismatch**\n\n"
-                                    f"I have your recent mockup from **{stored_location}** ({stored_frames} frame(s)) in memory, "
-                                    f"but **{location_name}** requires **{new_location_frame_count} frame(s)**.\n\n"
-                                    f"I cannot reuse creatives from a {stored_frames}-frame mockup for a {new_location_frame_count}-frame location.\n\n"
-                                    f"**Options:**\n"
-                                    f"• Upload {new_location_frame_count} new image(s) for {location_name}\n"
-                                    f"• Use AI generation by providing a creative description\n"
-                                    f"• Generate a mockup for a location with {stored_frames} frame(s)"
-                                )
-                            )
-                            return
+                # NO EARLY FRAME VALIDATION - Allow 1 creative to be tiled across multiple frames
+                # Validation happens later at line ~1916 where we check creative count, not stored frame count
 
                 # FOLLOW-UP MODE: Check if this is a follow-up request (no upload, no AI, has history)
                 if not has_images and not ai_prompt and mockup_user_hist:
@@ -1913,8 +1892,11 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         del mockup_history[user_id]
                         return
 
-                    # Validate frame count matches
-                    if stored_frames == new_location_frame_count:
+                    # Validate creative count: Allow if 1 creative (tile across frames) OR matches frame count
+                    num_stored_creatives = len(stored_creative_paths)
+                    is_valid_count = (num_stored_creatives == 1) or (num_stored_creatives == new_location_frame_count)
+
+                    if is_valid_count:
                         logger.info(f"[MOCKUP] Follow-up request detected - reusing {len(stored_creative_paths)} creative(s) from history")
 
                         await config.slack_client.chat_update(
@@ -1997,11 +1979,45 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                             gc.collect()
 
                             return
+                    else:
+                        # Invalid creative count (e.g., 2 creatives for 3 frames)
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            text=config.markdown_to_slack(
+                                f"⚠️ **Creative Count Mismatch**\n\n"
+                                f"I have **{num_stored_creatives} creative(s)** from your previous mockup (**{stored_location}**), "
+                                f"but **{location_name}** requires **{new_location_frame_count} frame(s)**.\n\n"
+                                f"**Valid options:**\n"
+                                f"• Upload **1 image** (will be tiled across all frames)\n"
+                                f"• Upload **{new_location_frame_count} images** (one per frame)\n"
+                                f"• Use AI generation with a creative description"
+                            )
+                        )
+                        return
 
                 # Now proceed with normal modes (Priority: Upload > AI > Error)
                 if has_images:
                     # UPLOAD MODE: User uploaded image(s) - this takes priority over AI
                     logger.info(f"[MOCKUP] Processing {len(uploaded_creatives)} uploaded image(s)")
+
+                    # Validate creative count: Allow 1 (tile) OR match frame count
+                    num_uploaded = len(uploaded_creatives)
+                    is_valid_upload_count = (num_uploaded == 1) or (num_uploaded == new_location_frame_count)
+
+                    if not is_valid_upload_count:
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            text=config.markdown_to_slack(
+                                f"⚠️ **Creative Count Mismatch**\n\n"
+                                f"You uploaded **{num_uploaded} image(s)**, but **{location_name}** requires **{new_location_frame_count} frame(s)**.\n\n"
+                                f"**Valid options:**\n"
+                                f"• Upload **1 image** (will be tiled across all frames)\n"
+                                f"• Upload **{new_location_frame_count} images** (one per frame)"
+                            )
+                        )
+                        return
 
                     await config.slack_client.chat_update(
                         channel=channel,
@@ -2084,6 +2100,24 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
 
                 elif ai_prompt:
                     # AI MODE: User provided a description for AI generation
+
+                    # Validate num_ai_frames: Allow 1 (tile) OR match frame count
+                    is_valid_ai_count = (num_ai_frames == 1) or (num_ai_frames == new_location_frame_count)
+
+                    if not is_valid_ai_count:
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            text=config.markdown_to_slack(
+                                f"⚠️ **Creative Count Mismatch**\n\n"
+                                f"You requested **{num_ai_frames} AI creatives**, but **{location_name}** requires **{new_location_frame_count} frame(s)**.\n\n"
+                                f"**Valid options:**\n"
+                                f"• Generate **1 creative** (will be tiled across all frames) - omit `num_ai_frames` parameter\n"
+                                f"• Generate **{new_location_frame_count} creatives** (one per frame) - set `num_ai_frames={new_location_frame_count}`"
+                            )
+                        )
+                        return
+
                     await config.slack_client.chat_update(
                         channel=channel,
                         ts=status_ts,
