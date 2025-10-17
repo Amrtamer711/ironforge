@@ -364,8 +364,7 @@ async def _generate_ai_mockup_queued(
                     logger.info(f"[AI QUEUE] Generating creative {i}/{num_ai_frames}")
                     creative_path = await mockup_generator.generate_ai_creative(
                         prompt=enhanced_prompt.replace(ai_prompt, variation_prompt),
-                        size="1536x1024",
-                        location_key=location_key
+                        size="1536x1024"
                     )
                     if not creative_path:
                         raise Exception(f"Failed to generate AI creative {i}/{num_ai_frames}")
@@ -374,8 +373,7 @@ async def _generate_ai_mockup_queued(
                 # Single frame
                 creative_path = await mockup_generator.generate_ai_creative(
                     prompt=enhanced_prompt,
-                    size="1536x1024",
-                    location_key=location_key
+                    size="1536x1024"
                 )
                 if not creative_path:
                     raise Exception("Failed to generate AI creative")
