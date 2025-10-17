@@ -122,7 +122,14 @@ def warp_creative_to_billboard(
     # The perspective transform handles the warping - no black bars/padding
 
     # Upscale creative before warping for higher quality
-    upscale_factor = 2.0  # 2x upscale - good balance of quality and performance
+    # Reduce upscale factor for 8K+ billboards to save memory
+    billboard_megapixels = (billboard_image.shape[0] * billboard_image.shape[1]) / 1_000_000
+    if billboard_megapixels > 40:  # 8K+ billboards
+        upscale_factor = 1.5  # Reduced from 2x to save ~7MB on large billboards
+        logger.info(f"[MOCKUP] Large billboard ({billboard_megapixels:.1f}MP) - using reduced upscale factor: {upscale_factor}x")
+    else:
+        upscale_factor = 2.0  # 2x upscale - good balance of quality and performance
+
     creative_upscaled = cv2.resize(
         creative_image,
         None,
@@ -224,8 +231,9 @@ def warp_creative_to_billboard(
     bbox_megapixels = (bbox_width * bbox_height) / 1_000_000
 
     # AGGRESSIVE MEMORY CAP: Reduce supersample factor if bbox region would be too large
-    # Target: Keep super-sampled mask under 30MB to prevent OOM on 2GB instances
-    MAX_SUPERSAMPLE_MB = 30
+    # Target: Keep super-sampled mask under 15MB to prevent OOM on 2GB instances
+    # Reduced from 30MB after discovering Oryx has 9K billboards that still crash at 30MB
+    MAX_SUPERSAMPLE_MB = 15
     bbox_w_hires_test = int(bbox_width * supersample_factor)
     bbox_h_hires_test = int(bbox_height * supersample_factor)
     bbox_hires_mb_test = (bbox_w_hires_test * bbox_h_hires_test) / 1024 / 1024  # Grayscale mask
@@ -280,15 +288,22 @@ def warp_creative_to_billboard(
     mask_bbox = cv2.resize(mask_hires, (bbox_width, bbox_height), interpolation=cv2.INTER_AREA)
     logger.info(f"[MOCKUP] ✓ Downsample complete")
 
-    # Delete high-res mask immediately to free 29MB before next allocation
+    # Delete high-res mask immediately to free 15MB before next allocation
     try:
         del mask_hires
     except:
         pass
 
+    # CRITICAL: Force garbage collection to ensure memory is freed BEFORE allocating large full mask
+    gc.collect()
+
     # Create full-sized mask and paste bbox mask into it
+    full_mask_mb = (billboard_image.shape[0] * billboard_image.shape[1]) / 1024 / 1024
+    logger.info(f"[MOCKUP] Allocating full-sized mask {billboard_image.shape[1]}x{billboard_image.shape[0]} ({full_mask_mb:.1f}MB)")
     mask = np.zeros((billboard_image.shape[0], billboard_image.shape[1]), dtype=np.uint8)
+    logger.info(f"[MOCKUP] ✓ Full mask allocated, pasting bbox region")
     mask[bbox_y_min:bbox_y_max, bbox_x_min:bbox_x_max] = mask_bbox
+    logger.info(f"[MOCKUP] ✓ Bbox mask pasted into full mask")
 
     # Clean up remaining intermediate arrays
     try:
