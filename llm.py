@@ -1,6 +1,6 @@
 import json
 import asyncio
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import os
 from pathlib import Path
 import aiohttp
@@ -11,11 +11,162 @@ import config
 import db
 from proposals import process_proposals
 from slack_formatting import SlackResponses
+from booking_parser import BookingOrderParser, ORIGINAL_DIR, PARSED_DIR
+from task_queue import mockup_queue
 
 user_history: Dict[str, list] = {}
 
 # Global for pending location additions (waiting for PPT upload)
 pending_location_additions: Dict[str, Dict[str, Any]] = {}
+
+# Global for mockup history (30-minute memory per user)
+# Structure: {user_id: {"creative_paths": List[Path], "metadata": dict, "timestamp": datetime}}
+# Stores individual creative files (1-N files) so they can be reused on different locations with matching frame count
+mockup_history: Dict[str, Dict[str, Any]] = {}
+
+def cleanup_expired_mockups():
+    """Remove creative files that have expired (older than 30 minutes)"""
+    import os
+    import gc
+
+    now = datetime.now()
+    expired_users = []
+
+    for user_id, data in mockup_history.items():
+        timestamp = data.get("timestamp")
+        if timestamp and (now - timestamp) > timedelta(minutes=30):
+            # Delete all creative files for this user
+            creative_paths = data.get("creative_paths", [])
+            deleted_count = 0
+            for creative_path in creative_paths:
+                if creative_path and creative_path.exists():
+                    try:
+                        os.unlink(creative_path)
+                        deleted_count += 1
+                    except Exception as e:
+                        config.logger.error(f"[MOCKUP HISTORY] Failed to delete {creative_path}: {e}")
+
+            if deleted_count > 0:
+                config.logger.info(f"[MOCKUP HISTORY] Cleaned up {deleted_count} expired creative file(s) for user {user_id}")
+            expired_users.append(user_id)
+
+    # Remove from memory
+    for user_id in expired_users:
+        del mockup_history[user_id]
+        config.logger.info(f"[MOCKUP HISTORY] Removed user {user_id} from mockup history")
+
+    # Force garbage collection if we cleaned up any files
+    if expired_users:
+        gc.collect()
+        config.logger.info(f"[MOCKUP HISTORY] Forced garbage collection after cleanup")
+
+def store_mockup_history(user_id: str, creative_paths: list, metadata: dict):
+    """Store creative files in user's history with 30-minute expiry
+
+    Args:
+        user_id: Slack user ID
+        creative_paths: List of Path objects to creative files (1-N files)
+        metadata: Dict with location_key, location_name, num_frames, etc.
+    """
+    import gc
+
+    # Clean up old creative files for this user if exists
+    if user_id in mockup_history:
+        old_data = mockup_history[user_id]
+        old_creative_paths = old_data.get("creative_paths", [])
+        deleted_count = 0
+        for old_path in old_creative_paths:
+            if old_path and old_path.exists():
+                try:
+                    os.unlink(old_path)
+                    deleted_count += 1
+                except Exception as e:
+                    config.logger.error(f"[MOCKUP HISTORY] Failed to delete old creative: {e}")
+        if deleted_count > 0:
+            config.logger.info(f"[MOCKUP HISTORY] Replaced {deleted_count} old creative file(s) for user {user_id}")
+            # Force garbage collection when replacing files
+            gc.collect()
+
+    # Store new creative files
+    mockup_history[user_id] = {
+        "creative_paths": creative_paths,
+        "metadata": metadata,
+        "timestamp": datetime.now()
+    }
+    config.logger.info(f"[MOCKUP HISTORY] Stored {len(creative_paths)} creative file(s) for user {user_id}")
+
+    # Run cleanup to remove expired creatives from other users
+    cleanup_expired_mockups()
+
+def get_mockup_history(user_id: str) -> Optional[Dict[str, Any]]:
+    """Get user's creative files from history if still valid (within 30 minutes)
+
+    Returns:
+        Dict with creative_paths (List[Path]), metadata, timestamp, or None if expired/not found
+    """
+    import gc
+
+    if user_id not in mockup_history:
+        return None
+
+    data = mockup_history[user_id]
+    timestamp = data.get("timestamp")
+
+    # Check if expired
+    if timestamp and (datetime.now() - timestamp) > timedelta(minutes=30):
+        # Expired - clean up all creative files
+        creative_paths = data.get("creative_paths", [])
+        deleted_count = 0
+        for creative_path in creative_paths:
+            if creative_path and creative_path.exists():
+                try:
+                    os.unlink(creative_path)
+                    deleted_count += 1
+                except:
+                    pass
+        del mockup_history[user_id]
+
+        # Force garbage collection if we deleted files
+        if deleted_count > 0:
+            gc.collect()
+            config.logger.info(f"[MOCKUP HISTORY] Auto-cleaned {deleted_count} expired file(s) for user {user_id}")
+
+        return None
+
+    return data
+
+def get_location_frame_count(location_key: str, time_of_day: str = "all", finish: str = "all") -> Optional[int]:
+    """Get the number of frames for a specific location configuration.
+
+    Returns:
+        Number of frames, or None if location not found or no mockups configured
+    """
+    import db
+
+    # Get available variations for the location
+    variations = db.list_mockup_variations(location_key)
+    if not variations:
+        return None
+
+    # Get the first available variation that matches time_of_day/finish
+    # variations structure: {'day': ['gold', 'silver'], 'night': ['gold']}
+    for tod, finish_list in variations.items():
+        if time_of_day != "all" and tod != time_of_day:
+            continue
+
+        for fin in finish_list:
+            if finish != "all" and fin != finish:
+                continue
+
+            # Get all photos for this time_of_day/finish combination
+            photos = db.list_mockup_photos(location_key, tod, fin)
+            if photos:
+                # Get frames data for the first photo
+                frames_data = db.get_mockup_frames(location_key, photos[0], tod, fin)
+                if frames_data:
+                    return len(frames_data)
+
+    return None
 
 def _validate_powerpoint_file(file_path: Path) -> bool:
     """Validate that uploaded file is actually a PowerPoint presentation."""
@@ -50,14 +201,29 @@ def _validate_powerpoint_file(file_path: Path) -> bool:
         # Try to open as PowerPoint - this will fail if not a valid PPTX
         pres = Presentation(str(file_path))
         # Basic validation: must have at least 1 slide
-        if len(pres.slides) < 1:
+        slide_count = len(pres.slides)
+
+        # CRITICAL: Delete presentation object to free memory
+        # python-pptx loads entire PPT into RAM (50-100MB+)
+        del pres
+        import gc
+        gc.collect()
+
+        if slide_count < 1:
             config.logger.warning(f"[VALIDATION] PowerPoint file has no slides: {file_path}")
             return False
 
-        config.logger.info(f"[VALIDATION] PowerPoint validation successful: {len(pres.slides)} slides")
+        config.logger.info(f"[VALIDATION] PowerPoint validation successful: {slide_count} slides")
         return True
     except Exception as e:
         config.logger.warning(f"[VALIDATION] PowerPoint validation failed: {e}")
+        # Cleanup on error path too
+        try:
+            del pres
+        except:
+            pass
+        import gc
+        gc.collect()
         return False
 
 
@@ -83,6 +249,9 @@ async def _download_slack_file(file_info: Dict[str, Any]) -> Path:
             with open(tmp.name, "wb") as f:
                 f.write(content)
 
+            # Immediately delete content bytes to free memory
+            del content
+
     # Verify file was written
     file_path = Path(tmp.name)
     if file_path.exists():
@@ -91,6 +260,144 @@ async def _download_slack_file(file_info: Dict[str, Any]) -> Path:
         config.logger.error(f"[DOWNLOAD] File not found after write: {file_path}")
 
     return file_path
+
+
+async def _generate_mockup_queued(
+    location_key: str,
+    creative_paths: list,
+    time_of_day: str,
+    finish: str,
+    specific_photo: str = None,
+    config_override: dict = None
+):
+    """
+    Wrapper function for mockup generation that runs through the task queue.
+    This limits concurrent mockup generation to prevent memory exhaustion.
+
+    Args:
+        location_key: Location identifier
+        creative_paths: List of creative file paths
+        time_of_day: Time of day variation
+        finish: Finish type
+        specific_photo: Optional specific photo to use
+        config_override: Optional config override
+
+    Returns:
+        Tuple of (result_path, metadata)
+    """
+    import mockup_generator
+    import gc
+
+    logger = config.logger
+    logger.info(f"[QUEUE] Mockup generation requested for {location_key}")
+
+    # This function will be queued and executed when a slot is available
+    async def _generate():
+        try:
+            logger.info(f"[QUEUE] Starting mockup generation for {location_key}")
+            result_path, metadata = mockup_generator.generate_mockup(
+                location_key,
+                creative_paths,
+                time_of_day=time_of_day,
+                finish=finish,
+                specific_photo=specific_photo,
+                config_override=config_override
+            )
+            logger.info(f"[QUEUE] Mockup generation completed for {location_key}")
+            gc.collect()
+            return result_path, metadata
+        except Exception as e:
+            logger.error(f"[QUEUE] Mockup generation failed for {location_key}: {e}")
+            raise
+
+    # Submit to queue and wait for result
+    return await mockup_queue.submit(_generate)
+
+
+async def _generate_ai_mockup_queued(
+    ai_prompt: str,
+    enhanced_prompt: str,
+    num_ai_frames: int,
+    location_key: str,
+    time_of_day: str,
+    finish: str
+):
+    """
+    Wrapper for AI mockup generation (AI creative generation + mockup) through the queue.
+    This ensures the entire AI workflow (fetch from OpenAI + image processing + mockup)
+    is treated as ONE queued task to prevent memory spikes.
+
+    Args:
+        ai_prompt: User's original AI prompt
+        enhanced_prompt: Full enhanced system prompt
+        num_ai_frames: Number of frames to generate
+        location_key: Location identifier
+        time_of_day: Time of day variation
+        finish: Finish type
+
+    Returns:
+        Tuple of (result_path, ai_creative_paths)
+    """
+    import mockup_generator
+    import gc
+
+    logger = config.logger
+    logger.info(f"[QUEUE] AI mockup requested for {location_key} ({num_ai_frames} frames)")
+
+    async def _generate():
+        try:
+            logger.info(f"[QUEUE] Generating {num_ai_frames} AI creative(s) for {location_key}")
+            ai_creative_paths = []
+
+            if num_ai_frames > 1:
+                # Multi-frame: parse prompt into variations
+                prompt_variations = await mockup_generator.parse_prompt_for_multi_frame(ai_prompt, num_ai_frames)
+
+                # Generate each creative
+                for i, variation_prompt in enumerate(prompt_variations, 1):
+                    logger.info(f"[AI QUEUE] Generating creative {i}/{num_ai_frames}")
+                    creative_path = await mockup_generator.generate_ai_creative(
+                        prompt=enhanced_prompt.replace(ai_prompt, variation_prompt),
+                        size="1536x1024",
+                        location_key=location_key
+                    )
+                    if not creative_path:
+                        raise Exception(f"Failed to generate AI creative {i}/{num_ai_frames}")
+                    ai_creative_paths.append(creative_path)
+            else:
+                # Single frame
+                creative_path = await mockup_generator.generate_ai_creative(
+                    prompt=enhanced_prompt,
+                    size="1536x1024",
+                    location_key=location_key
+                )
+                if not creative_path:
+                    raise Exception("Failed to generate AI creative")
+                ai_creative_paths.append(creative_path)
+
+            logger.info(f"[QUEUE] AI creatives ready, generating mockup for {location_key}")
+
+            # Generate mockup with AI creatives
+            result_path, metadata = mockup_generator.generate_mockup(
+                location_key,
+                ai_creative_paths,
+                time_of_day=time_of_day,
+                finish=finish
+            )
+
+            if not result_path:
+                raise Exception("Failed to generate mockup")
+
+            logger.info(f"[QUEUE] AI mockup completed for {location_key}")
+            gc.collect()
+            return result_path, ai_creative_paths
+
+        except Exception as e:
+            logger.error(f"[QUEUE] AI mockup failed for {location_key}: {e}")
+            raise
+
+    # Submit entire AI workflow to queue as ONE task
+    return await mockup_queue.submit(_generate)
 
 
 async def _persist_location_upload(location_key: str, pptx_path: Path, metadata_text: str) -> None:
@@ -102,6 +409,204 @@ async def _persist_location_upload(location_key: str, pptx_path: Path, metadata_
     import shutil
     shutil.move(str(pptx_path), str(target_pptx))
     target_meta.write_text(metadata_text, encoding="utf-8")
+
+
+async def _handle_booking_order_parse(
+    company: str,
+    slack_event: Dict[str, Any],
+    channel: str,
+    status_ts: str,
+    user_notes: str,
+    user_id: str,
+    user_message: str = ""
+):
+    """Handle booking order parsing workflow"""
+    logger = config.logger
+
+    # Extract files from slack event
+    files = slack_event.get("files", [])
+    if not files and slack_event.get("subtype") == "file_share" and "file" in slack_event:
+        files = [slack_event["file"]]
+
+    if not files:
+        await config.slack_client.chat_update(
+            channel=channel,
+            ts=status_ts,
+            text=config.markdown_to_slack("❌ No file detected. Please upload a booking order document (Excel, PDF, or image).")
+        )
+        return
+
+    file_info = files[0]
+    logger.info(f"[BOOKING] Processing file: {file_info.get('name')}")
+
+    # Download file
+    try:
+        tmp_file = await _download_slack_file(file_info)
+    except Exception as e:
+        logger.error(f"[BOOKING] Download failed: {e}")
+        await config.slack_client.chat_update(
+            channel=channel,
+            ts=status_ts,
+            text=config.markdown_to_slack(f"❌ Failed to download file: {e}")
+        )
+        return
+
+    # Initialize parser
+    parser = BookingOrderParser(company=company)
+    file_type = parser.detect_file_type(tmp_file)
+
+    # Classify document
+    await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Classifying document..._")
+    classification = await parser.classify_document(tmp_file, user_message=user_message)
+    logger.info(f"[BOOKING] Classification: {classification}")
+
+    # Check if it's actually a booking order
+    if classification.get("classification") != "BOOKING_ORDER" or classification.get("confidence") in {"low", None}:
+        await config.slack_client.chat_update(
+            channel=channel,
+            ts=status_ts,
+            text=config.markdown_to_slack(
+                f"⚠️ This doesn't look like a booking order (confidence: {classification.get('confidence', 'unknown')}).\n\n"
+                f"Reasoning: {classification.get('reasoning', 'N/A')}\n\n"
+                f"If this is artwork for a mockup, please request a mockup instead."
+            )
+        )
+        tmp_file.unlink(missing_ok=True)
+        return
+
+    # Parse the booking order
+    await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Extracting booking order data..._")
+    try:
+        result = await parser.parse_file(tmp_file, file_type)
+    except Exception as e:
+        logger.error(f"[BOOKING] Parsing failed: {e}", exc_info=True)
+        await config.slack_client.chat_update(
+            channel=channel,
+            ts=status_ts,
+            text=config.markdown_to_slack(f"❌ Failed to parse booking order: {e}")
+        )
+        tmp_file.unlink(missing_ok=True)
+        return
+
+    # Check for missing required fields
+    if result.missing_required:
+        missing_list = "\n".join(f"• {item}" for item in result.missing_required)
+        await config.slack_client.chat_update(
+            channel=channel,
+            ts=status_ts,
+            text=config.markdown_to_slack(
+                f"⚠️ **Missing Required Information:**\n{missing_list}\n\n"
+                f"Please provide the missing details so I can complete the booking order."
+            )
+        )
+        tmp_file.unlink(missing_ok=True)
+        return
+
+    # Generate BO reference
+    bo_ref = db.generate_next_bo_ref()
+    logger.info(f"[BOOKING] Generated BO ref: {bo_ref}")
+
+    # Store original file
+    original_ext = tmp_file.suffix
+    original_path = ORIGINAL_DIR / f"{bo_ref}{original_ext}"
+    tmp_file.rename(original_path)
+    logger.info(f"[BOOKING] Stored original: {original_path}")
+
+    # Generate Excel
+    await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Generating Excel..._")
+    excel_path = await parser.generate_excel(result.data, bo_ref)
+
+    # Prepare database record
+    db_data = result.data.copy()
+    db_data.update({
+        "bo_ref": bo_ref,
+        "company": company,
+        "original_file_path": str(original_path),
+        "original_file_type": file_type,
+        "original_file_size": original_path.stat().st_size,
+        "original_filename": file_info.get("name"),
+        "parsed_excel_path": str(excel_path),
+        "parsed_by": user_id,
+        "source_classification": classification.get("classification"),
+        "classification_confidence": classification.get("confidence"),
+        "warnings": result.warnings,
+        "missing_required": result.missing_required,
+        "needs_review": result.needs_review,
+    })
+
+    # Save to database
+    try:
+        db.save_booking_order(db_data)
+        logger.info(f"[BOOKING] Saved to database: {bo_ref}")
+    except Exception as e:
+        logger.error(f"[BOOKING] Database save failed: {e}", exc_info=True)
+        await config.slack_client.chat_update(
+            channel=channel,
+            ts=status_ts,
+            text=config.markdown_to_slack(f"❌ Failed to save to database: {e}")
+        )
+        return
+
+    # Upload Excel to Slack
+    await config.slack_client.files_upload_v2(
+        channel=channel,
+        file=str(excel_path),
+        title=f"{bo_ref} - Booking Order",
+        initial_comment=config.markdown_to_slack(f"✅ **Booking Order Parsed: {bo_ref}**")
+    )
+
+    # Send summary
+    summary = parser.format_for_slack(result.data, bo_ref)
+    if result.warnings:
+        summary += "\n\n⚠️ **Warnings:**\n" + "\n".join(f"• {w}" for w in result.warnings)
+
+    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+    await config.slack_client.chat_postMessage(
+        channel=channel,
+        text=config.markdown_to_slack(summary)
+    )
+
+
+async def _handle_booking_order_retrieve(args: Dict[str, Any], channel: str) -> str:
+    """Handle booking order retrieval"""
+    bo_ref = args.get("bo_ref")
+    include_original = args.get("include_original", False)
+
+    record = db.get_booking_order(bo_ref)
+    if not record:
+        return f"❌ Booking order `{bo_ref}` not found."
+
+    # Upload parsed Excel
+    parsed_path = record.get("parsed_excel_path")
+    if parsed_path and Path(parsed_path).exists():
+        await config.slack_client.files_upload_v2(
+            channel=channel,
+            file=parsed_path,
+            title=f"{bo_ref} - Parsed Booking Order"
+        )
+
+    # Upload original if requested
+    if include_original:
+        orig_path = record.get("original_file_path")
+        if orig_path and Path(orig_path).exists():
+            await config.slack_client.files_upload_v2(
+                channel=channel,
+                file=orig_path,
+                title=f"{bo_ref} - Original Document"
+            )
+
+    # Format summary
+    parser = BookingOrderParser(company=record.get("company", "mmg_backlite"))
+    summary = parser.format_for_slack(record, bo_ref)
+
+    if record.get("warnings"):
+        summary += "\n\n⚠️ **Warnings:**\n" + "\n".join(f"• {w}" for w in record["warnings"])
+    if record.get("missing_required"):
+        summary += "\n\n⚠️ **Missing fields:**\n" + "\n".join(f"• {m}" for m in record["missing_required"])
+
+    summary += f"\n\n📅 Parsed: {record.get('parsed_at', 'Unknown')}"
+
+    return summary
 
 
 async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event: Dict[str, Any] = None):
@@ -338,12 +843,22 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
     static_list = ", ".join(static_locations) if static_locations else "None"
     digital_list = ", ".join(digital_locations) if digital_locations else "None"
 
+    # Check if user is admin for system prompt and tool filtering
+    is_admin = config.is_admin(user_id)
+
     prompt = (
         f"You are an AI sales assistant for BackLite Media. You provide comprehensive sales support tools including:\n"
         f"• Financial proposal generation for advertising locations\n"
         f"• Billboard mockup visualization (upload-based or AI-generated)\n"
         f"• Location database management\n"
-        f"• Sales analytics and reporting\n\n"
+        f"• Sales analytics and reporting\n"
+        f"• Code interpreter for calculations and data analysis\n\n"
+        f"CRITICAL INSTRUCTION:\n"
+        f"You are an INTERFACE to tools, NOT the executor. When users request actions:\n"
+        f"- DO NOT say 'Generating now...', 'Creating proposal...', or 'Building mockup...'\n"
+        f"- DO call the appropriate tool/function immediately\n"
+        f"- Let the TOOL handle the actual execution\n"
+        f"- Only respond with text AFTER the tool completes or if asking clarifying questions\n\n"
         f"Today's date is: {datetime.now().strftime('%B %d, %Y')} ({datetime.now().strftime('%A')})\n"
         f"Use this date to understand relative dates like 'tomorrow', 'next week', 'next month', etc.\n\n"
         f"═══════════════════════════════════════════════════════════════════\n"
@@ -450,13 +965,22 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"  A) USER UPLOAD MODE (requires image attachment):\n"
         f"     1. User UPLOADS image(s) WITH mockup request in same message\n"
         f"     2. System detects images and generates mockup immediately\n"
-        f"     3. Supports multiple frames: 1 image = duplicate across all, N images = match to N frames\n"
+        f"     3. INTELLIGENT TEMPLATE SELECTION:\n"
+        f"        • 1 image uploaded → Selects ANY template (image duplicated across all frames)\n"
+        f"        • N images uploaded → ONLY selects templates with EXACTLY N frames\n"
+        f"        • Example: Upload 3 images → system finds template with 3 frames only\n"
         f"     CRITICAL: If you see '[User uploaded X image file(s): ...]' in the message, call generate_mockup IMMEDIATELY\n"
         f"     DO NOT ask for clarification - the images are already uploaded!\n"
         f"  B) AI GENERATION MODE (NO upload needed):\n"
         f"     1. User provides location AND creative description in request\n"
         f"     2. System generates creative using gpt-image-1 model (NO upload needed)\n"
-        f"     3. System applies AI creative to billboard and returns mockup\n"
+        f"     3. MULTI-FRAME AI SUPPORT:\n"
+        f"        • Default: Generates 1 artwork (duplicated across frames if multi-frame template)\n"
+        f"        • User can request multiple variations: 'dual frame mockup', 'triple frame with 3 different ads'\n"
+        f"        • Set num_ai_frames parameter to generate N DIFFERENT artworks for N frames\n"
+        f"        • System uses prompt parser to create variations, then matches to N-frame template\n"
+        f"        • Example: 'triple crown with 3 different nike ads' → num_ai_frames=3\n"
+        f"     4. System applies AI creative(s) to billboard and returns mockup\n"
         f"     IMPORTANT: If description provided = AI mode, ignore any uploaded images\n"
         f"  Decision Logic:\n"
         f"  - Has creative description? → Use AI mode (ignore uploads)\n"
@@ -464,10 +988,12 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"  - No description and no upload? → ERROR\n"
         f"  Examples:\n"
         f"  - [uploads creative.jpg] + 'mockup for Dubai Gateway' → uses uploaded image (IMMEDIATE)\n"
+        f"  - [uploads 3 images] + 'triple crown mockup' → matches to 3-frame template (IMMEDIATE)\n"
         f"  - 'put this on triple crown' + [User uploaded 1 image file(s): test.jpg] → IMMEDIATE mockup\n"
-        f"  - 'mockup for Oryx with luxury watch ad, gold and elegant' → AI generates creative (no upload needed)\n"
+        f"  - 'mockup for Oryx with luxury watch ad, gold and elegant' → AI generates 1 creative\n"
+        f"  - 'triple crown with 3 different nike shoe ads' → AI generates 3 variations (num_ai_frames=3)\n"
         f"  - 'mockup for Gateway' (no upload, no description) → ERROR: missing creative\n"
-        f"  Keywords: 'mockup', 'mock up', 'billboard preview', 'show my ad on', 'put this on'\n\n"
+        f"  Keywords: 'mockup', 'mock up', 'billboard preview', 'show my ad on', 'put this on', 'dual frame', 'triple frame'\n\n"
 
         f"═══════════════════════════════════════════════════════════════════\n"
         f"🗄️ DATABASE & LOCATION MANAGEMENT\n"
@@ -488,6 +1014,16 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"- EDIT TASKS: Modify task management workflows\n\n"
 
         f"═══════════════════════════════════════════════════════════════════\n"
+        f"👤 USER PERMISSIONS\n"
+        f"═══════════════════════════════════════════════════════════════════\n\n"
+        f"Current User: {'ADMIN' if is_admin else 'STANDARD USER'}\n\n"
+        f"{'✅ ADMIN TOOLS AVAILABLE:' if is_admin else '❌ ADMIN TOOLS NOT AVAILABLE:'}\n"
+        f"- Booking Order Parsing (parse_booking_order, retrieve_booking_order)\n"
+        f"- Location Management (add_location, delete_location)\n"
+        f"- Database Export (export_proposals_to_excel)\n\n"
+        f"{'You have access to all admin-only tools listed above.' if is_admin else 'You do NOT have access to admin-only tools. Do not attempt to use or reference admin-only functions like booking order parsing, location management, or database export.'}\n\n"
+
+        f"═══════════════════════════════════════════════════════════════════\n"
         f"⚙️ SYSTEM GUIDELINES\n"
         f"═══════════════════════════════════════════════════════════════════\n\n"
         f"IMPORTANT:\n"
@@ -505,18 +1041,61 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"- STATIC locations: ALWAYS ask for production fee - it's mandatory\n"
         f"- Mixed packages: Ask production fees only for static locations\n"
         f"- If confused about location type, check the lists above\n"
-        f"- ALWAYS collect client name - it's required for tracking"
+        f"- ALWAYS collect client name - it's required for tracking\n\n"
+
+        f"═══════════════════════════════════════════════════════════════════\n"
+        f"🎨 BILLBOARD MOCKUP GENERATION\n"
+        f"═══════════════════════════════════════════════════════════════════\n\n"
+
+        f"MOCKUP MEMORY SYSTEM (30-Minute Creative Storage):\n"
+        f"When a user generates a mockup, the system stores their creative files (NOT the final mockup) for 30 minutes.\n"
+        f"This enables FOLLOW-UP REQUESTS where users can apply the same creatives to different locations.\n\n"
+
+        f"FOLLOW-UP REQUEST DETECTION:\n"
+        f"If a user recently generated a mockup (within 30 min) and asks to see it on another location WITHOUT uploading new images or providing AI prompt:\n"
+        f"- Examples: 'show me this on Dubai Gateway', 'apply to The Landmark', 'how would it look at Oryx'\n"
+        f"- Just call generate_mockup with the new location name - the system automatically reuses stored creatives\n"
+        f"- DO NOT ask them to re-upload images or provide AI prompt again\n"
+        f"- The system validates frame count compatibility (3-frame creatives can't be used on 1-frame locations)\n\n"
+
+        f"FRAME COUNT VALIDATION:\n"
+        f"- Multi-frame locations (2, 3, or more frames) require matching number of creatives\n"
+        f"- If user has 3-frame creatives in memory but requests 1-frame location → system shows error automatically\n"
+        f"- If frame mismatch error occurs, explain user needs to upload correct number of images OR use AI generation\n\n"
+
+        f"MOCKUP GENERATION MODES:\n"
+        f"1. UPLOAD MODE: User uploads image file(s) → Call generate_mockup IMMEDIATELY, no questions\n"
+        f"   - Takes priority over everything else\n"
+        f"   - Replaces any stored creatives with new upload\n"
+        f"   - DO NOT ask for clarification if user uploads images with location mention\n\n"
+
+        f"2. AI MODE: User provides creative description (no upload) → Call generate_mockup with ai_prompt\n"
+        f"   - Example: 'mockup for Dubai Gateway with luxury watch ad, gold and elegant'\n"
+        f"   - For multi-frame locations, specify num_ai_frames parameter\n"
+        f"   - System generates flat artwork designs (NOT photos of billboards)\n\n"
+
+        f"3. FOLLOW-UP MODE: User requests different location (no upload, no AI, within 30 min)\n"
+        f"   - Example: 'show me this on The Landmark'\n"
+        f"   - Just call generate_mockup with new location - system handles rest\n"
+        f"   - User doesn't need to specify they want to reuse creatives\n\n"
+
+        f"CRITICAL MOCKUP RULES:\n"
+        f"- If user uploads images AND mentions location → Call generate_mockup IMMEDIATELY\n"
+        f"- Don't ask 'which mockup' or 'which creative' for follow-ups - system knows\n"
+        f"- Frame count errors are handled automatically - just relay system message\n"
+        f"- After 30 minutes, stored creatives expire - user must upload/generate again"
     )
 
     # Check if user uploaded image files and append to message
     user_message_content = user_input
+    image_files = []  # Initialize outside conditional block
+
     if has_files and slack_event:
         files = slack_event.get("files", [])
         if not files and slack_event.get("subtype") == "file_share" and "file" in slack_event:
             files = [slack_event["file"]]
 
         # Check for image files
-        image_files = []
         for f in files:
             filetype = f.get("filetype", "")
             mimetype = f.get("mimetype", "")
@@ -530,6 +1109,28 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             user_message_content = f"{user_input}\n\n[User uploaded {len(image_files)} image file(s): {', '.join(image_files)}]"
             logger.info(f"[LLM] Detected {len(image_files)} uploaded image(s), informing LLM")
 
+    # Inject mockup history context ONLY if user did NOT upload new images (to avoid confusion)
+    if not image_files:
+        mockup_hist = get_mockup_history(user_id)
+        if mockup_hist:
+            metadata = mockup_hist.get("metadata", {})
+            stored_location = metadata.get("location_name", "unknown")
+            stored_frames = metadata.get("num_frames", 1)
+            mode = metadata.get("mode", "unknown")
+
+            # Calculate time remaining
+            timestamp = mockup_hist.get("timestamp")
+            if timestamp:
+                time_remaining = 30 - int((datetime.now() - timestamp).total_seconds() / 60)
+                time_remaining = max(0, time_remaining)
+
+                user_message_content = (
+                    f"{user_input}\n\n"
+                    f"[SYSTEM: User has {stored_frames}-frame creative(s) in memory from '{stored_location}' ({mode}). "
+                    f"Expires in {time_remaining} minutes. Can reuse for follow-up mockup requests on locations with {stored_frames} frame(s).]"
+                )
+                logger.info(f"[LLM] Injected mockup history context: {stored_frames} frames from {stored_location}, {time_remaining}min remaining")
+
     history = user_history.get(user_id, [])
     history.append({"role": "user", "content": user_message_content, "timestamp": datetime.now().isoformat()})
     history = history[-10:]
@@ -537,6 +1138,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
     messages_for_openai = [{"role": msg["role"], "content": msg["content"]} for msg in history if "role" in msg and "content" in msg]
     messages = [{"role": "developer", "content": prompt}] + messages_for_openai
 
+    # Base tools available to all users
     tools = [
         {
             "type": "function", 
@@ -614,9 +1216,9 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         {"type": "function", "name": "refresh_templates", "parameters": {"type": "object", "properties": {}}},
         {"type": "function", "name": "edit_task_flow", "parameters": {"type": "object", "properties": {"task_number": {"type": "integer"}, "task_data": {"type": "object"}}, "required": ["task_number", "task_data"]}},
         {
-            "type": "function", 
-            "name": "add_location", 
-            "description": "Add a new location. Admin must provide ALL required metadata upfront. Digital locations require: sov, spot_duration, loop_duration, upload_fee. Static locations don't need these fields.", 
+            "type": "function",
+            "name": "add_location",
+            "description": "Add a new location. Admin must provide ALL required metadata upfront. Digital locations require: sov, spot_duration, loop_duration, upload_fee. Static locations don't need these fields. ADMIN ONLY.", 
             "parameters": {
                 "type": "object", 
                 "properties": {
@@ -639,7 +1241,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         {
             "type": "function",
             "name": "delete_location",
-            "description": "Delete an existing location (admin only, requires confirmation)",
+            "description": "Delete an existing location (admin only, requires confirmation). ADMIN ONLY.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -648,24 +1250,76 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 "required": ["location_key"]
             }
         },
-        {"type": "function", "name": "export_proposals_to_excel", "description": "Export all proposals from the backend database to Excel and send to user", "parameters": {"type": "object", "properties": {}}},
+        {"type": "function", "name": "export_proposals_to_excel", "description": "Export all proposals from the backend database to Excel and send to user. ADMIN ONLY.", "parameters": {"type": "object", "properties": {}}},
         {"type": "function", "name": "get_proposals_stats", "description": "Get summary statistics of proposals from the database", "parameters": {"type": "object", "properties": {}}},
         {
             "type": "function",
             "name": "generate_mockup",
-            "description": "Generate a billboard mockup. IMPORTANT: If user uploads image file(s) and mentions a location for mockup, call this function IMMEDIATELY - do not ask for clarification. User can upload image(s) OR provide a text prompt for AI generation. System randomly selects billboard photo and warps creative(s) onto it. Supports multiple frames: 1 creative = duplicate across all, N creatives = match to N frames. Billboard variations can be specified with time_of_day (day/night/all) and finish (gold/silver/all). Use 'all' or omit to randomly select from all available variations.",
+            "description": "Generate a billboard mockup. IMPORTANT: If user uploads image file(s) and mentions a location for mockup, call this function IMMEDIATELY - do not ask for clarification. User can upload image(s) OR provide a text prompt for AI generation OR reuse creatives from recent mockup (within 30 min) by just specifying new location. System stores creative files for 30 minutes enabling follow-up requests on different locations. Supports multiple frames: 1 creative = duplicate across all, N creatives = match to N frames. System validates frame count compatibility automatically. Billboard variations can be specified with time_of_day (day/night/all) and finish (gold/silver/all). Use 'all' or omit to randomly select from all available variations.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "location": {"type": "string", "description": "The location name only (e.g., 'Dubai Gateway', 'The Landmark', 'oryx')"},
                     "time_of_day": {"type": "string", "description": "Optional time of day: 'day', 'night', or 'all' (default). Use 'all' for random selection from all time variations.", "enum": ["day", "night", "all"]},
                     "finish": {"type": "string", "description": "Optional billboard finish: 'gold', 'silver', or 'all' (default). Use 'all' for random selection from all finish variations.", "enum": ["gold", "silver", "all"]},
-                    "ai_prompt": {"type": "string", "description": "Optional: AI prompt to generate billboard-ready ARTWORK ONLY (flat advertisement design, NO billboards/signs/streets in the image). System will automatically place the artwork onto the billboard. Example: 'A luxury watch advertisement with gold accents and elegant typography' - this creates the ad design itself, not a photo of a billboard"}
+                    "ai_prompt": {"type": "string", "description": "Optional: AI prompt to generate billboard-ready ARTWORK ONLY (flat advertisement design, NO billboards/signs/streets in the image). System will automatically place the artwork onto the billboard. Example: 'A luxury watch advertisement with gold accents and elegant typography' - this creates the ad design itself, not a photo of a billboard"},
+                    "num_ai_frames": {"type": "integer", "description": "Optional: For AI generation only - specify number of different artworks to generate (e.g., 2 for dual frames, 3 for triple frames). System will use prompt parser to create N variations and match to template with N frames. Default is 1 (single artwork)."}
                 },
                 "required": ["location"]
             }
+        },
+        {
+            "type": "code_interpreter",
+            "container": {"type": "auto"}
         }
     ]
+
+    # Admin-only tools
+    if is_admin:
+        admin_tools = [
+            {
+                "type": "function",
+                "name": "parse_booking_order",
+                "description": "Parse a booking order document (Excel, PDF, or image) for MMG Backlite or Viola. Extracts client, campaign, locations, pricing, dates, and financial data. Biased toward classifying uploads as ARTWORK unless clearly a booking order. ADMIN ONLY.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "company": {
+                            "type": "string",
+                            "enum": ["mmg_backlite", "viola"],
+                            "description": "Company name - either 'mmg_backlite' or 'viola'"
+                        },
+                        "user_notes": {
+                            "type": "string",
+                            "description": "Optional notes or instructions from user about the booking order"
+                        }
+                    },
+                    "required": ["company"]
+                }
+            },
+            {
+                "type": "function",
+                "name": "retrieve_booking_order",
+                "description": "Retrieve an existing booking order by its reference number (e.g., BO-2025-0001). Returns parsed Excel and summary. ADMIN ONLY.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "bo_ref": {
+                            "type": "string",
+                            "description": "Booking order reference number (format: BO-YYYY-NNNN)"
+                        },
+                        "include_original": {
+                            "type": "boolean",
+                            "description": "Whether to include the original uploaded file (default: false)",
+                            "default": False
+                        }
+                    },
+                    "required": ["bo_ref"]
+                }
+            }
+        ]
+        tools.extend(admin_tools)
+        logger.info(f"[LLM] Admin user {user_id} - added {len(admin_tools)} admin-only tools")
 
     try:
         res = await config.openai_client.responses.create(model=config.OPENAI_MODEL, input=messages, tools=tools, tool_choice="auto")
@@ -1085,6 +1739,48 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 except Exception as e:
                     logger.error(f"[STATS] Error: {e}", exc_info=True)
 
+            elif msg.name == "parse_booking_order":
+                # Admin-only check
+                if not config.is_admin(user_id):
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await config.slack_client.chat_postMessage(
+                        channel=channel,
+                        text=config.markdown_to_slack("❌ **Access Denied:** Booking order parsing is restricted to administrators only.")
+                    )
+                    return
+
+                args = json.loads(msg.arguments)
+                company = args.get("company")
+                user_notes = args.get("user_notes", "")
+                await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Parsing booking order..._")
+                await _handle_booking_order_parse(
+                    company=company,
+                    slack_event=slack_event,
+                    channel=channel,
+                    status_ts=status_ts,
+                    user_notes=user_notes,
+                    user_id=user_id,
+                    user_message=user_input
+                )
+                return
+
+            elif msg.name == "retrieve_booking_order":
+                # Admin-only check
+                if not config.is_admin(user_id):
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await config.slack_client.chat_postMessage(
+                        channel=channel,
+                        text=config.markdown_to_slack("❌ **Access Denied:** Booking order retrieval is restricted to administrators only.")
+                    )
+                    return
+
+                args = json.loads(msg.arguments)
+                await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Retrieving booking order..._")
+                response = await _handle_booking_order_retrieve(args, channel)
+                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(response))
+                return
+
             elif msg.name == "generate_mockup":
                 # Handle mockup generation with AI or user upload
                 logger.info("[MOCKUP] User requested mockup generation")
@@ -1095,6 +1791,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 time_of_day = args.get("time_of_day", "").strip().lower() or "all"
                 finish = args.get("finish", "").strip().lower() or "all"
                 ai_prompt = args.get("ai_prompt", "").strip()
+                num_ai_frames = args.get("num_ai_frames", 1) or 1  # Default to 1 if not specified
 
                 # Convert display name to location key
                 location_key = config.get_location_key_from_display_name(location_name)
@@ -1130,6 +1827,12 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     )
                     return
 
+                # Get frame count for this location (needed for validation and storage)
+                new_location_frame_count = get_location_frame_count(location_key, time_of_day, finish)
+
+                # Get user's mockup history if exists (will validate later after checking for uploads)
+                mockup_user_hist = get_mockup_history(user_id)
+
                 # Check if user uploaded image(s) with the request
                 has_images = False
                 uploaded_creatives = []
@@ -1157,8 +1860,264 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                                 logger.error(f"[MOCKUP] Failed to download image: {e}")
 
                 # Determine mode based on what user provided
-                if ai_prompt:
+                # Priority: 1) New upload 2) AI prompt 3) History reuse 4) Error
+
+                # NO EARLY FRAME VALIDATION - Allow 1 creative to be tiled across multiple frames
+                # Validation happens later at line ~1916 where we check creative count, not stored frame count
+
+                # FOLLOW-UP MODE: Check if this is a follow-up request (no upload, no AI, has history)
+                if not has_images and not ai_prompt and mockup_user_hist:
+                    # This is a follow-up request to apply previous creatives to a different location
+                    stored_frames = mockup_user_hist.get("metadata", {}).get("num_frames", 1)
+                    stored_creative_paths = mockup_user_hist.get("creative_paths", [])
+                    stored_location = mockup_user_hist.get("metadata", {}).get("location_name", "unknown")
+
+                    # Verify all creative files still exist on disk
+                    missing_files = []
+                    for creative_path in stored_creative_paths:
+                        if not creative_path.exists():
+                            missing_files.append(str(creative_path))
+
+                    if missing_files:
+                        logger.error(f"[MOCKUP] Creative files missing from history: {missing_files}")
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            text=config.markdown_to_slack(
+                                f"❌ **Error:** Your previous creative files are no longer available.\n\n"
+                                f"Please upload new images or use AI generation."
+                            )
+                        )
+                        # Clean up corrupted history
+                        del mockup_history[user_id]
+                        return
+
+                    # Validate creative count: Allow if 1 creative (tile across frames) OR matches frame count
+                    num_stored_creatives = len(stored_creative_paths)
+                    is_valid_count = (num_stored_creatives == 1) or (num_stored_creatives == new_location_frame_count)
+
+                    if is_valid_count:
+                        logger.info(f"[MOCKUP] Follow-up request detected - reusing {len(stored_creative_paths)} creative(s) from history")
+
+                        await config.slack_client.chat_update(
+                            channel=channel,
+                            ts=status_ts,
+                            text=f"⏳ _Applying your previous creative(s) to {location_name}..._"
+                        )
+
+                        try:
+                            # Generate mockup using stored creatives (queued)
+                            result_path, _ = await _generate_mockup_queued(
+                                location_key,
+                                stored_creative_paths,
+                                time_of_day=time_of_day,
+                                finish=finish
+                            )
+
+                            if not result_path:
+                                raise Exception("Failed to generate mockup")
+
+                            # Upload mockup
+                            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                            variation_info = ""
+                            if time_of_day != "all" or finish != "all":
+                                variation_info = f" ({time_of_day}/{finish})"
+
+                            frames_info = f" ({stored_frames} frame(s))" if stored_frames > 1 else ""
+
+                            await config.slack_client.files_upload_v2(
+                                channel=channel,
+                                file=str(result_path),
+                                filename=f"mockup_{location_key}_{time_of_day}_{finish}.jpg",
+                                initial_comment=config.markdown_to_slack(
+                                    f"🎨 **Billboard Mockup Generated** (Follow-up)\n\n"
+                                    f"📍 New Location: {location_name}{variation_info}\n"
+                                    f"🔄 Using creative(s) from: {stored_location}{frames_info}\n"
+                                    f"✨ Your creative has been applied to this location."
+                                )
+                            )
+
+                            # Update history with new location (but keep same creatives)
+                            mockup_user_hist["metadata"]["location_key"] = location_key
+                            mockup_user_hist["metadata"]["location_name"] = location_name
+                            mockup_user_hist["metadata"]["time_of_day"] = time_of_day
+                            mockup_user_hist["metadata"]["finish"] = finish
+
+                            logger.info(f"[MOCKUP] Follow-up mockup generated successfully for user {user_id}")
+
+                            # Cleanup final mockup
+                            try:
+                                os.unlink(result_path)
+                            except:
+                                pass
+
+                            # Force garbage collection to free memory from numpy arrays
+                            import gc
+                            gc.collect()
+                            logger.debug(f"[MOCKUP] Follow-up mode: Forced garbage collection")
+
+                            return  # Done with follow-up
+
+                        except Exception as e:
+                            logger.error(f"[MOCKUP] Error generating follow-up mockup: {e}", exc_info=True)
+                            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                            await config.slack_client.chat_postMessage(
+                                channel=channel,
+                                text=config.markdown_to_slack(f"❌ **Error:** Failed to generate follow-up mockup. {str(e)}")
+                            )
+
+                            # Cleanup result file if it was created before error
+                            try:
+                                if 'result_path' in locals() and result_path and result_path.exists():
+                                    os.unlink(result_path)
+                                    logger.info(f"[MOCKUP] Cleaned up partial result file after error")
+                            except Exception as cleanup_error:
+                                logger.error(f"[MOCKUP] Failed to cleanup result file: {cleanup_error}")
+
+                            # Force garbage collection
+                            import gc
+                            gc.collect()
+
+                            return
+                    else:
+                        # Invalid creative count (e.g., 2 creatives for 3 frames)
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            text=config.markdown_to_slack(
+                                f"⚠️ **Creative Count Mismatch**\n\n"
+                                f"I have **{num_stored_creatives} creative(s)** from your previous mockup (**{stored_location}**), "
+                                f"but **{location_name}** requires **{new_location_frame_count} frame(s)**.\n\n"
+                                f"**Valid options:**\n"
+                                f"• Upload **1 image** (will be tiled across all frames)\n"
+                                f"• Upload **{new_location_frame_count} images** (one per frame)\n"
+                                f"• Use AI generation with a creative description"
+                            )
+                        )
+                        return
+
+                # Now proceed with normal modes (Priority: Upload > AI > Error)
+                if has_images:
+                    # UPLOAD MODE: User uploaded image(s) - this takes priority over AI
+                    logger.info(f"[MOCKUP] Processing {len(uploaded_creatives)} uploaded image(s)")
+
+                    # Validate creative count: Allow 1 (tile) OR match frame count
+                    num_uploaded = len(uploaded_creatives)
+                    is_valid_upload_count = (num_uploaded == 1) or (num_uploaded == new_location_frame_count)
+
+                    if not is_valid_upload_count:
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            text=config.markdown_to_slack(
+                                f"⚠️ **Creative Count Mismatch**\n\n"
+                                f"You uploaded **{num_uploaded} image(s)**, but **{location_name}** requires **{new_location_frame_count} frame(s)**.\n\n"
+                                f"**Valid options:**\n"
+                                f"• Upload **1 image** (will be tiled across all frames)\n"
+                                f"• Upload **{new_location_frame_count} images** (one per frame)"
+                            )
+                        )
+                        return
+
+                    await config.slack_client.chat_update(
+                        channel=channel,
+                        ts=status_ts,
+                        text="⏳ _Generating mockup from uploaded image(s)..._"
+                    )
+
+                    try:
+                        # Generate mockup using uploaded creatives (queued)
+                        result_path, _ = await _generate_mockup_queued(
+                            location_key,
+                            uploaded_creatives,
+                            time_of_day=time_of_day,
+                            finish=finish
+                        )
+
+                        if not result_path:
+                            raise Exception("Failed to generate mockup")
+
+                        # Delete status and upload mockup
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        variation_info = ""
+                        if time_of_day != "all" or finish != "all":
+                            variation_info = f" ({time_of_day}/{finish})"
+                        await config.slack_client.files_upload_v2(
+                            channel=channel,
+                            file=str(result_path),
+                            filename=f"mockup_{location_key}_{time_of_day}_{finish}.jpg",
+                            initial_comment=config.markdown_to_slack(
+                                f"🎨 **Billboard Mockup Generated**\n\n"
+                                f"📍 Location: {location_name}{variation_info}\n"
+                                f"🖼️ Creative(s): {len(uploaded_creatives)} image(s)\n"
+                                f"✨ Your creative has been applied to a billboard photo.{variation_note}"
+                            )
+                        )
+
+                        # Get frame count for validation in follow-ups
+                        location_frame_count = get_location_frame_count(location_key, time_of_day, finish)
+
+                        # Store creative files in 30-minute history for follow-ups on other locations
+                        store_mockup_history(user_id, uploaded_creatives, {
+                            "location_key": location_key,
+                            "location_name": location_name,
+                            "time_of_day": time_of_day,
+                            "finish": finish,
+                            "mode": "uploaded",
+                            "num_frames": location_frame_count or 1
+                        })
+                        logger.info(f"[MOCKUP] Stored {len(uploaded_creatives)} uploaded creative(s) in history for user {user_id} ({location_frame_count} frames)")
+
+                        # Cleanup final mockup (we keep creatives in history, not the result)
+                        try:
+                            os.unlink(result_path)
+                        except:
+                            pass
+
+                        # Force garbage collection to free memory from numpy arrays
+                        import gc
+                        gc.collect()
+                        logger.debug(f"[MOCKUP] Upload mode: Forced garbage collection")
+
+                    except Exception as e:
+                        logger.error(f"[MOCKUP] Error generating mockup from upload: {e}", exc_info=True)
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            text=config.markdown_to_slack(f"❌ **Error:** Failed to generate mockup. {str(e)}")
+                        )
+
+                        # Cleanup uploaded creative files on error
+                        try:
+                            for creative_file in uploaded_creatives:
+                                os.unlink(creative_file)
+                        except:
+                            pass
+
+                        # Force garbage collection
+                        import gc
+                        gc.collect()
+
+                elif ai_prompt:
                     # AI MODE: User provided a description for AI generation
+
+                    # Validate num_ai_frames: Allow 1 (tile) OR match frame count
+                    is_valid_ai_count = (num_ai_frames == 1) or (num_ai_frames == new_location_frame_count)
+
+                    if not is_valid_ai_count:
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            text=config.markdown_to_slack(
+                                f"⚠️ **Creative Count Mismatch**\n\n"
+                                f"You requested **{num_ai_frames} AI creatives**, but **{location_name}** requires **{new_location_frame_count} frame(s)**.\n\n"
+                                f"**Valid options:**\n"
+                                f"• Generate **1 creative** (will be tiled across all frames) - omit `num_ai_frames` parameter\n"
+                                f"• Generate **{new_location_frame_count} creatives** (one per frame) - set `num_ai_frames={new_location_frame_count}`"
+                            )
+                        )
+                        return
+
                     await config.slack_client.chat_update(
                         channel=channel,
                         ts=status_ts,
@@ -1277,19 +2236,20 @@ NOT a photo of a billboard displaying that ad on the street.
 
 DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
 
-                        # Generate creative using gpt-image-1
-                        ai_creative_path = await mockup_generator.generate_ai_creative(
-                            prompt=enhanced_prompt,
-                            size="1536x1024"  # Landscape format for billboards
+                        # Update status to show we're generating
+                        frames_text = f"{num_ai_frames} artworks and mockup" if num_ai_frames > 1 else "AI artwork and mockup"
+                        await config.slack_client.chat_update(
+                            channel=channel,
+                            ts=status_ts,
+                            text=f"⏳ _Generating {frames_text}..._"
                         )
 
-                        if not ai_creative_path:
-                            raise Exception("Failed to generate AI creative")
-
-                        # Generate mockup with time_of_day and finish
-                        result_path, _ = mockup_generator.generate_mockup(
-                            location_key,
-                            [ai_creative_path],
+                        # Generate AI creative(s) + mockup through queue (prevents memory spikes)
+                        result_path, ai_creative_paths = await _generate_ai_mockup_queued(
+                            ai_prompt=ai_prompt,
+                            enhanced_prompt=enhanced_prompt,
+                            num_ai_frames=num_ai_frames,
+                            location_key=location_key,
                             time_of_day=time_of_day,
                             finish=finish
                         )
@@ -1302,22 +2262,40 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                         variation_info = ""
                         if time_of_day != "all" or finish != "all":
                             variation_info = f" ({time_of_day}/{finish})"
+
+                        frames_info = f" ({num_ai_frames} frames)" if num_ai_frames > 1 else ""
+
                         await config.slack_client.files_upload_v2(
                             channel=channel,
                             file=str(result_path),
                             filename=f"ai_mockup_{location_key}_{time_of_day}_{finish}.jpg",
                             initial_comment=config.markdown_to_slack(
                                 f"🎨 **AI-Generated Billboard Mockup**\n\n"
-                                f"📍 Location: {location_name}{variation_info}\n"
+                                f"📍 Location: {location_name}{variation_info}{frames_info}\n"
                             )
                         )
 
-                        # Cleanup
+                        # Store creative files in 30-minute history for follow-ups on other locations
+                        store_mockup_history(user_id, ai_creative_paths, {
+                            "location_key": location_key,
+                            "location_name": location_name,
+                            "time_of_day": time_of_day,
+                            "finish": finish,
+                            "mode": "ai_generated",
+                            "num_frames": num_ai_frames
+                        })
+                        logger.info(f"[MOCKUP] Stored {len(ai_creative_paths)} AI creative(s) in history for user {user_id}")
+
+                        # Cleanup final mockup (we keep creatives in history, not the result)
                         try:
-                            os.unlink(ai_creative_path)
                             os.unlink(result_path)
                         except:
                             pass
+
+                        # Force garbage collection to free memory from numpy arrays
+                        import gc
+                        gc.collect()
+                        logger.debug(f"[MOCKUP] AI mode: Forced garbage collection")
 
                     except Exception as e:
                         logger.error(f"[MOCKUP] Error generating AI mockup: {e}", exc_info=True)
@@ -1327,81 +2305,36 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                             text=config.markdown_to_slack(f"❌ **Error:** Failed to generate AI mockup. {str(e)}")
                         )
 
-                elif has_images:
-                    # IMAGE UPLOAD MODE: User uploaded image(s) with their request
-                    logger.info(f"[MOCKUP] Processing {len(uploaded_creatives)} uploaded image(s)")
-
-                    await config.slack_client.chat_update(
-                        channel=channel,
-                        ts=status_ts,
-                        text="⏳ _Generating mockup from uploaded image(s)..._"
-                    )
-
-                    try:
-                        result_path, _ = mockup_generator.generate_mockup(
-                            location_key,
-                            uploaded_creatives,
-                            time_of_day=time_of_day,
-                            finish=finish
-                        )
-
-                        if not result_path:
-                            raise Exception("Failed to generate mockup")
-
-                        # Delete status and upload mockup
-                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                        variation_info = ""
-                        if time_of_day != "all" or finish != "all":
-                            variation_info = f" ({time_of_day}/{finish})"
-                        await config.slack_client.files_upload_v2(
-                            channel=channel,
-                            file=str(result_path),
-                            filename=f"mockup_{location_key}_{time_of_day}_{finish}.jpg",
-                            initial_comment=config.markdown_to_slack(
-                                f"🎨 **Billboard Mockup Generated**\n\n"
-                                f"📍 Location: {location_name}{variation_info}\n"
-                                f"🖼️ Creative(s): {len(uploaded_creatives)} image(s)\n"
-                                f"✨ Your creative has been applied to a billboard photo.{variation_note}"
-                            )
-                        )
-
-                        # Cleanup
+                        # Cleanup any AI creative files that were generated before the error
                         try:
-                            for creative_file in uploaded_creatives:
-                                os.unlink(creative_file)
-                            os.unlink(result_path)
-                        except:
-                            pass
+                            for creative_path in ai_creative_paths:
+                                if creative_path and creative_path.exists():
+                                    os.unlink(creative_path)
+                            logger.info(f"[MOCKUP] Cleaned up {len(ai_creative_paths)} AI creative file(s) after error")
+                        except Exception as cleanup_error:
+                            logger.error(f"[MOCKUP] Failed to cleanup AI creatives: {cleanup_error}")
 
-                    except Exception as e:
-                        logger.error(f"[MOCKUP] Error generating mockup from upload: {e}", exc_info=True)
-                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                        await config.slack_client.chat_postMessage(
-                            channel=channel,
-                            text=config.markdown_to_slack(f"❌ **Error:** Failed to generate mockup. {str(e)}")
-                        )
-
-                        # Cleanup
-                        try:
-                            for creative_file in uploaded_creatives:
-                                os.unlink(creative_file)
-                        except:
-                            pass
+                        # Force garbage collection
+                        import gc
+                        gc.collect()
 
                 else:
-                    # NO AI PROMPT, NO IMAGE UPLOADED: Error - user should have uploaded with request
+                    # NO AI PROMPT, NO IMAGE UPLOADED, NO HISTORY: Error - user needs to provide creative
                     await config.slack_client.chat_delete(channel=channel, ts=status_ts)
                     await config.slack_client.chat_postMessage(
                         channel=channel,
                         text=config.markdown_to_slack(
                             f"❌ **Sorry!** You need to provide a creative for the mockup.\n\n"
-                            f"**Two ways to generate mockups:**\n\n"
+                            f"**Three ways to generate mockups:**\n\n"
                             f"1️⃣ **Upload Your Image:** Attach your creative when you send the request\n"
                             f"   Example: [Upload creative.jpg] + \"mockup for {location_name}\"\n\n"
                             f"2️⃣ **AI Generation (No upload needed):** Describe what you want\n"
                             f"   Example: \"mockup for {location_name} with luxury watch ad, gold and elegant typography\"\n"
                             f"   The AI will generate the creative for you!\n\n"
-                            f"Please try again with either an image attachment OR a creative description!"
+                            f"3️⃣ **Follow-up Request:** If you recently generated a mockup (within 30 min), just ask!\n"
+                            f"   Example: \"show me this on {location_name}\" or \"apply to {location_name}\"\n"
+                            f"   I'll reuse your previous creative(s) automatically.\n\n"
+                            f"Please try again with an image attachment, creative description, or generate a mockup first!"
                         )
                     )
 

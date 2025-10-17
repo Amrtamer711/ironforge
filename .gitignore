@@ -27,6 +27,7 @@ Thumbs.db
 # Data folder (templates, config, etc.)
 data/
 render_data/
+render_main_data/
 
 # Generated proposals
 *.pdf

@@ -65,6 +65,52 @@ CREATE TABLE IF NOT EXISTS mockup_usage (
     user_ip TEXT,
     CONSTRAINT creative_type_check CHECK (creative_type IN ('uploaded', 'ai_generated'))
 );
+
+CREATE TABLE IF NOT EXISTS booking_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bo_ref TEXT UNIQUE NOT NULL,
+    company TEXT NOT NULL,
+    original_file_path TEXT NOT NULL,
+    original_file_type TEXT NOT NULL,
+    original_file_size INTEGER,
+    original_filename TEXT,
+    parsed_excel_path TEXT NOT NULL,
+    bo_number TEXT,
+    bo_date TEXT,
+    client TEXT,
+    agency TEXT,
+    brand_campaign TEXT,
+    category TEXT,
+    asset TEXT,
+    net_pre_vat REAL,
+    vat_value REAL,
+    gross_amount REAL,
+    sla_pct REAL,
+    payment_terms TEXT,
+    sales_person TEXT,
+    commission_pct REAL,
+    notes TEXT,
+    locations_json TEXT,
+    extraction_method TEXT,
+    extraction_confidence TEXT,
+    warnings_json TEXT,
+    missing_fields_json TEXT,
+    vat_calc REAL,
+    gross_calc REAL,
+    sla_deduction REAL,
+    net_excl_sla_calc REAL,
+    parsed_at TEXT NOT NULL,
+    parsed_by TEXT,
+    source_classification TEXT,
+    classification_confidence TEXT,
+    needs_review INTEGER DEFAULT 0,
+    search_text TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_booking_orders_bo_ref ON booking_orders(bo_ref);
+CREATE INDEX IF NOT EXISTS idx_booking_orders_company ON booking_orders(company);
+CREATE INDEX IF NOT EXISTS idx_booking_orders_client ON booking_orders(client);
+CREATE INDEX IF NOT EXISTS idx_booking_orders_parsed_at ON booking_orders(parsed_at);
 """
 
 
@@ -80,207 +126,19 @@ def _connect() -> sqlite3.Connection:
 
 
 def init_db() -> None:
+    """Initialize database with current schema.
+
+    Note: All legacy migrations have been removed since database was reset.
+    The SCHEMA constant above contains the complete, current table definitions.
+    New databases will be created with the correct schema from the start.
+    """
     conn = _connect()
     try:
         # executescript allows multiple SQL statements
         conn.executescript(SCHEMA)
-
-        # Run migrations
-        _migrate_add_subfolder_column(conn)
-        _migrate_add_config_json_column(conn)
-        _migrate_subfolder_to_time_and_finish(conn)
-        _migrate_add_image_blur_to_frames(conn)
+        logger.info("[DB] Database initialized with current schema")
     finally:
         conn.close()
-
-
-def _migrate_add_subfolder_column(conn: sqlite3.Connection) -> None:
-    """Migration: Add subfolder column to mockup_frames if it doesn't exist"""
-    try:
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(mockup_frames)")
-        columns = [row[1] for row in cursor.fetchall()]
-
-        # CRITICAL: If newer schema columns exist, we must NOT run the legacy migration
-        # This prevents data corruption on every deploy by avoiding recreation of table
-        # with old schema that drops time_of_day/finish columns
-        if 'time_of_day' in columns or 'finish' in columns:
-            logger.debug("[DB MIGRATION] Detected modern schema (time_of_day/finish present); skipping legacy 'subfolder' migration")
-            return
-
-        if 'subfolder' not in columns:
-            logger.info("[DB MIGRATION] Adding 'subfolder' column to mockup_frames table")
-
-            # Add subfolder column with default 'all'
-            conn.execute("ALTER TABLE mockup_frames ADD COLUMN subfolder TEXT NOT NULL DEFAULT 'all'")
-
-            # Drop the old unique constraint and create new one with subfolder
-            # SQLite doesn't support DROP CONSTRAINT, so we need to recreate the table
-            conn.execute("BEGIN")
-
-            # Create temporary table with new schema
-            conn.execute("""
-                CREATE TABLE mockup_frames_new (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    location_key TEXT NOT NULL,
-                    subfolder TEXT NOT NULL DEFAULT 'all',
-                    photo_filename TEXT NOT NULL,
-                    frames_data TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    created_by TEXT,
-                    config_json TEXT,
-                    UNIQUE(location_key, subfolder, photo_filename)
-                )
-            """)
-
-            # Copy data from old table
-            conn.execute("""
-                INSERT INTO mockup_frames_new
-                SELECT id, location_key, subfolder, photo_filename, frames_data, created_at, created_by, NULL
-                FROM mockup_frames
-            """)
-
-            # Drop old table and rename new one
-            conn.execute("DROP TABLE mockup_frames")
-            conn.execute("ALTER TABLE mockup_frames_new RENAME TO mockup_frames")
-
-            conn.execute("COMMIT")
-
-            logger.info("[DB MIGRATION] Successfully added 'subfolder' column and updated unique constraint")
-        else:
-            logger.debug("[DB MIGRATION] 'subfolder' column already exists, skipping migration")
-
-    except Exception as e:
-        logger.error(f"[DB MIGRATION] Error adding subfolder column: {e}", exc_info=True)
-        try:
-            conn.execute("ROLLBACK")
-        except:
-            pass
-
-
-def _migrate_add_config_json_column(conn: sqlite3.Connection) -> None:
-    """Migration: Add config_json column to mockup_frames if it doesn't exist"""
-    try:
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(mockup_frames)")
-        columns = [row[1] for row in cursor.fetchall()]
-
-        if 'config_json' not in columns:
-            logger.info("[DB MIGRATION] Adding 'config_json' column to mockup_frames table")
-            conn.execute("ALTER TABLE mockup_frames ADD COLUMN config_json TEXT")
-            logger.info("[DB MIGRATION] Successfully added 'config_json' column")
-        else:
-            logger.debug("[DB MIGRATION] 'config_json' column already exists, skipping migration")
-
-    except Exception as e:
-        logger.error(f"[DB MIGRATION] Error adding config_json column: {e}", exc_info=True)
-
-
-def _migrate_subfolder_to_time_and_finish(conn: sqlite3.Connection) -> None:
-    """Migration: Convert subfolder column to time_of_day and finish columns"""
-    try:
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(mockup_frames)")
-        columns = [row[1] for row in cursor.fetchall()]
-
-        # Check if we still have subfolder column (old schema)
-        if 'subfolder' in columns and 'time_of_day' not in columns:
-            logger.info("[DB MIGRATION] Migrating subfolder to time_of_day and finish columns")
-
-            # Add new columns
-            conn.execute("ALTER TABLE mockup_frames ADD COLUMN time_of_day TEXT NOT NULL DEFAULT 'day'")
-            conn.execute("ALTER TABLE mockup_frames ADD COLUMN finish TEXT NOT NULL DEFAULT 'gold'")
-
-            # Map old subfolder values to new structure
-            # Old: gold, silver, night, day, all
-            # New: time_of_day (day/night) + finish (gold/silver)
-            mapping = {
-                'gold': ('day', 'gold'),
-                'silver': ('day', 'silver'),
-                'night': ('night', 'gold'),  # Night defaults to gold finish
-                'day': ('day', 'gold'),      # Day defaults to gold finish
-                'all': ('day', 'gold')       # Default to day/gold
-            }
-
-            cursor.execute("SELECT id, subfolder FROM mockup_frames")
-            rows = cursor.fetchall()
-
-            for row_id, subfolder in rows:
-                time_of_day, finish = mapping.get(subfolder, ('day', 'gold'))
-                conn.execute(
-                    "UPDATE mockup_frames SET time_of_day = ?, finish = ? WHERE id = ?",
-                    (time_of_day, finish, row_id)
-                )
-
-            # Create new table without subfolder column
-            conn.execute("""
-                CREATE TABLE mockup_frames_new (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    location_key TEXT NOT NULL,
-                    time_of_day TEXT NOT NULL DEFAULT 'day',
-                    finish TEXT NOT NULL DEFAULT 'gold',
-                    photo_filename TEXT NOT NULL,
-                    frames_data TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    created_by TEXT,
-                    config_json TEXT,
-                    UNIQUE(location_key, time_of_day, finish, photo_filename)
-                )
-            """)
-
-            # Copy data to new table
-            conn.execute("""
-                INSERT INTO mockup_frames_new
-                SELECT id, location_key, time_of_day, finish, photo_filename, frames_data, created_at, created_by, config_json
-                FROM mockup_frames
-            """)
-
-            # Drop old table and rename new one
-            conn.execute("DROP TABLE mockup_frames")
-            conn.execute("ALTER TABLE mockup_frames_new RENAME TO mockup_frames")
-
-            logger.info("[DB MIGRATION] Successfully migrated subfolder to time_of_day and finish columns")
-        else:
-            logger.debug("[DB MIGRATION] time_of_day/finish columns already exist, skipping subfolder migration")
-
-    except Exception as e:
-        logger.error(f"[DB MIGRATION] Error migrating subfolder to time_of_day/finish: {e}", exc_info=True)
-
-
-def _migrate_add_image_blur_to_frames(conn: sqlite3.Connection) -> None:
-    """Migration: Add imageBlur field to all existing frame configs that don't have it"""
-    import json
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, frames_data FROM mockup_frames")
-        rows = cursor.fetchall()
-
-        updated_count = 0
-        for row_id, frames_data_json in rows:
-            frames_data = json.loads(frames_data_json)
-            modified = False
-
-            # Check each frame in the frames_data array
-            for frame in frames_data:
-                if 'config' in frame and 'imageBlur' not in frame['config']:
-                    frame['config']['imageBlur'] = 0
-                    modified = True
-
-            # Update the row if we modified any frames
-            if modified:
-                conn.execute(
-                    "UPDATE mockup_frames SET frames_data = ? WHERE id = ?",
-                    (json.dumps(frames_data), row_id)
-                )
-                updated_count += 1
-
-        if updated_count > 0:
-            logger.info(f"[DB MIGRATION] Added imageBlur field to {updated_count} frame record(s)")
-        else:
-            logger.debug("[DB MIGRATION] All frames already have imageBlur field, skipping migration")
-
-    except Exception as e:
-        logger.error(f"[DB MIGRATION] Error adding imageBlur to frames: {e}", exc_info=True)
 
 
 def log_proposal(
@@ -305,6 +163,137 @@ def log_proposal(
             (submitted_by, client_name, date_generated, package_type, locations, total_amount),
         )
         conn.execute("COMMIT")
+    finally:
+        conn.close()
+
+
+def generate_next_bo_ref() -> str:
+    """Generate the next booking order reference number: BO-YYYY-NNNN"""
+    import json
+    current_year = datetime.now().year
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT bo_ref FROM booking_orders WHERE bo_ref LIKE ? ORDER BY bo_ref DESC LIMIT 1",
+            (f"BO-{current_year}-%",)
+        )
+        row = cursor.fetchone()
+        if row:
+            last_num = int(row[0].split("-")[-1])
+            next_num = last_num + 1
+        else:
+            next_num = 1
+        return f"BO-{current_year}-{next_num:04d}"
+    finally:
+        conn.close()
+
+
+def save_booking_order(data: dict) -> str:
+    """Save a booking order to the database. Returns the bo_ref."""
+    import json
+    conn = _connect()
+    try:
+        conn.execute("BEGIN")
+
+        # Build search text
+        search_text = " ".join([
+            str(data.get("bo_ref", "")),
+            str(data.get("client", "")),
+            str(data.get("brand_campaign", "")),
+            str(data.get("bo_number", "")),
+        ]).lower()
+
+        # Serialize JSON fields
+        locations_json = json.dumps(data.get("locations", []))
+        warnings_json = json.dumps(data.get("warnings", []))
+        missing_json = json.dumps(data.get("missing_required", []))
+
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO booking_orders (
+                bo_ref, company, original_file_path, original_file_type, original_file_size, original_filename,
+                parsed_excel_path, bo_number, bo_date, client, agency, brand_campaign, category, asset,
+                net_pre_vat, vat_value, gross_amount, sla_pct, payment_terms, sales_person, commission_pct,
+                notes, locations_json, extraction_method, extraction_confidence, warnings_json, missing_fields_json,
+                vat_calc, gross_calc, sla_deduction, net_excl_sla_calc, parsed_at, parsed_by,
+                source_classification, classification_confidence, needs_review, search_text
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                data["bo_ref"],
+                data["company"],
+                data["original_file_path"],
+                data["original_file_type"],
+                data.get("original_file_size"),
+                data.get("original_filename"),
+                data["parsed_excel_path"],
+                data.get("bo_number"),
+                data.get("bo_date"),
+                data.get("client"),
+                data.get("agency"),
+                data.get("brand_campaign"),
+                data.get("category"),
+                data.get("asset"),  # Can be string or will be JSON if list
+                data.get("net_pre_vat"),
+                data.get("vat_value"),
+                data.get("gross_amount"),
+                data.get("sla_pct"),
+                data.get("payment_terms"),
+                data.get("sales_person"),
+                data.get("commission_pct"),
+                data.get("notes"),
+                locations_json,
+                data.get("extraction_method", "llm"),
+                data.get("extraction_confidence", "medium"),
+                warnings_json,
+                missing_json,
+                data.get("vat_calc"),
+                data.get("gross_calc"),
+                data.get("sla_deduction"),
+                data.get("net_excl_sla_calc"),
+                data.get("parsed_at", datetime.now().isoformat()),
+                data.get("parsed_by"),
+                data.get("source_classification"),
+                data.get("classification_confidence"),
+                int(data.get("needs_review", False)),
+                search_text,
+            ),
+        )
+        conn.execute("COMMIT")
+        logger.info(f"[DB] Saved booking order: {data['bo_ref']}")
+        return data["bo_ref"]
+    except Exception as e:
+        conn.execute("ROLLBACK")
+        logger.error(f"[DB] Error saving booking order: {e}", exc_info=True)
+        raise
+    finally:
+        conn.close()
+
+
+def get_booking_order(bo_ref: str) -> Optional[dict]:
+    """Retrieve a booking order by reference number."""
+    import json
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM booking_orders WHERE bo_ref = ?", (bo_ref,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        columns = [desc[0] for desc in cursor.description]
+        record = dict(zip(columns, row))
+
+        # Deserialize JSON fields
+        if record.get("locations_json"):
+            record["locations"] = json.loads(record["locations_json"])
+        if record.get("warnings_json"):
+            record["warnings"] = json.loads(record["warnings_json"])
+        if record.get("missing_fields_json"):
+            record["missing_required"] = json.loads(record["missing_fields_json"])
+
+        return record
     finally:
         conn.close()
 
