@@ -745,25 +745,17 @@ def get_random_location_photo(location_key: str, time_of_day: str = "all", finis
     return photo_filename, time_of_day, finish, photo_path
 
 
-async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_key: Optional[str] = None) -> Optional[Path]:
-    """
-    Generate a creative using OpenAI gpt-image-1 API.
-
-    Args:
-        prompt: The AI generation prompt
-        size: Image dimensions (default: 1536x1024)
-        location_key: Optional location identifier for tracking/logging
-    """
+async def generate_ai_creative(prompt: str, size: str = "1536x1024") -> Optional[Path]:
+    """Generate a creative using OpenAI gpt-image-1 API."""
     import tempfile
     import base64
     from openai import AsyncOpenAI
 
-    log_prefix = f"[AI_CREATIVE:{location_key}]" if location_key else "[AI_CREATIVE]"
-    logger.info(f"{log_prefix} Generating image from prompt: {prompt[:100]}...")
+    logger.info(f"[AI_CREATIVE] Generating image from prompt: {prompt[:100]}...")
 
     api_key = config.OPENAI_API_KEY
     if not api_key:
-        logger.error(f"{log_prefix} No OpenAI API key configured")
+        logger.error("[AI_CREATIVE] No OpenAI API key configured")
         return None
 
     try:
@@ -815,12 +807,12 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
         cv2.imwrite(temp_file.name, enhanced, [cv2.IMWRITE_PNG_COMPRESSION, 3])
         temp_file.close()
 
-        logger.info(f"{log_prefix} Enhanced image saved to: {temp_file.name}")
+        logger.info(f"[AI_CREATIVE] Enhanced image saved to: {temp_file.name}")
 
         return Path(temp_file.name)
 
     except Exception as e:
-        logger.error(f"{log_prefix} Error generating image: {e}", exc_info=True)
+        logger.error(f"[AI_CREATIVE] Error generating image: {e}", exc_info=True)
         return None
 
 
