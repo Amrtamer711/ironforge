@@ -74,12 +74,12 @@ class BookingOrderParser:
         if user_message:
             logger.info(f"[BOOKING PARSER] User message context: {user_message}")
 
-        # Upload file to OpenAI
+        # Upload file to OpenAI with purpose="vision" for document analysis
         try:
             with open(file_path, "rb") as f:
                 file_obj = await config.openai_client.files.create(
                     file=f,
-                    purpose="user_data"
+                    purpose="vision"
                 )
             file_id = file_obj.id
             logger.info(f"[BOOKING PARSER] Uploaded file to OpenAI: {file_id}")
@@ -128,8 +128,14 @@ Analyze the uploaded file and respond with:
                 model=config.OPENAI_MODEL,
                 input=[
                     {"role": "system", "content": "You are a document classifier. Analyze the file and provide classification."},
-                    {"role": "user", "content": classification_prompt, "attachments": [{"type": "file", "file_id": file_id}]}
-                ]
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": classification_prompt},
+                            {"type": "input_file", "input_file": {"file_id": file_id}}
+                        ]
+                    }
+                ],
             )
 
             if not response.output or len(response.output) == 0:
@@ -177,12 +183,12 @@ Analyze the uploaded file and respond with:
         """
         logger.info(f"[BOOKING PARSER] Parsing {file_type} file: {file_path}")
 
-        # Upload file to OpenAI
+        # Upload file to OpenAI with purpose="vision" for document parsing
         try:
             with open(file_path, "rb") as f:
                 file_obj = await config.openai_client.files.create(
                     file=f,
-                    purpose="user_data"
+                    purpose="vision"
                 )
             file_id = file_obj.id
             logger.info(f"[BOOKING PARSER] Uploaded file for parsing: {file_id}")
@@ -198,8 +204,16 @@ Analyze the uploaded file and respond with:
                 model=config.OPENAI_MODEL,
                 input=[
                     {"role": "system", "content": "You are a booking order data extractor. Extract ONLY what is clearly visible. Use null for missing fields. No hallucinations."},
-                    {"role": "user", "content": parsing_prompt, "attachments": [{"type": "file", "file_id": file_id}]}
-                ]
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": parsing_prompt},
+                            {"type": "input_file", "input_file": {"file_id": file_id}}
+                        ]
+                    }
+                ],
+                max_output_tokens=4000,
+                temperature=0.1
             )
 
             if not response.output or len(response.output) == 0:
