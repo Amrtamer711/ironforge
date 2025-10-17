@@ -530,7 +530,7 @@ async def _handle_booking_order_parse(
 
     preview += "\n\n**What would you like to do?**\n"
     preview += "• Tell me any corrections (e.g., 'Change client to Acme Corp', 'Net should be 150,000')\n"
-    preview += "• Say 'approve' or 'save it' to save to database\n"
+    preview += "• Say 'approve' to submit for coordinator approval\n"
     preview += "• Say 'cancel' to discard this draft"
 
     await config.slack_client.chat_delete(channel=channel, ts=status_ts)
