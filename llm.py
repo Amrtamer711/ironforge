@@ -6,7 +6,6 @@ from pathlib import Path
 import aiohttp
 from datetime import datetime, timedelta
 from pptx import Presentation
-import re
 import shutil
 
 import config
@@ -688,15 +687,14 @@ IMPORTANT: Use natural language in messages. Be friendly and conversational.
                 original_file_path = edit_data.get("original_file_path")
                 company = edit_data.get("company")
                 file_type = edit_data.get("file_type")
-                original_filename = edit_data.get("original_filename", "booking_order")
 
                 # Create company-specific subdirectory
                 company_dir = ORIGINAL_DIR / company
                 company_dir.mkdir(parents=True, exist_ok=True)
 
-                # Move file with BO reference in filename
-                safe_filename = re.sub(r'[^\w\-_\.]', '_', original_filename)
-                final_path = company_dir / f"{bo_ref}_{safe_filename}"
+                # Get file extension from original file
+                original_ext = Path(str(original_file_path)).suffix  # e.g., .pdf, .xlsx, .jpg
+                final_path = company_dir / f"{bo_ref}{original_ext}"
                 shutil.move(str(original_file_path), str(final_path))
 
                 # Generate Excel
