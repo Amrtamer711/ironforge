@@ -486,6 +486,9 @@ Extract all data visible in the document. Return ONLY valid JSON, no additional 
 
         for field, value in fields:
             ws[f"A{row}"] = field
+            # Convert lists to comma-separated strings for Excel
+            if isinstance(value, list):
+                value = ", ".join(str(v) for v in value)
             ws[f"B{row}"] = value if value is not None else ""
             row += 1
 
@@ -513,6 +516,9 @@ Extract all data visible in the document. Return ONLY valid JSON, no additional 
 
                 for field, value in loc_fields:
                     ws[f"A{row}"] = field
+                    # Convert lists to comma-separated strings for Excel
+                    if isinstance(value, list):
+                        value = ", ".join(str(v) for v in value)
                     ws[f"B{row}"] = value if value is not None else ""
                     row += 1
 
