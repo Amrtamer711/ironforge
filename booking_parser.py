@@ -253,56 +253,103 @@ Analyze the uploaded file and respond with:
 
     def _build_parsing_prompt(self) -> str:
         """Build the parsing prompt with field requirements"""
-        return f"""Extract booking order data from this document. Company: {self.company.upper()}
+        return f"""You are extracting data from a booking order document for {self.company.upper()}.
 
-**CRITICAL RULES:**
-1. Extract ONLY what you can clearly see in the document
-2. Use null for any field that is not present or unclear
-3. Do NOT make up, estimate, or hallucinate any values
-4. For dates, use YYYY-MM-DD format if possible, otherwise use the exact format shown
-5. For numbers, extract as numbers (not strings)
+**YOUR TASK:**
+Extract ALL visible information from this booking order. Be precise and thorough. Do NOT make up values.
 
-**REQUIRED OUTPUT FORMAT (JSON):**
+**CRITICAL EXTRACTION RULES:**
+1. Extract ONLY what is clearly visible in the document
+2. Use null for any field that is missing or unclear
+3. For dates: Convert to YYYY-MM-DD format (e.g., "21st February 2025" → "2025-02-21")
+4. For percentages: Convert to decimal (e.g., "5%" → 0.05, "0.4%" → 0.004)
+5. For numbers: Extract as pure numbers without currency symbols (e.g., "295,596.00" → 295596.00)
+6. Do NOT calculate or estimate - only extract what you see
+
+**DOCUMENT STRUCTURE TO LOOK FOR:**
+
+**Header Information:**
+- BO Number (Booking Order reference number - usually starts with "BO-" or "DPD-")
+- BO Date (the date the booking order was created)
+- Client (company/organization name)
+- Agency (may be blank/empty)
+- Brand/Campaign (campaign or brand name)
+- Category (e.g., "Real Estate", "FMCG", "Automotive")
+
+**Asset Information:**
+- Asset(s): The billboard/screen codes or names (e.g., "UAE02", "SZR - Timaz Screen")
+- Can be a single asset OR multiple assets (extract as list if multiple)
+- May appear in header OR per-location in a table
+
+**Location Details (usually in a table):**
+Look for a table with columns showing different locations/sites. For EACH location, extract:
+- Location name (site/screen identifier)
+- Start date (campaign start date for this location)
+- End date (campaign end date for this location)
+- Campaign duration (e.g., "1 month", "30 days")
+- Asset (if specified per-location, otherwise use global asset)
+
+**Cost Breakdown Per Location:**
+For each location, look for these cost components:
+- Campaign cost / Media cost / Net amount (the main advertising cost)
+- Production cost / Upload cost (may be labeled "Production/Upload Cost", can be 0 or N/A)
+- DM Fee / Digital Marketing Fee (additional fee, can be 0 or N/A)
+
+IMPORTANT: The location's net_amount should be the TOTAL for that location.
+
+**Financial Totals (bottom of document):**
+- Net amount / Net excl. VAT (total before VAT) - extract if shown
+- VAT amount (Value Added Tax) - extract if shown
+- Gross amount (total including VAT) - extract if shown
+- SLA / SLA% (Service Level Agreement percentage) - extract if shown
+
+**Additional Information:**
+- Payment terms (e.g., "60 days PDC", "30 days credit")
+- Sales person name
+- Commission % (salesperson commission percentage)
+
+**REQUIRED JSON OUTPUT FORMAT:**
 ```json
 {{
-  "bo_number": "string or null",
+  "bo_number": "string (e.g., 'DPD-112652') or null",
   "bo_date": "YYYY-MM-DD or null",
   "client": "string or null",
   "agency": "string or null",
   "brand_campaign": "string or null",
   "category": "string or null",
-  "asset": "string or list of strings or null",
-  "net_pre_vat": number or null,
-  "vat_value": number or null,
-  "gross_amount": number or null,
-  "sla_pct": number (as decimal, e.g. 0.05 for 5%) or null,
+  "asset": "string or list of strings (e.g., ['UAE02', 'UAE03'] if multiple) or null",
   "payment_terms": "string or null",
   "sales_person": "string or null",
-  "commission_pct": number (as decimal) or null,
-  "notes": "string or null",
+  "commission_pct": "number as decimal (e.g., 0.004 for 0.4%) or null",
+  "sla_pct": "number as decimal (e.g., 0.05 for 5%) or null",
+  "net_pre_vat": "number (total net if shown) or null",
+  "vat_value": "number (VAT amount if shown) or null",
+  "gross_amount": "number (gross total if shown) or null",
+  "notes": "string (any additional notes) or null",
   "locations": [
     {{
-      "name": "string",
-      "asset": "string or null (if different from global asset)",
+      "name": "string (location/site identifier)",
+      "asset": "string (asset code for this location, if different from global) or null",
       "start_date": "YYYY-MM-DD",
       "end_date": "YYYY-MM-DD",
-      "campaign_duration": "string (e.g., '30 days')",
-      "production_upload_cost": number or null,
-      "dm_fee": number or null,
-      "net_amount": number
+      "campaign_duration": "string (e.g., '1 month', '30 days')",
+      "campaign_cost": "number (main media/advertising cost) or null",
+      "production_upload_cost": "number (production/upload fee) or null",
+      "dm_fee": "number (digital marketing fee) or null",
+      "net_amount": "number (total for this location: campaign_cost + production + dm_fee)"
     }}
   ]
 }}
 ```
 
-**FIELD DEFINITIONS:**
-- net_pre_vat: Total net amount before VAT
-- vat_value: VAT amount (often 5% in UAE)
-- gross_amount: Total including VAT
-- sla_pct: SLA percentage as decimal (0.05 = 5%)
-- locations: Array of location bookings with individual pricing
+**IMPORTANT NOTES:**
+- If you see multiple locations in a table, create one object per location in the "locations" array
+- Each location should have its own dates, costs, and duration
+- The net_amount for each location is the sum of that location's costs
+- If a document shows "N/A" or blank for a cost field, use null
+- Asset codes like "UAE02", "UAE03", "UAE21" should be extracted as a list: ["UAE02", "UAE03", "UAE21"]
 
-Extract all data visible in the document. Return ONLY valid JSON, no additional text."""
+Return ONLY the JSON object, no additional text or explanation."""
 
     def _extract_json_from_response(self, text: str) -> Dict[str, Any]:
         """Extract JSON from LLM response (may have markdown code blocks)"""
