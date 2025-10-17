@@ -181,6 +181,14 @@ def warp_creative_to_billboard(
         borderMode=cv2.BORDER_REFLECT_101  # Mirror reflection without edge duplication
     )
 
+    # Delete creative_upscaled immediately - we have warped version, don't need source anymore
+    # Saves 12MB before allocating mask
+    try:
+        del creative_upscaled
+    except:
+        pass
+    gc.collect()
+
     # Create high-quality anti-aliased mask using super-sampling
     # OPTIMIZED: Only super-sample the frame region, not the entire billboard
     # This saves massive amounts of memory (e.g., 1152MB → 36MB for 8K billboard)
