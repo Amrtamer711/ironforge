@@ -261,18 +261,24 @@ def warp_creative_to_billboard(
 
     # Draw mask at high resolution (only for the bbox region)
     mask_hires = np.zeros((bbox_h_hires, bbox_w_hires), dtype=np.uint8)
+    logger.info(f"[MOCKUP] ✓ Allocated mask_hires successfully ({bbox_hires_mb:.1f}MB)")
+
     cv2.fillPoly(mask_hires, [dst_pts_local_hires.astype(np.int32)], 255, lineType=cv2.LINE_AA)
+    logger.info(f"[MOCKUP] ✓ fillPoly complete")
 
     # Apply additional Gaussian blur at high-res for extra smoothing
     if edge_smoother > 3:
         blur_strength = int((edge_smoother - 3) * 2)
         if blur_strength > 0:
             kernel_size = blur_strength * 2 + 1  # Ensure odd
+            logger.info(f"[MOCKUP] Applying GaussianBlur to mask_hires (kernel: {kernel_size})")
             mask_hires = cv2.GaussianBlur(mask_hires, (kernel_size, kernel_size), sigmaX=blur_strength/2)
-            logger.info(f"[MOCKUP] Applied additional mask blur: {blur_strength}px")
+            logger.info(f"[MOCKUP] ✓ GaussianBlur complete ({blur_strength}px)")
 
     # Downsample bbox mask to original resolution
+    logger.info(f"[MOCKUP] Downsampling mask_hires to {bbox_width}x{bbox_height}")
     mask_bbox = cv2.resize(mask_hires, (bbox_width, bbox_height), interpolation=cv2.INTER_AREA)
+    logger.info(f"[MOCKUP] ✓ Downsample complete")
 
     # Delete high-res mask immediately to free 29MB before next allocation
     try:
