@@ -574,13 +574,15 @@ Warnings: {warnings}
 Missing required fields: {missing_required}
 
 Field mapping (use these exact keys when updating):
+
+**Global Fields:**
 - Client/client name/customer → "client"
 - Campaign/campaign name/brand → "brand_campaign"
 - BO number/booking order number → "bo_number"
 - BO date/booking order date → "bo_date"
 - Net/net amount/net pre-VAT → "net_pre_vat"
-- VAT/vat amount → "vat_calc"
-- Gross/gross amount/total → "gross_calc"
+- VAT/vat amount → "vat_value" or "vat_calc"
+- Gross/gross amount/total → "gross_amount" or "gross_calc"
 - Agency/agency name → "agency"
 - Sales person/salesperson → "sales_person"
 - SLA percentage → "sla_pct"
@@ -588,7 +590,20 @@ Field mapping (use these exact keys when updating):
 - Commission percentage → "commission_pct"
 - Notes → "notes"
 - Category → "category"
-- Asset → "asset"
+- Asset → "asset" (can be string or array of strings)
+
+**Location Fields (provide full locations array if editing locations):**
+- Locations → "locations" (array of objects)
+  Each location object can have:
+  - "name": location/site name
+  - "asset": asset code for this location
+  - "start_date": YYYY-MM-DD format
+  - "end_date": YYYY-MM-DD format
+  - "campaign_duration": e.g., "1 month"
+  - "campaign_cost": main media cost
+  - "production_upload_cost": production fees
+  - "dm_fee": digital marketing fee
+  - "net_amount": total for location
 
 Return JSON with: action, fields (only changed fields), message (natural language response to user).
 IMPORTANT: Use natural language in messages. Be friendly and conversational.
@@ -615,7 +630,9 @@ IMPORTANT: Use natural language in messages. Be friendly and conversational.
                                     'bo_number': {'type': 'string'},
                                     'bo_date': {'type': 'string'},
                                     'net_pre_vat': {'type': 'number'},
+                                    'vat_value': {'type': 'number'},
                                     'vat_calc': {'type': 'number'},
+                                    'gross_amount': {'type': 'number'},
                                     'gross_calc': {'type': 'number'},
                                     'agency': {'type': 'string'},
                                     'sales_person': {'type': 'string'},
@@ -624,7 +641,29 @@ IMPORTANT: Use natural language in messages. Be friendly and conversational.
                                     'commission_pct': {'type': 'number'},
                                     'notes': {'type': 'string'},
                                     'category': {'type': 'string'},
-                                    'asset': {'type': 'string'}
+                                    'asset': {
+                                        'anyOf': [
+                                            {'type': 'string'},
+                                            {'type': 'array', 'items': {'type': 'string'}}
+                                        ]
+                                    },
+                                    'locations': {
+                                        'type': 'array',
+                                        'items': {
+                                            'type': 'object',
+                                            'properties': {
+                                                'name': {'type': 'string'},
+                                                'asset': {'type': 'string'},
+                                                'start_date': {'type': 'string'},
+                                                'end_date': {'type': 'string'},
+                                                'campaign_duration': {'type': 'string'},
+                                                'campaign_cost': {'type': 'number'},
+                                                'production_upload_cost': {'type': 'number'},
+                                                'dm_fee': {'type': 'number'},
+                                                'net_amount': {'type': 'number'}
+                                            }
+                                        }
+                                    }
                                 },
                                 'additionalProperties': True
                             },
