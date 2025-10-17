@@ -678,58 +678,57 @@ IMPORTANT: Use natural language in messages. Be friendly and conversational.
         message = decision.get('message', '')
 
         if action == 'approve':
-            # Save booking order to database
+            # Start approval workflow - send to Head of Sales
             try:
-                # Generate BO reference
-                bo_ref = await db.generate_next_bo_ref()
+                import bo_approval_workflow
+                import bo_slack_messaging
 
-                # Move temp file to ORIGINAL_DIR
-                original_file_path = edit_data.get("original_file_path")
-                company = edit_data.get("company")
-                file_type = edit_data.get("file_type")
+                # Generate temp Excel for HoS review
+                parser = BookingOrderParser(company=edit_data.get("company"))
+                temp_excel = await parser.generate_excel(current_data, f"DRAFT_{edit_data.get('company')}")
 
-                # Create company-specific subdirectory
-                company_dir = ORIGINAL_DIR / company
-                company_dir.mkdir(parents=True, exist_ok=True)
-
-                # Get file extension from original file
-                original_ext = Path(str(original_file_path)).suffix  # e.g., .pdf, .xlsx, .jpg
-                final_path = company_dir / f"{bo_ref}{original_ext}"
-                shutil.move(str(original_file_path), str(final_path))
-
-                # Generate Excel
-                parser = BookingOrderParser()
-                excel_path = await parser.generate_excel(current_data, bo_ref)
-
-                # Save to database
-                await db.save_booking_order(
-                    bo_ref=bo_ref,
-                    company=company,
+                # Create approval workflow
+                workflow_id = await bo_approval_workflow.create_approval_workflow(
+                    user_id=user_id,
+                    company=edit_data.get("company"),
                     data=current_data,
                     warnings=warnings,
                     missing_required=missing_required,
-                    file_type=file_type,
-                    original_file_path=str(final_path),
-                    parsed_excel_path=str(excel_path),
+                    original_file_path=edit_data.get("original_file_path"),
+                    original_filename=edit_data.get("original_filename"),
+                    file_type=edit_data.get("file_type"),
                     user_notes=edit_data.get("user_notes", "")
                 )
 
-                # Upload Excel to Slack
-                await config.slack_client.files_upload_v2(
-                    channel=channel,
-                    file=str(excel_path),
-                    title=f"{bo_ref} - Parsed Booking Order",
-                    initial_comment=f"✅ **Booking Order Saved: {bo_ref}**\n\nClient: {current_data.get('client', 'N/A')}\nCampaign: {current_data.get('brand_campaign', 'N/A')}\nGross Total: AED {current_data.get('gross_calc', 0):,.2f}"
+                # Get Head of Sales channel
+                hos_channel = bo_approval_workflow.get_head_of_sales_channel()
+                if not hos_channel:
+                    return "❌ **Error:** Head of Sales not configured. Please update stakeholders_config.json"
+
+                # Send to Head of Sales with buttons
+                result = await bo_slack_messaging.send_to_head_of_sales(
+                    channel=hos_channel,
+                    workflow_id=workflow_id,
+                    company=edit_data.get("company"),
+                    data=current_data,
+                    warnings=warnings,
+                    missing_required=missing_required,
+                    excel_path=str(temp_excel)
                 )
 
-                # Clean up session
+                # Update workflow with HoS message info
+                await bo_approval_workflow.update_workflow(workflow_id, {
+                    "hos_msg_ts": result["message_id"]
+                })
+
+                # Clean up edit session
                 del pending_booking_orders[user_id]
 
-                return f"✅ **Booking Order Approved & Saved**\n\n**Reference:** {bo_ref}\n**Client:** {current_data.get('client', 'N/A')}\n**Campaign:** {current_data.get('brand_campaign', 'N/A')}\n**Gross Total:** AED {current_data.get('gross_calc', 0):,.2f}\n\nParsed Excel uploaded above."
+                return f"✅ **Booking Order Submitted for Approval**\n\n**Client:** {current_data.get('client', 'N/A')}\n**Campaign:** {current_data.get('brand_campaign', 'N/A')}\n**Gross Total:** AED {current_data.get('gross_calc', 0):,.2f}\n\nSent to Head of Sales for approval. You'll be notified once the approval process is complete."
 
             except Exception as e:
-                config.logger.error(f"[BOOKING ORDER] Error saving approved booking order: {e}")
-                return f"❌ **Error saving booking order:** {str(e)}\n\nPlease try again or say 'cancel' to discard."
+                config.logger.error(f"[BOOKING ORDER] Error starting approval workflow: {e}")
+                return f"❌ **Error starting approval workflow:** {str(e)}\n\nPlease try again or say 'cancel' to discard."
 
         elif action == 'cancel':
             # Clean up temp file and session
@@ -820,6 +819,38 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         if "files" in slack_event:
             logger.info(f"[MAIN_LLM] Files found: {len(slack_event['files'])}")
     
+    # Check if message is in a coordinator rejection thread (before sending status message)
+    thread_ts = slack_event.get("thread_ts") if slack_event else None
+    if thread_ts:
+        # Check if this thread is an active rejection thread
+        import bo_approval_workflow
+
+        # Find workflow with matching rejection thread
+        for workflow_id, workflow in bo_approval_workflow.approval_workflows.items():
+            if bo_approval_workflow.is_rejection_thread_active(workflow, thread_ts):
+                logger.info(f"[BO APPROVAL] Message in active rejection thread for {workflow_id}")
+                try:
+                    answer = await bo_approval_workflow.handle_coordinator_thread_message(
+                        workflow_id=workflow_id,
+                        user_id=user_id,
+                        user_input=user_input,
+                        channel=channel,
+                        thread_ts=thread_ts
+                    )
+                    await config.slack_client.chat_postMessage(
+                        channel=channel,
+                        thread_ts=thread_ts,
+                        text=config.markdown_to_slack(answer)
+                    )
+                except Exception as e:
+                    logger.error(f"[BO APPROVAL] Error in rejection thread handler: {e}")
+                    await config.slack_client.chat_postMessage(
+                        channel=channel,
+                        thread_ts=thread_ts,
+                        text=config.markdown_to_slack(f"❌ **Error:** {str(e)}")
+                    )
+                return  # Exit early, don't process as normal message
+
     # Send initial status message
     status_message = await config.slack_client.chat_postMessage(
         channel=channel,
