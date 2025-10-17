@@ -761,7 +761,7 @@ async def _handle_booking_order_retrieve(args: Dict[str, Any], channel: str) -> 
             )
 
     # Format summary
-    parser = BookingOrderParser(company=record.get("company", "mmg_backlite"))
+    parser = BookingOrderParser(company=record.get("company", "backlite"))
     summary = parser.format_for_slack(record, bo_ref)
 
     if record.get("warnings"):
@@ -1749,14 +1749,14 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             {
                 "type": "function",
                 "name": "parse_booking_order",
-                "description": "Parse a booking order document (Excel, PDF, or image) for MMG Backlite or Viola. Extracts client, campaign, locations, pricing, dates, and financial data. Biased toward classifying uploads as ARTWORK unless clearly a booking order. ADMIN ONLY.",
+                "description": "Parse a booking order document (Excel, PDF, or image) for Backlite or Viola. Extracts client, campaign, locations, pricing, dates, and financial data. Biased toward classifying uploads as ARTWORK unless clearly a booking order. ADMIN ONLY.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "company": {
                             "type": "string",
-                            "enum": ["mmg_backlite", "viola"],
-                            "description": "Company name - either 'mmg_backlite' or 'viola'"
+                            "enum": ["backlite", "viola"],
+                            "description": "Company name - either 'backlite' or 'viola'"
                         },
                         "user_notes": {
                             "type": "string",

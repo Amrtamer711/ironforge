@@ -21,7 +21,7 @@ ORIGINAL_DIR = BOOKING_ORDERS_BASE / "original_bos"
 PARSED_DIR = BOOKING_ORDERS_BASE / "parsed_bos"
 
 # BO Template files (for future use - not currently used)
-# These are the actual branded templates for MMG Backlite and Viola
+# These are the actual branded templates for Backlite and Viola
 # Currently using simple Excel generation, will switch to template-based when ready
 TEMPLATES_DIR = Path(__file__).parent / "bo_templates"
 TEMPLATE_BACKLITE = TEMPLATES_DIR / "backlite_bo_template.xlsx"
@@ -44,7 +44,7 @@ class ParseResult:
 class BookingOrderParser:
     """Parser for booking order documents with company-specific rules"""
 
-    def __init__(self, company: str = "mmg_backlite"):
+    def __init__(self, company: str = "backlite"):
         self.company = company
         self.required_global = ["client", "net_pre_vat"]
         self.required_per_location = ["name", "start_date", "end_date", "net_amount"]

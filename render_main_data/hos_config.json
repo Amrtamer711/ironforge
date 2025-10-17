@@ -4,12 +4,14 @@
       "name": "Amr Tamer",
       "email": "atmh2002@gmail.com",
       "slack_user_id": "U093E4CPEE4",
+      "slack_channel_id": "",
       "active": true
     },
     "Nour": {
       "name": "Nour",
       "email": "nour@gmail.com",
       "slack_user_id": "U08867WNDUN",
+      "slack_channel_id": "",
       "active": true
     }
   },
@@ -18,7 +20,7 @@
   },
   "booking_order_stakeholders": {
     "head_of_sales": {
-      "mmg_backlite": {
+      "backlite": {
         "name": "Backlite Head of Sales",
         "slack_user_id": "",
         "slack_channel_id": "",
@@ -32,7 +34,7 @@
       }
     },
     "coordinators": {
-      "mmg_backlite": {
+      "backlite": {
         "name": "Backlite Sales Coordinator",
         "slack_user_id": "",
         "slack_channel_id": "",
