@@ -610,7 +610,20 @@ Field mapping (use these exact keys when updating):
   - "net_amount": total for location
 
 Return JSON with: action, fields (only changed fields), message (natural language response to user).
-IMPORTANT: Use natural language in messages. Be friendly and conversational.
+
+IMPORTANT FOR MESSAGES:
+- Use natural, friendly language - NO technical field names or variable names
+- Say "client" not "client field" or "client_name"
+- Say "net amount" not "net_pre_vat"
+- Say "campaign name" not "brand_campaign"
+- Be conversational and helpful
+- Confirm what changed in plain English
+
+Examples:
+- GOOD: "I've updated the client to Acme Corp and the net amount to AED 50,000."
+- BAD: "Updated client field and net_pre_vat variable."
+- GOOD: "Changed the campaign to Summer Sale 2025."
+- BAD: "Set brand_campaign to Summer Sale 2025."
 """
 
     try:
@@ -787,11 +800,12 @@ IMPORTANT: Use natural language in messages. Be friendly and conversational.
                     "data": current_data
                 })
 
-                response = message or "✅ **Changes applied:**\n"
-                for field, value in fields.items():
-                    response += f"• {field}: {value}\n"
-                response += "\nLet me know if you need any other changes, or say 'execute' to generate the Excel and approval buttons."
-                return response
+                # Use message from LLM (which should be in natural language)
+                # Fall back to generic message if no message provided
+                if message:
+                    return message
+                else:
+                    return "✅ **Changes applied!**\n\nLet me know if you need any other changes, or say 'execute' to generate the Excel and approval buttons."
             else:
                 return message or "I didn't catch any changes. What would you like to update?"
 
