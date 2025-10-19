@@ -217,7 +217,11 @@ Analyze the uploaded file and respond with:
                 ],
                 tools=[
                     {
-                        "type": "code_interpreter"
+                        "type": "code_interpreter",
+                        "container": {
+                            "type": "auto",
+                            "file_ids": [file_id]
+                        }
                     }
                 ],
                 text={
