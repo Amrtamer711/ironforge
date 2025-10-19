@@ -273,7 +273,7 @@ Analyze the uploaded file and respond with:
                                     }
                                 }
                             },
-                            "required": ["locations"],
+                            "required": ["bo_number", "bo_date", "client", "agency", "brand_campaign", "category", "asset", "payment_terms", "sales_person", "commission_pct", "sla_pct", "net_pre_vat", "vat_value", "gross_amount", "notes", "locations"],
                             "additionalProperties": False
                         }
                     }
