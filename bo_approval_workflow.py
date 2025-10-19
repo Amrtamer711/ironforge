@@ -296,7 +296,8 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
 
     # Update workflow with HoS message info
     await update_workflow(workflow_id, {
-        "hos_msg_ts": result["message_id"]
+        "hos_msg_ts": result["message_id"],
+        "hos_channel": result["channel"]
     })
 
     logger.info(f"[BO APPROVAL] Sent {workflow_id} to Head of Sales")
@@ -419,11 +420,11 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     })
 
     # Update HoS button message
-    if workflow.get("hos_msg_ts"):
+    if workflow.get("hos_msg_ts") and workflow.get("hos_channel"):
         await bo_slack_messaging.update_button_message(
-            channel=workflow.get("hos_msg_ts", "").split("-")[0] if "-" in str(workflow.get("hos_msg_ts", "")) else "",
+            channel=workflow.get("hos_channel"),
             message_ts=workflow.get("hos_msg_ts"),
-            new_text=f"Approved by Head of Sales\nBO Reference: {bo_ref}\nNotifying Finance...",
+            new_text=f"✅ **APPROVED BY HEAD OF SALES**\nBO Reference: {bo_ref}\nNotifying Finance...",
             approved=True
         )
 
