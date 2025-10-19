@@ -268,7 +268,7 @@ Analyze the uploaded file and respond with:
                                             "dm_fee": {"type": ["number", "null"]},
                                             "net_amount": {"type": "number"}
                                         },
-                                        "required": ["name", "start_date", "end_date", "campaign_duration", "net_amount"],
+                                        "required": ["name", "start_date", "end_date", "campaign_duration", "net_amount", "asset", "campaign_cost", "production_upload_cost", "dm_fee"],
                                         "additionalProperties": False
                                     }
                                 }
