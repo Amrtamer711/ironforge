@@ -544,6 +544,7 @@ async def handle_coordinator_thread_message(
 ) -> str:
     """
     Handle coordinator messages in their thread
+    - Maintains thread-specific conversation history (separate from main chat)
     - Uses OpenAI Responses API with structured output
     - Parses coordinator intent and field updates
     - Re-generates Excel and buttons when they say "execute"
@@ -558,11 +559,14 @@ async def handle_coordinator_thread_message(
     warnings = workflow.get("warnings", [])
     missing_required = workflow.get("missing_required", [])
 
-    logger.info(f"[BO APPROVAL] Coordinator {user_id} message in thread {thread_ts}: '{user_input[:50]}...' for workflow {workflow_id}")
+    # Get or initialize thread-specific conversation history
+    thread_history = workflow.get("thread_history", [])
+
+    logger.info(f"[BO APPROVAL] Coordinator {user_id} message in thread {thread_ts}: '{user_input[:50]}...' for workflow {workflow_id} (history: {len(thread_history)} messages)")
 
     # Build system prompt for OpenAI Responses API
     system_prompt = f"""
-You are helping a Sales Coordinator review and amend a booking order. The user said: "{user_input}"
+You are helping a Sales Coordinator review and amend a booking order.
 
 Determine their intent and parse any field updates:
 - If they want to execute/submit/approve/done: action = 'execute'
@@ -610,9 +614,19 @@ IMPORTANT: Use natural language in messages. Be friendly and conversational.
 """
 
     try:
+        # Build input with thread history + current user message
+        input_messages = [{"role": "system", "content": system_prompt}]
+
+        # Add thread history (last 10 messages to keep context manageable)
+        for msg in thread_history[-10:]:
+            input_messages.append({"role": msg["role"], "content": msg["content"]})
+
+        # Add current user message
+        input_messages.append({"role": "user", "content": user_input})
+
         res = await config.openai_client.responses.create(
             model=config.OPENAI_MODEL,
-            input=[{"role": "system", "content": system_prompt}],
+            input=input_messages,
             text={
                 'format': {
                     'type': 'json_schema',
@@ -682,6 +696,18 @@ IMPORTANT: Use natural language in messages. Be friendly and conversational.
         message = decision.get('message', '')
 
         logger.info(f"[BO APPROVAL] Coordinator thread action: {action} for {workflow_id}")
+
+        # Update thread history with user message and assistant response
+        thread_history.append({"role": "user", "content": user_input})
+        thread_history.append({"role": "assistant", "content": message or f"[Action: {action}]"})
+
+        # Keep last 20 messages (10 exchanges) in thread history
+        thread_history = thread_history[-20:]
+
+        # Save updated history to workflow
+        await update_workflow(workflow_id, {
+            "thread_history": thread_history
+        })
 
         if action == 'execute':
             # Generate Excel with updated data
