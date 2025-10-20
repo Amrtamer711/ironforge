@@ -287,6 +287,7 @@ Analyze the uploaded file and respond with:
             # Extract JSON from structured output
             result_text = response.output[0].content[0].text if hasattr(response.output[0], 'content') else str(response.output[0])
             logger.info(f"[BOOKING PARSER] Parse response length: {len(result_text)} chars")
+            logger.info(f"[BOOKING PARSER] Parse response text: {result_text[:500]}...")  # Log first 500 chars
 
             # Parse JSON (should be valid JSON from structured outputs)
             parsed_data = json.loads(result_text)
