@@ -766,7 +766,7 @@ async def _handle_booking_order_parse(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "📎 **Please review the Excel file above, then:**"
+                    "text": "📎 *Please review the Excel file above, then:*"
                 }
             },
             {
