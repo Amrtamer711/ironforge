@@ -255,31 +255,38 @@ async def slack_interactive(request: Request):
             asyncio.create_task(bo_approval_workflow.handle_coordinator_approval(workflow_id, user_id, response_url))
 
         elif action_id == "reject_bo_coordinator":
-            logger.info(f"[BO APPROVAL] Coordinator {user_id} clicked REJECT for workflow {workflow_id}, opening modal")
-            # Open modal for rejection reason
-            await config.slack_client.views_open(
-                trigger_id=payload.get("trigger_id"),
-                view={
-                    "type": "modal",
-                    "callback_id": f"reject_bo_coordinator_modal:{workflow_id}:{channel}:{message_ts}",
-                    "title": {"type": "plain_text", "text": "Reject BO"},
-                    "submit": {"type": "plain_text", "text": "Submit"},
-                    "close": {"type": "plain_text", "text": "Cancel"},
-                    "blocks": [
-                        {
-                            "type": "input",
-                            "block_id": "rejection_reason",
-                            "label": {"type": "plain_text", "text": "Rejection Reason"},
-                            "element": {
-                                "type": "plain_text_input",
-                                "action_id": "reason_input",
-                                "multiline": True,
-                                "placeholder": {"type": "plain_text", "text": "Explain why you're rejecting this booking order..."}
-                            }
-                        }
-                    ]
-                }
+            logger.info(f"[BO APPROVAL] Coordinator {user_id} clicked REJECT for workflow {workflow_id}, starting thread for edits")
+
+            # Update button message to show rejection
+            await bo_slack_messaging.post_response_url(response_url, {
+                "replace_original": True,
+                "text": "❌ **REJECTED** - Starting review thread..."
+            })
+
+            # Start thread immediately on the button message asking what's wrong
+            await config.slack_client.chat_postMessage(
+                channel=channel,
+                thread_ts=message_ts,
+                text=config.markdown_to_slack(
+                    "❌ **Booking Order Rejected**\n\n"
+                    "Please tell me what needs to be changed. You can:\n"
+                    "• Describe changes in natural language\n"
+                    "• Make multiple edits\n"
+                    "• When ready, say **'execute'** to regenerate the Excel and create new approval buttons\n\n"
+                    "What would you like to change?"
+                )
             )
+
+            # Update workflow to track thread
+            await bo_approval_workflow.update_workflow(workflow_id, {
+                "status": "coordinator_rejected",
+                "coordinator_rejected_by": user_id,
+                "coordinator_rejected_at": datetime.now().isoformat(),
+                "coordinator_thread_ts": message_ts,
+                "coordinator_thread_channel": channel
+            })
+
+            logger.info(f"[BO APPROVAL] Started edit thread for {workflow_id} at {message_ts}")
 
         elif action_id == "approve_bo_hos":
             logger.info(f"[BO APPROVAL] Head of Sales {user_id} clicked APPROVE for workflow {workflow_id}")
