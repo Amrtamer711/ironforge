@@ -261,25 +261,19 @@ async def slack_interactive(request: Request):
             workflow = await bo_approval_workflow.get_workflow_with_cache(workflow_id)
             thread_ts = workflow.get("coordinator_thread_ts") if workflow else message_ts
 
-            # Update button message to show rejection
+            # Edit the button message to ask what needs to be changed
+            # This replaces the buttons with the rejection prompt
             await bo_slack_messaging.post_response_url(response_url, {
                 "replace_original": True,
-                "text": "❌ **REJECTED** - Asking for changes..."
-            })
-
-            # Post in the thread asking what's wrong
-            await config.slack_client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,  # Use the notification message as thread root
-                text=config.markdown_to_slack(
-                    f"❌ **Rejected by <@{user_id}>**\n\n"
-                    "Please tell me what needs to be changed. You can:\n"
+                "text": config.markdown_to_slack(
+                    f"❌ *Rejected by <@{user_id}>*\n\n"
+                    "What would you like to change? You can:\n"
                     "• Describe changes in natural language\n"
                     "• Make multiple edits\n"
-                    "• When ready, say **'execute'** to regenerate the Excel and create new approval buttons\n\n"
-                    "What would you like to change?"
+                    "• When ready, say *'execute'* to regenerate the Excel and create new approval buttons\n\n"
+                    "Please describe the changes needed:"
                 )
-            )
+            })
 
             # Update workflow to track rejection (thread_ts already set during upload)
             await bo_approval_workflow.update_workflow(workflow_id, {
