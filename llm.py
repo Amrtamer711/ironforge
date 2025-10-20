@@ -739,31 +739,25 @@ async def _handle_booking_order_parse(
             logger.error(f"[BO APPROVAL] Failed to upload Excel file to coordinator: {upload_error}", exc_info=True)
             raise Exception(f"Failed to send Excel file to coordinator. Channel/User ID: {coordinator_channel}")
 
-        # Debug: Log the entire response structure
-        logger.info(f"[BO APPROVAL] File upload response keys: {list(file_upload.keys())}")
-        if "file" in file_upload:
-            logger.info(f"[BO APPROVAL] File object keys: {list(file_upload['file'].keys())}")
-            if "shares" in file_upload["file"]:
-                logger.info(f"[BO APPROVAL] Shares keys: {list(file_upload['file']['shares'].keys())}")
+        # files_upload_v2 does NOT return message timestamp (known SDK limitation)
+        # Workaround: Use conversations.history to find the message that was just posted
+        logger.info(f"[BO APPROVAL] Getting message timestamp using conversations.history...")
 
-        # Get the message timestamp from the initial_comment message
         file_msg_ts = None
         try:
-            shares = file_upload.get("file", {}).get("shares", {})
-            private_shares = shares.get("private", {})
-            if coordinator_channel in private_shares and len(private_shares[coordinator_channel]) > 0:
-                file_msg_ts = private_shares[coordinator_channel][0].get("ts")
-                logger.info(f"[BO APPROVAL] Got ts from private shares: {file_msg_ts}")
+            # Get the most recent message in the channel (should be the file we just uploaded)
+            history = await config.slack_client.conversations_history(
+                channel=coordinator_channel,
+                limit=1
+            )
 
-            if not file_msg_ts:
-                public_shares = shares.get("public", {})
-                if coordinator_channel in public_shares and len(public_shares[coordinator_channel]) > 0:
-                    file_msg_ts = public_shares[coordinator_channel][0].get("ts")
-                    logger.info(f"[BO APPROVAL] Got ts from public shares: {file_msg_ts}")
+            if history["ok"] and history["messages"]:
+                file_msg_ts = history["messages"][0]["ts"]
+                logger.info(f"[BO APPROVAL] Got message ts from conversations.history: {file_msg_ts}")
+            else:
+                logger.warning(f"[BO APPROVAL] Could not get messages from conversations.history")
         except Exception as e:
-            logger.error(f"[BO APPROVAL] Error extracting message ts: {e}", exc_info=True)
-
-        logger.info(f"[BO APPROVAL] File uploaded with message ts: {file_msg_ts}")
+            logger.error(f"[BO APPROVAL] Error getting message ts via conversations.history: {e}", exc_info=True)
 
         # Now update that same message to add blocks with buttons
         # This adds buttons to the file upload message itself
