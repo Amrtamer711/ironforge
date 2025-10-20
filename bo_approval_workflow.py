@@ -57,8 +57,8 @@ def get_head_of_sales_channel(company: str) -> Optional[str]:
     stakeholders = load_stakeholders_config()
     hos = stakeholders.get("head_of_sales", {})
     company_hos = hos.get(company, {})
-    # Try user_id first (for DMs), then channel_id
-    return company_hos.get("slack_user_id") or company_hos.get("slack_channel_id")
+    # Try channel_id first (required for file uploads), then user_id
+    return company_hos.get("slack_channel_id") or company_hos.get("slack_user_id")
 
 
 def get_coordinator_channel(company: str) -> Optional[str]:
@@ -66,16 +66,16 @@ def get_coordinator_channel(company: str) -> Optional[str]:
     stakeholders = load_stakeholders_config()
     coordinators = stakeholders.get("coordinators", {})
     coordinator = coordinators.get(company, {})
-    # Try user_id first (for DMs), then channel_id
-    return coordinator.get("slack_user_id") or coordinator.get("slack_channel_id")
+    # Try channel_id first (required for file uploads), then user_id
+    return coordinator.get("slack_channel_id") or coordinator.get("slack_user_id")
 
 
 def get_finance_channel() -> Optional[str]:
     """Get Finance Slack channel/user ID"""
     stakeholders = load_stakeholders_config()
     finance = stakeholders.get("finance", {})
-    # Try user_id first (for DMs), then channel_id
-    return finance.get("slack_user_id") or finance.get("slack_channel_id")
+    # Try channel_id first (required for file uploads), then user_id
+    return finance.get("slack_channel_id") or finance.get("slack_user_id")
 
 
 def create_workflow_id(company: str) -> str:
