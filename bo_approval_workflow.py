@@ -312,10 +312,11 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
     coordinator_thread_ts = workflow.get("coordinator_thread_ts")
 
     if coordinator_msg_ts and coordinator_channel:
+        approver_name = await bo_slack_messaging.get_user_real_name(user_id)
         await bo_slack_messaging.update_button_message(
             channel=coordinator_channel,
             message_ts=coordinator_msg_ts,
-            new_text=f"✅ **APPROVED** by <@{user_id}>\n\n⏳ Waiting for file upload to complete...",
+            new_text=f"✅ **APPROVED** by {approver_name}\n\n⏳ Waiting for file upload to complete...",
             approved=True
         )
 
@@ -337,7 +338,7 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
         await bo_slack_messaging.post_to_thread(
             channel=coordinator_channel,
             thread_ts=coordinator_thread_ts,
-            text=f"✅ **Approved by <@{user_id}>** - Moving to Head of Sales for review..."
+            text=f"✅ **Approved by {approver_name}** - Moving to Head of Sales for review..."
         )
 
     # Generate temp Excel for HoS review
@@ -395,10 +396,11 @@ async def handle_coordinator_rejection(workflow_id: str, user_id: str, response_
     })
 
     # Update the button message to show rejection
+    rejecter_name = await bo_slack_messaging.get_user_real_name(user_id)
     await bo_slack_messaging.update_button_message(
         channel=channel,
         message_ts=message_ts,
-        new_text=f"❌ **REJECTED** by <@{user_id}>",
+        new_text=f"❌ **REJECTED** by {rejecter_name}",
         approved=False
     )
 

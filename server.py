@@ -263,10 +263,11 @@ async def slack_interactive(request: Request):
 
             # Edit the button message to ask what needs to be changed
             # This replaces the buttons with the rejection prompt
+            rejecter_name = await bo_slack_messaging.get_user_real_name(user_id)
             await bo_slack_messaging.post_response_url(response_url, {
                 "replace_original": True,
                 "text": config.markdown_to_slack(
-                    f"❌ *Rejected by <@{user_id}>*\n\n"
+                    f"❌ *Rejected by {rejecter_name}*\n\n"
                     "What would you like to change? You can:\n"
                     "• Describe changes in natural language\n"
                     "• Make multiple edits\n"

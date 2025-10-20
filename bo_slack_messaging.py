@@ -10,6 +10,31 @@ import config
 logger = logging.getLogger("proposal-bot")
 
 
+async def get_user_real_name(user_id: str) -> str:
+    """
+    Get user's real name from Slack.
+    Returns the real name or falls back to user_id if lookup fails.
+    """
+    try:
+        user_info = await config.slack_client.users_info(user=user_id)
+        if user_info["ok"]:
+            # Try real_name first, fall back to display_name, then name
+            real_name = user_info["user"].get("real_name")
+            if real_name:
+                return real_name
+
+            profile = user_info["user"].get("profile", {})
+            display_name = profile.get("display_name") or profile.get("real_name")
+            if display_name:
+                return display_name
+
+            return user_info["user"].get("name", user_id)
+    except Exception as e:
+        logger.warning(f"[SLACK] Failed to get user info for {user_id}: {e}")
+
+    return user_id  # Fallback to user_id if lookup fails
+
+
 async def post_to_thread(channel: str, thread_ts: str, text: str) -> Dict[str, Any]:
     """
     Post a simple message to a thread.

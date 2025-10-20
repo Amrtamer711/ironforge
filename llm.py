@@ -689,9 +689,10 @@ async def _handle_booking_order_parse(
             return
 
         # Send Excel + summary + Approve/Reject buttons to coordinator
+        submitter_name = await bo_slack_messaging.get_user_real_name(user_id)
         preview_text = f"📋 **New Booking Order - Ready for Approval**\n\n"
         preview_text += f"**Company:** {company.upper()}\n"
-        preview_text += f"**Submitted by:** <@{user_id}>\n\n"
+        preview_text += f"**Submitted by:** {submitter_name}\n\n"
         preview_text += f"**Client:** {result.data.get('client', 'N/A')}\n"
         preview_text += f"**Campaign:** {result.data.get('brand_campaign', 'N/A')}\n"
         preview_text += f"**BO Number:** {result.data.get('bo_number', 'N/A')}\n"
@@ -727,13 +728,17 @@ async def _handle_booking_order_parse(
 
         logger.info(f"[BO APPROVAL] Posting notification to coordinator channel: {coordinator_channel}")
 
+        # Get submitter's real name
+        import bo_slack_messaging
+        submitter_name = await bo_slack_messaging.get_user_real_name(user_id)
+
         # Step 1: Post notification message in main channel
         notification_text = (
             f"📋 **New Booking Order Submitted**\n\n"
             f"**Client:** {result.data.get('client', 'N/A')}\n"
             f"**Campaign:** {result.data.get('brand_campaign', 'N/A')}\n"
             f"**Gross Total:** AED {result.data.get('gross_calc', 0):,.2f}\n\n"
-            f"**Submitted by:** <@{user_id}>\n\n"
+            f"**Submitted by:** {submitter_name}\n\n"
             f"_Please review the details in the thread below..._"
         )
 
