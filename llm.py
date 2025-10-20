@@ -742,6 +742,9 @@ async def _handle_booking_order_parse(
         if not file_msg_ts:
             file_msg_ts = file_upload.get("file", {}).get("shares", {}).get("public", {}).get(coordinator_channel, [{}])[0].get("ts")
 
+        # Wait briefly to ensure file message is fully processed before sending buttons
+        await asyncio.sleep(0.5)
+
         # Send approval buttons as a separate message (to ensure they appear after the file)
         import bo_slack_messaging
         button_result = await bo_slack_messaging.send_coordinator_approval_buttons(
