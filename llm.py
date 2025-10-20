@@ -674,8 +674,8 @@ async def _handle_booking_order_parse(
             user_notes=user_notes
         )
 
-        # Get coordinator channel
-        coordinator_channel = bo_approval_workflow.get_coordinator_channel(company)
+        # Get coordinator channel (uses conversations.open to get DM channel ID)
+        coordinator_channel = await bo_approval_workflow.get_coordinator_channel(company)
         logger.info(f"[BO APPROVAL] Coordinator channel for {company}: {coordinator_channel}")
         if not coordinator_channel:
             try:
@@ -956,8 +956,8 @@ IMPORTANT: Use natural language in messages. Be friendly and conversational.
                     user_notes=edit_data.get("user_notes", "")
                 )
 
-                # Get coordinator channel
-                coordinator_channel = bo_approval_workflow.get_coordinator_channel(edit_data.get("company"))
+                # Get coordinator channel (uses conversations.open to get DM channel ID)
+                coordinator_channel = await bo_approval_workflow.get_coordinator_channel(edit_data.get("company"))
                 if not coordinator_channel:
                     return f"❌ **Error:** Sales Coordinator for {edit_data.get('company')} not configured. Please update hos_config.json"
 

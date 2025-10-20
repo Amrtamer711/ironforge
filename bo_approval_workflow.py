@@ -52,30 +52,84 @@ def load_stakeholders_config() -> Dict[str, Any]:
         return {}
 
 
-def get_head_of_sales_channel(company: str) -> Optional[str]:
-    """Get Head of Sales Slack channel/user ID for specific company"""
+async def get_head_of_sales_channel(company: str) -> Optional[str]:
+    """
+    Get Head of Sales DM channel ID for specific company.
+    Uses conversations.open to get DM channel ID from user_id.
+    """
     stakeholders = load_stakeholders_config()
     hos = stakeholders.get("head_of_sales", {})
     company_hos = hos.get(company, {})
-    # Try channel_id first (required for file uploads), then user_id
-    return company_hos.get("slack_channel_id") or company_hos.get("slack_user_id")
+
+    # Try channel_id first (if already stored), otherwise get from user_id
+    channel_id = company_hos.get("slack_channel_id")
+    if channel_id:
+        return channel_id
+
+    # Get user_id and open DM conversation to get channel ID
+    user_id = company_hos.get("slack_user_id")
+    if user_id:
+        try:
+            response = await config.slack_client.conversations_open(users=[user_id])
+            return response["channel"]["id"]
+        except Exception as e:
+            logger.error(f"[BO APPROVAL] Failed to open DM with user {user_id}: {e}")
+            return None
+
+    return None
 
 
-def get_coordinator_channel(company: str) -> Optional[str]:
-    """Get Sales Coordinator Slack channel/user ID for specific company"""
+async def get_coordinator_channel(company: str) -> Optional[str]:
+    """
+    Get Sales Coordinator DM channel ID for specific company.
+    Uses conversations.open to get DM channel ID from user_id.
+    """
     stakeholders = load_stakeholders_config()
     coordinators = stakeholders.get("coordinators", {})
     coordinator = coordinators.get(company, {})
-    # Try channel_id first (required for file uploads), then user_id
-    return coordinator.get("slack_channel_id") or coordinator.get("slack_user_id")
+
+    # Try channel_id first (if already stored), otherwise get from user_id
+    channel_id = coordinator.get("slack_channel_id")
+    if channel_id:
+        return channel_id
+
+    # Get user_id and open DM conversation to get channel ID
+    user_id = coordinator.get("slack_user_id")
+    if user_id:
+        try:
+            response = await config.slack_client.conversations_open(users=[user_id])
+            return response["channel"]["id"]
+        except Exception as e:
+            logger.error(f"[BO APPROVAL] Failed to open DM with user {user_id}: {e}")
+            return None
+
+    return None
 
 
-def get_finance_channel() -> Optional[str]:
-    """Get Finance Slack channel/user ID"""
+async def get_finance_channel() -> Optional[str]:
+    """
+    Get Finance DM channel ID.
+    Uses conversations.open to get DM channel ID from user_id.
+    """
     stakeholders = load_stakeholders_config()
     finance = stakeholders.get("finance", {})
-    # Try channel_id first (required for file uploads), then user_id
-    return finance.get("slack_channel_id") or finance.get("slack_user_id")
+
+    # Try channel_id first (if already stored), otherwise get from user_id
+    channel_id = finance.get("slack_channel_id")
+    if channel_id:
+        return channel_id
+
+    # Get user_id and open DM conversation to get channel ID
+    user_id = finance.get("slack_user_id")
+    if user_id:
+        try:
+            response = await config.slack_client.conversations_open(users=[user_id])
+            return response["channel"]["id"]
+        except Exception as e:
+            logger.error(f"[BO APPROVAL] Failed to open DM with user {user_id}: {e}")
+            return None
+
+    return None
 
 
 def create_workflow_id(company: str) -> str:
@@ -277,8 +331,8 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
     parser = BookingOrderParser(company=workflow["company"])
     temp_excel = await parser.generate_excel(workflow["data"], f"DRAFT_{workflow['company']}")
 
-    # Get Head of Sales channel (company-specific)
-    hos_channel = get_head_of_sales_channel(workflow["company"])
+    # Get Head of Sales channel (company-specific, uses conversations.open to get DM channel ID)
+    hos_channel = await get_head_of_sales_channel(workflow["company"])
     if not hos_channel:
         logger.error(f"[BO APPROVAL] No Head of Sales configured for {workflow['company']}")
         return
@@ -428,8 +482,8 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
             approved=True
         )
 
-    # Notify finance
-    finance_channel = get_finance_channel()
+    # Notify finance (uses conversations.open to get DM channel ID)
+    finance_channel = await get_finance_channel()
     if finance_channel:
         result = await bo_slack_messaging.notify_finance(
             channel=finance_channel,
