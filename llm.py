@@ -725,7 +725,9 @@ async def _handle_booking_order_parse(
         except Exception as e:
             logger.error(f"[SLACK] Failed to update status message while uploading: {e}", exc_info=True)
 
-        logger.info(f"[BO APPROVAL] Uploading Excel to channel/user: {coordinator_channel}")
+        logger.info(f"[BO APPROVAL] Uploading Excel with preview text to channel/user: {coordinator_channel}")
+
+        # Upload file with initial comment (preview text)
         try:
             file_upload = await config.slack_client.files_upload_v2(
                 channel=coordinator_channel,
@@ -737,23 +739,75 @@ async def _handle_booking_order_parse(
             logger.error(f"[BO APPROVAL] Failed to upload Excel file to coordinator: {upload_error}", exc_info=True)
             raise Exception(f"Failed to send Excel file to coordinator. Channel/User ID: {coordinator_channel}")
 
-        # Get the message timestamp from file upload
+        # Get the message timestamp from the initial_comment message
         file_msg_ts = file_upload.get("file", {}).get("shares", {}).get("private", {}).get(coordinator_channel, [{}])[0].get("ts")
         if not file_msg_ts:
             file_msg_ts = file_upload.get("file", {}).get("shares", {}).get("public", {}).get(coordinator_channel, [{}])[0].get("ts")
 
-        # Wait briefly to ensure file message is fully processed before sending buttons
-        await asyncio.sleep(0.5)
+        logger.info(f"[BO APPROVAL] File uploaded with message ts: {file_msg_ts}")
 
-        # Send approval buttons as a separate message (to ensure they appear after the file)
-        import bo_slack_messaging
-        button_result = await bo_slack_messaging.send_coordinator_approval_buttons(
-            channel=coordinator_channel,
-            workflow_id=workflow_id,
-            data=result.data
-        )
+        # Now update that same message to add blocks with buttons
+        # This adds buttons to the file upload message itself
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": preview_text
+                }
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "✅ Approve"},
+                        "style": "primary",
+                        "value": workflow_id,
+                        "action_id": "approve_bo_coordinator"
+                    },
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "❌ Reject"},
+                        "style": "danger",
+                        "value": workflow_id,
+                        "action_id": "reject_bo_coordinator"
+                    }
+                ]
+            }
+        ]
 
-        coordinator_msg_ts = button_result.get("ts")
+        # Update the file message to add buttons (if we got a valid ts)
+        if file_msg_ts:
+            try:
+                await config.slack_client.chat_update(
+                    channel=coordinator_channel,
+                    ts=file_msg_ts,
+                    text=preview_text,  # Fallback text
+                    blocks=blocks
+                )
+                coordinator_msg_ts = file_msg_ts
+                logger.info(f"[BO APPROVAL] Added buttons to file message")
+            except Exception as update_error:
+                logger.error(f"[BO APPROVAL] Failed to add buttons to file message: {update_error}", exc_info=True)
+                # Fall back to posting buttons as separate message
+                import bo_slack_messaging
+                button_result = await bo_slack_messaging.send_coordinator_approval_buttons(
+                    channel=coordinator_channel,
+                    workflow_id=workflow_id,
+                    data=result.data
+                )
+                coordinator_msg_ts = button_result.get("ts")
+        else:
+            logger.warning(f"[BO APPROVAL] Could not get file message ts, posting buttons separately")
+            # Fall back to posting buttons as separate message
+            import bo_slack_messaging
+            button_result = await bo_slack_messaging.send_coordinator_approval_buttons(
+                channel=coordinator_channel,
+                workflow_id=workflow_id,
+                data=result.data
+            )
+            coordinator_msg_ts = button_result.get("ts")
 
         # Update workflow with coordinator message info
         await bo_approval_workflow.update_workflow(workflow_id, {
