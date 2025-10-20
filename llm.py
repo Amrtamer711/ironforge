@@ -676,6 +676,7 @@ async def _handle_booking_order_parse(
 
         # Get coordinator channel
         coordinator_channel = bo_approval_workflow.get_coordinator_channel(company)
+        logger.info(f"[BO APPROVAL] Coordinator channel for {company}: {coordinator_channel}")
         if not coordinator_channel:
             try:
                 await config.slack_client.chat_update(
@@ -724,12 +725,17 @@ async def _handle_booking_order_parse(
         except Exception as e:
             logger.error(f"[SLACK] Failed to update status message while uploading: {e}", exc_info=True)
 
-        file_upload = await config.slack_client.files_upload_v2(
-            channel=coordinator_channel,
-            file=str(excel_path),
-            title=f"BO Draft - {result.data.get('client', 'Unknown')}",
-            initial_comment=config.markdown_to_slack(preview_text)
-        )
+        logger.info(f"[BO APPROVAL] Uploading Excel to channel/user: {coordinator_channel}")
+        try:
+            file_upload = await config.slack_client.files_upload_v2(
+                channel=coordinator_channel,
+                file=str(excel_path),
+                title=f"BO Draft - {result.data.get('client', 'Unknown')}",
+                initial_comment=config.markdown_to_slack(preview_text)
+            )
+        except Exception as upload_error:
+            logger.error(f"[BO APPROVAL] Failed to upload Excel file to coordinator: {upload_error}", exc_info=True)
+            raise Exception(f"Failed to send Excel file to coordinator. Channel/User ID: {coordinator_channel}")
 
         # Get the message timestamp from file upload
         file_msg_ts = file_upload.get("file", {}).get("shares", {}).get("private", {}).get(coordinator_channel, [{}])[0].get("ts")
