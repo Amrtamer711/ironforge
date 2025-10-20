@@ -257,18 +257,22 @@ async def slack_interactive(request: Request):
         elif action_id == "reject_bo_coordinator":
             logger.info(f"[BO APPROVAL] Coordinator {user_id} clicked REJECT for workflow {workflow_id}, starting thread for edits")
 
+            # Get workflow to find thread_ts
+            workflow = await bo_approval_workflow.get_workflow_with_cache(workflow_id)
+            thread_ts = workflow.get("coordinator_thread_ts") if workflow else message_ts
+
             # Update button message to show rejection
             await bo_slack_messaging.post_response_url(response_url, {
                 "replace_original": True,
-                "text": "❌ **REJECTED** - Starting review thread..."
+                "text": "❌ **REJECTED** - Asking for changes..."
             })
 
-            # Start thread immediately on the button message asking what's wrong
+            # Post in the thread asking what's wrong
             await config.slack_client.chat_postMessage(
                 channel=channel,
-                thread_ts=message_ts,
+                thread_ts=thread_ts,  # Use the notification message as thread root
                 text=config.markdown_to_slack(
-                    "❌ **Booking Order Rejected**\n\n"
+                    f"❌ **Rejected by <@{user_id}>**\n\n"
                     "Please tell me what needs to be changed. You can:\n"
                     "• Describe changes in natural language\n"
                     "• Make multiple edits\n"
@@ -277,16 +281,14 @@ async def slack_interactive(request: Request):
                 )
             )
 
-            # Update workflow to track thread
+            # Update workflow to track rejection (thread_ts already set during upload)
             await bo_approval_workflow.update_workflow(workflow_id, {
                 "status": "coordinator_rejected",
                 "coordinator_rejected_by": user_id,
-                "coordinator_rejected_at": datetime.now().isoformat(),
-                "coordinator_thread_ts": message_ts,
-                "coordinator_thread_channel": channel
+                "coordinator_rejected_at": datetime.now().isoformat()
             })
 
-            logger.info(f"[BO APPROVAL] Started edit thread for {workflow_id} at {message_ts}")
+            logger.info(f"[BO APPROVAL] Started edit conversation in thread {thread_ts} for {workflow_id}")
 
         elif action_id == "approve_bo_hos":
             logger.info(f"[BO APPROVAL] Head of Sales {user_id} clicked APPROVE for workflow {workflow_id}")

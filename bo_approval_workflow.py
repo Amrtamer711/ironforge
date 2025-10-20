@@ -306,6 +306,23 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
 
     logger.info(f"[BO APPROVAL] ✅ Coordinator {user_id} approved {workflow_id} - Client: {workflow['data'].get('client', 'N/A')}, Gross: AED {workflow['data'].get('gross_calc', 0):,.2f}")
 
+    # Update button message to show approval is being processed
+    coordinator_msg_ts = workflow.get("coordinator_msg_ts")
+    coordinator_channel = workflow.get("coordinator_thread_channel")
+    coordinator_thread_ts = workflow.get("coordinator_thread_ts")
+
+    if coordinator_msg_ts and coordinator_channel:
+        await bo_slack_messaging.update_button_message(
+            channel=coordinator_channel,
+            message_ts=coordinator_msg_ts,
+            new_text=f"✅ **APPROVED** by <@{user_id}>\n\n⏳ Waiting for file upload to complete...",
+            approved=True
+        )
+
+    # IMPORTANT: Wait 5 seconds for file upload to complete before proceeding
+    logger.info(f"[BO APPROVAL] Waiting 5 seconds for file upload to complete...")
+    await asyncio.sleep(5)
+
     # Update workflow
     await update_workflow(workflow_id, {
         "coordinator_approved": True,
@@ -315,16 +332,12 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
         "status": "pending"
     })
 
-    # Update button message to show approval
-    coordinator_msg_ts = workflow.get("coordinator_msg_ts")
-    coordinator_channel = workflow.get("coordinator_thread_channel")
-
-    if coordinator_msg_ts and coordinator_channel:
-        await bo_slack_messaging.update_button_message(
+    # Post status update in thread
+    if coordinator_thread_ts and coordinator_channel:
+        await bo_slack_messaging.post_to_thread(
             channel=coordinator_channel,
-            message_ts=coordinator_msg_ts,
-            new_text=f"✅ **APPROVED** by <@{user_id}>\n\nMoving to Head of Sales for review...",
-            approved=True
+            thread_ts=coordinator_thread_ts,
+            text=f"✅ **Approved by <@{user_id}>** - Moving to Head of Sales for review..."
         )
 
     # Generate temp Excel for HoS review

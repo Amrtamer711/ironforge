@@ -10,6 +10,20 @@ import config
 logger = logging.getLogger("proposal-bot")
 
 
+async def post_to_thread(channel: str, thread_ts: str, text: str) -> Dict[str, Any]:
+    """
+    Post a simple message to a thread.
+
+    Returns: {"ts": message_timestamp}
+    """
+    result = await config.slack_client.chat_postMessage(
+        channel=channel,
+        thread_ts=thread_ts,
+        text=config.markdown_to_slack(text)
+    )
+    return {"ts": result.get("ts")}
+
+
 async def send_coordinator_approval_buttons(
     channel: str,
     workflow_id: str,

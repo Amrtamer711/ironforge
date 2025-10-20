@@ -719,54 +719,54 @@ async def _handle_booking_order_parse(
         preview_text += "• Press **Approve** to send to Head of Sales\n"
         preview_text += "• Press **Reject** to request changes in a thread"
 
-        # Upload Excel file to coordinator
+        # NEW FLOW: Post notification in main channel, then file + buttons in thread
         try:
-            await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Uploading Excel to coordinator..._")
+            await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Sending to coordinator..._")
         except Exception as e:
-            logger.error(f"[SLACK] Failed to update status message while uploading: {e}", exc_info=True)
+            logger.error(f"[SLACK] Failed to update status message: {e}", exc_info=True)
 
-        logger.info(f"[BO APPROVAL] Uploading Excel with preview text to channel/user: {coordinator_channel}")
+        logger.info(f"[BO APPROVAL] Posting notification to coordinator channel: {coordinator_channel}")
 
-        # Upload file with initial comment (preview text)
+        # Step 1: Post notification message in main channel
+        notification_text = (
+            f"📋 **New Booking Order Submitted**\n\n"
+            f"**Client:** {result.data.get('client', 'N/A')}\n"
+            f"**Campaign:** {result.data.get('brand_campaign', 'N/A')}\n"
+            f"**Gross Total:** AED {result.data.get('gross_calc', 0):,.2f}\n\n"
+            f"**Submitted by:** <@{user_id}>\n\n"
+            f"_Please review the details in the thread below..._"
+        )
+
+        notification_msg = await config.slack_client.chat_postMessage(
+            channel=coordinator_channel,
+            text=config.markdown_to_slack(notification_text)
+        )
+        notification_ts = notification_msg["ts"]
+        logger.info(f"[BO APPROVAL] Posted notification with ts: {notification_ts}")
+
+        # Step 2: Upload Excel file as threaded reply
+        logger.info(f"[BO APPROVAL] Uploading Excel file in thread...")
         try:
             file_upload = await config.slack_client.files_upload_v2(
                 channel=coordinator_channel,
                 file=str(excel_path),
                 title=f"BO Draft - {result.data.get('client', 'Unknown')}",
-                initial_comment=config.markdown_to_slack(preview_text)
+                initial_comment=config.markdown_to_slack(preview_text),
+                thread_ts=notification_ts  # Post in thread
             )
+            logger.info(f"[BO APPROVAL] File uploaded in thread successfully")
         except Exception as upload_error:
-            logger.error(f"[BO APPROVAL] Failed to upload Excel file to coordinator: {upload_error}", exc_info=True)
+            logger.error(f"[BO APPROVAL] Failed to upload Excel file: {upload_error}", exc_info=True)
             raise Exception(f"Failed to send Excel file to coordinator. Channel/User ID: {coordinator_channel}")
 
-        # files_upload_v2 does NOT return message timestamp (known SDK limitation)
-        # Workaround: Use conversations.history to find the message that was just posted
-        logger.info(f"[BO APPROVAL] Getting message timestamp using conversations.history...")
-
-        file_msg_ts = None
-        try:
-            # Get the most recent message in the channel (should be the file we just uploaded)
-            history = await config.slack_client.conversations_history(
-                channel=coordinator_channel,
-                limit=1
-            )
-
-            if history["ok"] and history["messages"]:
-                file_msg_ts = history["messages"][0]["ts"]
-                logger.info(f"[BO APPROVAL] Got message ts from conversations.history: {file_msg_ts}")
-            else:
-                logger.warning(f"[BO APPROVAL] Could not get messages from conversations.history")
-        except Exception as e:
-            logger.error(f"[BO APPROVAL] Error getting message ts via conversations.history: {e}", exc_info=True)
-
-        # Now update that same message to add blocks with buttons
-        # This adds buttons to the file upload message itself
-        blocks = [
+        # Step 3: Post buttons in the same thread
+        logger.info(f"[BO APPROVAL] Posting approval buttons in thread...")
+        button_blocks = [
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": preview_text
+                    "text": "📎 **Please review the Excel file above, then:**"
                 }
             },
             {
@@ -790,42 +790,20 @@ async def _handle_booking_order_parse(
             }
         ]
 
-        # Update the file message to add buttons (if we got a valid ts)
-        if file_msg_ts:
-            try:
-                await config.slack_client.chat_update(
-                    channel=coordinator_channel,
-                    ts=file_msg_ts,
-                    text=preview_text,  # Fallback text
-                    blocks=blocks
-                )
-                coordinator_msg_ts = file_msg_ts
-                logger.info(f"[BO APPROVAL] Added buttons to file message")
-            except Exception as update_error:
-                logger.error(f"[BO APPROVAL] Failed to add buttons to file message: {update_error}", exc_info=True)
-                # Fall back to posting buttons as separate message
-                import bo_slack_messaging
-                button_result = await bo_slack_messaging.send_coordinator_approval_buttons(
-                    channel=coordinator_channel,
-                    workflow_id=workflow_id,
-                    data=result.data
-                )
-                coordinator_msg_ts = button_result.get("ts")
-        else:
-            logger.warning(f"[BO APPROVAL] Could not get file message ts, posting buttons separately")
-            # Fall back to posting buttons as separate message
-            import bo_slack_messaging
-            button_result = await bo_slack_messaging.send_coordinator_approval_buttons(
-                channel=coordinator_channel,
-                workflow_id=workflow_id,
-                data=result.data
-            )
-            coordinator_msg_ts = button_result.get("ts")
+        button_msg = await config.slack_client.chat_postMessage(
+            channel=coordinator_channel,
+            thread_ts=notification_ts,  # Post in same thread
+            text="Please review and approve or reject:",
+            blocks=button_blocks
+        )
+        coordinator_msg_ts = button_msg["ts"]
+        logger.info(f"[BO APPROVAL] Posted buttons in thread with ts: {coordinator_msg_ts}")
 
         # Update workflow with coordinator message info
         await bo_approval_workflow.update_workflow(workflow_id, {
             "coordinator_thread_channel": coordinator_channel,
-            "coordinator_msg_ts": coordinator_msg_ts,
+            "coordinator_thread_ts": notification_ts,  # The notification message is the thread root
+            "coordinator_msg_ts": coordinator_msg_ts,  # The button message
             "excel_path": str(excel_path)
         })
 
