@@ -765,8 +765,8 @@ async def _handle_booking_order_parse(
             raise Exception(f"Failed to send Excel file to coordinator. Channel/User ID: {coordinator_channel}")
 
         # Wait for file to fully appear in Slack before posting buttons
-        logger.info(f"[BO APPROVAL] Waiting 3 seconds for file to render in Slack...")
-        await asyncio.sleep(3)
+        logger.info(f"[BO APPROVAL] Waiting 5 seconds for file to render in Slack...")
+        await asyncio.sleep(5)
 
         # Step 3: Post buttons in the same thread
         logger.info(f"[BO APPROVAL] Posting approval buttons in thread...")
