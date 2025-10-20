@@ -601,40 +601,60 @@ async def _handle_booking_order_parse(
     file_type = parser.detect_file_type(tmp_file)
 
     # Classify document
-    await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Classifying document..._")
+    try:
+        await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Classifying document..._")
+    except Exception as e:
+        logger.error(f"[SLACK] Failed to update status message while classifying: {e}", exc_info=True)
+        # Continue processing - status update failure shouldn't stop the workflow
+
     classification = await parser.classify_document(tmp_file, user_message=user_message)
     logger.info(f"[BOOKING] Classification: {classification}")
 
     # Check if it's actually a booking order
     if classification.get("classification") != "BOOKING_ORDER" or classification.get("confidence") in {"low", None}:
-        await config.slack_client.chat_update(
-            channel=channel,
-            ts=status_ts,
-            text=config.markdown_to_slack(
-                f"⚠️ This doesn't look like a booking order (confidence: {classification.get('confidence', 'unknown')}).\n\n"
-                f"Reasoning: {classification.get('reasoning', 'N/A')}\n\n"
-                f"If this is artwork for a mockup, please request a mockup instead."
+        try:
+            await config.slack_client.chat_update(
+                channel=channel,
+                ts=status_ts,
+                text=config.markdown_to_slack(
+                    f"⚠️ This doesn't look like a booking order (confidence: {classification.get('confidence', 'unknown')}).\n\n"
+                    f"Reasoning: {classification.get('reasoning', 'N/A')}\n\n"
+                    f"If this is artwork for a mockup, please request a mockup instead."
+                )
             )
-        )
+        except Exception as e:
+            logger.error(f"[SLACK] Failed to send classification result to user: {e}", exc_info=True)
         tmp_file.unlink(missing_ok=True)
         return
 
     # Parse the booking order
-    await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Extracting booking order data..._")
+    try:
+        await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Extracting booking order data..._")
+    except Exception as e:
+        logger.error(f"[SLACK] Failed to update status message while parsing: {e}", exc_info=True)
     try:
         result = await parser.parse_file(tmp_file, file_type)
     except Exception as e:
         logger.error(f"[BOOKING] Parsing failed: {e}", exc_info=True)
-        await config.slack_client.chat_update(
-            channel=channel,
-            ts=status_ts,
-            text=config.markdown_to_slack(f"❌ Failed to parse booking order: {e}")
-        )
+        try:
+            await config.slack_client.chat_update(
+                channel=channel,
+                ts=status_ts,
+                text=config.markdown_to_slack(
+                    f"❌ **Error:** Failed to extract data from the booking order.\n\n"
+                    f"If you believe this is a bug, please contact the AI team with the timestamp: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}`"
+                )
+            )
+        except Exception as slack_error:
+            logger.error(f"[SLACK] Failed to send parsing error to user: {slack_error}", exc_info=True)
         tmp_file.unlink(missing_ok=True)
         return
 
     # NEW FLOW: Generate Excel immediately and send with Approve/Reject buttons
-    await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Generating Excel file..._")
+    try:
+        await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Generating Excel file..._")
+    except Exception as e:
+        logger.error(f"[SLACK] Failed to update status message while generating Excel: {e}", exc_info=True)
 
     try:
         # Generate Excel immediately
@@ -657,11 +677,14 @@ async def _handle_booking_order_parse(
         # Get coordinator channel
         coordinator_channel = bo_approval_workflow.get_coordinator_channel(company)
         if not coordinator_channel:
-            await config.slack_client.chat_update(
-                channel=channel,
-                ts=status_ts,
-                text=config.markdown_to_slack(f"❌ **Error:** Sales Coordinator for {company} not configured. Please update hos_config.json")
-            )
+            try:
+                await config.slack_client.chat_update(
+                    channel=channel,
+                    ts=status_ts,
+                    text=config.markdown_to_slack(f"❌ **Error:** Sales Coordinator for {company} not configured. Please contact the AI team to set this up.")
+                )
+            except Exception as e:
+                logger.error(f"[SLACK] Failed to send config error to user: {e}", exc_info=True)
             return
 
         # Send Excel + summary + Approve/Reject buttons to coordinator
@@ -696,7 +719,10 @@ async def _handle_booking_order_parse(
         preview_text += "• Press **Reject** to request changes in a thread"
 
         # Upload Excel file to coordinator
-        await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Uploading Excel to coordinator..._")
+        try:
+            await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Uploading Excel to coordinator..._")
+        except Exception as e:
+            logger.error(f"[SLACK] Failed to update status message while uploading: {e}", exc_info=True)
 
         file_upload = await config.slack_client.files_upload_v2(
             channel=coordinator_channel,
@@ -728,28 +754,37 @@ async def _handle_booking_order_parse(
         })
 
         # Notify sales person
-        await config.slack_client.chat_update(
-            channel=channel,
-            ts=status_ts,
-            text=config.markdown_to_slack(
-                f"✅ **Booking Order Submitted**\n\n"
-                f"**Client:** {result.data.get('client', 'N/A')}\n"
-                f"**Campaign:** {result.data.get('brand_campaign', 'N/A')}\n"
-                f"**Gross Total:** AED {result.data.get('gross_calc', 0):,.2f}\n\n"
-                f"Your booking order has been sent to the Sales Coordinator with an Excel file for immediate review. "
-                f"You'll be notified once the approval process is complete."
+        try:
+            await config.slack_client.chat_update(
+                channel=channel,
+                ts=status_ts,
+                text=config.markdown_to_slack(
+                    f"✅ **Booking Order Submitted**\n\n"
+                    f"**Client:** {result.data.get('client', 'N/A')}\n"
+                    f"**Campaign:** {result.data.get('brand_campaign', 'N/A')}\n"
+                    f"**Gross Total:** AED {result.data.get('gross_calc', 0):,.2f}\n\n"
+                    f"Your booking order has been sent to the Sales Coordinator with an Excel file for immediate review. "
+                    f"You'll be notified once the approval process is complete."
+                )
             )
-        )
+        except Exception as e:
+            logger.error(f"[SLACK] Failed to send success message to user: {e}", exc_info=True)
 
         logger.info(f"[BO APPROVAL] Sent {workflow_id} to coordinator with Excel and approval buttons")
 
     except Exception as e:
         logger.error(f"[BO APPROVAL] Error creating workflow: {e}", exc_info=True)
-        await config.slack_client.chat_update(
-            channel=channel,
-            ts=status_ts,
-            text=config.markdown_to_slack(f"❌ **Error starting approval workflow:** {str(e)}\n\nPlease try again.")
-        )
+        try:
+            await config.slack_client.chat_update(
+                channel=channel,
+                ts=status_ts,
+                text=config.markdown_to_slack(
+                    f"❌ **Error:** Failed to start the approval workflow.\n\n"
+                    f"If you believe this is a bug, please contact the AI team with the timestamp: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}`"
+                )
+            )
+        except Exception as slack_error:
+            logger.error(f"[SLACK] Failed to send workflow error to user: {slack_error}", exc_info=True)
 
 
 async def _handle_booking_order_retrieve(args: Dict[str, Any], channel: str) -> str:
