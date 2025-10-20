@@ -220,8 +220,7 @@ Analyze the uploaded file and respond with:
                     {
                         "type": "code_interpreter",
                         "container": {
-                            "type": "auto",
-                            "file_ids": [file_id]
+                            "type": "auto"
                         }
                     }
                 ],
