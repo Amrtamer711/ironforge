@@ -284,8 +284,9 @@ Analyze the uploaded file and respond with:
             if not response.output or len(response.output) == 0:
                 raise ValueError("Empty parsing response from model")
 
-            # Extract JSON from structured output
-            result_text = response.output[0].content[0].text if hasattr(response.output[0], 'content') else str(response.output[0])
+            # Extract JSON from structured output using output_text
+            # This gets the final text output after any tool calls
+            result_text = response.output_text
             logger.info(f"[BOOKING PARSER] Parse response length: {len(result_text)} chars")
             logger.info(f"[BOOKING PARSER] Parse response text: {result_text[:500]}...")  # Log first 500 chars
 
