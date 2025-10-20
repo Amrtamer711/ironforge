@@ -144,8 +144,9 @@ Analyze the uploaded file and respond with:
                 logger.warning("[BOOKING PARSER] Empty classification response")
                 return {"classification": "ARTWORK", "confidence": "low", "reasoning": "No response from model"}
 
-            # Parse response text
-            result_text = response.output[0].content[0].text if hasattr(response.output[0], 'content') else str(response.output[0])
+            # Parse response text using output_text
+            # This gets the final text output after any tool calls
+            result_text = response.output_text
             logger.info(f"[BOOKING PARSER] Classification response: {result_text}")
 
             # Extract classification from response
