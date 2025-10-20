@@ -14,6 +14,7 @@ from proposals import process_proposals
 from slack_formatting import SlackResponses
 from booking_parser import BookingOrderParser, ORIGINAL_DIR, PARSED_DIR
 from task_queue import mockup_queue
+import bo_slack_messaging
 
 user_history: Dict[str, list] = {}
 
@@ -729,7 +730,6 @@ async def _handle_booking_order_parse(
         logger.info(f"[BO APPROVAL] Posting notification to coordinator channel: {coordinator_channel}")
 
         # Get submitter's real name
-        import bo_slack_messaging
         submitter_name = await bo_slack_messaging.get_user_real_name(user_id)
 
         # Step 1: Post notification message in main channel
@@ -991,7 +991,6 @@ IMPORTANT: Use natural language in messages. Be friendly and conversational.
             # Start approval workflow - send directly to Sales Coordinator (admin is HoS)
             try:
                 import bo_approval_workflow
-                import bo_slack_messaging
 
                 # Generate temp Excel for coordinator review
                 parser = BookingOrderParser(company=edit_data.get("company"))
