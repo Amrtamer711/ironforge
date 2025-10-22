@@ -318,67 +318,106 @@ Analyze the uploaded file and respond with:
 
     def _build_parsing_prompt(self) -> str:
         """Build the parsing prompt with field requirements"""
-        return f"""You are extracting data from a booking order document for {self.company.upper()}.
+        return f"""You are an expert at extracting data from booking orders for {self.company.upper()}, a billboard/outdoor advertising company.
 
-**YOUR TASK:**
-Extract ALL visible information from this booking order. Be precise and thorough. Do NOT make up values.
+**TAKE YOUR TIME AND BE INTELLIGENT:**
+These booking orders come from EXTERNAL clients and may have horrible, inconsistent structures. Do NOT rush. Carefully dissect the entire document, understand the business context, and intelligently parse the information. Think step-by-step about what you're seeing.
 
-**CRITICAL EXTRACTION RULES:**
-1. Extract ONLY what is clearly visible in the document
-2. Use null for any field that is missing or unclear
-3. For dates: Convert to YYYY-MM-DD format (e.g., "21st February 2025" → "2025-02-21")
-4. For percentages: Convert to decimal (e.g., "5%" → 0.05, "0.4%" → 0.004)
-5. For numbers: Extract as pure numbers without currency symbols (e.g., "295,596.00" → 295596.00)
-6. Do NOT calculate or estimate - only extract what you see
+**CRITICAL BILLBOARD INDUSTRY CONTEXT:**
+
+**Understanding Billboard Purchases:**
+Booking orders (BOs) are contracts where clients purchase billboard advertising space. Key concepts:
+
+1. **Multiple Locations Under One Payment:**
+   - Clients can buy MULTIPLE billboard locations bundled together under a single payment line
+   - Example: "Triple Crown Package - AED 160,000" might include UAE03 + UAE04 + UAE05
+   - Another example: One payment line showing "UAE03 & UAE04 - AED 120,000" means BOTH locations share this payment
+   - When you see this, you MUST split the payment intelligently across the locations (usually proportionally or equally if no other info)
+
+2. **Fee Types (NOT locations - extract separately):**
+   - **Municipality Fee:** Applies to ALL locations as a regulatory fee. Extract this as a separate global fee, NOT as a location
+   - **Upload Fee:** Only for DIGITAL billboards (screens). This is the cost to upload creative content. NOT a location.
+   - **Production Fee:** Only for STATIC billboards (printed). This is the cost to produce/print the creative. NOT a location.
+   - These fees may appear mixed in with location rows - use intelligence to identify them
+
+3. **SLA (Service Level Agreement) %:**
+   - This is a DEDUCTION percentage (e.g., 0.4% = 0.004 as decimal)
+   - Usually user-inputted or negotiated
+   - Applied ONLY to the net rental amount (rental + production/upload fees + municipality fees)
+   - SLA deduction happens BEFORE VAT is calculated
+   - Formula: Net after SLA = Net rental - (Net rental × SLA%)
+   - Then VAT is applied: Gross = (Net after SLA) × 1.05
+
+4. **Location Types:**
+   - **Digital/LED screens:** Get upload fees, no production fees
+   - **Static billboards:** Get production fees, no upload fees
+   - The document may not explicitly label these - use context clues
+
+**FINANCIAL CALCULATION FLOW:**
+1. Net Rental = Sum of all location rentals
+2. Add Production/Upload Fees = Net Rental + Fees
+3. Add Municipality Fee = Total + Municipality
+4. Apply SLA Deduction = Total - (Total × SLA%)
+5. Calculate VAT (5%) = Net after SLA × 0.05
+6. Gross Total = Net after SLA + VAT
+
+**EXTRACTION RULES:**
+
+**Be Intelligent About:**
+- **Bundled payments:** If one payment covers multiple locations, split it across them
+- **Fee identification:** Distinguish between location rentals vs fees (municipality/upload/production)
+- **Inconsistent structures:** Tables may be messy, merged cells, unclear headers - parse carefully
+- **Missing data:** Use null for truly missing fields, but try hard to find the data first
+- **Calculations:** Extract what's shown, but understand the calculation logic to catch errors
+
+**Format Rules:**
+1. Dates: Convert to YYYY-MM-DD format (e.g., "21st Feb 2025" → "2025-02-21")
+2. Percentages: Convert to decimal (e.g., "5%" → 0.05, "0.4%" → 0.004)
+3. Numbers: Pure numbers without currency symbols (e.g., "AED 295,596.00" → 295596.00)
+4. Asset codes: Extract as list: ["UAE02", "UAE03", "UAE21"]
 
 **DOCUMENT STRUCTURE TO LOOK FOR:**
 
 **Header Information:**
-- BO Number (Booking Order reference number - usually starts with "BO-" or "DPD-")
-- BO Date (the date the booking order was created)
-- Client (company/organization name)
-- Agency (may be blank/empty)
-- Brand/Campaign (campaign or brand name)
+- BO Number (Booking Order reference - usually "BO-XXX" or "DPD-XXX")
+- BO Date (when the BO was created)
+- Client (company name purchasing the advertising)
+- Agency (advertising agency, may be blank)
+- Brand/Campaign (the advertised brand or campaign name)
 - Category (e.g., "Real Estate", "FMCG", "Automotive")
 
-**Asset Information:**
-- Asset(s): The billboard/screen codes or names (e.g., "UAE02", "SZR - Timaz Screen")
-- Can be a single asset OR multiple assets (extract as list if multiple)
-- May appear in header OR per-location in a table
+**Location/Asset Details (usually in a table):**
+For EACH billboard location, extract:
+- Location name/code (e.g., "UAE02", "SZR Tower")
+- Start date (campaign start)
+- End date (campaign end)
+- Duration (e.g., "1 month", "30 days")
+- Net amount (rental cost for THIS location - may need to split bundled payments)
+- Production/Upload cost (if specified per-location)
+- Type (digital vs static - if mentioned)
 
-**Location Details (usually in a table):**
-Look for a table with columns showing different locations/sites. For EACH location, extract:
-- Location name (site/screen identifier)
-- Start date (campaign start date for this location)
-- End date (campaign end date for this location)
-- Campaign duration (e.g., "1 month", "30 days")
-- Asset (if specified per-location, otherwise use global asset)
+**Separate Fees (NOT locations):**
+- Municipality fee (applies to all locations)
+- Total upload fees (for all digital locations)
+- Total production fees (for all static locations)
 
-**Cost Breakdown Per Location:**
-For each location, look for these cost components:
-- Campaign cost / Media cost / Net amount (the main advertising cost)
-- Production cost / Upload cost (may be labeled "Production/Upload Cost", can be 0 or N/A)
-- DM Fee / Digital Marketing Fee (additional fee, can be 0 or N/A)
-
-IMPORTANT: The location's net_amount should be the TOTAL for that location.
-
-**Financial Totals (bottom of document):**
-- Net amount / Net excl. VAT (total before VAT) - extract if shown
-- VAT amount (Value Added Tax) - extract if shown
-- Gross amount (total including VAT) - extract if shown
-- SLA / SLA% (Service Level Agreement percentage) - extract if shown
+**Financial Totals:**
+- Net amount (total before VAT and after SLA)
+- VAT amount (5% tax)
+- Gross amount (total including VAT)
+- SLA % (deduction percentage)
 
 **Additional Information:**
 - Payment terms (e.g., "60 days PDC", "30 days credit")
-- Sales person name
-- Commission % (salesperson commission percentage)
+- Salesperson name
+- Commission %
 
-**IMPORTANT NOTES:**
-- If you see multiple locations in a table, create one object per location in the "locations" array
-- Each location should have its own dates, costs, and duration
-- The net_amount for each location is the sum of that location's costs
-- If a document shows "N/A" or blank for a cost field, use null
-- Asset codes like "UAE02", "UAE03", "UAE21" should be extracted as a list: ["UAE02", "UAE03", "UAE21"]"""
+**CRITICAL NOTES:**
+- If you see "Municipality Fee" or "Upload Fee" in the locations table, extract it separately as a fee, NOT as a location
+- When multiple locations share one payment, split the amount across them intelligently
+- Think about whether each line item is a location rental or a fee
+- The structure may be messy - take your time to understand it
+- Extract what you see, but understand the business logic to validate your extraction"""
 
     def _extract_json_from_response(self, text: str) -> Dict[str, Any]:
         """Extract JSON from LLM response (may have markdown code blocks)"""
