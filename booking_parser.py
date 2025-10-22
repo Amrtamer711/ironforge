@@ -180,11 +180,11 @@ Analyze the uploaded file and respond with:
 """
 
         try:
-            # Use VendorAI syntax: {"type": "input_file", "file_id": ...} and {"type": "input_text", "text": ...}
+            # Use VendorAI syntax with structured JSON output
             response = await config.openai_client.responses.create(
                 model=config.OPENAI_MODEL,
                 input=[
-                    {"role": "system", "content": "You are a document classifier. Analyze the file and provide classification."},
+                    {"role": "system", "content": "You are a document classifier. Analyze the file and provide classification in JSON format."},
                     {
                         "role": "user",
                         "content": [
@@ -193,6 +193,35 @@ Analyze the uploaded file and respond with:
                         ]
                     }
                 ],
+                text={
+                    "format": {
+                        "type": "json_schema",
+                        "name": "classification_response",
+                        "strict": True,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "classification": {
+                                    "type": "string",
+                                    "enum": ["BOOKING_ORDER", "ARTWORK"]
+                                },
+                                "confidence": {
+                                    "type": "string",
+                                    "enum": ["high", "medium", "low"]
+                                },
+                                "company": {
+                                    "type": ["string", "null"],
+                                    "enum": ["backlite", "viola", None]
+                                },
+                                "reasoning": {
+                                    "type": "string"
+                                }
+                            },
+                            "required": ["classification", "confidence", "reasoning"],
+                            "additionalProperties": False
+                        }
+                    }
+                },
                 store=False
             )
 
@@ -200,59 +229,19 @@ Analyze the uploaded file and respond with:
                 logger.warning("[BOOKING PARSER] Empty classification response")
                 return {"classification": "ARTWORK", "confidence": "low", "reasoning": "No response from model"}
 
-            # Parse response text using output_text
-            # This gets the final text output after any tool calls
+            # Parse JSON response from structured output
             result_text = response.output_text
             logger.info(f"[BOOKING PARSER] Classification response: {result_text}")
 
-            # Extract classification from response - look for the actual classification line
-            result_lower = result_text.lower()
+            # Parse JSON directly (structured output guarantees valid JSON)
+            result = json.loads(result_text)
 
-            # Parse the classification line specifically (avoid matching prompt text)
-            classification = "ARTWORK"  # Default
-            if "classification:" in result_lower:
-                # Extract the line with "classification:"
-                for line in result_text.split('\n'):
-                    if 'classification:' in line.lower():
-                        if 'booking' in line.lower() and 'order' in line.lower():
-                            classification = "BOOKING_ORDER"
-                        elif 'artwork' in line.lower():
-                            classification = "ARTWORK"
-                        break
+            # Ensure company is set for BOOKING_ORDER (fallback to backlite if null)
+            if result["classification"] == "BOOKING_ORDER" and not result.get("company"):
+                result["company"] = "backlite"
 
-            # Extract confidence
-            confidence = "low"  # Default
-            if "confidence:" in result_lower:
-                for line in result_text.split('\n'):
-                    if 'confidence:' in line.lower():
-                        if 'high' in line.lower():
-                            confidence = "high"
-                        elif 'medium' in line.lower():
-                            confidence = "medium"
-                        break
-
-            # Extract company (for BOOKING_ORDER only)
-            company = None
-            if classification == "BOOKING_ORDER":
-                # Look for company in the response
-                if "company:" in result_lower:
-                    for line in result_text.split('\n'):
-                        if 'company:' in line.lower():
-                            if 'viola' in line.lower():
-                                company = "viola"
-                            elif 'backlite' in line.lower():
-                                company = "backlite"
-                            break
-                # Fallback to backlite if not found
-                if not company:
-                    company = "backlite"
-
-            return {
-                "classification": classification,
-                "confidence": confidence,
-                "company": company,
-                "reasoning": result_text[:200]
-            }
+            logger.info(f"[BOOKING PARSER] Parsed classification: {result}")
+            return result
 
         except Exception as e:
             logger.error(f"[BOOKING PARSER] Classification error: {e}", exc_info=True)
