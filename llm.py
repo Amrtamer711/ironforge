@@ -1805,6 +1805,10 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 elif classification.get("classification") == "ARTWORK" and classification.get("confidence") == "high":
                     logger.info(f"[PRE-ROUTER] HIGH CONFIDENCE ARTWORK - letting LLM handle mockup")
                     tmp_file.unlink(missing_ok=True)
+                    # Clear document_files and set as image for LLM to handle as mockup
+                    document_files.clear()
+                    if not image_files:  # If not already marked as image
+                        image_files.append(file_info.get("name", "artwork"))
                     # Fall through to LLM for mockup generation
 
                 else:
