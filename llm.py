@@ -12,7 +12,7 @@ import config
 import db
 from proposals import process_proposals
 from slack_formatting import SlackResponses
-from booking_parser import BookingOrderParser, ORIGINAL_DIR, PARSED_DIR
+from booking_parser import BookingOrderParser, COMBINED_BOS_DIR
 from task_queue import mockup_queue
 import bo_slack_messaging
 
@@ -658,9 +658,9 @@ async def _handle_booking_order_parse(
         logger.error(f"[SLACK] Failed to update status message while generating Excel: {e}", exc_info=True)
 
     try:
-        # Generate Excel immediately
+        # Generate combined PDF (Excel + Original BO concatenated)
         import bo_approval_workflow
-        excel_path = await parser.generate_excel(result.data, f"DRAFT_{company}_REVIEW")
+        combined_pdf_path = await parser.generate_combined_pdf(result.data, f"DRAFT_{company}_REVIEW", Path(tmp_file))
 
         # Create approval workflow
         workflow_id = await bo_approval_workflow.create_approval_workflow(
@@ -749,20 +749,20 @@ async def _handle_booking_order_parse(
         notification_ts = notification_msg["ts"]
         logger.info(f"[BO APPROVAL] Posted notification with ts: {notification_ts}")
 
-        # Step 2: Upload Excel file as threaded reply
-        logger.info(f"[BO APPROVAL] Uploading Excel file in thread...")
+        # Step 2: Upload combined PDF file as threaded reply
+        logger.info(f"[BO APPROVAL] Uploading combined PDF in thread...")
         try:
             file_upload = await config.slack_client.files_upload_v2(
                 channel=coordinator_channel,
-                file=str(excel_path),
+                file=str(combined_pdf_path),
                 title=f"BO Draft - {result.data.get('client', 'Unknown')}",
                 initial_comment=config.markdown_to_slack(preview_text),
                 thread_ts=notification_ts  # Post in thread
             )
-            logger.info(f"[BO APPROVAL] File uploaded in thread successfully")
+            logger.info(f"[BO APPROVAL] Combined PDF uploaded in thread successfully")
         except Exception as upload_error:
-            logger.error(f"[BO APPROVAL] Failed to upload Excel file: {upload_error}", exc_info=True)
-            raise Exception(f"Failed to send Excel file to coordinator. Channel/User ID: {coordinator_channel}")
+            logger.error(f"[BO APPROVAL] Failed to upload combined PDF: {upload_error}", exc_info=True)
+            raise Exception(f"Failed to send combined PDF to coordinator. Channel/User ID: {coordinator_channel}")
 
         # Wait for file to fully appear in Slack before posting buttons
         logger.info(f"[BO APPROVAL] Waiting 10 seconds for file to render in Slack...")
@@ -775,7 +775,7 @@ async def _handle_booking_order_parse(
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": "📎 *Please review the Excel file above, then:*"
+                    "text": "📎 *Please review the PDF above (Excel + Original BO), then:*"
                 }
             },
             {
@@ -813,7 +813,7 @@ async def _handle_booking_order_parse(
             "coordinator_thread_channel": coordinator_channel,
             "coordinator_thread_ts": notification_ts,  # The notification message is the thread root
             "coordinator_msg_ts": coordinator_msg_ts,  # The button message
-            "excel_path": str(excel_path)
+            "combined_pdf_path": str(combined_pdf_path)
         })
 
         # Notify sales person
@@ -826,14 +826,14 @@ async def _handle_booking_order_parse(
                     f"**Client:** {result.data.get('client', 'N/A')}\n"
                     f"**Campaign:** {result.data.get('brand_campaign', 'N/A')}\n"
                     f"**Gross Total:** AED {result.data.get('gross_calc', 0):,.2f}\n\n"
-                    f"Your booking order has been sent to the Sales Coordinator with an Excel file for immediate review. "
+                    f"Your booking order has been sent to the Sales Coordinator with a combined PDF (parsed data + original BO) for immediate review. "
                     f"You'll be notified once the approval process is complete."
                 )
             )
         except Exception as e:
             logger.error(f"[SLACK] Failed to send success message to user: {e}", exc_info=True)
 
-        logger.info(f"[BO APPROVAL] Sent {workflow_id} to coordinator with Excel and approval buttons")
+        logger.info(f"[BO APPROVAL] Sent {workflow_id} to coordinator with combined PDF and approval buttons")
 
     except Exception as e:
         logger.error(f"[BO APPROVAL] Error creating workflow: {e}", exc_info=True)
@@ -1048,9 +1048,13 @@ Return JSON with: action, fields (ALL changed fields including cascading updates
             try:
                 import bo_approval_workflow
 
-                # Generate temp Excel for coordinator review
+                # Generate combined PDF for coordinator review
                 parser = BookingOrderParser(company=edit_data.get("company"))
-                temp_excel = await parser.generate_excel(current_data, f"DRAFT_{edit_data.get('company')}")
+                combined_pdf = await parser.generate_combined_pdf(
+                    current_data,
+                    f"DRAFT_{edit_data.get('company')}",
+                    Path(edit_data.get("original_file_path"))
+                )
 
                 # Create approval workflow (start at coordinator stage since admin is HoS)
                 workflow_id = await bo_approval_workflow.create_approval_workflow(
@@ -1076,7 +1080,7 @@ Return JSON with: action, fields (ALL changed fields including cascading updates
                     workflow_id=workflow_id,
                     company=edit_data.get("company"),
                     data=current_data,
-                    excel_path=str(temp_excel)
+                    combined_pdf_path=str(combined_pdf)
                 )
 
                 # Update workflow with coordinator message info

@@ -200,7 +200,7 @@ async def send_to_coordinator(
     workflow_id: str,
     company: str,
     data: Dict[str, Any],
-    excel_path: str
+    combined_pdf_path: str
 ) -> Dict[str, Any]:
     """
     Send booking order to Sales Coordinator with Approve/Reject buttons
@@ -214,7 +214,7 @@ async def send_to_coordinator(
     text += f"**Client:** {data.get('client', 'N/A')}\n"
     text += f"**Campaign:** {data.get('brand_campaign', 'N/A')}\n"
     text += f"**Gross Total:** AED {data.get('gross_calc', 0):,.2f}\n\n"
-    text += f"Please review the booking order details and confirm."
+    text += f"Please review the combined PDF (parsed data + original BO) and confirm."
 
     # Create blocks with buttons
     blocks = [
@@ -246,10 +246,10 @@ async def send_to_coordinator(
         }
     ]
 
-    # Upload Excel file
+    # Upload combined PDF file
     file_result = await config.slack_client.files_upload_v2(
         channel=channel,
-        file=excel_path,
+        file=combined_pdf_path,
         title=f"BO Draft - {data.get('client', 'Unknown')} - {company.upper()}",
         initial_comment=config.markdown_to_slack(text)
     )

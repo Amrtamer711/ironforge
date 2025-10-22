@@ -6,19 +6,22 @@ Handles classification and parsing of booking order documents using OpenAI Respo
 import json
 import logging
 import os
+import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 
 import config
+from PyPDF2 import PdfMerger
 
 logger = logging.getLogger("proposal-bot")
 
 # File storage directories
 BOOKING_ORDERS_BASE = Path("/data/booking_orders") if os.path.exists("/data") else Path(__file__).parent / "booking_orders"
-ORIGINAL_DIR = BOOKING_ORDERS_BASE / "original_bos"
-PARSED_DIR = BOOKING_ORDERS_BASE / "parsed_bos"
+# Combined PDFs directory (stores Excel + Original BO concatenated)
+COMBINED_BOS_DIR = BOOKING_ORDERS_BASE / "combined_bos"
 
 # BO Template files (for future use - not currently used)
 # These are the actual branded templates for Backlite and Viola
@@ -28,8 +31,7 @@ TEMPLATE_BACKLITE = TEMPLATES_DIR / "backlite_bo_template.xlsx"
 TEMPLATE_VIOLA = TEMPLATES_DIR / "viola_bo_template.xlsx"
 
 # Ensure directories exist
-ORIGINAL_DIR.mkdir(parents=True, exist_ok=True)
-PARSED_DIR.mkdir(parents=True, exist_ok=True)
+COMBINED_BOS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @dataclass
@@ -673,9 +675,132 @@ For EACH billboard location, extract:
         ws.column_dimensions["A"].width = 30
         ws.column_dimensions["B"].width = 40
 
-        # Save
-        output_path = PARSED_DIR / f"{bo_ref}.xlsx"
-        wb.save(output_path)
-        logger.info(f"[BOOKING PARSER] Generated Excel: {output_path}")
+        # Save to temporary file (will be converted to PDF and concatenated)
+        temp_excel = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+        temp_excel_path = Path(temp_excel.name)
+        wb.save(temp_excel_path)
+        logger.info(f"[BOOKING PARSER] Generated Excel: {temp_excel_path}")
 
-        return output_path
+        return temp_excel_path
+
+    async def generate_combined_pdf(self, data: Dict[str, Any], bo_ref: str, original_bo_path: Path) -> Path:
+        """
+        Generate combined PDF: Excel (converted to PDF) + Original BO PDF concatenated
+
+        Args:
+            data: Parsed booking order data
+            bo_ref: BO reference for filename
+            original_bo_path: Path to the original BO file (PDF or will be converted)
+
+        Returns:
+            Path to the combined PDF file
+        """
+        logger.info(f"[BOOKING PARSER] Generating combined PDF for {bo_ref}")
+
+        # Step 1: Generate Excel
+        excel_path = await self.generate_excel(data, bo_ref)
+
+        # Step 2: Convert Excel to PDF using LibreOffice
+        excel_pdf_path = await self._convert_excel_to_pdf(excel_path)
+
+        # Step 3: Ensure original BO is PDF (convert if needed)
+        original_pdf_path = await self._ensure_pdf(original_bo_path)
+
+        # Step 4: Concatenate PDFs (Excel PDF first, then original BO)
+        combined_pdf_path = COMBINED_BOS_DIR / f"{bo_ref}_combined.pdf"
+        await self._concatenate_pdfs([excel_pdf_path, original_pdf_path], combined_pdf_path)
+
+        # Clean up temporary files
+        try:
+            excel_path.unlink()
+            if excel_pdf_path != excel_path:
+                excel_pdf_path.unlink()
+            if original_pdf_path != original_bo_path:
+                original_pdf_path.unlink()
+        except Exception as e:
+            logger.warning(f"[BOOKING PARSER] Failed to clean up temp files: {e}")
+
+        logger.info(f"[BOOKING PARSER] Combined PDF generated: {combined_pdf_path}")
+        return combined_pdf_path
+
+    async def _convert_excel_to_pdf(self, excel_path: Path) -> Path:
+        """Convert Excel file to PDF using LibreOffice"""
+        logger.info(f"[BOOKING PARSER] Converting Excel to PDF: {excel_path}")
+
+        output_dir = excel_path.parent
+        pdf_path = excel_path.with_suffix('.pdf')
+
+        try:
+            # Use LibreOffice to convert Excel to PDF
+            result = subprocess.run([
+                'soffice',
+                '--headless',
+                '--convert-to', 'pdf',
+                '--outdir', str(output_dir),
+                str(excel_path)
+            ], capture_output=True, text=True, timeout=30)
+
+            if result.returncode != 0:
+                raise Exception(f"LibreOffice conversion failed: {result.stderr}")
+
+            if not pdf_path.exists():
+                raise Exception(f"PDF not created at expected path: {pdf_path}")
+
+            logger.info(f"[BOOKING PARSER] Excel converted to PDF: {pdf_path}")
+            return pdf_path
+
+        except Exception as e:
+            logger.error(f"[BOOKING PARSER] Failed to convert Excel to PDF: {e}")
+            raise
+
+    async def _ensure_pdf(self, file_path: Path) -> Path:
+        """Ensure file is PDF, convert if needed"""
+        if file_path.suffix.lower() == '.pdf':
+            return file_path
+
+        logger.info(f"[BOOKING PARSER] Converting {file_path.suffix} to PDF")
+
+        output_dir = file_path.parent
+        pdf_path = file_path.with_suffix('.pdf')
+
+        try:
+            result = subprocess.run([
+                'soffice',
+                '--headless',
+                '--convert-to', 'pdf',
+                '--outdir', str(output_dir),
+                str(file_path)
+            ], capture_output=True, text=True, timeout=30)
+
+            if result.returncode != 0:
+                raise Exception(f"LibreOffice conversion failed: {result.stderr}")
+
+            if not pdf_path.exists():
+                raise Exception(f"PDF not created at expected path: {pdf_path}")
+
+            logger.info(f"[BOOKING PARSER] File converted to PDF: {pdf_path}")
+            return pdf_path
+
+        except Exception as e:
+            logger.error(f"[BOOKING PARSER] Failed to convert to PDF: {e}")
+            raise
+
+    async def _concatenate_pdfs(self, pdf_paths: List[Path], output_path: Path) -> None:
+        """Concatenate multiple PDFs into one"""
+        logger.info(f"[BOOKING PARSER] Concatenating {len(pdf_paths)} PDFs")
+
+        try:
+            merger = PdfMerger()
+
+            for pdf_path in pdf_paths:
+                logger.info(f"[BOOKING PARSER] Adding PDF: {pdf_path}")
+                merger.append(str(pdf_path))
+
+            merger.write(str(output_path))
+            merger.close()
+
+            logger.info(f"[BOOKING PARSER] PDFs concatenated successfully: {output_path}")
+
+        except Exception as e:
+            logger.error(f"[BOOKING PARSER] Failed to concatenate PDFs: {e}")
+            raise
