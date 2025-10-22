@@ -318,11 +318,38 @@ Analyze the uploaded file and respond with:
 
     def _build_parsing_prompt(self) -> str:
         """Build the parsing prompt with field requirements"""
+        # Get static and digital locations for Backlite only
+        location_context = ""
+        if self.company.lower() == "backlite":
+            static_locations = []
+            digital_locations = []
+            for key, meta in config.LOCATION_METADATA.items():
+                display_name = meta.get('display_name', key)
+                if meta.get('display_type', '').lower() == 'static':
+                    static_locations.append(f"{display_name} ({key})")
+                elif meta.get('display_type', '').lower() == 'digital':
+                    digital_locations.append(f"{display_name} ({key})")
+
+            static_list = ", ".join(static_locations) if static_locations else "None"
+            digital_list = ", ".join(digital_locations) if digital_locations else "None"
+
+            location_context = f"""
+**BACKLITE LOCATION REFERENCE (Use this to identify location types):**
+
+🔴 **DIGITAL LOCATIONS** (LED screens - get upload fees only):
+{digital_list}
+
+🔵 **STATIC LOCATIONS** (Traditional billboards - get production fees only):
+{static_list}
+
+Use this reference to determine if a location should have upload fees (digital) or production fees (static).
+"""
+
         return f"""You are an expert at extracting data from booking orders for {self.company.upper()}, a billboard/outdoor advertising company.
 
 **TAKE YOUR TIME AND BE INTELLIGENT:**
 These booking orders come from EXTERNAL clients and may have horrible, inconsistent structures. Do NOT rush. Carefully dissect the entire document, understand the business context, and intelligently parse the information. Think step-by-step about what you're seeing.
-
+{location_context}
 **CRITICAL BILLBOARD INDUSTRY CONTEXT:**
 
 **Understanding Billboard Purchases:**
