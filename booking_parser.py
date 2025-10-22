@@ -217,7 +217,7 @@ Analyze the uploaded file and respond with:
                                     "type": "string"
                                 }
                             },
-                            "required": ["classification", "confidence", "reasoning"],
+                            "required": ["classification", "confidence", "company", "reasoning"],
                             "additionalProperties": False
                         }
                     }
