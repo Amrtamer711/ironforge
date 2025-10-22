@@ -27,7 +27,7 @@ import logging
 
 import config
 import db
-from booking_parser import BookingOrderParser, ORIGINAL_DIR, PARSED_DIR
+from booking_parser import BookingOrderParser, COMBINED_BOS_DIR
 
 logger = logging.getLogger("proposal-bot")
 
@@ -450,19 +450,21 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     # Generate final BO reference
     bo_ref = await db.generate_next_bo_ref()
 
-    # Move original file to permanent location
-    temp_file_path = Path(workflow["original_file_path"])
-    company_dir = ORIGINAL_DIR / workflow["company"]
-    company_dir.mkdir(parents=True, exist_ok=True)
-
-    original_ext = temp_file_path.suffix
-    final_original_path = company_dir / f"{bo_ref}{original_ext}"
-    if temp_file_path.exists():
-        shutil.move(str(temp_file_path), str(final_original_path))
-
-    # Generate final parsed Excel
+    # Generate final combined PDF (Excel + Original BO)
     parser = BookingOrderParser(company=workflow["company"])
-    final_excel_path = await parser.generate_excel(workflow["data"], bo_ref)
+    temp_original_path = Path(workflow["original_file_path"])
+    final_combined_pdf = await parser.generate_combined_pdf(
+        workflow["data"],
+        bo_ref,
+        temp_original_path
+    )
+
+    # Clean up temp original file if it still exists
+    if temp_original_path.exists():
+        try:
+            temp_original_path.unlink()
+        except Exception as e:
+            logger.warning(f"[BO APPROVAL] Failed to clean up temp original file: {e}")
 
     # Save to permanent database
     await db.save_booking_order(
@@ -472,8 +474,8 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
         warnings=workflow["warnings"],
         missing_required=workflow["missing_required"],
         file_type=workflow["file_type"],
-        original_file_path=str(final_original_path),
-        parsed_excel_path=str(final_excel_path),
+        original_file_path=str(final_combined_pdf),  # Now stores combined PDF path
+        parsed_excel_path=str(final_combined_pdf),   # Same file for both (backwards compatibility)
         user_notes=workflow.get("user_notes", "")
     )
 
