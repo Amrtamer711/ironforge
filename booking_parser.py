@@ -68,17 +68,54 @@ class BookingOrderParser:
         Classify document as BOOKING_ORDER or ARTWORK using OpenAI Responses API.
         Biased toward ARTWORK unless clear booking order fields present.
 
+        Accepts any file type - will convert to PDF if needed for classification.
+
         Args:
-            file_path: Path to the document file
+            file_path: Path to the document file (any format)
             user_message: Optional user's message/prompt that accompanied the file upload
         """
         logger.info(f"[BOOKING PARSER] Classifying document: {file_path}")
         if user_message:
             logger.info(f"[BOOKING PARSER] User message context: {user_message}")
 
-        # Upload file to OpenAI with purpose="user_data" (VendorAI pattern)
+        # Convert to PDF if needed (OpenAI Responses API only accepts PDFs)
+        pdf_path = file_path
+        cleanup_pdf = False
+
+        # Check file extension
+        suffix = file_path.suffix.lower()
+
+        # Convert images to PDF
+        if suffix in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']:
+            logger.info(f"[BOOKING PARSER] Converting image to PDF for classification...")
+            try:
+                from PIL import Image
+                pdf_path = file_path.with_suffix('.pdf')
+                img = Image.open(file_path)
+                # Convert to RGB if needed (PNG with transparency, etc.)
+                if img.mode in ('RGBA', 'LA', 'P'):
+                    img = img.convert('RGB')
+                img.save(pdf_path, 'PDF', resolution=100.0)
+                cleanup_pdf = True
+                logger.info(f"[BOOKING PARSER] Converted image to PDF: {pdf_path}")
+            except Exception as e:
+                logger.error(f"[BOOKING PARSER] Failed to convert image to PDF: {e}")
+                return {"classification": "ARTWORK", "confidence": "high", "reasoning": "Image file detected"}
+
+        # Convert Excel to PDF
+        elif suffix in ['.xlsx', '.xls']:
+            logger.info(f"[BOOKING PARSER] Converting Excel to PDF for classification...")
+            try:
+                pdf_path = await self._convert_excel_to_pdf(file_path)
+                cleanup_pdf = True
+                logger.info(f"[BOOKING PARSER] Converted Excel to PDF: {pdf_path}")
+            except Exception as e:
+                logger.error(f"[BOOKING PARSER] Failed to convert Excel to PDF: {e}")
+                return {"classification": "UNKNOWN", "confidence": "low", "reasoning": f"Excel conversion failed: {e}"}
+
+        # Upload PDF to OpenAI with purpose="user_data" (VendorAI pattern)
         try:
-            with open(file_path, "rb") as f:
+            with open(pdf_path, "rb") as f:
                 file_obj = await config.openai_client.files.create(
                     file=f,
                     purpose="user_data"
@@ -87,7 +124,16 @@ class BookingOrderParser:
             logger.info(f"[BOOKING PARSER] Uploaded file to OpenAI: {file_id}")
         except Exception as e:
             logger.error(f"[BOOKING PARSER] Failed to upload file: {e}")
+            if cleanup_pdf and pdf_path.exists():
+                pdf_path.unlink(missing_ok=True)
             return {"classification": "UNKNOWN", "confidence": "low", "reasoning": str(e)}
+        finally:
+            # Clean up temporary PDF if we created one
+            if cleanup_pdf and pdf_path.exists() and pdf_path != file_path:
+                try:
+                    pdf_path.unlink(missing_ok=True)
+                except Exception as e:
+                    logger.warning(f"[BOOKING PARSER] Failed to clean up temp PDF: {e}")
 
         # Classification prompt - BIASED toward ARTWORK
         user_context = f"\n\n**USER'S MESSAGE:** \"{user_message}\"\nUse this context to better understand the user's intent." if user_message else ""
@@ -119,9 +165,17 @@ class BookingOrderParser:
 5. If user's message mentions "mockup", "billboard", "creative", "artwork" → ARTWORK (high confidence)
 6. If user's message mentions "booking order", "BO", "parse" → BOOKING_ORDER (higher confidence)
 
+**COMPANY DETECTION (for BOOKING_ORDER only):**
+If classified as BOOKING_ORDER, determine the company:
+- Look for "Backlite" or "BackLite" or "backlite" anywhere in document → company: "backlite"
+- Look for "Viola" or "viola" anywhere in document → company: "viola"
+- Check user's message for company name too
+- If unclear, default to "backlite"
+
 Analyze the uploaded file and respond with:
 - classification: "BOOKING_ORDER" or "ARTWORK"
 - confidence: "high", "medium", or "low"
+- company: "backlite" or "viola" (ONLY if classification is BOOKING_ORDER, otherwise null)
 - reasoning: Brief explanation (1 sentence)
 """
 
@@ -165,9 +219,18 @@ Analyze the uploaded file and respond with:
             else:
                 confidence = "low"
 
+            # Extract company (for BOOKING_ORDER only)
+            company = None
+            if classification == "BOOKING_ORDER":
+                if "viola" in result_lower:
+                    company = "viola"
+                else:
+                    company = "backlite"  # Default to backlite
+
             return {
                 "classification": classification,
                 "confidence": confidence,
+                "company": company,
                 "reasoning": result_text[:200]
             }
 
