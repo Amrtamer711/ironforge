@@ -4,14 +4,14 @@
       "name": "Amr Tamer",
       "email": "atmh2002@gmail.com",
       "slack_user_id": "U093E4CPEE4",
-      "slack_channel_id": "",
+      "slack_channel_id": "D09JUAZUQA2",
       "active": true
     },
     "Nour": {
       "name": "Nour",
       "email": "nour@gmail.com",
-      "slack_user_id": "U08867WNDUN",
-      "slack_channel_id": "",
+      "slack_user_id": "U093E4CPEE4",
+      "slack_channel_id": "D09JUAZUQA2",
       "active": true
     }
   },
@@ -22,35 +22,35 @@
     "head_of_sales": {
       "backlite": {
         "name": "Backlite Head of Sales",
-        "slack_user_id": "",
-        "slack_channel_id": "",
+        "slack_user_id": "U093E4CPEE4",
+        "slack_channel_id": "D09JUAZUQA2",
         "email": ""
       },
       "viola": {
         "name": "Viola Head of Sales",
-        "slack_user_id": "",
-        "slack_channel_id": "",
+        "slack_user_id": "U093E4CPEE4",
+        "slack_channel_id": "D09JUAZUQA2",
         "email": ""
       }
     },
     "coordinators": {
       "backlite": {
         "name": "Backlite Sales Coordinator",
-        "slack_user_id": "",
-        "slack_channel_id": "",
+        "slack_user_id": "U093E4CPEE4",
+        "slack_channel_id": "D09JUAZUQA2",
         "email": ""
       },
       "viola": {
         "name": "Viola Sales Coordinator",
-        "slack_user_id": "",
+        "slack_user_id": "U093E4CPEE4",
         "slack_channel_id": "",
         "email": ""
       }
     },
     "finance": {
       "name": "Finance",
-      "slack_user_id": "",
-      "slack_channel_id": "",
+      "slack_user_id": "U093E4CPEE4",
+      "slack_channel_id": "D09JUAZUQA2",
       "email": ""
     }
   }

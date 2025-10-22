@@ -252,8 +252,7 @@ Analyze the uploaded file and respond with:
                                 "commission_pct": {"type": ["number", "null"]},
                                 "sla_pct": {"type": ["number", "null"]},
                                 "municipality_fee": {"type": ["number", "null"]},
-                                "production_fee": {"type": ["number", "null"]},
-                                "upload_fee": {"type": ["number", "null"]},
+                                "production_upload_fee": {"type": ["number", "null"]},
                                 "net_pre_vat": {"type": ["number", "null"]},
                                 "vat_value": {"type": ["number", "null"]},
                                 "gross_amount": {"type": ["number", "null"]},
@@ -268,17 +267,14 @@ Analyze the uploaded file and respond with:
                                             "start_date": {"type": "string"},
                                             "end_date": {"type": "string"},
                                             "campaign_duration": {"type": "string"},
-                                            "campaign_cost": {"type": ["number", "null"]},
-                                            "production_upload_cost": {"type": ["number", "null"]},
-                                            "dm_fee": {"type": ["number", "null"]},
                                             "net_amount": {"type": "number"}
                                         },
-                                        "required": ["name", "start_date", "end_date", "campaign_duration", "net_amount", "asset", "campaign_cost", "production_upload_cost", "dm_fee"],
+                                        "required": ["name", "start_date", "end_date", "campaign_duration", "net_amount", "asset"],
                                         "additionalProperties": False
                                     }
                                 }
                             },
-                            "required": ["bo_number", "bo_date", "client", "agency", "brand_campaign", "category", "asset", "payment_terms", "sales_person", "commission_pct", "sla_pct", "municipality_fee", "production_fee", "upload_fee", "net_pre_vat", "vat_value", "gross_amount", "notes", "locations"],
+                            "required": ["bo_number", "bo_date", "client", "agency", "brand_campaign", "category", "asset", "payment_terms", "sales_person", "commission_pct", "sla_pct", "municipality_fee", "production_upload_fee", "net_pre_vat", "vat_value", "gross_amount", "notes", "locations"],
                             "additionalProperties": False
                         }
                     }
@@ -453,21 +449,34 @@ For EACH billboard location, extract:
 - Production/Upload cost (if specified per-location)
 - Type (digital vs static - if mentioned)
 
-**GLOBAL Fees (extract as top-level fields, NOT in locations array):**
-- **municipality_fee**: Dubai Municipality regulatory fee (small amount, usually hundreds to low thousands)
-  - Look for: "DM Fee", "Municipality Fee", "Dubai Municipality", "Net DM fee"
-  - This is a GLOBAL fee that applies to the entire booking
-  - Extract as a top-level field, not per location
+**CRITICAL: Understanding the Data Structure**
 
-- **production_fee**: Total production cost for ALL static locations
-  - Look for: "Production Fee", "Production Cost", "Net Production fee"
-  - This is the TOTAL across all static billboards
-  - Extract as a top-level field
+Booking orders have TWO types of costs:
 
-- **upload_fee**: Total upload cost for ALL digital locations
-  - Look for: "Upload Fee", "Upload Cost", "Net Upload fee"
-  - This is the TOTAL across all digital screens
-  - Extract as a top-level field
+1. **Per-Location Rental Amounts** (in locations array):
+   - Each location has its own rental amount (e.g., UAE02: AED 80,000, UAE03: AED 80,000)
+   - This is ONLY the rental cost for that specific billboard
+   - Extract as `net_amount` for each location
+
+2. **GLOBAL Fees** (top-level fields, NOT per-location):
+   - **municipality_fee**: Dubai Municipality regulatory fee for the ENTIRE booking
+     - Look for: "DM Fee", "Municipality Fee", "Dubai Municipality", "Net DM fee"
+     - Typically a small amount (hundreds to low thousands)
+     - ONE total for all locations combined
+
+   - **production_upload_fee**: Total production/upload cost for ALL locations
+     - Look for: "Production Fee", "Upload Fee", "Production Cost", "Net Production fee"
+     - This is production fee (for static) + upload fee (for digital) combined into ONE total
+     - ONE total for all locations combined
+     - Example: If you see "Net Production fee: AED 2,000", extract as production_upload_fee: 2000
+
+**IMPORTANT:** Each location only stores its rental amount. Fees are global and get added to the total separately.
+
+**The Math:**
+- Sum of all location rental amounts (e.g., 80,000 + 80,000 + 120,000 = 280,000)
+- + production_upload_fee (e.g., 2,000)
+- + municipality_fee (e.g., 520)
+- = net_pre_vat (e.g., 282,520)
 
 **Financial Totals:**
 - Net amount (Rental + Production + Municipality, before SLA and VAT)
@@ -572,15 +581,14 @@ For EACH billboard location, extract:
         if net and data.get("locations"):
             location_total = sum(loc.get("net_amount", 0) for loc in data["locations"])
             municipality_fee = data.get("municipality_fee", 0) or 0
-            production_fee = data.get("production_fee", 0) or 0
-            upload_fee = data.get("upload_fee", 0) or 0
+            production_upload_fee = data.get("production_upload_fee", 0) or 0
 
             # Expected net = location rentals + all fees
-            expected_net = location_total + municipality_fee + production_fee + upload_fee
+            expected_net = location_total + municipality_fee + production_upload_fee
 
             # Only warn if there's a significant mismatch after accounting for fees
             if abs(expected_net - net) > 0.01:
-                warnings.append(f"Location totals ({location_total}) + fees ({municipality_fee + production_fee + upload_fee}) = {expected_net} doesn't match global net ({net})")
+                warnings.append(f"Location totals ({location_total}) + fees (municipality: {municipality_fee}, prod/upload: {production_upload_fee}) = {expected_net} doesn't match global net ({net})")
 
         return warnings
 
@@ -651,37 +659,79 @@ For EACH billboard location, extract:
                 return ", ".join(str(v) for v in value)
             return value if value is not None else ""
 
-        # Helper to get all start dates from locations
+        # Helper to group locations by start date
         def get_start_dates():
-            if data.get("locations"):
-                dates = [loc.get("start_date", "") for loc in data["locations"] if loc.get("start_date")]
-                return ", ".join(dates)
-            return ""
+            if not data.get("locations"):
+                return ""
 
-        # Helper to get all end dates from locations
+            # Group locations by start_date
+            date_groups = {}
+            for loc in data["locations"]:
+                start_date = loc.get("start_date", "")
+                if start_date:
+                    loc_name = loc.get("name", "").replace("UAE", "UAE")  # Ensure consistent formatting
+                    if start_date not in date_groups:
+                        date_groups[start_date] = []
+                    date_groups[start_date].append(loc_name)
+
+            # Format as "UAE02 & UAE03: date\nUAE21: date"
+            lines = []
+            for date, locations in date_groups.items():
+                loc_str = " & ".join(locations)
+                lines.append(f"{loc_str}: {date}")
+
+            return "\n".join(lines)
+
+        # Helper to group locations by end date
         def get_end_dates():
-            if data.get("locations"):
-                dates = [loc.get("end_date", "") for loc in data["locations"] if loc.get("end_date")]
-                return ", ".join(dates)
-            return ""
+            if not data.get("locations"):
+                return ""
 
-        # Helper to get all durations from locations
+            # Group locations by end_date
+            date_groups = {}
+            for loc in data["locations"]:
+                end_date = loc.get("end_date", "")
+                if end_date:
+                    loc_name = loc.get("name", "").replace("UAE", "UAE")  # Ensure consistent formatting
+                    if end_date not in date_groups:
+                        date_groups[end_date] = []
+                    date_groups[end_date].append(loc_name)
+
+            # Format as "UAE02 & UAE03: date\nUAE21: date"
+            lines = []
+            for date, locations in date_groups.items():
+                loc_str = " & ".join(locations)
+                lines.append(f"{loc_str}: {date}")
+
+            return "\n".join(lines)
+
+        # Helper to group locations by campaign duration
         def get_durations():
-            if data.get("locations"):
-                durations = [loc.get("campaign_duration", "") for loc in data["locations"] if loc.get("campaign_duration")]
-                return ", ".join(durations)
-            return ""
+            if not data.get("locations"):
+                return ""
+
+            # Group locations by campaign_duration
+            duration_groups = {}
+            for loc in data["locations"]:
+                duration = loc.get("campaign_duration", "")
+                if duration:
+                    loc_name = loc.get("name", "").replace("UAE", "UAE")  # Ensure consistent formatting
+                    if duration not in duration_groups:
+                        duration_groups[duration] = []
+                    duration_groups[duration].append(loc_name)
+
+            # Format as "UAE02 & UAE03: duration\nUAE21: duration"
+            lines = []
+            for duration, locations in duration_groups.items():
+                loc_str = " & ".join(locations)
+                lines.append(f"{loc_str}: {duration}")
+
+            return "\n".join(lines)
 
         # Helper to get production/upload fee (global, not per-location)
         def get_production_upload_fee():
-            # Use global production_fee or upload_fee
-            prod_fee = data.get("production_fee")
-            upload_fee = data.get("upload_fee")
-            if prod_fee:
-                return prod_fee
-            elif upload_fee:
-                return upload_fee
-            return 0
+            # Use global production_upload_fee (already combined)
+            return data.get("production_upload_fee", 0) or 0
 
         # Calculate Net Rentals excl SLA (for the merged cell A-E33)
         # This is the net amount before SLA deduction
