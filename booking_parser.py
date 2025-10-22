@@ -205,27 +205,47 @@ Analyze the uploaded file and respond with:
             result_text = response.output_text
             logger.info(f"[BOOKING PARSER] Classification response: {result_text}")
 
-            # Extract classification from response
+            # Extract classification from response - look for the actual classification line
             result_lower = result_text.lower()
-            if "booking" in result_lower and "order" in result_lower:
-                classification = "BOOKING_ORDER"
-            else:
-                classification = "ARTWORK"
 
-            if "high" in result_lower:
-                confidence = "high"
-            elif "medium" in result_lower:
-                confidence = "medium"
-            else:
-                confidence = "low"
+            # Parse the classification line specifically (avoid matching prompt text)
+            classification = "ARTWORK"  # Default
+            if "classification:" in result_lower:
+                # Extract the line with "classification:"
+                for line in result_text.split('\n'):
+                    if 'classification:' in line.lower():
+                        if 'booking' in line.lower() and 'order' in line.lower():
+                            classification = "BOOKING_ORDER"
+                        elif 'artwork' in line.lower():
+                            classification = "ARTWORK"
+                        break
+
+            # Extract confidence
+            confidence = "low"  # Default
+            if "confidence:" in result_lower:
+                for line in result_text.split('\n'):
+                    if 'confidence:' in line.lower():
+                        if 'high' in line.lower():
+                            confidence = "high"
+                        elif 'medium' in line.lower():
+                            confidence = "medium"
+                        break
 
             # Extract company (for BOOKING_ORDER only)
             company = None
             if classification == "BOOKING_ORDER":
-                if "viola" in result_lower:
-                    company = "viola"
-                else:
-                    company = "backlite"  # Default to backlite
+                # Look for company in the response
+                if "company:" in result_lower:
+                    for line in result_text.split('\n'):
+                        if 'company:' in line.lower():
+                            if 'viola' in line.lower():
+                                company = "viola"
+                            elif 'backlite' in line.lower():
+                                company = "backlite"
+                            break
+                # Fallback to backlite if not found
+                if not company:
+                    company = "backlite"
 
             return {
                 "classification": classification,
