@@ -1492,6 +1492,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"You are an AI sales assistant for BackLite Media. You provide comprehensive sales support tools including:\n"
         f"• Financial proposal generation for advertising locations\n"
         f"• Billboard mockup visualization (upload-based or AI-generated)\n"
+        f"• Booking order parsing and management\n"
         f"• Location database management\n"
         f"• Sales analytics and reporting\n"
         f"• Code interpreter for calculations and data analysis\n\n"
@@ -1501,6 +1502,14 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"- DO call the appropriate tool/function immediately\n"
         f"- Let the TOOL handle the actual execution\n"
         f"- Only respond with text AFTER the tool completes or if asking clarifying questions\n\n"
+        f"⚠️ CONTEXT SWITCHING - CRITICAL:\n"
+        f"Users frequently switch between different task types. ALWAYS analyze the CURRENT message to determine what they want NOW:\n"
+        f"- If they just asked for a proposal and NOW upload a PDF → They want BOOKING ORDER parsing, NOT proposal\n"
+        f"- If they just generated a mockup and NOW ask for proposal → They want PROPOSAL, forget the mockup\n"
+        f"- If they mention 'booking order', 'BO', 'parse this' with PDF upload → Use parse_booking_order tool\n"
+        f"- DO NOT get stuck on previous task context - each message is a fresh request\n"
+        f"- When user uploads a file, prioritize file type (PDF=BO, image=mockup, PPT=location) over history\n"
+        f"- Conversation history helps continuity, but CURRENT message always takes priority\n\n"
         f"Today's date is: {datetime.now().strftime('%B %d, %Y')} ({datetime.now().strftime('%A')})\n"
         f"Use this date to understand relative dates like 'tomorrow', 'next week', 'next month', etc.\n\n"
         f"═══════════════════════════════════════════════════════════════════\n"
@@ -1766,8 +1775,9 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             user_message_content = f"{user_input}\n\n[User uploaded {len(document_files)} document file(s): {', '.join(document_files)}]"
             logger.info(f"[LLM] Detected {len(document_files)} uploaded document(s), informing LLM")
 
-    # Inject mockup history context ONLY if user did NOT upload new images (to avoid confusion)
-    if not image_files:
+    # Inject mockup history context ONLY if user did NOT upload ANY files (to avoid confusion)
+    # Don't inject mockup history when user uploads documents (BO PDFs, Excel, etc.) or images
+    if not image_files and not document_files:
         mockup_hist = get_mockup_history(user_id)
         if mockup_hist:
             metadata = mockup_hist.get("metadata", {})
