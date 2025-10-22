@@ -581,105 +581,97 @@ For EACH billboard location, extract:
 
     async def generate_excel(self, data: Dict[str, Any], bo_ref: str) -> Path:
         """
-        Generate standardized Excel output - single sheet, field/value format
+        Generate branded Excel using company-specific template
 
-        NOTE: This is a simple format for initial testing.
-        TODO: Switch to using branded templates (TEMPLATE_BACKLITE or TEMPLATE_VIOLA)
-              when ready to use the actual company-specific formats in bo_templates/
+        Templates:
+        - Backlite: bo_templates/backlite_bo_template.xlsx
+        - Viola: bo_templates/viola_bo_template.xlsx
         """
         import openpyxl
-        from openpyxl.styles import Font, PatternFill
 
-        wb = openpyxl.Workbook()
+        # Select template based on company
+        template_path = TEMPLATE_BACKLITE if self.company.lower() == "backlite" else TEMPLATE_VIOLA
+
+        if not template_path.exists():
+            raise FileNotFoundError(f"Template not found: {template_path}")
+
+        logger.info(f"[BOOKING PARSER] Using template: {template_path}")
+
+        # Load template
+        wb = openpyxl.load_workbook(template_path)
         ws = wb.active
-        ws.title = "Booking Order"
 
-        # Header style
-        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-        header_font = Font(color="FFFFFF", bold=True)
-
-        # Add headers
-        ws["A1"] = "Field"
-        ws["B1"] = "Value"
-        ws["A1"].fill = header_fill
-        ws["A1"].font = header_font
-        ws["B1"].fill = header_fill
-        ws["B1"].font = header_font
-
-        # Global fields
-        row = 2
-        fields = [
-            ("BO Reference", bo_ref),
-            ("BO Number", data.get("bo_number")),
-            ("BO Date", data.get("bo_date")),
-            ("Client", data.get("client")),
-            ("Agency", data.get("agency")),
-            ("Brand/Campaign", data.get("brand_campaign")),
-            ("Category", data.get("category")),
-            ("Asset", data.get("asset")),
-            ("Net (pre-VAT)", data.get("net_pre_vat")),
-            ("VAT Value", data.get("vat_value")),
-            ("VAT Calculated", data.get("vat_calc")),
-            ("Gross Amount", data.get("gross_amount")),
-            ("Gross Calculated", data.get("gross_calc")),
-            ("SLA %", data.get("sla_pct")),
-            ("SLA Deduction", data.get("sla_deduction")),
-            ("Net (excl SLA)", data.get("net_excl_sla_calc")),
-            ("Payment Terms", data.get("payment_terms")),
-            ("Sales Person", data.get("sales_person")),
-            ("Commission %", data.get("commission_pct")),
-            ("Notes", data.get("notes")),
-        ]
-
-        for field, value in fields:
-            ws[f"A{row}"] = field
-            # Convert lists to comma-separated strings for Excel
+        # Helper function to convert lists to comma-separated strings
+        def format_value(value):
             if isinstance(value, list):
-                value = ", ".join(str(v) for v in value)
-            ws[f"B{row}"] = value if value is not None else ""
-            row += 1
+                return ", ".join(str(v) for v in value)
+            return value if value is not None else ""
 
-        # Locations
-        if data.get("locations"):
-            row += 1
-            ws[f"A{row}"] = "LOCATIONS"
-            ws[f"A{row}"].font = Font(bold=True, size=12)
-            row += 1
+        # Helper to get all start dates from locations
+        def get_start_dates():
+            if data.get("locations"):
+                dates = [loc.get("start_date", "") for loc in data["locations"] if loc.get("start_date")]
+                return ", ".join(dates)
+            return ""
 
-            for i, loc in enumerate(data["locations"], 1):
-                ws[f"A{row}"] = f"Location {i}: {loc.get('name', 'Unknown')}"
-                ws[f"A{row}"].font = Font(bold=True)
-                row += 1
+        # Helper to get all end dates from locations
+        def get_end_dates():
+            if data.get("locations"):
+                dates = [loc.get("end_date", "") for loc in data["locations"] if loc.get("end_date")]
+                return ", ".join(dates)
+            return ""
 
-                loc_fields = [
-                    ("  Asset", loc.get("asset")),
-                    ("  Start Date", loc.get("start_date")),
-                    ("  End Date", loc.get("end_date")),
-                    ("  Duration", loc.get("campaign_duration")),
-                    ("  Production/Upload Cost", loc.get("production_upload_cost")),
-                    ("  DM Fee", loc.get("dm_fee")),
-                    ("  Net Amount", loc.get("net_amount")),
-                ]
+        # Helper to get all durations from locations
+        def get_durations():
+            if data.get("locations"):
+                durations = [loc.get("campaign_duration", "") for loc in data["locations"] if loc.get("campaign_duration")]
+                return ", ".join(durations)
+            return ""
 
-                for field, value in loc_fields:
-                    ws[f"A{row}"] = field
-                    # Convert lists to comma-separated strings for Excel
-                    if isinstance(value, list):
-                        value = ", ".join(str(v) for v in value)
-                    ws[f"B{row}"] = value if value is not None else ""
-                    row += 1
+        # Helper to get all production/upload costs from locations
+        def get_production_costs():
+            if data.get("locations"):
+                costs = [str(loc.get("production_upload_cost", 0)) for loc in data["locations"] if loc.get("production_upload_cost")]
+                return ", ".join(costs) if costs else ""
+            return ""
 
-                row += 1
+        # Calculate Net Rentals excl SLA (for the merged cell A-E33)
+        # This is the net amount before SLA deduction
+        net_rentals_excl_sla = data.get("net_pre_vat", 0)
 
-        # Adjust column widths
-        ws.column_dimensions["A"].width = 30
-        ws.column_dimensions["B"].width = 40
+        # Inject values into template cells
+        # Left column (B)
+        ws["B11"] = format_value(data.get("agency"))                    # Agency
+        ws["B13"] = format_value(data.get("client"))                    # Client
+        ws["B15"] = format_value(data.get("brand_campaign"))            # Brand/Campaign
+        ws["B17"] = get_start_dates()                                    # Start Date(s)
+        ws["B19"] = get_durations()                                      # Campaign Duration(s)
+        ws["B21"] = data.get("gross_calc", 0)                           # Gross (net + vat)
+        ws["B23"] = get_production_costs()                              # Production/Upload Cost(s)
+        ws["B25"] = data.get("vat_calc", 0)                             # VAT
+        ws["B27"] = data.get("net_pre_vat", 0)                          # Net excl VAT (Net amount)
 
-        # Save to temporary file (will be converted to PDF and concatenated)
+        # Right column (E)
+        ws["E11"] = format_value(data.get("bo_number"))                 # BO No.
+        ws["E13"] = format_value(data.get("bo_date"))                   # BO date
+        ws["E15"] = format_value(data.get("asset"))                     # Asset(s)
+        ws["E17"] = get_end_dates()                                      # End Date(s)
+        ws["E19"] = format_value(data.get("category"))                  # Category
+        ws["E21"] = data.get("sla_pct", 0)                              # SLA
+        ws["E23"] = format_value(data.get("dm_fee"))                    # DM (Dubai Municipality)
+        ws["E25"] = format_value(data.get("payment_terms"))             # Payment terms
+        ws["E27"] = format_value(data.get("sales_person"))              # Sales Person Name
+        ws["E29"] = data.get("commission_pct", 0)                       # Commission%
+
+        # Net rentals excl SLA in merged cell A33:E33 (or A-E 32-37 range)
+        # The cell reference A33 should work for the merged cell
+        ws["A33"] = net_rentals_excl_sla
+
+        # Save to temporary file
         temp_excel = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
         temp_excel_path = Path(temp_excel.name)
         wb.save(temp_excel_path)
-        logger.info(f"[BOOKING PARSER] Generated Excel: {temp_excel_path}")
+        logger.info(f"[BOOKING PARSER] Generated branded Excel: {temp_excel_path}")
 
         return temp_excel_path
 
