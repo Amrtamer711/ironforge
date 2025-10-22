@@ -663,9 +663,15 @@ For EACH billboard location, extract:
         ws["E27"] = format_value(data.get("sales_person"))              # Sales Person Name
         ws["E29"] = data.get("commission_pct", 0)                       # Commission%
 
-        # Net rentals excl SLA in merged cell A33:E33 (or A-E 32-37 range)
-        # The cell reference A33 should work for the merged cell
-        ws["A33"] = net_rentals_excl_sla
+        # Net rentals excl SLA in merged cell (A-E 32-37 range)
+        # For merged cells, we must write to the top-left cell of the range
+        for merged_range in ws.merged_cells.ranges:
+            if "A33" in merged_range:
+                # Get the top-left cell of the merged range
+                min_col, min_row = merged_range.bounds[0], merged_range.bounds[1]
+                top_left_cell = ws.cell(row=min_row, column=min_col)
+                top_left_cell.value = net_rentals_excl_sla
+                break
 
         # Save to temporary file
         temp_excel = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
