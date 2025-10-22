@@ -336,6 +336,8 @@ Analyze the uploaded file and respond with:
             location_context = f"""
 **BACKLITE LOCATION REFERENCE (Use this to identify location types):**
 
+NOTE: This list contains ALMOST ALL Backlite locations, but not necessarily every single one. If you see a location not in this list, use context clues from the BO to determine its type.
+
 🔴 **DIGITAL LOCATIONS** (LED screens - get upload fees only):
 {digital_list}
 
@@ -343,6 +345,7 @@ Analyze the uploaded file and respond with:
 {static_list}
 
 Use this reference to determine if a location should have upload fees (digital) or production fees (static).
+If a location isn't listed, make an intelligent guess based on naming patterns and fee descriptions in the BO.
 """
 
         return f"""You are an expert at extracting data from booking orders for {self.company.upper()}, a billboard/outdoor advertising company.
