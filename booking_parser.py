@@ -251,6 +251,9 @@ Analyze the uploaded file and respond with:
                                 "sales_person": {"type": ["string", "null"]},
                                 "commission_pct": {"type": ["number", "null"]},
                                 "sla_pct": {"type": ["number", "null"]},
+                                "municipality_fee": {"type": ["number", "null"]},
+                                "production_fee": {"type": ["number", "null"]},
+                                "upload_fee": {"type": ["number", "null"]},
                                 "net_pre_vat": {"type": ["number", "null"]},
                                 "vat_value": {"type": ["number", "null"]},
                                 "gross_amount": {"type": ["number", "null"]},
@@ -275,7 +278,7 @@ Analyze the uploaded file and respond with:
                                     }
                                 }
                             },
-                            "required": ["bo_number", "bo_date", "client", "agency", "brand_campaign", "category", "asset", "payment_terms", "sales_person", "commission_pct", "sla_pct", "net_pre_vat", "vat_value", "gross_amount", "notes", "locations"],
+                            "required": ["bo_number", "bo_date", "client", "agency", "brand_campaign", "category", "asset", "payment_terms", "sales_person", "commission_pct", "sla_pct", "municipality_fee", "production_fee", "upload_fee", "net_pre_vat", "vat_value", "gross_amount", "notes", "locations"],
                             "additionalProperties": False
                         }
                     }
@@ -385,13 +388,35 @@ Booking orders (BOs) are contracts where clients purchase billboard advertising 
    - **Static billboards:** Get production fees, no upload fees
    - The document may not explicitly label these - use context clues
 
-**FINANCIAL CALCULATION FLOW:**
-1. Net Rental = Sum of all location rentals
-2. Add Production/Upload Fees = Net Rental + Fees
-3. Add Municipality Fee = Total + Municipality
-4. Apply SLA Deduction = Total - (Total × SLA%)
-5. Calculate VAT (5%) = Net after SLA × 0.05
-6. Gross Total = Net after SLA + VAT
+**FINANCIAL CALCULATION FLOW (CRITICAL - USE THIS TO IDENTIFY FEES):**
+
+The standard calculation flow in billboard BOs is:
+1. **Net Rental Amount** = Sum of all location rentals (e.g., AED 460,000)
+2. **+ Production/Upload Fee** = Fee for creative production/upload (e.g., AED 2,000)
+3. **+ Municipality Fee (DM Fee)** = Dubai Municipality regulatory fee (e.g., AED 520)
+4. **= Net Amount** = Rental + Production + DM (e.g., AED 462,520)
+5. **- SLA Deduction** = Net Amount × SLA% (e.g., 462,520 × 10% = AED 46,252)
+6. **= Net Rental (after SLA)** = Net Amount - SLA (e.g., AED 414,000)
+7. **+ VAT (5%)** = Usually applied to (Rental + Production), NOT DM (e.g., 5% of 462,000 = AED 23,126)
+8. **= Gross Total** = Net Rental + VAT (e.g., AED 485,646)
+
+**CRITICAL: How to identify Municipality Fee:**
+- Look for line items labeled: "DM Fee", "Municipality Fee", "Dubai Municipality", "Govt Fee"
+- Municipality fee is typically a SMALL amount (hundreds to low thousands, not tens of thousands)
+- If you see a breakdown showing: Rental + Production + Small Fee = Net Amount, that small fee is likely Municipality
+- The Net Amount shown often equals: Rental + Production/Upload + Municipality
+- Municipality fee may appear in a separate row in the costs table, or in a summary section
+
+**Example:**
+If you see:
+- Net Rental amount: AED 460,000
+- Net Production fee: AED 2,000
+- Net DM fee: AED 520
+- Net amount: AED 462,520 ← This confirms the municipality fee!
+- VAT: AED 23,126
+- Gross: AED 485,646
+
+This tells you the municipality fee is AED 520.
 
 **EXTRACTION RULES:**
 
@@ -428,16 +453,27 @@ For EACH billboard location, extract:
 - Production/Upload cost (if specified per-location)
 - Type (digital vs static - if mentioned)
 
-**Separate Fees (NOT locations):**
-- Municipality fee (applies to all locations)
-- Total upload fees (for all digital locations)
-- Total production fees (for all static locations)
+**GLOBAL Fees (extract as top-level fields, NOT in locations array):**
+- **municipality_fee**: Dubai Municipality regulatory fee (small amount, usually hundreds to low thousands)
+  - Look for: "DM Fee", "Municipality Fee", "Dubai Municipality", "Net DM fee"
+  - This is a GLOBAL fee that applies to the entire booking
+  - Extract as a top-level field, not per location
+
+- **production_fee**: Total production cost for ALL static locations
+  - Look for: "Production Fee", "Production Cost", "Net Production fee"
+  - This is the TOTAL across all static billboards
+  - Extract as a top-level field
+
+- **upload_fee**: Total upload cost for ALL digital locations
+  - Look for: "Upload Fee", "Upload Cost", "Net Upload fee"
+  - This is the TOTAL across all digital screens
+  - Extract as a top-level field
 
 **Financial Totals:**
-- Net amount (total before VAT and after SLA)
-- VAT amount (5% tax)
+- Net amount (Rental + Production + Municipality, before SLA and VAT)
+- VAT amount (5% tax, usually on Rental + Production, not Municipality)
 - Gross amount (total including VAT)
-- SLA % (deduction percentage)
+- SLA % (deduction percentage, e.g., 10% = 0.10)
 
 **Additional Information:**
 - Payment terms (e.g., "60 days PDC", "30 days credit")
@@ -628,12 +664,16 @@ For EACH billboard location, extract:
                 return ", ".join(durations)
             return ""
 
-        # Helper to get all production/upload costs from locations
-        def get_production_costs():
-            if data.get("locations"):
-                costs = [str(loc.get("production_upload_cost", 0)) for loc in data["locations"] if loc.get("production_upload_cost")]
-                return ", ".join(costs) if costs else ""
-            return ""
+        # Helper to get production/upload fee (global, not per-location)
+        def get_production_upload_fee():
+            # Use global production_fee or upload_fee
+            prod_fee = data.get("production_fee")
+            upload_fee = data.get("upload_fee")
+            if prod_fee:
+                return prod_fee
+            elif upload_fee:
+                return upload_fee
+            return 0
 
         # Calculate Net Rentals excl SLA (for the merged cell A-E33)
         # This is the net amount before SLA deduction
@@ -647,7 +687,7 @@ For EACH billboard location, extract:
         ws["B17"] = get_start_dates()                                    # Start Date(s)
         ws["B19"] = get_durations()                                      # Campaign Duration(s)
         ws["B21"] = data.get("gross_calc", 0)                           # Gross (net + vat)
-        ws["B23"] = get_production_costs()                              # Production/Upload Cost(s)
+        ws["B23"] = get_production_upload_fee()                         # Production/Upload Cost(s)
         ws["B25"] = data.get("vat_calc", 0)                             # VAT
         ws["B27"] = data.get("net_pre_vat", 0)                          # Net excl VAT (Net amount)
 
@@ -658,7 +698,7 @@ For EACH billboard location, extract:
         ws["E17"] = get_end_dates()                                      # End Date(s)
         ws["E19"] = format_value(data.get("category"))                  # Category
         ws["E21"] = data.get("sla_pct", 0)                              # SLA
-        ws["E23"] = format_value(data.get("dm_fee"))                    # DM (Dubai Municipality)
+        ws["E23"] = data.get("municipality_fee", 0)                     # DM (Dubai Municipality)
         ws["E25"] = format_value(data.get("payment_terms"))             # Payment terms
         ws["E27"] = format_value(data.get("sales_person"))              # Sales Person Name
         ws["E29"] = data.get("commission_pct", 0)                       # Commission%
