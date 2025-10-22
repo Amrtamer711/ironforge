@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 
 import config
-from PyPDF2 import PdfMerger
+from pypdf import PdfMerger
 
 logger = logging.getLogger("proposal-bot")
 
