@@ -568,11 +568,19 @@ For EACH billboard location, extract:
         if gross_stated and gross_calc and abs(gross_stated - gross_calc) > 0.01:
             warnings.append(f"Gross amount mismatch: stated {gross_stated} vs calculated {gross_calc}")
 
-        # Check location totals sum
+        # Check location totals sum (accounting for fees)
         if net and data.get("locations"):
             location_total = sum(loc.get("net_amount", 0) for loc in data["locations"])
-            if abs(location_total - net) > 0.01:
-                warnings.append(f"Location totals ({location_total}) don't match global net ({net})")
+            municipality_fee = data.get("municipality_fee", 0) or 0
+            production_fee = data.get("production_fee", 0) or 0
+            upload_fee = data.get("upload_fee", 0) or 0
+
+            # Expected net = location rentals + all fees
+            expected_net = location_total + municipality_fee + production_fee + upload_fee
+
+            # Only warn if there's a significant mismatch after accounting for fees
+            if abs(expected_net - net) > 0.01:
+                warnings.append(f"Location totals ({location_total}) + fees ({municipality_fee + production_fee + upload_fee}) = {expected_net} doesn't match global net ({net})")
 
         return warnings
 
