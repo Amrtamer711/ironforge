@@ -557,9 +557,13 @@ This tells you the municipality fee is AED 520.
 **Location/Asset Details (usually in a table):**
 For EACH billboard location, extract:
 - Location name/code (e.g., "UAE02", "SZR Tower")
-- Start date (campaign start)
-- End date (campaign end)
-- Duration (e.g., "1 month", "30 days")
+- Start date (campaign start date)
+- End date (campaign end date)
+- Campaign duration **IMPORTANT:** Calculate this as the period between start and end date
+  - If start: 2025-02-21, end: 2025-03-20 → duration: "28 days" or "1 month"
+  - Calculate the number of days between dates
+  - Can express as days (e.g., "28 days") or months (e.g., "1 month", "2 months")
+  - If explicitly stated in BO (rare), use that value; otherwise calculate from dates
 - Net amount (rental cost for THIS location - may need to split bundled payments)
 - Production/Upload cost (if specified per-location)
 - Type (digital vs static - if mentioned)
