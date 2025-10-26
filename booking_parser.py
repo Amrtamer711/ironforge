@@ -515,7 +515,14 @@ This tells you the municipality fee is AED 520.
   - If client is "Dubai Properties Development L.L.C" → brand is likely "Dubai Properties"
   - Extract the core brand name from the client company name by removing corporate suffixes like LLC, PJSC, L.L.C, Inc, Ltd, etc.
   - Only use the full client name as brand if there's truly no brand information anywhere in the document
-- Category (e.g., "Real Estate", "FMCG", "Automotive")
+- Category (the client's main industry/sector)
+  **IMPORTANT:** Category represents the CLIENT'S industry, not the campaign type:
+  - If client is "Emaar Properties PJSC" → category is "Real Estate"
+  - If client is "Nestlé Middle East" → category is "FMCG" (Fast-Moving Consumer Goods)
+  - If client is "Mercedes-Benz UAE" → category is "Automotive"
+  - If client is "Emirates NBD" → category is "Banking/Finance"
+  - Common categories: Real Estate, FMCG, Automotive, Banking/Finance, Hospitality, Retail, Healthcare, Technology, Entertainment
+  - Infer from the client company name if not explicitly stated in the BO
 
 **Location/Asset Details (usually in a table):**
 For EACH billboard location, extract:
