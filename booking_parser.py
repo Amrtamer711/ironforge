@@ -431,11 +431,36 @@ These booking orders come from EXTERNAL clients and may have horrible, inconsist
 **Understanding Billboard Purchases:**
 Booking orders (BOs) are contracts where clients purchase billboard advertising space. Key concepts:
 
-1. **Multiple Locations Under One Payment:**
-   - Clients can buy MULTIPLE billboard locations bundled together under a single payment line
-   - Example: "Triple Crown Package - AED 160,000" might include UAE03 + UAE04 + UAE05
-   - Another example: One payment line showing "UAE03 & UAE04 - AED 120,000" means BOTH locations share this payment
-   - When you see this, you MUST split the payment intelligently across the locations (usually proportionally or equally if no other info)
+1. **⚠️ CRITICAL: Bundled vs Separate Payments - DON'T DOUBLE COUNT!**
+
+   **BUNDLED LOCATIONS (Split the payment):**
+   When multiple locations appear TOGETHER in ONE row/line with ONE shared payment:
+   - Example: "UAE02 & UAE03 - AED 320,000" → SPLIT 320k: UAE02=160k, UAE03=160k
+   - Example: "Package (UAE03, UAE04, UAE05) - AED 480,000" → SPLIT: 160k each
+   - Signals: Locations connected with "&", comma, or grouped in one table row
+
+   **SEPARATE LOCATIONS (Full payment):**
+   When a location has its own dedicated row with its own payment:
+   - Example: "UAE21 - AED 120,000" on separate line → UAE21 gets full 120k
+
+   **MIXED SCENARIO (Most common!):**
+   ```
+   Row 1: UAE02 & UAE03 - AED 320,000  → Split: UAE02=160k, UAE03=160k
+   Row 2: UAE21 - AED 120,000          → Separate: UAE21=120k
+   Total check: 160k + 160k + 120k = 440k ✅
+   ```
+
+   **❌ WRONG (Double counting):**
+   ```
+   UAE02=320k, UAE03=320k, UAE21=120k = 760k
+   This is WRONG because UAE02 & UAE03 share the 320k!
+   ```
+
+   **How to identify bundled payments:**
+   - Multiple location codes in same row (UAE02 & UAE03)
+   - Package name covering multiple locations
+   - Locations with "&" or "/" between them
+   - Table structure: one payment cell spanning multiple location cells
 
 2. **Fee Types (NOT locations - extract separately):**
    - **Municipality Fee:** Applies to ALL locations as a regulatory fee. Extract this as a separate global fee, NOT as a location
