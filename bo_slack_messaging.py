@@ -331,7 +331,7 @@ async def update_button_message(
         await config.slack_client.chat_update(
             channel=channel,
             ts=message_ts,
-            text=new_text,
+            text=config.markdown_to_slack(new_text),
             blocks=blocks
         )
     except Exception as e:

@@ -448,7 +448,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     logger.info(f"[BO APPROVAL] ✅ Head of Sales {user_id} approved {workflow_id} - Client: {workflow['data'].get('client', 'N/A')}, Gross: AED {workflow['data'].get('gross_calc', 0):,.2f}")
 
     # Generate final BO reference
-    bo_ref = await db.generate_next_bo_ref()
+    bo_ref = db.generate_next_bo_ref()
 
     # Generate final combined PDF (Excel + Original BO)
     parser = BookingOrderParser(company=workflow["company"])
@@ -807,6 +807,10 @@ Examples:
                 title=f"BO Draft - {current_data.get('client', 'Unknown')}"
             )
 
+            # Wait for file to render before sending buttons (same as original BO flow)
+            import asyncio
+            await asyncio.sleep(10)
+
             # Send approval buttons IN THREAD
             text = f"✅ **Ready for Approval**\n\n"
             text += f"**Client:** {current_data.get('client', 'N/A')}\n"
@@ -843,15 +847,16 @@ Examples:
                 }
             ]
 
-            # Post buttons in thread
+            # Post buttons in thread with markdown formatting
             await config.slack_client.chat_postMessage(
                 channel=channel,
                 thread_ts=thread_ts,
-                text=text,
+                text=config.markdown_to_slack(text),
                 blocks=blocks
             )
 
-            return message or "✅ I've generated the Excel file and approval buttons above. Please review and decide."
+            # Don't return a message to user - file and buttons speak for themselves
+            return None
 
         elif action == 'edit':
             # Apply field updates
