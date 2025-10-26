@@ -110,7 +110,7 @@ async def send_to_head_of_sales(
     data: Dict[str, Any],
     warnings: list,
     missing_required: list,
-    excel_path: str
+    combined_pdf_path: str
 ) -> Dict[str, Any]:
     """
     Send booking order to Head of Sales with Approve/Reject buttons
@@ -143,6 +143,8 @@ async def send_to_head_of_sales(
     if missing_required:
         text += f"\n❗ **Missing Required Fields:** {', '.join(missing_required)}\n"
 
+    text += f"\nPlease review the combined PDF (parsed data + original BO) and approve or reject."
+
     # Create blocks with buttons
     blocks = [
         {
@@ -173,13 +175,17 @@ async def send_to_head_of_sales(
         }
     ]
 
-    # Upload Excel file
+    # Upload combined PDF file
     file_result = await config.slack_client.files_upload_v2(
         channel=channel,
-        file=excel_path,
+        file=combined_pdf_path,
         title=f"BO Draft - {data.get('client', 'Unknown')} - {company.upper()}",
         initial_comment=config.markdown_to_slack(text)
     )
+
+    # Wait for file to render before posting buttons (prevents message ordering issues)
+    import asyncio
+    await asyncio.sleep(10)
 
     # Post buttons as separate message (blocks with file upload don't show buttons reliably)
     button_result = await config.slack_client.chat_postMessage(

@@ -155,7 +155,21 @@ async def create_approval_workflow(
 
     Returns workflow_id
     """
+    from booking_parser import ORIGINAL_BOS_DIR
+    import shutil
+
     workflow_id = create_workflow_id(company)
+
+    # Copy original file to permanent storage (prevents loss if temp files are cleaned up)
+    # This ensures the original BO is preserved throughout the entire workflow lifecycle
+    permanent_original_path = ORIGINAL_BOS_DIR / f"{workflow_id}_{original_filename}"
+    try:
+        shutil.copy2(original_file_path, permanent_original_path)
+        logger.info(f"[BO APPROVAL] Copied original BO to permanent storage: {permanent_original_path}")
+    except Exception as e:
+        logger.error(f"[BO APPROVAL] Failed to copy original BO to permanent storage: {e}")
+        # Fall back to temp path if copy fails
+        permanent_original_path = original_file_path
 
     workflow_data = {
         "workflow_id": workflow_id,
@@ -164,7 +178,7 @@ async def create_approval_workflow(
         "data": data,
         "warnings": warnings,
         "missing_required": missing_required,
-        "original_file_path": str(original_file_path),
+        "original_file_path": str(permanent_original_path),  # Store permanent path, not temp
         "original_filename": original_filename,
         "file_type": file_type,
         "user_notes": user_notes,
@@ -304,6 +318,15 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
         logger.error(f"[BO APPROVAL] Workflow {workflow_id} not found")
         return
 
+    # Prevent double-approval (e.g., clicking old button after new one was generated)
+    if workflow.get("coordinator_approved"):
+        logger.warning(f"[BO APPROVAL] Workflow {workflow_id} already approved by coordinator - ignoring duplicate approval")
+        await bo_slack_messaging.post_response_url(response_url, {
+            "replace_original": False,
+            "text": "⚠️ This booking order has already been approved and sent to Head of Sales."
+        })
+        return
+
     logger.info(f"[BO APPROVAL] ✅ Coordinator {user_id} approved {workflow_id} - Client: {workflow['data'].get('client', 'N/A')}, Gross: AED {workflow['data'].get('gross_calc', 0):,.2f}")
 
     # Update button message to show approval is being processed
@@ -341,9 +364,23 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
             text=f"✅ **Approved by {approver_name}** - Moving to Head of Sales for review..."
         )
 
-    # Generate temp Excel for HoS review
+    # Generate combined PDF for HoS review (Excel + Original BO)
     parser = BookingOrderParser(company=workflow["company"])
-    temp_excel = await parser.generate_excel(workflow["data"], f"DRAFT_{workflow['company']}")
+
+    # Get the ORIGINAL uploaded BO file path from workflow (NOT the combined PDF)
+    original_file_path = workflow.get("original_file_path")
+    if not original_file_path or not Path(original_file_path).exists():
+        logger.error(f"[BO APPROVAL] Original BO file not found for {workflow_id}")
+        return
+
+    original_bo_path = Path(original_file_path)
+
+    # Generate fresh combined PDF with updated data
+    temp_combined_pdf = await parser.generate_combined_pdf(
+        workflow["data"],
+        f"DRAFT_{workflow['company']}_HOS",
+        original_bo_path
+    )
 
     # Get Head of Sales channel (company-specific, uses conversations.open to get DM channel ID)
     hos_channel = await get_head_of_sales_channel(workflow["company"])
@@ -359,7 +396,7 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
         data=workflow["data"],
         warnings=workflow["warnings"],
         missing_required=workflow["missing_required"],
-        excel_path=str(temp_excel)
+        combined_pdf_path=str(temp_combined_pdf)
     )
 
     # Update workflow with HoS message info
@@ -445,6 +482,15 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     if not workflow:
         return
 
+    # Prevent double-approval
+    if workflow.get("hos_approved"):
+        logger.warning(f"[BO APPROVAL] Workflow {workflow_id} already approved by HoS - ignoring duplicate approval")
+        await bo_slack_messaging.post_response_url(response_url, {
+            "replace_original": False,
+            "text": "⚠️ This booking order has already been approved and saved to the database."
+        })
+        return
+
     logger.info(f"[BO APPROVAL] ✅ Head of Sales {user_id} approved {workflow_id} - Client: {workflow['data'].get('client', 'N/A')}, Gross: AED {workflow['data'].get('gross_calc', 0):,.2f}")
 
     # Generate final BO reference
@@ -452,19 +498,20 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
 
     # Generate final combined PDF (Excel + Original BO)
     parser = BookingOrderParser(company=workflow["company"])
-    temp_original_path = Path(workflow["original_file_path"])
+    permanent_original_path = Path(workflow["original_file_path"])
     final_combined_pdf = await parser.generate_combined_pdf(
         workflow["data"],
         bo_ref,
-        temp_original_path
+        permanent_original_path
     )
 
-    # Clean up temp original file if it still exists
-    if temp_original_path.exists():
+    # Clean up permanent original file (we now have the final combined PDF)
+    if permanent_original_path.exists():
         try:
-            temp_original_path.unlink()
+            permanent_original_path.unlink()
+            logger.info(f"[BO APPROVAL] Cleaned up original BO file: {permanent_original_path}")
         except Exception as e:
-            logger.warning(f"[BO APPROVAL] Failed to clean up temp original file: {e}")
+            logger.warning(f"[BO APPROVAL] Failed to clean up original BO file: {e}")
 
     # Save to permanent database
     await db.save_booking_order(
@@ -795,16 +842,30 @@ Examples:
         })
 
         if action == 'execute':
-            # Generate Excel with updated data
+            # Generate combined PDF with updated data (Excel + Original BO)
             parser = BookingOrderParser(company=workflow["company"])
-            temp_excel = await parser.generate_excel(current_data, f"DRAFT_{workflow['company']}_REVIEW")
 
-            # Upload Excel to thread
+            # Get the ORIGINAL uploaded BO file path from workflow (NOT the combined PDF)
+            original_file_path = workflow.get("original_file_path")
+            if not original_file_path or not Path(original_file_path).exists():
+                logger.error(f"[BO APPROVAL] Original BO file not found for {workflow_id} during regeneration")
+                return "❌ Error: Original booking order file not found. Please contact support."
+
+            original_bo_path = Path(original_file_path)
+
+            # Generate fresh combined PDF with updated data
+            temp_combined_pdf = await parser.generate_combined_pdf(
+                current_data,
+                f"DRAFT_{workflow['company']}_REGEN",
+                original_bo_path
+            )
+
+            # Upload combined PDF to thread
             await config.slack_client.files_upload_v2(
                 channel=channel,
                 thread_ts=thread_ts,
-                file=str(temp_excel),
-                title=f"BO Draft - {current_data.get('client', 'Unknown')}"
+                file=str(temp_combined_pdf),
+                title=f"BO Draft - {current_data.get('client', 'Unknown')} (Updated)"
             )
 
             # Wait for file to render before sending buttons (same as original BO flow)
@@ -847,13 +908,32 @@ Examples:
                 }
             ]
 
-            # Post buttons in thread with markdown formatting
-            await config.slack_client.chat_postMessage(
+            # Disable old buttons if they exist (prevents clicking old approve/reject after regeneration)
+            old_msg_ts = workflow.get("coordinator_msg_ts")
+            if old_msg_ts:
+                try:
+                    await config.slack_client.chat_update(
+                        channel=channel,
+                        ts=old_msg_ts,
+                        text="⚠️ _These buttons have been superseded by new buttons below (after regeneration)_",
+                        blocks=[]  # Remove blocks to disable buttons
+                    )
+                    logger.info(f"[BO APPROVAL] Disabled old coordinator buttons at {old_msg_ts}")
+                except Exception as e:
+                    logger.warning(f"[BO APPROVAL] Failed to disable old buttons: {e}")
+
+            # Post new buttons in thread with markdown formatting
+            new_button_msg = await config.slack_client.chat_postMessage(
                 channel=channel,
                 thread_ts=thread_ts,
                 text=config.markdown_to_slack(text),
                 blocks=blocks
             )
+
+            # Update workflow with new button message timestamp
+            await update_workflow(workflow_id, {
+                "coordinator_msg_ts": new_button_msg["ts"]
+            })
 
             # Don't return a message to user - file and buttons speak for themselves
             return None

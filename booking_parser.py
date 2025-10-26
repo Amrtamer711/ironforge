@@ -22,6 +22,8 @@ logger = logging.getLogger("proposal-bot")
 BOOKING_ORDERS_BASE = Path("/data/booking_orders") if os.path.exists("/data") else Path(__file__).parent / "booking_orders"
 # Combined PDFs directory (stores Excel + Original BO concatenated)
 COMBINED_BOS_DIR = BOOKING_ORDERS_BASE / "combined_bos"
+# Original uploaded BOs directory (permanent storage for user uploads during workflow)
+ORIGINAL_BOS_DIR = BOOKING_ORDERS_BASE / "original_uploads"
 
 # BO Template files (for future use - not currently used)
 # These are the actual branded templates for Backlite and Viola
@@ -32,6 +34,7 @@ TEMPLATE_VIOLA = TEMPLATES_DIR / "viola_bo_template.xlsx"
 
 # Ensure directories exist
 COMBINED_BOS_DIR.mkdir(parents=True, exist_ok=True)
+ORIGINAL_BOS_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @dataclass
@@ -909,7 +912,7 @@ Booking orders have TWO types of costs:
                 # Get the top-left cell of the merged range
                 min_col, min_row = merged_range.bounds[0], merged_range.bounds[1]
                 top_left_cell = ws.cell(row=min_row, column=min_col)
-                top_left_cell.value = net_rentals_excl_sla
+                top_left_cell.value = f"Net excl SLA: {net_rentals_excl_sla:,.2f}"
                 break
 
         # Save to temporary file
