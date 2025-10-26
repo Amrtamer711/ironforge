@@ -532,6 +532,11 @@ This tells you the municipality fee is AED 520.
 - BO Number (Booking Order reference - usually "BO-XXX" or "DPD-XXX")
 - BO Date (when the BO was created)
 - Client (company name purchasing the advertising)
+  **IMPORTANT:** Client is the BUYER, NOT the seller:
+  - Client = Company buying billboard advertising (e.g., "Emaar Properties", "Nestlé", "Mercedes-Benz")
+  - DO NOT extract "Backlite" or "Viola" as the client - these are the SERVICE PROVIDERS (sellers)
+  - Look for "From:", "Client:", "Advertiser:", or the company requesting the campaign
+  - Client is who is PAYING for the billboard space, not who is selling it
 - Agency (advertising agency, may be blank)
 - Brand/Campaign (the advertised brand or campaign name)
   **IMPORTANT:** Use intelligent inference if brand/campaign is not explicitly stated:
@@ -852,10 +857,22 @@ Booking orders have TWO types of costs:
         ws["B11"] = format_value(data.get("agency"))                    # Agency
         ws["B13"] = format_value(data.get("client"))                    # Client
         ws["B15"] = format_value(data.get("brand_campaign"))            # Brand/Campaign
-        ws["B17"] = get_start_dates()                                    # Start Date(s)
+
+        # Start dates with dynamic row height
+        start_dates_value = get_start_dates()
+        ws["B17"] = start_dates_value
         ws["B17"].alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
-        ws["B19"] = get_durations()                                      # Campaign Duration(s)
+        # Adjust row height based on number of lines (each line ~15 points)
+        num_lines_b17 = start_dates_value.count('\n') + 1 if start_dates_value else 1
+        ws.row_dimensions[17].height = max(15, num_lines_b17 * 15)
+
+        # Durations with dynamic row height
+        durations_value = get_durations()
+        ws["B19"] = durations_value
         ws["B19"].alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
+        num_lines_b19 = durations_value.count('\n') + 1 if durations_value else 1
+        ws.row_dimensions[19].height = max(15, num_lines_b19 * 15)
+
         ws["B21"] = data.get("gross_calc", 0)                           # Gross (net + vat)
         ws["B23"] = get_production_upload_fee()                         # Production/Upload Cost(s)
         ws["B25"] = data.get("vat_calc", 0)                             # VAT
@@ -865,8 +882,15 @@ Booking orders have TWO types of costs:
         ws["E11"] = format_value(data.get("bo_number"))                 # BO No.
         ws["E13"] = format_value(data.get("bo_date"))                   # BO date
         ws["E15"] = format_value(data.get("asset"))                     # Asset(s)
-        ws["E17"] = get_end_dates()                                      # End Date(s)
+
+        # End dates with dynamic row height
+        end_dates_value = get_end_dates()
+        ws["E17"] = end_dates_value
         ws["E17"].alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
+        num_lines_e17 = end_dates_value.count('\n') + 1 if end_dates_value else 1
+        # Use the max of B17 and E17 line counts for row 17
+        ws.row_dimensions[17].height = max(ws.row_dimensions[17].height, num_lines_e17 * 15)
+
         ws["E19"] = format_value(data.get("category"))                  # Category
         ws["E21"] = data.get("sla_pct", 0)                              # SLA
         ws["E23"] = data.get("municipality_fee", 0)                     # DM (Dubai Municipality)
