@@ -509,6 +509,12 @@ This tells you the municipality fee is AED 520.
 - Client (company name purchasing the advertising)
 - Agency (advertising agency, may be blank)
 - Brand/Campaign (the advertised brand or campaign name)
+  **IMPORTANT:** Use intelligent inference if brand/campaign is not explicitly stated:
+  - If client is "Gucci LLC" → brand is likely "Gucci"
+  - If client is "Emaar Properties PJSC" → brand is likely "Emaar"
+  - If client is "Dubai Properties Development L.L.C" → brand is likely "Dubai Properties"
+  - Extract the core brand name from the client company name by removing corporate suffixes like LLC, PJSC, L.L.C, Inc, Ltd, etc.
+  - Only use the full client name as brand if there's truly no brand information anywhere in the document
 - Category (e.g., "Real Estate", "FMCG", "Automotive")
 
 **Location/Asset Details (usually in a table):**
@@ -815,7 +821,9 @@ Booking orders have TWO types of costs:
         ws["B13"] = format_value(data.get("client"))                    # Client
         ws["B15"] = format_value(data.get("brand_campaign"))            # Brand/Campaign
         ws["B17"] = get_start_dates()                                    # Start Date(s)
+        ws["B17"].alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
         ws["B19"] = get_durations()                                      # Campaign Duration(s)
+        ws["B19"].alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
         ws["B21"] = data.get("gross_calc", 0)                           # Gross (net + vat)
         ws["B23"] = get_production_upload_fee()                         # Production/Upload Cost(s)
         ws["B25"] = data.get("vat_calc", 0)                             # VAT
@@ -826,6 +834,7 @@ Booking orders have TWO types of costs:
         ws["E13"] = format_value(data.get("bo_date"))                   # BO date
         ws["E15"] = format_value(data.get("asset"))                     # Asset(s)
         ws["E17"] = get_end_dates()                                      # End Date(s)
+        ws["E17"].alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
         ws["E19"] = format_value(data.get("category"))                  # Category
         ws["E21"] = data.get("sla_pct", 0)                              # SLA
         ws["E23"] = data.get("municipality_fee", 0)                     # DM (Dubai Municipality)
