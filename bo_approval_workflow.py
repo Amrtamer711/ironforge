@@ -538,7 +538,14 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     # Generate final BO reference
     bo_ref = db.generate_next_bo_ref()
 
-    # Generate final combined PDF (Excel + Original BO)
+    # Get HoS name for signature
+    hos_name = await bo_slack_messaging.get_user_real_name(user_id)
+    logger.info(f"[BO APPROVAL] Adding HoS signature: {hos_name}")
+
+    # Add HoS signature to data (will be added to Excel in italics)
+    workflow["data"]["hos_signature"] = hos_name
+
+    # Generate final combined PDF (Excel + Original BO) with HoS signature
     parser = BookingOrderParser(company=workflow["company"])
     permanent_original_path = Path(workflow["original_file_path"])
     final_combined_pdf = await parser.generate_combined_pdf(

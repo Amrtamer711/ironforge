@@ -943,6 +943,15 @@ Even if the source document lists fees per location, you MUST sum them into sing
         ws["E27"] = format_value(data.get("sales_person"))              # Sales Person Name
         ws["E29"] = data.get("commission_pct", 0)                       # Commission%
 
+        # Head of Sales Signature section
+        ws["A39"] = "Head of Sales Signature"
+
+        # Add HoS signature if provided (in italics)
+        hos_signature = data.get("hos_signature")
+        if hos_signature:
+            ws["B40"] = hos_signature
+            ws["B40"].font = openpyxl.styles.Font(italic=True)
+
         # Net rentals excl SLA in merged cell (A-E 32-37 range)
         # For merged cells, we must write to the top-left cell of the range
         for merged_range in ws.merged_cells.ranges:
