@@ -352,6 +352,15 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
 
     logger.info(f"[BO APPROVAL] ✅ Coordinator {user_id} approved {workflow_id} - Client: {workflow['data'].get('client', 'N/A')}, Gross: AED {workflow['data'].get('gross_calc', 0):,.2f}")
 
+    # IMMEDIATELY mark as approved to prevent duplicate button presses during the wait period
+    await update_workflow(workflow_id, {
+        "coordinator_approved": True,
+        "coordinator_approved_by": user_id,
+        "coordinator_approved_at": datetime.now().isoformat(),
+        "stage": "hos",
+        "status": "pending"
+    })
+
     # Update button message to show approval is being processed
     coordinator_msg_ts = workflow.get("coordinator_msg_ts")
     coordinator_channel = workflow.get("coordinator_thread_channel")
@@ -369,15 +378,6 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
     # IMPORTANT: Wait 5 seconds for file upload to complete before proceeding
     logger.info(f"[BO APPROVAL] Waiting 5 seconds for file upload to complete...")
     await asyncio.sleep(5)
-
-    # Update workflow
-    await update_workflow(workflow_id, {
-        "coordinator_approved": True,
-        "coordinator_approved_by": user_id,
-        "coordinator_approved_at": datetime.now().isoformat(),
-        "stage": "hos",
-        "status": "pending"
-    })
 
     # Post status update in thread
     if coordinator_thread_ts and coordinator_channel:
@@ -441,6 +441,15 @@ async def handle_coordinator_rejection(workflow_id: str, user_id: str, response_
 
     workflow = await get_workflow_with_cache(workflow_id)
     if not workflow:
+        return
+
+    # Prevent duplicate rejection (clicking button multiple times)
+    if workflow.get("status") == "coordinator_rejected":
+        logger.warning(f"[BO APPROVAL] Workflow {workflow_id} already rejected by coordinator - ignoring duplicate")
+        await bo_slack_messaging.post_response_url(response_url, {
+            "replace_original": False,
+            "text": "⚠️ This booking order has already been rejected. Please use the thread to make edits."
+        })
         return
 
     logger.info(f"[BO APPROVAL] ❌ Coordinator {user_id} rejected {workflow_id} - Client: {workflow['data'].get('client', 'N/A')} - Reason: {rejection_reason[:100]}")
@@ -516,6 +525,13 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
 
     logger.info(f"[BO APPROVAL] ✅ Head of Sales {user_id} approved {workflow_id} - Client: {workflow['data'].get('client', 'N/A')}, Gross: AED {workflow['data'].get('gross_calc', 0):,.2f}")
 
+    # IMMEDIATELY mark as approved to prevent duplicate button presses during processing
+    await update_workflow(workflow_id, {
+        "hos_approved": True,
+        "hos_approved_by": user_id,
+        "hos_approved_at": datetime.now().isoformat()
+    })
+
     # Generate final BO reference
     bo_ref = db.generate_next_bo_ref()
 
@@ -552,13 +568,11 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
         # Copy all fields from workflow["data"]
         **workflow["data"]
     }
-    db.save_booking_order(db_data)  # Synchronous function, no await needed
+    # Run synchronous DB operation in thread pool to avoid blocking event loop
+    await asyncio.to_thread(db.save_booking_order, db_data)
 
-    # Update workflow
+    # Update workflow with remaining fields (hos_approved already set above)
     await update_workflow(workflow_id, {
-        "hos_approved": True,
-        "hos_approved_by": user_id,
-        "hos_approved_at": datetime.now().isoformat(),
         "stage": "finance",
         "status": "approved",
         "bo_ref": bo_ref,
@@ -582,7 +596,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
             bo_ref=bo_ref,
             company=workflow["company"],
             data=workflow["data"],
-            excel_path=str(final_excel_path)
+            excel_path=str(final_combined_pdf)
         )
 
         await update_workflow(workflow_id, {
@@ -630,6 +644,16 @@ async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str
     """
     workflow = await get_workflow_with_cache(workflow_id)
     if not workflow:
+        return
+
+    # Prevent duplicate rejection (clicking button multiple times)
+    if workflow.get("status") == "coordinator_rejected":
+        logger.warning(f"[BO APPROVAL] Workflow {workflow_id} already rejected by HoS - ignoring duplicate")
+        import bo_slack_messaging
+        await bo_slack_messaging.post_response_url(response_url, {
+            "replace_original": False,
+            "text": "⚠️ This booking order has already been rejected and sent back to the coordinator."
+        })
         return
 
     logger.info(f"[BO APPROVAL] ❌ Head of Sales {user_id} rejected {workflow_id} - Client: {workflow['data'].get('client', 'N/A')} - Reason: {rejection_reason[:100]}")

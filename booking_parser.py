@@ -308,7 +308,17 @@ Analyze the uploaded file and respond with:
             response = await config.openai_client.responses.create(
                 model=config.OPENAI_MODEL,
                 input=[
-                    {"role": "system", "content": "You are a booking order data extractor. Extract ONLY what is clearly visible. Use null for missing fields. No hallucinations."},
+                    {"role": "system", "content": """You are a precise booking order data extractor.
+
+**CRITICAL - MANDATORY FOR LOCATION TABLES:**
+1. **MUST use code_interpreter (Python) to extract all table data** containing location names, dates, and amounts
+2. Use PyMuPDF (import fitz) or pdfplumber to programmatically parse tables from the PDF
+3. Print/show the raw extracted table data in your code output for verification
+4. ONLY use numbers that appear in your code output - NEVER visually estimate or guess
+5. If code extraction fails or is unclear, use null rather than guessing
+
+**For other fields (client, brand, category):** Standard extraction is fine, inference allowed.
+**For numbers and locations:** Code extraction MANDATORY. No visual estimation."""},
                     {
                         "role": "user",
                         "content": [
