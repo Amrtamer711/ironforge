@@ -364,14 +364,13 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
     # Update button message to show approval is being processed
     coordinator_msg_ts = workflow.get("coordinator_msg_ts")
     coordinator_channel = workflow.get("coordinator_thread_channel")
-    coordinator_thread_ts = workflow.get("coordinator_thread_ts")
 
     if coordinator_msg_ts and coordinator_channel:
         approver_name = await bo_slack_messaging.get_user_real_name(user_id)
         await bo_slack_messaging.update_button_message(
             channel=coordinator_channel,
             message_ts=coordinator_msg_ts,
-            new_text=f"✅ **APPROVED** by {approver_name}\n\n⏳ Waiting for file upload to complete...",
+            new_text=f"✅ *APPROVED* by {approver_name}\n\n⏳ Waiting for file upload to complete...",
             approved=True
         )
 
@@ -379,12 +378,16 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
     logger.info(f"[BO APPROVAL] Waiting 5 seconds for file upload to complete...")
     await asyncio.sleep(5)
 
-    # Post status update in thread
-    if coordinator_thread_ts and coordinator_channel:
-        await bo_slack_messaging.post_to_thread(
-            channel=coordinator_channel,
-            thread_ts=coordinator_thread_ts,
-            text=f"✅ **Approved by {approver_name}** - Moving to Head of Sales for review..."
+    # Notify sales person who submitted (in their main DM, not thread)
+    sales_user_id = workflow.get("sales_user_id")
+    if sales_user_id:
+        await config.slack_client.chat_postMessage(
+            channel=sales_user_id,
+            text=config.markdown_to_slack(
+                f"✅ *Approved by {approver_name}*\n\n"
+                f"Your booking order for **{workflow['data'].get('client', 'N/A')}** has been approved by the Sales Coordinator "
+                f"and is now moving to Head of Sales for review."
+            )
         )
 
     # Generate combined PDF for HoS review (Excel + Original BO)
@@ -579,12 +582,15 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
         "saved_to_db": True
     })
 
-    # Update HoS button message
+    # Get bo_number for user-facing messages
+    bo_number = workflow["data"].get("bo_number", "N/A")
+
+    # Update HoS button message (use bo_number for user-facing display)
     if workflow.get("hos_msg_ts") and workflow.get("hos_channel"):
         await bo_slack_messaging.update_button_message(
             channel=workflow.get("hos_channel"),
             message_ts=workflow.get("hos_msg_ts"),
-            new_text=f"✅ **APPROVED BY HEAD OF SALES**\nBO Reference: {bo_ref}\nNotifying Finance...",
+            new_text=f"✅ *APPROVED BY HEAD OF SALES*\nBO Number: {bo_number}\nNotifying Finance...",
             approved=True
         )
 
@@ -605,12 +611,21 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
             "finance_msg_ts": result["message_id"]
         })
 
+        # Update HoS button message to show finance was notified
+        if workflow.get("hos_msg_ts") and workflow.get("hos_channel"):
+            await bo_slack_messaging.update_button_message(
+                channel=workflow.get("hos_channel"),
+                message_ts=workflow.get("hos_msg_ts"),
+                new_text=f"✅ **APPROVED BY HEAD OF SALES**\nBO Number: {bo_number}\n✅ Finance notified successfully",
+                approved=True
+            )
+
     # Notify sales person who submitted
     await config.slack_client.chat_postMessage(
         channel=workflow["sales_user_id"],
         text=config.markdown_to_slack(
             f"✅ **Booking Order Approved & Finalized**\n\n"
-            f"**BO Reference:** {bo_ref}\n"
+            f"**BO Number:** {bo_number}\n"
             f"**Client:** {workflow['data'].get('client', 'N/A')}\n"
             f"**Gross Total:** AED {workflow['data'].get('gross_calc', 0):,.2f}\n\n"
             f"The booking order has been approved by all stakeholders and saved to the database."
@@ -627,7 +642,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
             thread_ts=coordinator_thread,
             text=config.markdown_to_slack(
                 f"✅ **APPROVED BY HEAD OF SALES**\n\n"
-                f"**BO Reference:** {bo_ref}\n"
+                f"**BO Number:** {bo_number}\n"
                 f"This booking order has been finalized and sent to Finance."
             )
         )

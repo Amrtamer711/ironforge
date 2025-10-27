@@ -286,21 +286,27 @@ async def notify_finance(
 
     Returns: {"message_id": ts, "channel": channel}
     """
+    from booking_parser import sanitize_filename
+
+    # Get bo_number for user-facing display
+    bo_number = data.get("bo_number", "N/A")
+    safe_bo_number = sanitize_filename(bo_number)
 
     # Build message text
     text = f"✅ **Booking Order Approved & Finalized**\n\n"
-    text += f"**BO Reference:** {bo_ref}\n"
+    text += f"**BO Number:** {bo_number}\n"
     text += f"**Company:** {company.upper()}\n"
     text += f"**Client:** {data.get('client', 'N/A')}\n"
     text += f"**Campaign:** {data.get('brand_campaign', 'N/A')}\n"
     text += f"**Gross Total:** AED {data.get('gross_calc', 0):,.2f}\n\n"
     text += f"This booking order has been approved by all stakeholders and is now finalized."
 
-    # Upload Excel file
+    # Upload Excel file with sanitized bo_number as filename
     result = await config.slack_client.files_upload_v2(
         channel=channel,
         file=excel_path,
-        title=f"{bo_ref} - Finalized Booking Order",
+        filename=f"{safe_bo_number}.pdf",
+        title=f"{bo_number} - Finalized Booking Order",
         initial_comment=config.markdown_to_slack(text)
     )
 
