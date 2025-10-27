@@ -2527,16 +2527,24 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
 
                 args = json.loads(msg.arguments)
                 bo_number = args.get("bo_number")
-                logger.info(f"[BO_FETCH] User requested BO by number: {bo_number}")
+                logger.info(f"[BO_FETCH] User requested BO by number: '{bo_number}' (type: {type(bo_number)}, len: {len(bo_number) if bo_number else 0})")
 
                 try:
                     import db
                     from booking_parser import BookingOrderParser, sanitize_filename
 
                     # Fetch BO from database by bo_number (user-facing identifier)
+                    # Query is case-insensitive and trims whitespace
                     bo_data = db.get_booking_order_by_number(bo_number)
+                    logger.info(f"[BO_FETCH] Database query result: {'Found' if bo_data else 'Not found'}")
 
                     if not bo_data:
+                        # Try to list similar BOs for debugging
+                        conn = db._connect()
+                        sample_bos = conn.execute("SELECT bo_number FROM booking_orders LIMIT 10").fetchall()
+                        conn.close()
+                        logger.info(f"[BO_FETCH] Sample BOs in database: {[bo[0] for bo in sample_bos if bo[0]]}")
+
                         await config.slack_client.chat_delete(channel=channel, ts=status_ts)
                         await config.slack_client.chat_postMessage(
                             channel=channel,

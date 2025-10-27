@@ -316,12 +316,17 @@ def get_booking_order_by_number(bo_number: str) -> Optional[dict]:
     """
     Retrieve a booking order by the user-facing BO number (from the document).
     This is what users search by - the BO number from their original document.
+    Case-insensitive search with whitespace trimming.
     """
     import json
     conn = _connect()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM booking_orders WHERE bo_number = ?", (bo_number,))
+        # Use COLLATE NOCASE for case-insensitive comparison and trim whitespace
+        cursor.execute(
+            "SELECT * FROM booking_orders WHERE TRIM(bo_number) = TRIM(?) COLLATE NOCASE",
+            (bo_number,)
+        )
         row = cursor.fetchone()
         if not row:
             return None
