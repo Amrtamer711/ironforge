@@ -361,6 +361,67 @@ def export_to_excel() -> str:
         conn.close()
 
 
+def export_booking_orders_to_excel() -> str:
+    """Export booking orders to Excel file and return the file path."""
+    import pandas as pd
+    import tempfile
+    from datetime import datetime
+
+    conn = _connect()
+    try:
+        # Read all booking orders into a DataFrame
+        df = pd.read_sql_query(
+            "SELECT bo_ref, company, client, brand_campaign, category, gross_amount, "
+            "net_pre_vat, vat_value, sales_person, created_at, user_notes "
+            "FROM booking_orders ORDER BY created_at DESC",
+            conn
+        )
+
+        # Convert created_at to datetime for better Excel formatting
+        df['created_at'] = pd.to_datetime(df['created_at'])
+
+        # Rename columns for better readability
+        df.columns = ['BO Reference', 'Company', 'Client', 'Campaign', 'Category',
+                      'Gross Total (AED)', 'Net (AED)', 'VAT (AED)', 'Sales Person',
+                      'Created Date', 'Notes']
+
+        # Create a temporary Excel file
+        temp_file = tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=f'_booking_orders_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+        )
+        temp_file.close()
+
+        # Write to Excel with formatting
+        with pd.ExcelWriter(temp_file.name, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Booking Orders', index=False)
+
+            # Get the workbook and worksheet
+            workbook = writer.book
+            worksheet = writer.sheets['Booking Orders']
+
+            # Auto-adjust column widths
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+
+            # Add filters
+            worksheet.auto_filter.ref = worksheet.dimensions
+
+        return temp_file.name
+
+    finally:
+        conn.close()
+
+
 def get_proposals_summary() -> dict:
     """Get a summary of proposals for display."""
     conn = _connect()

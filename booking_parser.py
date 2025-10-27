@@ -585,14 +585,18 @@ Booking orders have TWO types of costs:
      - Look for: "DM Fee", "Municipality Fee", "Dubai Municipality", "Net DM fee"
      - Typically a small amount (hundreds to low thousands)
      - ONE total for all locations combined
+     - **If document shows per-location DM fees:** ADD them all up into ONE total
+     - Example: UAE02: AED 200, UAE03: AED 200, UAE21: AED 120 → municipality_fee: 520
 
    - **production_upload_fee**: Total production/upload cost for ALL locations
      - Look for: "Production Fee", "Upload Fee", "Production Cost", "Net Production fee"
      - This is production fee (for static) + upload fee (for digital) combined into ONE total
      - ONE total for all locations combined
-     - Example: If you see "Net Production fee: AED 2,000", extract as production_upload_fee: 2000
+     - **If document shows per-location fees:** ADD them all up into ONE total
+     - Example: UAE02 upload: AED 500, UAE03 upload: AED 500, UAE21 production: AED 1000 → production_upload_fee: 2000
 
-**IMPORTANT:** Each location only stores its rental amount. Fees are global and get added to the total separately.
+**CRITICAL:** Each location only stores its rental amount. ALL fees are GLOBAL single totals, NOT per-location values.
+Even if the source document lists fees per location, you MUST sum them into single global totals.
 
 **The Math:**
 - Sum of all location rental amounts (e.g., 80,000 + 80,000 + 120,000 = 280,000)

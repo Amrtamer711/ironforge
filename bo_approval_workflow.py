@@ -711,6 +711,8 @@ Field mapping (use these exact keys when updating):
 - SLA percentage → "sla_pct"
 - Payment terms → "payment_terms"
 - Commission percentage → "commission_pct"
+- Municipality fee/DM fee/Dubai Municipality → "municipality_fee" (single global total)
+- Production/upload fee → "production_upload_fee" (single global total)
 - Notes → "notes"
 - Category → "category"
 - Asset → "asset" (can be string or array of strings)
@@ -723,10 +725,7 @@ Field mapping (use these exact keys when updating):
   - "start_date": YYYY-MM-DD format
   - "end_date": YYYY-MM-DD format
   - "campaign_duration": e.g., "1 month"
-  - "campaign_cost": main media cost
-  - "production_upload_cost": production fees
-  - "dm_fee": digital marketing fee
-  - "net_amount": total for location
+  - "net_amount": rental amount for this location (fees are global, not per-location)
 
 Return JSON with: action, fields (only changed fields), message (natural language response to user).
 
@@ -787,6 +786,8 @@ Examples:
                                     'commission_pct': {'type': 'number'},
                                     'notes': {'type': 'string'},
                                     'category': {'type': 'string'},
+                                    'municipality_fee': {'type': 'number'},
+                                    'production_upload_fee': {'type': 'number'},
                                     'asset': {
                                         'anyOf': [
                                             {'type': 'string'},
@@ -803,9 +804,6 @@ Examples:
                                                 'start_date': {'type': 'string'},
                                                 'end_date': {'type': 'string'},
                                                 'campaign_duration': {'type': 'string'},
-                                                'campaign_cost': {'type': 'number'},
-                                                'production_upload_cost': {'type': 'number'},
-                                                'dm_fee': {'type': 'number'},
                                                 'net_amount': {'type': 'number'}
                                             }
                                         }

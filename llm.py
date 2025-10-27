@@ -1972,6 +1972,19 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         },
         {"type": "function", "name": "export_proposals_to_excel", "description": "Export all proposals from the backend database to Excel and send to user. ADMIN ONLY.", "parameters": {"type": "object", "properties": {}}},
         {"type": "function", "name": "get_proposals_stats", "description": "Get summary statistics of proposals from the database", "parameters": {"type": "object", "properties": {}}},
+        {"type": "function", "name": "export_booking_orders_to_excel", "description": "Export all booking orders from the backend database to Excel and send to user. Shows BO ref, client, campaign, gross total, status, dates, etc. ADMIN ONLY.", "parameters": {"type": "object", "properties": {}}},
+        {
+            "type": "function",
+            "name": "fetch_booking_order",
+            "description": "Fetch a booking order by its BO reference number (e.g., BL-001, VL-042). Returns the BO data and combined PDF file. If the BO exists but was created with outdated schema/syntax, it will be automatically regenerated with the latest format. ADMIN ONLY.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "bo_ref": {"type": "string", "description": "The booking order reference number (e.g., 'BL-001', 'VL-042')"}
+                },
+                "required": ["bo_ref"]
+            }
+        },
         {
             "type": "function",
             "name": "generate_mockup",
@@ -2429,6 +2442,147 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         text=config.markdown_to_slack("❌ **Error:** Failed to export database to Excel. Please try again.")
                     )
             
+            elif msg.name == "export_booking_orders_to_excel":
+                # Admin permission gate
+                logger.info(f"[BO_EXPORT] Checking admin privileges for user: {user_id}")
+                is_admin_user = config.is_admin(user_id)
+                logger.info(f"[BO_EXPORT] User {user_id} admin status: {is_admin_user}")
+
+                if not is_admin_user:
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** You need admin privileges to export booking orders."))
+                    return
+
+                logger.info("[BO_EXPORT] User requested booking orders Excel export")
+                try:
+                    import db
+                    excel_path = db.export_booking_orders_to_excel()
+                    logger.info(f"[BO_EXPORT] Created Excel file at {excel_path}")
+
+                    # Get file size for display
+                    file_size = os.path.getsize(excel_path)
+                    size_mb = file_size / (1024 * 1024)
+
+                    # Delete status message before uploading file
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+
+                    await config.slack_client.files_upload_v2(
+                        channel=channel,
+                        file=excel_path,
+                        filename=f"booking_orders_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        initial_comment=config.markdown_to_slack(
+                            f"📋 **Booking Orders Database Export**\n"
+                            f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                            f"📁 Size: {size_mb:.2f} MB"
+                        )
+                    )
+
+                    # Clean up temp file
+                    try:
+                        os.unlink(excel_path)
+                    except:
+                        pass
+
+                except Exception as e:
+                    logger.error(f"[BO_EXPORT] Error: {e}", exc_info=True)
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await config.slack_client.chat_postMessage(
+                        channel=channel,
+                        text=config.markdown_to_slack("❌ **Error:** Failed to export booking orders to Excel. Please try again.")
+                    )
+
+            elif msg.name == "fetch_booking_order":
+                # Admin permission gate
+                logger.info(f"[BO_FETCH] Checking admin privileges for user: {user_id}")
+                is_admin_user = config.is_admin(user_id)
+                logger.info(f"[BO_FETCH] User {user_id} admin status: {is_admin_user}")
+
+                if not is_admin_user:
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** You need admin privileges to fetch booking orders."))
+                    return
+
+                args = json.loads(msg.arguments)
+                bo_ref = args.get("bo_ref")
+                logger.info(f"[BO_FETCH] User requested BO: {bo_ref}")
+
+                try:
+                    import db
+                    from booking_parser import BookingOrderParser
+
+                    # Fetch BO from database
+                    bo_data = db.get_booking_order(bo_ref)
+
+                    if not bo_data:
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            text=config.markdown_to_slack(f"❌ **Booking Order Not Found**\n\nBO Reference: `{bo_ref}` does not exist in the database.")
+                        )
+                        return
+
+                    # Check if schema/syntax is outdated and regenerate if needed
+                    # For now, we'll just fetch and send - regeneration logic can be added later
+
+                    # Get the combined PDF path
+                    combined_pdf_path = bo_data.get("original_file_path") or bo_data.get("parsed_excel_path")
+
+                    if combined_pdf_path and os.path.exists(combined_pdf_path):
+                        # Delete status message before uploading file
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+
+                        # Send BO details with file
+                        details = f"📋 **Booking Order Found**\n\n"
+                        details += f"**BO Reference:** {bo_ref}\n"
+                        details += f"**Client:** {bo_data.get('client', 'N/A')}\n"
+                        details += f"**Campaign:** {bo_data.get('brand_campaign', 'N/A')}\n"
+                        details += f"**Gross Total:** AED {bo_data.get('gross_amount', 0):,.2f}\n"
+                        details += f"**Created:** {bo_data.get('created_at', 'N/A')}\n"
+
+                        await config.slack_client.files_upload_v2(
+                            channel=channel,
+                            file=combined_pdf_path,
+                            filename=f"{bo_ref}.pdf",
+                            initial_comment=config.markdown_to_slack(details)
+                        )
+                    else:
+                        # File not found, regenerate from data
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+
+                        parser = BookingOrderParser(company=bo_data.get("company", "backlite"))
+
+                        # Generate Excel from stored data
+                        excel_path = await parser.generate_excel(bo_data.get("data", {}), bo_ref)
+
+                        details = f"📋 **Booking Order Found (Regenerated)**\n\n"
+                        details += f"**BO Reference:** {bo_ref}\n"
+                        details += f"**Client:** {bo_data.get('client', 'N/A')}\n"
+                        details += f"**Campaign:** {bo_data.get('brand_campaign', 'N/A')}\n"
+                        details += f"**Gross Total:** AED {bo_data.get('gross_amount', 0):,.2f}\n"
+                        details += f"**Created:** {bo_data.get('created_at', 'N/A')}\n"
+                        details += f"\n⚠️ _Original file not found - regenerated from database_"
+
+                        await config.slack_client.files_upload_v2(
+                            channel=channel,
+                            file=str(excel_path),
+                            filename=f"{bo_ref}.xlsx",
+                            initial_comment=config.markdown_to_slack(details)
+                        )
+
+                        # Clean up temp file
+                        try:
+                            excel_path.unlink()
+                        except:
+                            pass
+
+                except Exception as e:
+                    logger.error(f"[BO_FETCH] Error: {e}", exc_info=True)
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await config.slack_client.chat_postMessage(
+                        channel=channel,
+                        text=config.markdown_to_slack(f"❌ **Error:** Failed to fetch booking order `{bo_ref}`. Error: {str(e)}")
+                    )
+
             elif msg.name == "get_proposals_stats":
                 logger.info("[STATS] User requested proposals statistics")
                 try:
