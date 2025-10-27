@@ -552,7 +552,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
         # Copy all fields from workflow["data"]
         **workflow["data"]
     }
-    await db.save_booking_order(db_data)
+    db.save_booking_order(db_data)  # Synchronous function, no await needed
 
     # Update workflow
     await update_workflow(workflow_id, {
