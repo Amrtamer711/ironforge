@@ -310,15 +310,22 @@ Analyze the uploaded file and respond with:
                 input=[
                     {"role": "system", "content": """You are a precise booking order data extractor.
 
-**CRITICAL - MANDATORY FOR LOCATION TABLES:**
+**CRITICAL - MANDATORY FOR LOCATION TABLES AND FEES:**
 1. **MUST use code_interpreter (Python) to extract all table data** containing location names, dates, and amounts
 2. Use PyMuPDF (import fitz) or pdfplumber to programmatically parse tables from the PDF
-3. Print/show the raw extracted table data in your code output for verification
-4. ONLY use numbers that appear in your code output - NEVER visually estimate or guess
-5. If code extraction fails or is unclear, use null rather than guessing
+3. **Also extract fee line items:** Production Fee, Upload Fee, Municipality Fee (DM), etc.
+4. Print/show the raw extracted table data AND fee amounts in your code output for verification
+5. ONLY use numbers that appear in your code output - NEVER visually estimate or guess
+6. If code extraction fails or is unclear, use null rather than guessing
 
 **For other fields (client, brand, category):** Standard extraction is fine, inference allowed.
-**For numbers and locations:** Code extraction MANDATORY. No visual estimation."""},
+**For numbers, locations, and fees:** Code extraction MANDATORY. No visual estimation.
+
+**Fee Extraction Rules:**
+- Look for rows labeled: "Production Fee", "Upload Fee", "Production Cost", "Upload Cost"
+- Look for rows labeled: "DM Fee", "Municipality Fee", "Dubai Municipality"
+- If fees are shown per-location in table, ADD them up into ONE global total
+- If no fees found in document, use 0 (don't guess)"""},
                     {
                         "role": "user",
                         "content": [
@@ -530,6 +537,16 @@ The standard calculation flow in billboard BOs is:
 7. **+ VAT (5%)** = Usually applied to (Rental + Production), NOT DM (e.g., 5% of 462,000 = AED 23,126)
 8. **= Gross Total** = Net Rental + VAT (e.g., AED 485,646)
 
+**CRITICAL: How to identify Production/Upload Fees:**
+- Look for line items labeled: "Production Fee", "Upload Fee", "Production Cost", "Upload Cost", "Creative Fee", "Net Production fee"
+- Production/Upload fees are typically MEDIUM amounts (thousands, e.g., AED 1,000-5,000 per location or total)
+- May appear in the costs table as a separate row, or in a summary section
+- For DIGITAL screens: called "Upload Fee"
+- For STATIC billboards: called "Production Fee" or "Production Cost"
+- **IMPORTANT:** If shown per-location, ADD them ALL up into ONE global total
+- If document shows "Production: AED 2,000" or "Upload: AED 1,500", extract this value
+- If unclear or not found, use 0 (don't guess)
+
 **CRITICAL: How to identify Municipality Fee:**
 - Look for line items labeled: "DM Fee", "Municipality Fee", "Dubai Municipality", "Govt Fee"
 - Municipality fee is typically a SMALL amount (hundreds to low thousands, not tens of thousands)
@@ -593,7 +610,13 @@ This tells you the municipality fee is AED 520.
 
 **Location/Asset Details (usually in a table):**
 For EACH billboard location, extract:
-- Location name/code (e.g., "UAE02", "SZR Tower")
+- Location name/code:
+  - **FOR VIOLA BOOKINGS:** Extract ONLY the location code (e.g., "04B", "03A", "02C")
+    - Viola locations have specific descriptive names but we only want the CODE
+    - Example: If document shows "Viola 04B - Sheikh Zayed Road Tower" → extract "04B"
+    - Example: If document shows "03A Al Barsha" → extract "03A"
+    - Look for alphanumeric codes like "04B", "03A", "15C", etc.
+  - **FOR BACKLITE BOOKINGS:** Use full location name (e.g., "UAE02", "SZR Tower")
 - Start date (campaign start date)
 - End date (campaign end date)
 - Campaign duration **IMPORTANT:** Calculate this as the period between start and end date
@@ -939,7 +962,14 @@ Even if the source document lists fees per location, you MUST sum them into sing
         ws["E19"] = format_value(data.get("category"))                  # Category
         ws["E21"] = data.get("sla_pct", 0)                              # SLA
         ws["E23"] = data.get("municipality_fee", 0)                     # DM (Dubai Municipality)
-        ws["E25"] = format_value(data.get("payment_terms"))             # Payment terms
+
+        # Payment terms with dynamic row height
+        payment_terms_value = format_value(data.get("payment_terms"))
+        ws["E25"] = payment_terms_value
+        ws["E25"].alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
+        num_lines_e25 = payment_terms_value.count('\n') + 1 if payment_terms_value else 1
+        ws.row_dimensions[25].height = max(15, num_lines_e25 * 15)
+
         ws["E27"] = format_value(data.get("sales_person"))              # Sales Person Name
         ws["E29"] = data.get("commission_pct", 0)                       # Commission%
 
