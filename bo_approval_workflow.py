@@ -1020,5 +1020,5 @@ Examples:
             return "I didn't understand. Please tell me what to change, or say 'execute' when you're ready."
 
     except Exception as e:
-        logger.error(f"[BO APPROVAL] Error in coordinator thread: {e}")
+        logger.error(f"[BO APPROVAL] Error in coordinator thread: {e}", exc_info=True)
         return f"❌ **Error processing your request:** {str(e)}\n\nPlease try again."
