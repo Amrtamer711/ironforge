@@ -345,6 +345,9 @@ async def slack_interactive(request: Request):
                 workflow_id, user_id, None, rejection_reason, channel, message_ts
             ))
 
+            # Return empty response to close modal
+            return JSONResponse({})
+
         # Handle HoS rejection modal
         elif callback_id.startswith("reject_bo_hos_modal:"):
             parts = callback_id.split(":")
@@ -360,6 +363,9 @@ async def slack_interactive(request: Request):
             asyncio.create_task(bo_approval_workflow.handle_hos_rejection(
                 workflow_id, user_id, None, rejection_reason
             ))
+
+            # Return empty response to close modal
+            return JSONResponse({})
 
     return JSONResponse({"status": "ok"})
 

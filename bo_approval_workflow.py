@@ -271,12 +271,15 @@ async def update_workflow(workflow_id: str, updates: Dict[str, Any]):
 
 def is_coordinator_thread_active(workflow: Dict[str, Any], thread_ts: str) -> bool:
     """
-    Check if a thread is the active coordinator thread
+    Check if a thread is the active coordinator thread for EDITING
 
     Returns True only if:
     1. Thread matches coordinator_thread_ts
-    2. Coordinator has not approved yet (still in editing/review)
-    3. Stage is still coordinator
+    2. Coordinator has REJECTED (thread opened for editing)
+    3. Coordinator has not approved yet
+    4. Stage is still coordinator
+
+    NOTE: Buttons (approve/reject) work independently - this only controls text message handling
     """
     coordinator_thread = workflow.get("coordinator_thread_ts")
 
@@ -286,6 +289,11 @@ def is_coordinator_thread_active(workflow: Dict[str, Any], thread_ts: str) -> bo
 
     # Thread doesn't match
     if coordinator_thread != thread_ts:
+        return False
+
+    # Thread is only active for editing AFTER rejection
+    # If coordinator hasn't rejected yet, they should use buttons, not type in thread
+    if workflow.get("status") != "coordinator_rejected":
         return False
 
     # Coordinator already approved (thread should be closed)
