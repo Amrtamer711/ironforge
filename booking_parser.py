@@ -935,16 +935,22 @@ Booking orders have TWO types of costs:
         Returns:
             Path to the combined PDF file
         """
-        logger.info(f"[BOOKING PARSER] Generating combined PDF for {bo_ref}")
+        logger.info(f"[BOOKING PARSER] Generating combined PDF for {bo_ref}, original_bo_path: {original_bo_path} (type: {type(original_bo_path)})")
 
         # Step 1: Generate Excel
+        logger.info(f"[BOOKING PARSER] Step 1: Generating Excel for {bo_ref}")
         excel_path = await self.generate_excel(data, bo_ref)
+        logger.info(f"[BOOKING PARSER] Excel generated: {excel_path}")
 
         # Step 2: Convert Excel to PDF using LibreOffice
+        logger.info(f"[BOOKING PARSER] Step 2: Converting Excel to PDF")
         excel_pdf_path = await self._convert_excel_to_pdf(excel_path)
+        logger.info(f"[BOOKING PARSER] Excel PDF created: {excel_pdf_path}")
 
         # Step 3: Ensure original BO is PDF (convert if needed)
+        logger.info(f"[BOOKING PARSER] Step 3: Ensuring original BO is PDF, path: {original_bo_path}")
         original_pdf_path = await self._ensure_pdf(original_bo_path)
+        logger.info(f"[BOOKING PARSER] Original BO PDF ready: {original_pdf_path}")
 
         # Step 4: Concatenate PDFs (Excel PDF first, then original BO)
         combined_pdf_path = COMBINED_BOS_DIR / f"{bo_ref}_combined.pdf"

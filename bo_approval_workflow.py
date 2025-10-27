@@ -843,22 +843,32 @@ Examples:
 
         if action == 'execute':
             # Generate combined PDF with updated data (Excel + Original BO)
+            logger.info(f"[BO APPROVAL] Execute action - regenerating combined PDF for {workflow_id}")
             parser = BookingOrderParser(company=workflow["company"])
 
             # Get the ORIGINAL uploaded BO file path from workflow (NOT the combined PDF)
             original_file_path = workflow.get("original_file_path")
-            if not original_file_path or not Path(original_file_path).exists():
-                logger.error(f"[BO APPROVAL] Original BO file not found for {workflow_id} during regeneration")
-                return "❌ Error: Original booking order file not found. Please contact support."
+            logger.info(f"[BO APPROVAL] Original file path from workflow: {original_file_path} (type: {type(original_file_path)})")
+
+            if not original_file_path:
+                logger.error(f"[BO APPROVAL] Original file path is None or empty for {workflow_id}")
+                return "❌ Error: Original booking order file path not found. Please contact support."
 
             original_bo_path = Path(original_file_path)
+            logger.info(f"[BO APPROVAL] Original BO path object: {original_bo_path}, exists: {original_bo_path.exists()}, suffix: {original_bo_path.suffix}")
+
+            if not original_bo_path.exists():
+                logger.error(f"[BO APPROVAL] Original BO file does not exist at {original_bo_path} for {workflow_id}")
+                return "❌ Error: Original booking order file not found. Please contact support."
 
             # Generate fresh combined PDF with updated data
+            logger.info(f"[BO APPROVAL] Calling generate_combined_pdf with bo_ref: DRAFT_{workflow['company']}_REGEN")
             temp_combined_pdf = await parser.generate_combined_pdf(
                 current_data,
                 f"DRAFT_{workflow['company']}_REGEN",
                 original_bo_path
             )
+            logger.info(f"[BO APPROVAL] Successfully generated combined PDF: {temp_combined_pdf}")
 
             # Upload combined PDF to thread
             await config.slack_client.files_upload_v2(
