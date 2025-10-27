@@ -873,11 +873,11 @@ Examples:
             await asyncio.sleep(10)
 
             # Send approval buttons IN THREAD
-            text = f"✅ **Ready for Approval**\n\n"
-            text += f"**Client:** {current_data.get('client', 'N/A')}\n"
-            text += f"**Campaign:** {current_data.get('brand_campaign', 'N/A')}\n"
-            text += f"**Gross Total:** AED {current_data.get('gross_calc', 0):,.2f}\n\n"
-            text += "Please review the Excel file above and approve or reject:"
+            text = f"✅ *Ready for Approval*\n\n"
+            text += f"*Client:* {current_data.get('client', 'N/A')}\n"
+            text += f"*Campaign:* {current_data.get('brand_campaign', 'N/A')}\n"
+            text += f"*Gross Total:* AED {current_data.get('gross_calc', 0):,.2f}\n\n"
+            text += "Please review the combined PDF above and approve or reject:"
 
             blocks = [
                 {
