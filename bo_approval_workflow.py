@@ -34,6 +34,21 @@ logger = logging.getLogger("proposal-bot")
 # In-memory cache for active approval workflows
 approval_workflows: Dict[str, Dict[str, Any]] = {}
 
+
+async def load_workflows_from_db():
+    """
+    Load all active workflows from database into memory cache.
+    Called on server startup to restore state after restart.
+    """
+    try:
+        workflows = db.get_all_active_bo_workflows()
+        for workflow_id, workflow_data_json in workflows:
+            workflow_data = json.loads(workflow_data_json)
+            approval_workflows[workflow_id] = workflow_data
+        logger.info(f"[BO APPROVAL] Loaded {len(workflows)} active workflows from database")
+    except Exception as e:
+        logger.error(f"[BO APPROVAL] Failed to load workflows from database: {e}")
+
 # Config file path - use production path if /data/ exists, otherwise development
 if os.path.exists("/data/"):
     CONFIG_PATH = Path("/data/hos_config.json")

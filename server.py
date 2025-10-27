@@ -115,9 +115,13 @@ async def lifespan(app: FastAPI):
     # Startup
     cleanup_task = asyncio.create_task(periodic_cleanup())
     logger.info("[STARTUP] Started background cleanup task")
-    
+
+    # Load active workflows from database to restore state after restart
+    import bo_approval_workflow
+    await bo_approval_workflow.load_workflows_from_db()
+
     yield
-    
+
     # Shutdown
     cleanup_task.cancel()
     try:

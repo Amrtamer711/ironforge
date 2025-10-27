@@ -858,5 +858,22 @@ def get_bo_workflow(workflow_id: str) -> Optional[str]:
         conn.close()
 
 
+def get_all_active_bo_workflows() -> list[tuple[str, str]]:
+    """
+    Retrieve all active booking order workflows from database.
+    Returns list of (workflow_id, workflow_data) tuples.
+    Used to restore in-memory cache after server restart.
+    """
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT workflow_id, workflow_data FROM bo_approval_workflows ORDER BY updated_at DESC"
+        )
+        return cursor.fetchall()
+    finally:
+        conn.close()
+
+
 # Initialize DB on import
 init_db() 
