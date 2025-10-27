@@ -218,6 +218,11 @@ def save_booking_order(data: dict) -> str:
         warnings_json = json.dumps(data.get("warnings", []))
         missing_json = json.dumps(data.get("missing_required", []))
 
+        # Handle asset - can be string or list
+        asset = data.get("asset")
+        if isinstance(asset, list):
+            asset = json.dumps(asset)
+
         conn.execute(
             """
             INSERT OR REPLACE INTO booking_orders (
@@ -243,7 +248,7 @@ def save_booking_order(data: dict) -> str:
                 data.get("agency"),
                 data.get("brand_campaign"),
                 data.get("category"),
-                data.get("asset"),  # Can be string or will be JSON if list
+                asset,  # Serialized above if list, otherwise string
                 data.get("net_pre_vat"),
                 data.get("vat_value"),
                 data.get("gross_amount"),
