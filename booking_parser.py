@@ -949,8 +949,8 @@ Even if the source document lists fees per location, you MUST sum them into sing
         # Add HoS signature if provided (in italics)
         hos_signature = data.get("hos_signature")
         if hos_signature:
-            ws["B40"] = hos_signature
-            ws["B40"].font = openpyxl.styles.Font(italic=True)
+            ws["B39"] = hos_signature
+            ws["B39"].font = openpyxl.styles.Font(italic=True)
 
         # Net rentals excl SLA in merged cell (A-E 32-37 range)
         # For merged cells, we must write to the top-left cell of the range
