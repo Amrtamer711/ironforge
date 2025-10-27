@@ -407,7 +407,7 @@ def export_booking_orders_to_excel() -> str:
         # Read all booking orders into a DataFrame
         df = pd.read_sql_query(
             "SELECT bo_ref, company, client, brand_campaign, category, gross_amount, "
-            "net_pre_vat, vat_value, sales_person, parsed_at, user_notes "
+            "net_pre_vat, vat_value, sales_person, parsed_at, notes "
             "FROM booking_orders ORDER BY parsed_at DESC",
             conn
         )
