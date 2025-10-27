@@ -522,17 +522,22 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
             logger.warning(f"[BO APPROVAL] Failed to clean up original BO file: {e}")
 
     # Save to permanent database
-    await db.save_booking_order(
-        bo_ref=bo_ref,
-        company=workflow["company"],
-        data=workflow["data"],
-        warnings=workflow["warnings"],
-        missing_required=workflow["missing_required"],
-        file_type=workflow["file_type"],
-        original_file_path=str(final_combined_pdf),  # Now stores combined PDF path
-        parsed_excel_path=str(final_combined_pdf),   # Same file for both (backwards compatibility)
-        user_notes=workflow.get("user_notes", "")
-    )
+    # Prepare data dictionary for database
+    db_data = {
+        "bo_ref": bo_ref,
+        "company": workflow["company"],
+        "original_file_path": str(final_combined_pdf),  # Now stores combined PDF path
+        "original_file_type": workflow["file_type"],
+        "original_file_size": workflow.get("original_file_size"),
+        "original_filename": workflow.get("original_filename"),
+        "parsed_excel_path": str(final_combined_pdf),  # Same file for both (backwards compatibility)
+        "warnings": workflow["warnings"],
+        "missing_required": workflow["missing_required"],
+        "user_notes": workflow.get("user_notes", ""),
+        # Copy all fields from workflow["data"]
+        **workflow["data"]
+    }
+    await db.save_booking_order(db_data)
 
     # Update workflow
     await update_workflow(workflow_id, {
@@ -623,7 +628,7 @@ async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str
         await bo_slack_messaging.update_button_message(
             channel=hos_channel,
             message_ts=hos_msg_ts,
-            new_text=f"❌ **REJECTED** by {rejecter_name}\n\n**Reason:** {rejection_reason}\n\nReturned to Sales Coordinator for amendments.",
+            new_text=f"Rejected by {rejecter_name}\n\n**Reason:** {rejection_reason}\n\nReturned to Sales Coordinator for amendments.",
             approved=False
         )
 
