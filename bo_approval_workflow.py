@@ -67,6 +67,17 @@ def load_stakeholders_config() -> Dict[str, Any]:
         return {}
 
 
+def get_head_of_sales_name(company: str) -> str:
+    """
+    Get Head of Sales name for specific company from hos_config.json.
+    Used for document signatures.
+    """
+    stakeholders = load_stakeholders_config()
+    hos = stakeholders.get("head_of_sales", {})
+    company_hos = hos.get(company, {})
+    return company_hos.get("name", f"{company.title()} Head of Sales")
+
+
 async def get_head_of_sales_channel(company: str) -> Optional[str]:
     """
     Get Head of Sales DM channel ID for specific company.
@@ -431,6 +442,15 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
         "hos_channel": result["channel"]
     })
 
+    # Update coordinator button message to show it was successfully sent to HoS
+    if coordinator_msg_ts and coordinator_channel:
+        await bo_slack_messaging.update_button_message(
+            channel=coordinator_channel,
+            message_ts=coordinator_msg_ts,
+            new_text=f"✅ *APPROVED* by {approver_name}\n\n✅ Successfully sent to Head of Sales for review",
+            approved=True
+        )
+
     logger.info(f"[BO APPROVAL] Sent {workflow_id} to Head of Sales")
 
 
@@ -472,7 +492,7 @@ async def handle_coordinator_rejection(workflow_id: str, user_id: str, response_
     await bo_slack_messaging.update_button_message(
         channel=channel,
         message_ts=message_ts,
-        new_text=f"❌ **REJECTED** by {rejecter_name}",
+        new_text=f"❌ *REJECTED* by {rejecter_name}",
         approved=False
     )
 
@@ -538,9 +558,9 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     # Generate final BO reference
     bo_ref = db.generate_next_bo_ref()
 
-    # Get HoS name for signature
-    hos_name = await bo_slack_messaging.get_user_real_name(user_id)
-    logger.info(f"[BO APPROVAL] Adding HoS signature: {hos_name}")
+    # Get HoS name for signature from hos_config (not the user's Slack name)
+    hos_name = get_head_of_sales_name(workflow["company"])
+    logger.info(f"[BO APPROVAL] Adding HoS signature for {workflow['company']}: {hos_name}")
 
     # Add HoS signature to data (will be added to Excel in italics)
     workflow["data"]["hos_signature"] = hos_name
@@ -648,7 +668,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
             channel=coordinator_channel,
             thread_ts=coordinator_thread,
             text=config.markdown_to_slack(
-                f"✅ **APPROVED BY HEAD OF SALES**\n\n"
+                f"✅ *APPROVED BY HEAD OF SALES*\n\n"
                 f"**BO Number:** {bo_number}\n"
                 f"This booking order has been finalized and sent to Finance."
             )
