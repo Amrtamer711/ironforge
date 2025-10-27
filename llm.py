@@ -1209,11 +1209,13 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                             channel=channel,
                             thread_ts=thread_ts
                         )
-                        await config.slack_client.chat_postMessage(
-                            channel=channel,
-                            thread_ts=thread_ts,
-                            text=config.markdown_to_slack(answer)
-                        )
+                        # Only send message if there's an answer (execute action returns None)
+                        if answer is not None:
+                            await config.slack_client.chat_postMessage(
+                                channel=channel,
+                                thread_ts=thread_ts,
+                                text=config.markdown_to_slack(answer)
+                            )
                     except Exception as e:
                         logger.error(f"[BO APPROVAL] Error in coordinator thread handler: {e}", exc_info=True)
                         await config.slack_client.chat_postMessage(
