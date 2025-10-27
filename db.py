@@ -406,7 +406,7 @@ def export_booking_orders_to_excel() -> str:
     try:
         # Read all booking orders into a DataFrame
         df = pd.read_sql_query(
-            "SELECT bo_ref, company, client, brand_campaign, category, gross_amount, "
+            "SELECT bo_ref, bo_number, company, client, brand_campaign, category, gross_amount, "
             "net_pre_vat, vat_value, sales_person, parsed_at, notes "
             "FROM booking_orders ORDER BY parsed_at DESC",
             conn
@@ -416,7 +416,7 @@ def export_booking_orders_to_excel() -> str:
         df['parsed_at'] = pd.to_datetime(df['parsed_at'])
 
         # Rename columns for better readability
-        df.columns = ['BO Reference', 'Company', 'Client', 'Campaign', 'Category',
+        df.columns = ['BO Reference', 'BO Number', 'Company', 'Client', 'Campaign', 'Category',
                       'Gross Total (AED)', 'Net (AED)', 'VAT (AED)', 'Sales Person',
                       'Created Date', 'Notes']
 
