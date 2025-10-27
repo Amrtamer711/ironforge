@@ -37,6 +37,30 @@ COMBINED_BOS_DIR.mkdir(parents=True, exist_ok=True)
 ORIGINAL_BOS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def sanitize_filename(filename: str) -> str:
+    """
+    Sanitize a string to be safe for use as a filename.
+    Removes/replaces invalid characters for filesystems.
+
+    Args:
+        filename: The filename to sanitize
+
+    Returns:
+        Sanitized filename safe for filesystem use
+    """
+    import re
+    # Remove or replace invalid characters: / \ : * ? " < > | and control characters
+    sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', str(filename))
+    # Replace multiple underscores/spaces with single underscore
+    sanitized = re.sub(r'[_\s]+', '_', sanitized)
+    # Remove leading/trailing underscores, dots, or spaces
+    sanitized = sanitized.strip('_. ')
+    # Limit length to 200 characters to be safe
+    sanitized = sanitized[:200]
+    # If empty after sanitization, use a default
+    return sanitized if sanitized else 'booking_order'
+
+
 @dataclass
 class ParseResult:
     """Result from parsing a booking order"""

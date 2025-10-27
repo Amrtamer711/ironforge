@@ -281,12 +281,42 @@ def save_booking_order(data: dict) -> str:
 
 
 def get_booking_order(bo_ref: str) -> Optional[dict]:
-    """Retrieve a booking order by reference number."""
+    """Retrieve a booking order by backend reference number (bo_ref)."""
     import json
     conn = _connect()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM booking_orders WHERE bo_ref = ?", (bo_ref,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        columns = [desc[0] for desc in cursor.description]
+        record = dict(zip(columns, row))
+
+        # Deserialize JSON fields
+        if record.get("locations_json"):
+            record["locations"] = json.loads(record["locations_json"])
+        if record.get("warnings_json"):
+            record["warnings"] = json.loads(record["warnings_json"])
+        if record.get("missing_fields_json"):
+            record["missing_required"] = json.loads(record["missing_fields_json"])
+
+        return record
+    finally:
+        conn.close()
+
+
+def get_booking_order_by_number(bo_number: str) -> Optional[dict]:
+    """
+    Retrieve a booking order by the user-facing BO number (from the document).
+    This is what users search by - the BO number from their original document.
+    """
+    import json
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM booking_orders WHERE bo_number = ?", (bo_number,))
         row = cursor.fetchone()
         if not row:
             return None
