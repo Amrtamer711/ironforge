@@ -1193,8 +1193,10 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         import bo_approval_workflow
 
         # Find workflow with matching coordinator thread
+        logger.info(f"[BO APPROVAL] Checking {len(bo_approval_workflow.approval_workflows)} workflows for thread {thread_ts}")
         for workflow_id, workflow in bo_approval_workflow.approval_workflows.items():
             coordinator_thread = workflow.get("coordinator_thread_ts")
+            logger.info(f"[BO APPROVAL] Workflow {workflow_id}: coordinator_thread={coordinator_thread}, status={workflow.get('status')}")
 
             # Check if message is in a coordinator thread (even if not active for editing yet)
             if coordinator_thread == thread_ts:
