@@ -616,7 +616,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
             await bo_slack_messaging.update_button_message(
                 channel=workflow.get("hos_channel"),
                 message_ts=workflow.get("hos_msg_ts"),
-                new_text=f"✅ **APPROVED BY HEAD OF SALES**\nBO Number: {bo_number}\n✅ Finance notified successfully",
+                new_text=f"✅ *APPROVED BY HEAD OF SALES*\nBO Number: {bo_number}\n✅ Finance notified successfully",
                 approved=True
             )
 
@@ -1023,10 +1023,52 @@ Examples:
                 for field, value in fields.items():
                     current_data[field] = value
 
-                # Recalculate VAT and gross if net changed
-                if 'net_pre_vat' in fields:
-                    current_data['vat_calc'] = round(current_data['net_pre_vat'] * 0.05, 2)
-                    current_data['gross_calc'] = round(current_data['net_pre_vat'] + current_data['vat_calc'], 2)
+                # Intelligent recalculation logic
+                needs_recalc = False
+
+                # Check if any fields that affect net_pre_vat changed
+                if any(key in fields for key in ['locations', 'municipality_fee', 'production_upload_fee']):
+                    needs_recalc = True
+
+                    # Recalculate net_pre_vat from components
+                    locations_total = sum(
+                        loc.get('net_amount', 0)
+                        for loc in current_data.get('locations', [])
+                    )
+                    municipality_fee = current_data.get('municipality_fee', 0) or 0
+                    production_upload_fee = current_data.get('production_upload_fee', 0) or 0
+
+                    current_data['net_pre_vat'] = round(
+                        locations_total + municipality_fee + production_upload_fee,
+                        2
+                    )
+                    logger.info(f"[BO APPROVAL] Recalculated net_pre_vat = {current_data['net_pre_vat']} (locations: {locations_total}, fees: {municipality_fee + production_upload_fee})")
+
+                # If net_pre_vat changed (either directly or from recalculation), recalculate VAT and gross
+                if 'net_pre_vat' in fields or needs_recalc:
+                    net = current_data.get('net_pre_vat', 0) or 0
+                    sla_pct = current_data.get('sla_pct', 0) or 0
+
+                    # Calculate VAT (5% standard in UAE)
+                    current_data['vat_calc'] = round(net * 0.05, 2)
+
+                    # Calculate gross total (net + VAT)
+                    current_data['gross_calc'] = round(net + current_data['vat_calc'], 2)
+
+                    # Calculate SLA deduction if applicable
+                    if sla_pct > 0:
+                        current_data['sla_deduction'] = round(net * sla_pct, 2)
+                        current_data['net_excl_sla_calc'] = round(net - current_data['sla_deduction'], 2)
+
+                    logger.info(f"[BO APPROVAL] Recalculated: VAT={current_data['vat_calc']}, Gross={current_data['gross_calc']}, SLA={current_data.get('sla_deduction', 0)}")
+
+                # If SLA percentage changed, recalculate SLA deduction
+                if 'sla_pct' in fields:
+                    net = current_data.get('net_pre_vat', 0) or 0
+                    sla_pct = current_data.get('sla_pct', 0) or 0
+                    current_data['sla_deduction'] = round(net * sla_pct, 2)
+                    current_data['net_excl_sla_calc'] = round(net - current_data['sla_deduction'], 2)
+                    logger.info(f"[BO APPROVAL] Recalculated SLA: deduction={current_data['sla_deduction']}, net_excl_sla={current_data['net_excl_sla_calc']}")
 
                 # Save updated data back to workflow
                 await update_workflow(workflow_id, {
