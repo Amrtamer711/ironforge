@@ -937,20 +937,6 @@ Examples:
                 }
             ]
 
-            # Disable old buttons if they exist (prevents clicking old approve/reject after regeneration)
-            old_msg_ts = workflow.get("coordinator_msg_ts")
-            if old_msg_ts:
-                try:
-                    await config.slack_client.chat_update(
-                        channel=channel,
-                        ts=old_msg_ts,
-                        text="⚠️ _These buttons have been superseded by new buttons below (after regeneration)_",
-                        blocks=[]  # Remove blocks to disable buttons
-                    )
-                    logger.info(f"[BO APPROVAL] Disabled old coordinator buttons at {old_msg_ts}")
-                except Exception as e:
-                    logger.warning(f"[BO APPROVAL] Failed to disable old buttons: {e}")
-
             # Post new buttons in thread with markdown formatting
             new_button_msg = await config.slack_client.chat_postMessage(
                 channel=channel,
@@ -960,6 +946,7 @@ Examples:
             )
 
             # Update workflow with new button message timestamp and close thread for editing
+            # Note: Old buttons were already replaced during rejection, no need to supersede
             await update_workflow(workflow_id, {
                 "coordinator_msg_ts": new_button_msg["ts"],
                 "status": "pending"  # Close thread - user must click reject again to make more edits
