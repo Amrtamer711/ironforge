@@ -959,9 +959,10 @@ Examples:
                 blocks=blocks
             )
 
-            # Update workflow with new button message timestamp
+            # Update workflow with new button message timestamp and close thread for editing
             await update_workflow(workflow_id, {
-                "coordinator_msg_ts": new_button_msg["ts"]
+                "coordinator_msg_ts": new_button_msg["ts"],
+                "status": "pending"  # Close thread - user must click reject again to make more edits
             })
 
             # Don't return a message to user - file and buttons speak for themselves
