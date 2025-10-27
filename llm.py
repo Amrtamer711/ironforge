@@ -1194,29 +1194,48 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
 
         # Find workflow with matching coordinator thread
         for workflow_id, workflow in bo_approval_workflow.approval_workflows.items():
-            if bo_approval_workflow.is_coordinator_thread_active(workflow, thread_ts):
-                logger.info(f"[BO APPROVAL] Message in active coordinator thread for {workflow_id}")
-                try:
-                    answer = await bo_approval_workflow.handle_coordinator_thread_message(
-                        workflow_id=workflow_id,
-                        user_id=user_id,
-                        user_input=user_input,
-                        channel=channel,
-                        thread_ts=thread_ts
-                    )
+            coordinator_thread = workflow.get("coordinator_thread_ts")
+
+            # Check if message is in a coordinator thread (even if not active for editing yet)
+            if coordinator_thread == thread_ts:
+                # Check if thread is active for editing (after rejection)
+                if bo_approval_workflow.is_coordinator_thread_active(workflow, thread_ts):
+                    logger.info(f"[BO APPROVAL] Message in active coordinator thread for {workflow_id}")
+                    try:
+                        answer = await bo_approval_workflow.handle_coordinator_thread_message(
+                            workflow_id=workflow_id,
+                            user_id=user_id,
+                            user_input=user_input,
+                            channel=channel,
+                            thread_ts=thread_ts
+                        )
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            thread_ts=thread_ts,
+                            text=config.markdown_to_slack(answer)
+                        )
+                    except Exception as e:
+                        logger.error(f"[BO APPROVAL] Error in coordinator thread handler: {e}")
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            thread_ts=thread_ts,
+                            text=config.markdown_to_slack(f"❌ **Error:** {str(e)}")
+                        )
+                    return  # Exit early, don't process as normal message
+                else:
+                    # Thread exists but not active yet (user hasn't rejected)
+                    logger.info(f"[BO APPROVAL] Message in coordinator thread for {workflow_id} but thread not active - reminding user to use buttons")
                     await config.slack_client.chat_postMessage(
                         channel=channel,
                         thread_ts=thread_ts,
-                        text=config.markdown_to_slack(answer)
+                        text=config.markdown_to_slack(
+                            "⚠️ **Please use the Approve or Reject buttons first**\n\n"
+                            "To make edits to this booking order, click the **❌ Reject** button above. "
+                            "This will open the thread for editing.\n\n"
+                            "If the BO looks good, click **✅ Approve** to send it to the next stage."
+                        )
                     )
-                except Exception as e:
-                    logger.error(f"[BO APPROVAL] Error in coordinator thread handler: {e}")
-                    await config.slack_client.chat_postMessage(
-                        channel=channel,
-                        thread_ts=thread_ts,
-                        text=config.markdown_to_slack(f"❌ **Error:** {str(e)}")
-                    )
-                return  # Exit early, don't process as normal message
+                    return  # Exit early, don't process as normal message
 
     # Send initial status message
     status_message = await config.slack_client.chat_postMessage(

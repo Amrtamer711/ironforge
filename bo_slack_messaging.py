@@ -118,30 +118,30 @@ async def send_to_head_of_sales(
     Returns: {"message_id": ts, "channel": channel}
     """
 
-    # Build message text
-    text = f"📋 **New Booking Order for Approval**\n\n"
-    text += f"**Company:** {company.upper()}\n"
-    text += f"**Client:** {data.get('client', 'N/A')}\n"
-    text += f"**Campaign:** {data.get('brand_campaign', 'N/A')}\n"
-    text += f"**BO Number:** {data.get('bo_number', 'N/A')}\n"
-    text += f"**Net (pre-VAT):** AED {data.get('net_pre_vat', 0):,.2f}\n"
-    text += f"**VAT (5%):** AED {data.get('vat_calc', 0):,.2f}\n"
-    text += f"**Gross Total:** AED {data.get('gross_calc', 0):,.2f}\n\n"
+    # Build message text (use Slack mrkdwn format: *bold*, not **bold**)
+    text = f"📋 *New Booking Order for Approval*\n\n"
+    text += f"*Company:* {company.upper()}\n"
+    text += f"*Client:* {data.get('client', 'N/A')}\n"
+    text += f"*Campaign:* {data.get('brand_campaign', 'N/A')}\n"
+    text += f"*BO Number:* {data.get('bo_number', 'N/A')}\n"
+    text += f"*Net (pre-VAT):* AED {data.get('net_pre_vat', 0):,.2f}\n"
+    text += f"*VAT (5%):* AED {data.get('vat_calc', 0):,.2f}\n"
+    text += f"*Gross Total:* AED {data.get('gross_calc', 0):,.2f}\n\n"
 
     # Locations
     locations = data.get('locations', [])
     if locations:
-        text += f"**Locations ({len(locations)}):**\n"
+        text += f"*Locations ({len(locations)}):*\n"
         for i, loc in enumerate(locations[:3], 1):
             text += f"{i}. {loc.get('name', 'Unknown')}: {loc.get('start_date', '?')} to {loc.get('end_date', '?')}\n"
         if len(locations) > 3:
             text += f"...and {len(locations) - 3} more\n"
 
     if warnings:
-        text += f"\n⚠️ **Warnings:** {len(warnings)}\n"
+        text += f"\n⚠️ *Warnings:* {len(warnings)}\n"
 
     if missing_required:
-        text += f"\n❗ **Missing Required Fields:** {', '.join(missing_required)}\n"
+        text += f"\n❗ *Missing Required Fields:* {', '.join(missing_required)}\n"
 
     text += f"\nPlease review the combined PDF (parsed data + original BO) and approve or reject."
 

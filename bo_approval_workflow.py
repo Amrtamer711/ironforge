@@ -614,9 +614,22 @@ async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str
 
     logger.info(f"[BO APPROVAL] ❌ Head of Sales {user_id} rejected {workflow_id} - Client: {workflow['data'].get('client', 'N/A')} - Reason: {rejection_reason[:100]}")
 
+    # Update HoS button message to show rejection
+    import bo_slack_messaging
+    hos_msg_ts = workflow.get("hos_msg_ts")
+    hos_channel = workflow.get("hos_channel")
+    if hos_msg_ts and hos_channel:
+        rejecter_name = await bo_slack_messaging.get_user_real_name(user_id)
+        await bo_slack_messaging.update_button_message(
+            channel=hos_channel,
+            message_ts=hos_msg_ts,
+            new_text=f"❌ **REJECTED** by {rejecter_name}\n\n**Reason:** {rejection_reason}\n\nReturned to Sales Coordinator for amendments.",
+            approved=False
+        )
+
     # Update workflow - move back to coordinator stage
     await update_workflow(workflow_id, {
-        "status": "rejected",
+        "status": "coordinator_rejected",  # Reactivate coordinator thread for editing
         "stage": "coordinator",  # Move back to coordinator
         "hos_rejection_reason": rejection_reason,
         "hos_rejected_by": user_id,
