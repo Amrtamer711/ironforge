@@ -634,7 +634,7 @@ async def _handle_booking_order_parse(
     except Exception as e:
         logger.error(f"[SLACK] Failed to update status message while parsing: {e}", exc_info=True)
     try:
-        result = await parser.parse_file(tmp_file, file_type)
+        result = await parser.parse_file(tmp_file, file_type, user_message=user_message)
     except Exception as e:
         logger.error(f"[BOOKING] Parsing failed: {e}", exc_info=True)
         try:

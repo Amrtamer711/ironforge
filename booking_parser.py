@@ -280,12 +280,19 @@ Analyze the uploaded file and respond with:
             except:
                 pass
 
-    async def parse_file(self, file_path: Path, file_type: str) -> ParseResult:
+    async def parse_file(self, file_path: Path, file_type: str, user_message: str = "") -> ParseResult:
         """
         Parse booking order file using OpenAI Responses API with structured JSON output.
         No hallucinations - only extract what's clearly present.
+
+        Args:
+            file_path: Path to the booking order file
+            file_type: File type (pdf, image, excel)
+            user_message: Optional user's message that accompanied the file upload
         """
         logger.info(f"[BOOKING PARSER] Parsing {file_type} file: {file_path}")
+        if user_message:
+            logger.info(f"[BOOKING PARSER] User message context: {user_message}")
 
         # Upload file to OpenAI with purpose="user_data" (VendorAI pattern)
         try:
@@ -302,6 +309,20 @@ Analyze the uploaded file and respond with:
 
         # Parsing prompt for structured extraction (no schema in prompt)
         parsing_prompt = self._build_parsing_prompt()
+
+        # Add user message context if provided
+        if user_message:
+            parsing_prompt = f"""{parsing_prompt}
+
+**USER'S MESSAGE CONTEXT:**
+The user provided this message with the file: "{user_message}"
+
+**IMPORTANT:** Use this context to help with extraction:
+- If user mentions specific values (e.g., "upload fee is 2000"), prioritize this information
+- If user mentions client/company name, use that if document is unclear
+- If user provides clarifications about fees, dates, or locations, incorporate them
+- User message helps disambiguate unclear information in the document
+"""
 
         try:
             # Use structured outputs with JSON schema + code_interpreter for better table parsing
