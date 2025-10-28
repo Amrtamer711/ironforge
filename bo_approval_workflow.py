@@ -931,7 +931,7 @@ Examples:
             store=False
         )
 
-        decision = json.loads(res.output[0].content[-1].text)
+        decision = json.loads(res.output_text)
         action = decision.get('action')
         message = decision.get('message', '')
 
