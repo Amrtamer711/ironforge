@@ -850,48 +850,6 @@ async def _handle_booking_order_parse(
             logger.error(f"[SLACK] Failed to send workflow error to user: {slack_error}", exc_info=True)
 
 
-async def _handle_booking_order_retrieve(args: Dict[str, Any], channel: str) -> str:
-    """Handle booking order retrieval"""
-    bo_ref = args.get("bo_ref")
-    include_original = args.get("include_original", False)
-
-    record = db.get_booking_order(bo_ref)
-    if not record:
-        return f"❌ Booking order `{bo_ref}` not found."
-
-    # Upload parsed Excel
-    parsed_path = record.get("parsed_excel_path")
-    if parsed_path and Path(parsed_path).exists():
-        await config.slack_client.files_upload_v2(
-            channel=channel,
-            file=parsed_path,
-            title=f"{bo_ref} - Parsed Booking Order"
-        )
-
-    # Upload original if requested
-    if include_original:
-        orig_path = record.get("original_file_path")
-        if orig_path and Path(orig_path).exists():
-            await config.slack_client.files_upload_v2(
-                channel=channel,
-                file=orig_path,
-                title=f"{bo_ref} - Original Document"
-            )
-
-    # Format summary
-    parser = BookingOrderParser(company=record.get("company", "backlite"))
-    summary = parser.format_for_slack(record, bo_ref)
-
-    if record.get("warnings"):
-        summary += "\n\n⚠️ **Warnings:**\n" + "\n".join(f"• {w}" for w in record["warnings"])
-    if record.get("missing_required"):
-        summary += "\n\n⚠️ **Missing fields:**\n" + "\n".join(f"• {m}" for m in record["missing_required"])
-
-    summary += f"\n\n📅 Parsed: {record.get('parsed_at', 'Unknown')}"
-
-    return summary
-
-
 async def handle_booking_order_edit_flow(channel: str, user_id: str, user_input: str) -> str:
     """Handle booking order edit flow with structured LLM response"""
     try:
@@ -1711,8 +1669,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"Current User: {'ADMIN' if is_admin else 'STANDARD USER'}\n\n"
         f"{'✅ ADMIN TOOLS AVAILABLE:' if is_admin else '❌ ADMIN TOOLS NOT AVAILABLE:'}\n"
         f"- Location Management (add_location, delete_location)\n"
-        f"- Database Export (export_proposals_to_excel)\n"
-        f"- Retrieve Booking Orders (retrieve_booking_order)\n\n"
+        f"- Database Export (export_proposals_to_excel, export_booking_orders_to_excel)\n"
+        f"- Fetch Booking Orders (fetch_booking_order)\n\n"
         f"✅ AVAILABLE TO ALL USERS:\n"
         f"- Booking Order Upload & Parsing (parse_booking_order)\n"
         f"- Any sales person can upload booking orders for approval\n\n"
@@ -2072,28 +2030,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
 
     # Admin-only tools
     if is_admin:
-        admin_tools = [
-            {
-                "type": "function",
-                "name": "retrieve_booking_order",
-                "description": "Retrieve an existing booking order by its reference number (e.g., BO-2025-0001). Returns parsed Excel and summary. ADMIN ONLY.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "bo_ref": {
-                            "type": "string",
-                            "description": "Booking order reference number (format: BO-YYYY-NNNN)"
-                        },
-                        "include_original": {
-                            "type": "boolean",
-                            "description": "Whether to include the original uploaded file (default: false)",
-                            "default": False
-                        }
-                    },
-                    "required": ["bo_ref"]
-                }
-            }
-        ]
+        admin_tools = []
         tools.extend(admin_tools)
         logger.info(f"[LLM] Admin user {user_id} - added {len(admin_tools)} admin-only tools")
 
@@ -2683,23 +2620,6 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     user_id=user_id,
                     user_message=user_input
                 )
-                return
-
-            elif msg.name == "retrieve_booking_order":
-                # Admin-only check
-                if not config.is_admin(user_id):
-                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                    await config.slack_client.chat_postMessage(
-                        channel=channel,
-                        text=config.markdown_to_slack("❌ **Access Denied:** Booking order retrieval is restricted to administrators only.")
-                    )
-                    return
-
-                args = json.loads(msg.arguments)
-                await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Retrieving booking order..._")
-                response = await _handle_booking_order_retrieve(args, channel)
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(response))
                 return
 
             elif msg.name == "generate_mockup":
