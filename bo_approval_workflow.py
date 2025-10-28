@@ -132,30 +132,30 @@ async def get_coordinator_channel(company: str) -> Optional[str]:
     return None
 
 
-async def get_finance_channel() -> Optional[str]:
+async def get_finance_channels() -> list[str]:
     """
-    Get Finance DM channel ID.
+    Get Finance DM channel IDs for all finance users.
     Uses conversations.open to get DM channel ID from user_id.
+    Returns list of channel IDs.
     """
     stakeholders = load_stakeholders_config()
-    finance = stakeholders.get("finance", {})
+    finance_users = stakeholders.get("finance", {})
 
-    # Try channel_id first (if already stored), otherwise get from user_id
-    channel_id = finance.get("slack_channel_id")
-    if channel_id:
-        return channel_id
+    channel_ids = []
 
-    # Get user_id and open DM conversation to get channel ID
-    user_id = finance.get("slack_user_id")
-    if user_id:
-        try:
-            response = await config.slack_client.conversations_open(users=[user_id])
-            return response["channel"]["id"]
-        except Exception as e:
-            logger.error(f"[BO APPROVAL] Failed to open DM with user {user_id}: {e}")
-            return None
+    # Iterate through all finance users
+    for finance_name, finance_info in finance_users.items():
+        user_id = finance_info.get("slack_user_id")
+        if user_id:
+            try:
+                response = await config.slack_client.conversations_open(users=[user_id])
+                channel_id = response["channel"]["id"]
+                channel_ids.append(channel_id)
+                logger.info(f"[BO APPROVAL] Got finance channel for {finance_name}: {channel_id}")
+            except Exception as e:
+                logger.error(f"[BO APPROVAL] Failed to open DM with finance user {finance_name} ({user_id}): {e}")
 
-    return None
+    return channel_ids
 
 
 def create_workflow_id(company: str) -> str:
@@ -621,21 +621,24 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
             approved=True
         )
 
-    # Notify finance (uses conversations.open to get DM channel ID)
-    finance_channel = await get_finance_channel()
-    if finance_channel:
-        result = await bo_slack_messaging.notify_finance(
-            channel=finance_channel,
-            bo_ref=bo_ref,
-            company=workflow["company"],
-            data=workflow["data"],
-            excel_path=str(final_combined_pdf)
-        )
+    # Notify finance (uses conversations.open to get DM channel IDs for all finance users)
+    finance_channels = await get_finance_channels()
+    if finance_channels:
+        # Send to all finance users
+        for finance_channel in finance_channels:
+            result = await bo_slack_messaging.notify_finance(
+                channel=finance_channel,
+                bo_ref=bo_ref,
+                company=workflow["company"],
+                data=workflow["data"],
+                excel_path=str(final_combined_pdf)
+            )
 
+        # Update workflow after sending to all finance users
         await update_workflow(workflow_id, {
             "finance_notified": True,
             "finance_notified_at": datetime.now().isoformat(),
-            "finance_msg_ts": result["message_id"]
+            "finance_msg_ts": result["message_id"]  # Store last message ID
         })
 
         # Update HoS button message to show finance was notified
@@ -643,7 +646,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
             await bo_slack_messaging.update_button_message(
                 channel=workflow.get("hos_channel"),
                 message_ts=workflow.get("hos_msg_ts"),
-                new_text=f"✅ *APPROVED BY HEAD OF SALES*\nBO Number: {bo_number}\n✅ Finance notified successfully",
+                new_text=f"✅ *APPROVED BY HEAD OF SALES*\nBO Number: {bo_number}\n✅ Finance notified successfully ({len(finance_channels)} recipients)",
                 approved=True
             )
 
