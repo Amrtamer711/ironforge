@@ -455,23 +455,28 @@ The user provided this message with the file: "{user_message}"
                 pass
 
     def _build_parsing_prompt(self) -> str:
-        """Build the parsing prompt with field requirements"""
-        # Get static and digital locations for Backlite only
-        location_context = ""
-        if self.company.lower() == "backlite":
-            static_locations = []
-            digital_locations = []
-            for key, meta in config.LOCATION_METADATA.items():
-                display_name = meta.get('display_name', key)
-                if meta.get('display_type', '').lower() == 'static':
-                    static_locations.append(f"{display_name} ({key})")
-                elif meta.get('display_type', '').lower() == 'digital':
-                    digital_locations.append(f"{display_name} ({key})")
+        """Build the parsing prompt with field requirements - company-specific"""
+        if self.company.lower() == "viola":
+            return self._build_viola_parsing_prompt()
+        else:
+            return self._build_backlite_parsing_prompt()
 
-            static_list = ", ".join(static_locations) if static_locations else "None"
-            digital_list = ", ".join(digital_locations) if digital_locations else "None"
+    def _build_backlite_parsing_prompt(self) -> str:
+        """Build Backlite-specific parsing prompt"""
+        # Get static and digital locations for Backlite
+        static_locations = []
+        digital_locations = []
+        for key, meta in config.LOCATION_METADATA.items():
+            display_name = meta.get('display_name', key)
+            if meta.get('display_type', '').lower() == 'static':
+                static_locations.append(f"{display_name} ({key})")
+            elif meta.get('display_type', '').lower() == 'digital':
+                digital_locations.append(f"{display_name} ({key})")
 
-            location_context = f"""
+        static_list = ", ".join(static_locations) if static_locations else "None"
+        digital_list = ", ".join(digital_locations) if digital_locations else "None"
+
+        location_context = f"""
 **BACKLITE LOCATION REFERENCE (Use this to identify location types):**
 
 NOTE: This list contains ALMOST ALL Backlite locations, but not necessarily every single one. If you see a location not in this list, use context clues from the BO to determine its type.
@@ -486,7 +491,7 @@ Use this reference to determine if a location should have upload fees (digital) 
 If a location isn't listed, make an intelligent guess based on naming patterns and fee descriptions in the BO.
 """
 
-        return f"""You are an expert at extracting data from booking orders for {self.company.upper()}, a billboard/outdoor advertising company.
+        return f"""You are an expert at extracting data from BACKLITE booking orders - a billboard/outdoor advertising company.
 
 **TAKE YOUR TIME AND BE INTELLIGENT:**
 These booking orders come from EXTERNAL clients and may have horrible, inconsistent structures. Do NOT rush. Carefully dissect the entire document, understand the business context, and intelligently parse the information. Think step-by-step about what you're seeing.
@@ -631,13 +636,7 @@ This tells you the municipality fee is AED 520.
 
 **Location/Asset Details (usually in a table):**
 For EACH billboard location, extract:
-- Location name/code:
-  - **FOR VIOLA BOOKINGS:** Extract ONLY the location code (e.g., "04B", "03A", "02C")
-    - Viola locations have specific descriptive names but we only want the CODE
-    - Example: If document shows "Viola 04B - Sheikh Zayed Road Tower" → extract "04B"
-    - Example: If document shows "03A Al Barsha" → extract "03A"
-    - Look for alphanumeric codes like "04B", "03A", "15C", etc.
-  - **FOR BACKLITE BOOKINGS:** Use full location name (e.g., "UAE02", "SZR Tower")
+- Location name/code: Use the full location name/code as shown in the document (e.g., "UAE02", "SZR Tower", "UAE21")
 - Start date (campaign start date)
 - End date (campaign end date)
 - Campaign duration **IMPORTANT:** Calculate this as the period between start and end date
@@ -699,6 +698,228 @@ Even if the source document lists fees per location, you MUST sum them into sing
 - Think about whether each line item is a location rental or a fee
 - The structure may be messy - take your time to understand it
 - Extract what you see, but understand the business logic to validate your extraction"""
+
+    def _build_viola_parsing_prompt(self) -> str:
+        """Build Viola-specific parsing prompt"""
+        # TODO: Add Viola locations here when available
+        viola_locations = "01A, 01B, 02A, 02B, 02C, 03A, 03B, 04A, 04B, 05A, 05B, 06A, 06B, 07A, 07B, 08A, 08B, 09A, 09B, 10A, 10B, 11A, 11B, 12A, 12B, 13A, 13B, 14A, 14B, 15A, 15B, 15C"
+
+        return f"""You are an expert at extracting data from VIOLA booking orders - a billboard/outdoor advertising company.
+
+**TAKE YOUR TIME AND BE INTELLIGENT:**
+These booking orders come from EXTERNAL clients and may have horrible, inconsistent structures. Do NOT rush. Carefully dissect the entire document, understand the business context, and intelligently parse the information. Think step-by-step about what you're seeing.
+
+**VIOLA LOCATION CODES:**
+Viola uses alphanumeric location codes. Common codes include: {viola_locations}
+
+**CRITICAL FOR VIOLA LOCATIONS:**
+- Extract ONLY the location CODE (e.g., "04B", "03A", "15C")
+- Viola locations often have descriptive names, but we only want the CODE
+- Examples:
+  - If document shows "Viola 04B - Sheikh Zayed Road Tower" → extract "04B"
+  - If document shows "03A Al Barsha Mall" → extract "03A"
+  - If document shows "Location 15C - Dubai Marina" → extract "15C"
+- Look for the alphanumeric pattern (2 digits + optional letter)
+- Strip away any descriptive text, addresses, or area names
+
+**CRITICAL BILLBOARD INDUSTRY CONTEXT:**
+
+**Understanding Billboard Purchases:**
+Booking orders (BOs) are contracts where clients purchase billboard advertising space. Key concepts:
+
+1. **⚠️ CRITICAL: Bundled vs Separate Payments - DON'T DOUBLE COUNT!**
+
+   **BUNDLED LOCATIONS (Split the payment):**
+   When multiple locations appear TOGETHER in ONE row/line with ONE shared payment:
+   - Example: "04B & 03A - AED 320,000" → SPLIT 320k: 04B=160k, 03A=160k
+   - Example: "Package (03A, 03B, 04A) - AED 480,000" → SPLIT: 160k each
+   - Signals: Locations connected with "&", comma, or grouped in one table row
+
+   **SEPARATE LOCATIONS (Full payment):**
+   When a location has its own dedicated row with its own payment:
+   - Example: "15C - AED 120,000" on separate line → 15C gets full 120k
+
+   **MIXED SCENARIO (Most common!):**
+   ```
+   Row 1: 04B & 03A - AED 320,000  → Split: 04B=160k, 03A=160k
+   Row 2: 15C - AED 120,000        → Separate: 15C=120k
+   Total check: 160k + 160k + 120k = 440k ✅
+   ```
+
+   **❌ WRONG (Double counting):**
+   ```
+   04B=320k, 03A=320k, 15C=120k = 760k
+   This is WRONG because 04B & 03A share the 320k!
+   ```
+
+   **How to identify bundled payments:**
+   - Multiple location codes in same row (04B & 03A)
+   - Package name covering multiple locations
+   - Locations with "&" or "/" between them
+   - Table structure: one payment cell spanning multiple location cells
+
+2. **Fee Types (NOT locations - extract separately):**
+   - **Municipality Fee:** Applies to ALL locations as a regulatory fee. Extract this as a separate global fee, NOT as a location
+   - **Upload Fee:** For digital screens. This is the cost to upload creative content. NOT a location.
+   - **Production Fee:** For static billboards. This is the cost to produce/print the creative. NOT a location.
+   - These fees may appear mixed in with location rows - use intelligence to identify them
+
+3. **SLA (Service Level Agreement) %:**
+   - This is a DEDUCTION percentage (e.g., 0.4% = 0.004 as decimal)
+   - Usually user-inputted or negotiated
+   - Applied ONLY to the net rental amount (rental + production/upload fees + municipality fees)
+   - SLA deduction happens BEFORE VAT is calculated
+   - Formula: Net after SLA = Net rental - (Net rental × SLA%)
+   - Then VAT is applied: Gross = (Net after SLA) × 1.05
+
+**FINANCIAL CALCULATION FLOW (CRITICAL - USE THIS TO IDENTIFY FEES):**
+
+The standard calculation flow in billboard BOs is:
+1. **Net Rental Amount** = Sum of all location rentals (e.g., AED 460,000)
+2. **+ Production/Upload Fee** = Fee for creative production/upload (e.g., AED 2,000)
+3. **+ Municipality Fee (DM Fee)** = Dubai Municipality regulatory fee (e.g., AED 520)
+4. **= Net Amount** = Rental + Production + DM (e.g., AED 462,520)
+5. **- SLA Deduction** = Net Amount × SLA% (e.g., 462,520 × 10% = AED 46,252)
+6. **= Net Rental (after SLA)** = Net Amount - SLA (e.g., AED 414,000)
+7. **+ VAT (5%)** = Usually applied to (Rental + Production), NOT DM (e.g., 5% of 462,000 = AED 23,126)
+8. **= Gross Total** = Net Rental + VAT (e.g., AED 485,646)
+
+**CRITICAL: How to identify Production/Upload Fees:**
+- Look for line items labeled: "Production Fee", "Upload Fee", "Production Cost", "Upload Cost", "Creative Fee", "Net Production fee"
+- Production/Upload fees are typically MEDIUM amounts (thousands, e.g., AED 1,000-5,000 per location or total)
+- May appear in the costs table as a separate row, or in a summary section
+- **IMPORTANT:** If shown per-location, ADD them ALL up into ONE global total
+- If document shows "Production: AED 2,000" or "Upload: AED 1,500", extract this value
+- If unclear or not found, use 0 (don't guess)
+
+**CRITICAL: How to identify Municipality Fee:**
+- Look for line items labeled: "DM Fee", "Municipality Fee", "Dubai Municipality", "Govt Fee"
+- Municipality fee is typically a SMALL amount (hundreds to low thousands, not tens of thousands)
+- If you see a breakdown showing: Rental + Production + Small Fee = Net Amount, that small fee is likely Municipality
+- The Net Amount shown often equals: Rental + Production/Upload + Municipality
+- Municipality fee may appear in a separate row in the costs table, or in a summary section
+
+**Example:**
+If you see:
+- Net Rental amount: AED 460,000
+- Net Production fee: AED 2,000
+- Net DM fee: AED 520
+- Net amount: AED 462,520 ← This confirms the municipality fee!
+- VAT: AED 23,126
+- Gross: AED 485,646
+
+This tells you the municipality fee is AED 520.
+
+**EXTRACTION RULES:**
+
+**Be Intelligent About:**
+- **Bundled payments:** If one payment covers multiple locations, split it across them
+- **Fee identification:** Distinguish between location rentals vs fees (municipality/upload/production)
+- **Inconsistent structures:** Tables may be messy, merged cells, unclear headers - parse carefully
+- **Missing data:** Use null for truly missing fields, but try hard to find the data first
+- **Calculations:** Extract what's shown, but understand the calculation logic to catch errors
+
+**Format Rules:**
+1. Dates: Convert to YYYY-MM-DD format (e.g., "21st Feb 2025" → "2025-02-21")
+2. Percentages: Convert to decimal (e.g., "5%" → 0.05, "0.4%" → 0.004)
+3. Numbers: Pure numbers without currency symbols (e.g., "AED 295,596.00" → 295596.00)
+4. Location codes: Extract as list: ["04B", "03A", "15C"] - CODES ONLY, no descriptive names
+
+**DOCUMENT STRUCTURE TO LOOK FOR:**
+
+**Header Information:**
+- BO Number (Booking Order reference - usually "BO-XXX" or similar)
+- BO Date (when the BO was created)
+- Client (company name purchasing the advertising)
+  **IMPORTANT:** Client is the BUYER, NOT the seller:
+  - Client = Company buying billboard advertising (e.g., "Emaar Properties", "Nestlé", "Mercedes-Benz")
+  - DO NOT extract "Viola" as the client - Viola is the SERVICE PROVIDER (seller)
+  - Look for "From:", "Client:", "Advertiser:", or the company requesting the campaign
+  - Client is who is PAYING for the billboard space, not who is selling it
+- Agency (advertising agency, may be blank)
+- Brand/Campaign (the advertised brand or campaign name)
+  **IMPORTANT:** Use intelligent inference if brand/campaign is not explicitly stated:
+  - If client is "Gucci LLC" → brand is likely "Gucci"
+  - If client is "Emaar Properties PJSC" → brand is likely "Emaar"
+  - If client is "Dubai Properties Development L.L.C" → brand is likely "Dubai Properties"
+  - Extract the core brand name from the client company name by removing corporate suffixes like LLC, PJSC, L.L.C, Inc, Ltd, etc.
+  - Only use the full client name as brand if there's truly no brand information anywhere in the document
+- Category (the client's main industry/sector)
+  **IMPORTANT:** Category represents the CLIENT'S industry, not the campaign type:
+  - If client is "Emaar Properties PJSC" → category is "Real Estate"
+  - If client is "Nestlé Middle East" → category is "FMCG" (Fast-Moving Consumer Goods)
+  - If client is "Mercedes-Benz UAE" → category is "Automotive"
+  - If client is "Emirates NBD" → category is "Banking/Finance"
+  - Common categories: Real Estate, FMCG, Automotive, Banking/Finance, Hospitality, Retail, Healthcare, Technology, Entertainment
+  - Infer from the client company name if not explicitly stated in the BO
+
+**Location/Asset Details (usually in a table):**
+For EACH billboard location, extract:
+- Location code: Extract ONLY the alphanumeric code (e.g., "04B", "03A", "15C")
+  - Strip away descriptive names like "Sheikh Zayed Road Tower" or "Al Barsha Mall"
+  - Just the code: 2 digits + optional letter (04B, 03A, 15C, etc.)
+- Start date (campaign start date)
+- End date (campaign end date)
+- Campaign duration **IMPORTANT:** Calculate this as the period between start and end date
+  - If start: 2025-02-21, end: 2025-03-20 → duration: "28 days" or "1 month"
+  - Calculate the number of days between dates
+  - Can express as days (e.g., "28 days") or months (e.g., "1 month", "2 months")
+  - If explicitly stated in BO (rare), use that value; otherwise calculate from dates
+- Net amount (rental cost for THIS location - may need to split bundled payments)
+- Production/Upload cost (if specified per-location)
+- Type (digital vs static - if mentioned)
+
+**CRITICAL: Understanding the Data Structure**
+
+Booking orders have TWO types of costs:
+
+1. **Per-Location Rental Amounts** (in locations array):
+   - Each location has its own rental amount (e.g., 04B: AED 80,000, 03A: AED 80,000)
+   - This is ONLY the rental cost for that specific billboard
+   - Extract as `net_amount` for each location
+
+2. **GLOBAL Fees** (top-level fields, NOT per-location):
+   - **municipality_fee**: Dubai Municipality regulatory fee for the ENTIRE booking
+     - Look for: "DM Fee", "Municipality Fee", "Dubai Municipality", "Net DM fee"
+     - Typically a small amount (hundreds to low thousands)
+     - ONE total for all locations combined
+     - **If document shows per-location DM fees:** ADD them all up into ONE total
+     - Example: 04B: AED 200, 03A: AED 200, 15C: AED 120 → municipality_fee: 520
+
+   - **production_upload_fee**: Total production/upload cost for ALL locations
+     - Look for: "Production Fee", "Upload Fee", "Production Cost", "Net Production fee"
+     - This is production fee (for static) + upload fee (for digital) combined into ONE total
+     - ONE total for all locations combined
+     - **If document shows per-location fees:** ADD them all up into ONE total
+     - Example: 04B upload: AED 500, 03A upload: AED 500, 15C production: AED 1000 → production_upload_fee: 2000
+
+**CRITICAL:** Each location only stores its rental amount. ALL fees are GLOBAL single totals, NOT per-location values.
+Even if the source document lists fees per location, you MUST sum them into single global totals.
+
+**The Math:**
+- Sum of all location rental amounts (e.g., 80,000 + 80,000 + 120,000 = 280,000)
+- + production_upload_fee (e.g., 2,000)
+- + municipality_fee (e.g., 520)
+- = net_pre_vat (e.g., 282,520)
+
+**Financial Totals:**
+- Net amount (Rental + Production + Municipality, before SLA and VAT)
+- VAT amount (5% tax, usually on Rental + Production, not Municipality)
+- Gross amount (total including VAT)
+- SLA % (deduction percentage, e.g., 10% = 0.10)
+
+**Additional Information:**
+- Payment terms (e.g., "60 days PDC", "30 days credit")
+- Salesperson name
+- Commission %
+
+**CRITICAL NOTES:**
+- If you see "Municipality Fee" or "Upload Fee" in the locations table, extract it separately as a fee, NOT as a location
+- When multiple locations share one payment, split the amount across them intelligently
+- Think about whether each line item is a location rental or a fee
+- The structure may be messy - take your time to understand it
+- Extract what you see, but understand the business logic to validate your extraction
+- **REMEMBER:** For Viola, extract ONLY location codes (04B, 03A, etc.) - no descriptive names!"""
 
     def _extract_json_from_response(self, text: str) -> Dict[str, Any]:
         """Extract JSON from LLM response (may have markdown code blocks)"""
