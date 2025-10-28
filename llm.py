@@ -2042,11 +2042,16 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("I can help with proposals or add locations. Say 'add location'."))
             return
 
-        logger.info(f"[LLM] FULL RESPONSE: {res}")
         logger.info(f"[LLM] Output items: {len(res.output)}, Types: {[item.type for item in res.output]}")
 
-        msg = res.output[0]
-        logger.info(f"[LLM] First item type: {msg.type}, hasattr name: {hasattr(msg, 'name')}")
+        # Get function_call item (skip reasoning items)
+        msg = next((item for item in res.output if item.type == "function_call"), None)
+
+        # If no function call, get first non-reasoning item for text response
+        if msg is None:
+            msg = next((item for item in res.output if item.type != "reasoning"), res.output[0])
+
+        logger.info(f"[LLM] Selected item type: {msg.type}")
         if hasattr(msg, 'name'):
             logger.info(f"[LLM] Function name: {msg.name}")
         if msg.type == "function_call":
