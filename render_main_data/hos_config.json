@@ -28,17 +28,21 @@
     "coordinators": {
       "backlite": {
         "name": "Richelle",
-        "slack_user_id": "U093E4CPEE4"
+        "slack_user_id": "U089CRH26MQ"
       },
       "viola": {
-        "name": "Khouloud Allali",
-        "slack_user_id": "U093E4CPEE4"
+        "name": "Richelle",
+        "slack_user_id": "U089CRH26MQ"
       }
     },
     "finance": {
       "Finance User 1": {
         "name": "Quomel Nasir",
         "slack_user_id": "U08U2688HDJ"
+      },
+      "Finance User 2": {
+        "name": "Praveen Bhandari",
+        "slack_user_id": "U0886LG1J12"
       }
     }
   }
