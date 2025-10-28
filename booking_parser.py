@@ -355,14 +355,15 @@ The user provided this message with the file: "{user_message}"
                         ]
                     }
                 ],
-                tools=[
-                    {
-                        "type": "code_interpreter",
-                        "container": {
-                            "type": "auto"
-                        }
-                    }
-                ],
+                # TODO: Re-enable code_interpreter after investigating timeout issues
+                # tools=[
+                #     {
+                #         "type": "code_interpreter",
+                #         "container": {
+                #             "type": "auto"
+                #         }
+                #     }
+                # ],
                 text={
                     "format": {
                         "type": "json_schema",
