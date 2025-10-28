@@ -1564,7 +1564,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         
         f"REQUIRED INFORMATION:\n"
         f"For SEPARATE PACKAGE (each location):\n"
-        f"1. Location (must be from digital or static list above)\n"
+        f"1. Location (must match from lists above - intelligently infer if user says 'gateway'→'dubai_gateway', 'jawhara'→'dubai_jawhara', 'the landmark'→'landmark', etc.)\n"
         f"2. Start Date\n"
         f"3. Duration Options (multiple allowed)\n"
         f"4. Net Rates for EACH duration\n"
@@ -1574,7 +1574,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"6. Client Name (required)\n"
         f"7. Submitted By (optional - defaults to current user)\n\n"
         f"For COMBINED PACKAGE:\n"
-        f"1. All Locations (mix of digital/static allowed)\n"
+        f"1. All Locations (mix of digital/static allowed - intelligently infer names from available list)\n"
         f"2. Start Date for EACH location\n"
         f"3. ONE Duration per location\n"
         f"4. ONE Combined Net Rate for entire package\n"
@@ -1895,7 +1895,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         "items": {
                             "type": "object",
                             "properties": {
-                                "location": {"type": "string", "description": "The location name (e.g., landmark, gateway, oryx)"},
+                                "location": {"type": "string", "description": "The location name - intelligently match to available locations. If user says 'gateway' or 'the gateway', match to 'dubai_gateway'. If user says 'jawhara', match to 'dubai_jawhara'. Use your best judgment to infer the correct location from the available list even if the name is abbreviated or has 'the' prefix."},
                                 "start_date": {"type": "string", "description": "Start date for the campaign (e.g., 1st December 2025)"},
                                 "durations": {
                                     "type": "array",
@@ -1934,7 +1934,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         "items": {
                             "type": "object",
                             "properties": {
-                                "location": {"type": "string", "description": "The location name (e.g., landmark, gateway, oryx)"},
+                                "location": {"type": "string", "description": "The location name - intelligently match to available locations. If user says 'gateway' or 'the gateway', match to 'dubai_gateway'. If user says 'jawhara', match to 'dubai_jawhara'. Use your best judgment to infer the correct location from the available list even if the name is abbreviated or has 'the' prefix."},
                                 "start_date": {"type": "string", "description": "Start date for this location (e.g., 1st January 2026)"},
                                 "duration": {"type": "string", "description": "Duration for this location (e.g., '2 Weeks')"},
                                 "spots": {"type": "integer", "description": "Number of spots (default: 1)", "default": 1},
@@ -2015,7 +2015,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "location": {"type": "string", "description": "The location name only (e.g., 'Dubai Gateway', 'The Landmark', 'oryx')"},
+                    "location": {"type": "string", "description": "The location name - intelligently match to available locations. If user says 'gateway' or 'the gateway', match to 'dubai_gateway'. If user says 'jawhara', match to 'dubai_jawhara'. Use your best judgment to infer the correct location from the available list."},
                     "time_of_day": {"type": "string", "description": "Optional time of day: 'day', 'night', or 'all' (default). Use 'all' for random selection from all time variations.", "enum": ["day", "night", "all"]},
                     "finish": {"type": "string", "description": "Optional billboard finish: 'gold', 'silver', or 'all' (default). Use 'all' for random selection from all finish variations.", "enum": ["gold", "silver", "all"]},
                     "ai_prompt": {"type": "string", "description": "Optional: AI prompt to generate billboard-ready ARTWORK ONLY (flat advertisement design, NO billboards/signs/streets in the image). System will automatically place the artwork onto the billboard. Example: 'A luxury watch advertisement with gold accents and elegant typography' - this creates the ad design itself, not a photo of a billboard"},
