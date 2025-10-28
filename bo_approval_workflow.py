@@ -867,7 +867,7 @@ Examples:
 
         res = await config.openai_client.responses.create(
             model=config.OPENAI_MODEL,
-            reasoning={"effort": "low"},
+            reasoning={"effort": "medium"},
             input=input_messages,
             text={
                 'format': {
