@@ -1884,9 +1884,9 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
     # Base tools available to all users
     tools = [
         {
-            "type": "function", 
+            "type": "function",
             "name": "get_separate_proposals",
-            "description": "Generate SEPARATE proposals - each location gets its own proposal slide with multiple duration/rate options. Returns individual PPTs and combined PDF.",
+            "description": "Generate SEPARATE proposals - each location gets its own proposal slide with multiple duration/rate options. Use this when user asks to 'make', 'create', or 'generate' proposals for specific locations. Returns individual PPTs and combined PDF.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1923,9 +1923,9 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             }
         },
         {
-            "type": "function", 
+            "type": "function",
             "name": "get_combined_proposal",
-            "description": "Generate COMBINED package proposal - all locations in ONE slide with single net rate. Use for special package deals.",
+            "description": "Generate COMBINED package proposal - all locations in ONE slide with single net rate. Use this when user asks for a 'package', 'bundle', or 'combined' deal with multiple locations sharing one total rate.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1980,7 +1980,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 "required": ["location_key", "display_name", "display_type", "height", "width", "series"]
             }
         },
-        {"type": "function", "name": "list_locations", "description": "List the currently available locations to the user", "parameters": {"type": "object", "properties": {}}},
+        {"type": "function", "name": "list_locations", "description": "ONLY call this when user explicitly asks to SEE or LIST available locations (e.g., 'what locations do you have?', 'show me locations', 'list all locations'). DO NOT call this when user mentions specific location names in a proposal request.", "parameters": {"type": "object", "properties": {}}},
         {
             "type": "function",
             "name": "delete_location",
