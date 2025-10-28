@@ -2043,6 +2043,10 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             return
 
         msg = res.output[0]
+        logger.info(f"[LLM] Response type: {msg.type}, hasattr content: {hasattr(msg, 'content')}, hasattr name: {hasattr(msg, 'name')}")
+        logger.info(f"[LLM] Response output_text: {res.output_text[:200] if hasattr(res, 'output_text') else 'N/A'}")
+        if hasattr(msg, 'name'):
+            logger.info(f"[LLM] Function name: {msg.name}")
         if msg.type == "function_call":
             if msg.name == "get_separate_proposals":
                 # Update status to Building Proposal
