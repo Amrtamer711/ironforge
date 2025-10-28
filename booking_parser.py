@@ -327,7 +327,7 @@ The user provided this message with the file: "{user_message}"
         try:
             # Use structured outputs with JSON schema + code_interpreter for better table parsing
             response = await config.openai_client.responses.create(
-                model=config.OPENAI_MODEL,
+                model="gpt-5",
                 input=[
                     {"role": "system", "content": """You are a precise booking order data extractor.
 
