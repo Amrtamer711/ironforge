@@ -328,6 +328,7 @@ The user provided this message with the file: "{user_message}"
             # Use structured outputs with JSON schema + code_interpreter for better table parsing
             response = await config.openai_client.responses.create(
                 model="gpt-5",
+                reasoning={"effort": "high"},
                 input=[
                     {"role": "system", "content": """You are a precise booking order data extractor.
 
@@ -637,7 +638,12 @@ This tells you the municipality fee is AED 520.
 
 **Location/Asset Details (usually in a table):**
 For EACH billboard location, extract:
-- Location name/code: Use the full location name/code as shown in the document (e.g., "UAE02", "SZR Tower", "UAE21")
+- Location name/code: **EXTRACT ONLY THE LOCATION CODE/NAME, NOT DESCRIPTIONS**
+  - ✅ CORRECT: "UAE02", "UAE03", "UAE21", "SZR Tower", "The Gateway"
+  - ❌ WRONG: "UAE02 (Unipole 16x8, Jebel Ali)", "UAE03 - Digital Screen", "The Gateway (LED)"
+  - Remove any parenthetical descriptions, dimensions, area names, or technical specs
+  - If document shows "UAE02 (Unipole 16x8, Jebel Ali) & UAE03 (Billboard, Al Quoz)" → extract as TWO locations: "UAE02" and "UAE03"
+  - Only extract the core location identifier, nothing else
 - Start date (campaign start date)
 - End date (campaign end date)
 - Campaign duration **IMPORTANT:** Calculate this as the period between start and end date
