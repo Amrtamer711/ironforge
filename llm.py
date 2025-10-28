@@ -2042,9 +2042,11 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("I can help with proposals or add locations. Say 'add location'."))
             return
 
+        logger.info(f"[LLM] FULL RESPONSE: {res}")
+        logger.info(f"[LLM] Output items: {len(res.output)}, Types: {[item.type for item in res.output]}")
+
         msg = res.output[0]
-        logger.info(f"[LLM] Response type: {msg.type}, hasattr content: {hasattr(msg, 'content')}, hasattr name: {hasattr(msg, 'name')}")
-        logger.info(f"[LLM] Response output_text: {res.output_text[:200] if hasattr(res, 'output_text') else 'N/A'}")
+        logger.info(f"[LLM] First item type: {msg.type}, hasattr name: {hasattr(msg, 'name')}")
         if hasattr(msg, 'name'):
             logger.info(f"[LLM] Function name: {msg.name}")
         if msg.type == "function_call":
