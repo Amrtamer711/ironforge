@@ -10,7 +10,7 @@ envVarGroups:
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
-        value: "gpt-4.1"
+        value: "gpt-5"
       - key: PDF_CONVERT_CONCURRENCY
         value: "4"
       - key: TEMPLATES_DIR
