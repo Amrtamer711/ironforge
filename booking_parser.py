@@ -1197,7 +1197,7 @@ Even if the source document lists fees per location, you MUST sum them into sing
 
         # Calculate Net Rentals excl SLA (for the merged cell A-E33)
         # This is the net amount AFTER SLA deduction
-        net_rentals_excl_sla = data.get("net_excl_sla_calc", data.get("net_pre_vat", 0))
+        net_rentals_excl_sla = data.get("net_excl_sla_calc") or data.get("net_pre_vat") or 0
 
         # Inject values into template cells
         # Left column (B)
