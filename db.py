@@ -172,8 +172,39 @@ def init_db() -> None:
         # executescript allows multiple SQL statements
         conn.executescript(SCHEMA)
         logger.info("[DB] Database initialized with current schema")
+
+        # Run migrations for existing databases
+        _run_migrations(conn)
+
     finally:
         conn.close()
+
+
+def _run_migrations(conn):
+    """Run database migrations for existing tables"""
+    cursor = conn.cursor()
+
+    # Migration 1: Add workflow column to ai_costs if it doesn't exist
+    try:
+        # Check if ai_costs table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ai_costs'")
+        if cursor.fetchone():
+            # Check if workflow column exists
+            cursor.execute("PRAGMA table_info(ai_costs)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if 'workflow' not in columns:
+                logger.info("[DB MIGRATION] Adding workflow column to ai_costs table")
+                cursor.execute("ALTER TABLE ai_costs ADD COLUMN workflow TEXT")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_costs_workflow ON ai_costs(workflow)")
+                conn.commit()
+                logger.info("[DB MIGRATION] Successfully added workflow column")
+            else:
+                logger.debug("[DB MIGRATION] workflow column already exists")
+    except Exception as e:
+        logger.error(f"[DB MIGRATION] Failed to add workflow column: {e}")
+        # Don't fail the entire initialization if migration fails
+        pass
 
 
 def log_proposal(
