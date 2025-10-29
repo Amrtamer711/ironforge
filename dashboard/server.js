@@ -3,6 +3,7 @@ const axios = require('axios');
 const cors = require('cors');
 const path = require('path');
 const session = require('express-session');
+const FileStore = require('session-file-store')(session);
 const bcrypt = require('bcrypt');
 const cookieParser = require('cookie-parser');
 
@@ -28,8 +29,13 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Session configuration
+// Session configuration with file store (production-ready)
 app.use(session({
+  store: new FileStore({
+    path: './sessions',
+    ttl: 7 * 24 * 60 * 60, // 7 days in seconds
+    retries: 0
+  }),
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
