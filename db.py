@@ -169,19 +169,23 @@ def init_db() -> None:
     """
     conn = _connect()
     try:
+        # Run migrations BEFORE applying schema to handle existing databases
+        _run_migrations(conn)
+
         # executescript allows multiple SQL statements
         conn.executescript(SCHEMA)
         logger.info("[DB] Database initialized with current schema")
-
-        # Run migrations for existing databases
-        _run_migrations(conn)
 
     finally:
         conn.close()
 
 
 def _run_migrations(conn):
-    """Run database migrations for existing tables"""
+    """Run database migrations for existing tables
+
+    This runs BEFORE the schema is applied to ensure columns exist
+    before any constraints are checked.
+    """
     cursor = conn.cursor()
 
     # Migration 1: Add workflow column to ai_costs if it doesn't exist
@@ -196,7 +200,6 @@ def _run_migrations(conn):
             if 'workflow' not in columns:
                 logger.info("[DB MIGRATION] Adding workflow column to ai_costs table")
                 cursor.execute("ALTER TABLE ai_costs ADD COLUMN workflow TEXT")
-                cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_costs_workflow ON ai_costs(workflow)")
                 conn.commit()
                 logger.info("[DB MIGRATION] Successfully added workflow column")
             else:
