@@ -220,9 +220,10 @@ def track_openai_call(
 
 
 def track_image_generation(
-    model: str,
-    size: str,
-    quality: str,
+    response: any = None,
+    model: str = None,
+    size: str = None,
+    quality: str = None,
     n: int = 1,
     user_id: Optional[str] = None,
     workflow: Optional[str] = None,
@@ -230,63 +231,127 @@ def track_image_generation(
     metadata: Optional[dict] = None
 ):
     """
-    Track OpenAI image generation costs
+    Track OpenAI image generation costs from API response or fallback to fixed pricing
 
     Args:
-        model: Image model (gpt-image-1, dall-e-3, etc.)
-        size: Image size (e.g., "1024x1024", "1536x1024")
-        quality: Image quality ("standard" or "high")
-        n: Number of images generated
+        response: OpenAI image generation response object (optional, preferred)
+        model: Image model (gpt-image-1, dall-e-3, etc.) - fallback if no response
+        size: Image size (e.g., "1024x1024") - fallback if no response
+        quality: Image quality ("standard" or "high") - fallback if no response
+        n: Number of images generated - fallback if no response
         user_id: Slack user ID or "website_mockup" for public API
         workflow: Workflow type - typically 'mockup_ai' for AI-generated mockups (optional)
         context: Additional context (optional)
         metadata: Additional metadata dict (optional)
     """
     try:
-        # Image generation pricing (per image)
-        # gpt-image-1 / DALL-E 3:
-        #   - 1024x1024: standard $0.040, high $0.080
-        #   - 1024x1792 or 1792x1024: standard $0.080, high $0.120
+        # Try to extract usage from response first (token-based pricing)
+        if response and hasattr(response, 'usage') and response.usage:
+            usage = response.usage
 
-        # Determine pricing based on size and quality
-        if "1792" in size or "1536" in size:
-            # Large format
-            cost_per_image = 0.120 if quality == "high" else 0.080
+            # Extract token counts
+            total_input_tokens = getattr(usage, 'input_tokens', 0) or 0
+            output_tokens = getattr(usage, 'output_tokens', 0) or 0
+
+            # Extract input token details (text vs image tokens)
+            text_input_tokens = 0
+            image_input_tokens = 0
+            if hasattr(usage, 'input_tokens_details'):
+                details = usage.input_tokens_details
+                text_input_tokens = getattr(details, 'text_tokens', 0) or 0
+                image_input_tokens = getattr(details, 'image_tokens', 0) or 0
+
+            # Get model from response if not provided
+            if not model:
+                model = getattr(response, 'model', 'gpt-image-1')
+
+            # Calculate costs using token-based pricing
+            # gpt-image-1: $5/1M text input, $10/1M image input, $40/1M output
+            pricing = PRICING.get(model, PRICING.get("gpt-image-1", {}))
+
+            text_input_cost = (text_input_tokens / 1_000_000) * pricing.get("text_input", 5.0)
+            image_input_cost = (image_input_tokens / 1_000_000) * pricing.get("image_input", 10.0)
+            output_cost = (output_tokens / 1_000_000) * pricing.get("output", 40.0)
+
+            total_cost = text_input_cost + image_input_cost + output_cost
+
+            # Convert metadata to JSON string if provided
+            metadata_json = None
+            if metadata:
+                import json
+                metadata_json = json.dumps(metadata)
+
+            # Log to database with token details
+            db.log_ai_cost(
+                call_type="image_generation",
+                model=model,
+                input_tokens=total_input_tokens,
+                output_tokens=output_tokens,
+                reasoning_tokens=0,
+                input_cost=text_input_cost + image_input_cost,
+                output_cost=output_cost,
+                reasoning_cost=0.0,
+                total_cost=total_cost,
+                user_id=user_id,
+                workflow=workflow,
+                context=context,
+                metadata_json=metadata_json
+            )
+
+            logger.info(
+                f"[COSTS] image_generation | Model: {model} | "
+                f"Tokens: {text_input_tokens}text + {image_input_tokens}img + {output_tokens}out | "
+                f"Cost: ${total_cost:.4f}"
+            )
+
         else:
-            # Standard 1024x1024
-            cost_per_image = 0.080 if quality == "high" else 0.040
+            # Fallback to fixed pricing if no usage data
+            # gpt-image-1 / DALL-E 3:
+            #   - 1024x1024: standard $0.040, high $0.080
+            #   - 1024x1792 or 1792x1024: standard $0.080, high $0.120
 
-        total_cost = cost_per_image * n
+            if not model or not size or not quality:
+                logger.warning("[COSTS] image_generation called without response or required params, skipping")
+                return
 
-        # Convert metadata to JSON string if provided
-        metadata_json = None
-        if metadata:
-            import json
-            metadata_json = json.dumps(metadata)
+            # Determine pricing based on size and quality
+            if "1792" in size or "1536" in size:
+                # Large format
+                cost_per_image = 0.120 if quality == "high" else 0.080
+            else:
+                # Standard 1024x1024
+                cost_per_image = 0.080 if quality == "high" else 0.040
 
-        # Log to database
-        # For image generation, we don't have token counts, so set to 0
-        db.log_ai_cost(
-            call_type="image_generation",
-            model=model,
-            input_tokens=0,  # Not applicable for image generation
-            output_tokens=0,  # Not applicable for image generation
-            reasoning_tokens=0,
-            input_cost=0.0,
-            output_cost=0.0,
-            reasoning_cost=0.0,
-            total_cost=total_cost,
-            user_id=user_id,
-            workflow=workflow,
-            context=context,
-            metadata_json=metadata_json
-        )
+            total_cost = cost_per_image * n
 
-        logger.info(
-            f"[COSTS] image_generation | Model: {model} | "
-            f"Size: {size}, Quality: {quality}, Count: {n} | "
-            f"Cost: ${total_cost:.4f}"
-        )
+            # Convert metadata to JSON string if provided
+            metadata_json = None
+            if metadata:
+                import json
+                metadata_json = json.dumps(metadata)
+
+            # Log to database
+            db.log_ai_cost(
+                call_type="image_generation",
+                model=model,
+                input_tokens=0,  # Fixed pricing, no token data
+                output_tokens=0,
+                reasoning_tokens=0,
+                input_cost=0.0,
+                output_cost=0.0,
+                reasoning_cost=0.0,
+                total_cost=total_cost,
+                user_id=user_id,
+                workflow=workflow,
+                context=context,
+                metadata_json=metadata_json
+            )
+
+            logger.info(
+                f"[COSTS] image_generation | Model: {model} | "
+                f"Size: {size}, Quality: {quality}, Count: {n} | "
+                f"Cost: ${total_cost:.4f} (fixed pricing)"
+            )
 
     except Exception as e:
         logger.error(f"[COSTS] Failed to track image generation: {e}", exc_info=True)

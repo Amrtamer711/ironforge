@@ -841,10 +841,9 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
             quality='high',
         )
 
-        # Track cost for image generation
-        # Images API doesn't return token usage, so we track with fixed cost
-        # gpt-image-1 high quality: $0.080 per image
+        # Track cost for image generation using response object (includes token usage)
         cost_tracking.track_image_generation(
+            response=img,
             model="gpt-image-1",
             size=size,
             quality="high",
