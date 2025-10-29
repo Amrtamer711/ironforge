@@ -468,7 +468,8 @@ async def _generate_ai_mockup_queued(
     num_ai_frames: int,
     location_key: str,
     time_of_day: str,
-    finish: str
+    finish: str,
+    user_id: Optional[str] = None
 ):
     """
     Wrapper for AI mockup generation (AI creative generation + mockup) through the queue.
@@ -482,6 +483,7 @@ async def _generate_ai_mockup_queued(
         location_key: Location identifier
         time_of_day: Time of day variation
         finish: Finish type
+        user_id: Optional Slack user ID for cost tracking
 
     Returns:
         Tuple of (result_path, ai_creative_paths)
@@ -506,7 +508,8 @@ async def _generate_ai_mockup_queued(
                     logger.info(f"[AI QUEUE] Generating creative {i}/{num_ai_frames}")
                     creative_path = await mockup_generator.generate_ai_creative(
                         prompt=enhanced_prompt.replace(ai_prompt, variation_prompt),
-                        location_key=location_key
+                        location_key=location_key,
+                        user_id=user_id
                     )
                     if not creative_path:
                         raise Exception(f"Failed to generate AI creative {i}/{num_ai_frames}")
@@ -515,7 +518,8 @@ async def _generate_ai_mockup_queued(
                 # Single frame
                 creative_path = await mockup_generator.generate_ai_creative(
                     prompt=enhanced_prompt,
-                    location_key=location_key
+                    location_key=location_key,
+                    user_id=user_id
                 )
                 if not creative_path:
                     raise Exception("Failed to generate AI creative")
@@ -2058,6 +2062,16 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
     try:
         res = await config.openai_client.responses.create(model=config.OPENAI_MODEL, input=messages, tools=tools, tool_choice="auto")
 
+        # Track cost
+        import cost_tracking
+        cost_tracking.track_openai_call(
+            response=res,
+            call_type="main_llm",
+            user_id=user_id,
+            context=f"Channel: {channel}",
+            metadata={"has_files": has_files, "message_length": len(user_message)}
+        )
+
         if not res.output or len(res.output) == 0:
             await config.slack_client.chat_delete(channel=channel, ts=status_ts)
             await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("I can help with proposals or add locations. Say 'add location'."))
@@ -3192,7 +3206,8 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                             num_ai_frames=num_ai_frames,
                             location_key=location_key,
                             time_of_day=time_of_day,
-                            finish=finish
+                            finish=finish,
+                            user_id=user_id
                         )
 
                         if not result_path:

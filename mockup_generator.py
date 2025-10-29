@@ -798,13 +798,14 @@ def is_portrait_location(location_key: str) -> bool:
     return False  # Default to landscape if can't determine
 
 
-async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_key: Optional[str] = None) -> Optional[Path]:
+async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_key: Optional[str] = None, user_id: Optional[str] = None) -> Optional[Path]:
     """Generate a creative using OpenAI gpt-image-1 API.
 
     Args:
         prompt: Text description for image generation
         size: Image size (default landscape "1536x1024")
         location_key: Optional location key to auto-detect portrait orientation
+        user_id: Optional Slack user ID for cost tracking (None for website mockup)
 
     Returns:
         Path to generated image, or None if failed
@@ -812,6 +813,7 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
     import tempfile
     import base64
     from openai import AsyncOpenAI
+    import cost_tracking
 
     # Auto-detect portrait orientation if location_key provided
     if location_key and is_portrait_location(location_key):
@@ -837,6 +839,19 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
             n=1,
             size=size,
             quality='high',
+        )
+
+        # Track cost for image generation
+        # Images API doesn't return token usage, so we track with fixed cost
+        # gpt-image-1 high quality: $0.080 per image
+        cost_tracking.track_image_generation(
+            model="gpt-image-1",
+            size=size,
+            quality="high",
+            n=1,
+            user_id=user_id if user_id else "website_mockup",
+            context=f"AI creative generation: {location_key or 'unknown location'}",
+            metadata={"prompt_length": len(prompt), "size": size, "location_key": location_key}
         )
 
         # Extract base64 image data (automatically returned by gpt-image-1)

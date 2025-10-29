@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS ai_costs (
     reasoning_cost REAL DEFAULT 0,
     total_cost REAL,
     metadata_json TEXT,
-    CONSTRAINT call_type_check CHECK (call_type IN ('classification', 'parsing', 'coordinator_thread', 'main_llm', 'mockup_analysis', 'other'))
+    CONSTRAINT call_type_check CHECK (call_type IN ('classification', 'parsing', 'coordinator_thread', 'main_llm', 'mockup_analysis', 'image_generation', 'other'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_costs_timestamp ON ai_costs(timestamp);

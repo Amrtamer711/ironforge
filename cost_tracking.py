@@ -162,3 +162,73 @@ def track_openai_call(
 
     except Exception as e:
         logger.error(f"[COSTS] Failed to track OpenAI call: {e}", exc_info=True)
+
+
+def track_image_generation(
+    model: str,
+    size: str,
+    quality: str,
+    n: int = 1,
+    user_id: Optional[str] = None,
+    context: Optional[str] = None,
+    metadata: Optional[dict] = None
+):
+    """
+    Track OpenAI image generation costs
+
+    Args:
+        model: Image model (gpt-image-1, dall-e-3, etc.)
+        size: Image size (e.g., "1024x1024", "1536x1024")
+        quality: Image quality ("standard" or "high")
+        n: Number of images generated
+        user_id: Slack user ID or "website_mockup" for public API
+        context: Additional context (optional)
+        metadata: Additional metadata dict (optional)
+    """
+    try:
+        # Image generation pricing (per image)
+        # gpt-image-1 / DALL-E 3:
+        #   - 1024x1024: standard $0.040, high $0.080
+        #   - 1024x1792 or 1792x1024: standard $0.080, high $0.120
+
+        # Determine pricing based on size and quality
+        if "1792" in size or "1536" in size:
+            # Large format
+            cost_per_image = 0.120 if quality == "high" else 0.080
+        else:
+            # Standard 1024x1024
+            cost_per_image = 0.080 if quality == "high" else 0.040
+
+        total_cost = cost_per_image * n
+
+        # Convert metadata to JSON string if provided
+        metadata_json = None
+        if metadata:
+            import json
+            metadata_json = json.dumps(metadata)
+
+        # Log to database
+        # For image generation, we don't have token counts, so set to 0
+        db.log_ai_cost(
+            call_type="image_generation",
+            model=model,
+            input_tokens=0,  # Not applicable for image generation
+            output_tokens=0,  # Not applicable for image generation
+            reasoning_tokens=0,
+            input_cost=0.0,
+            output_cost=0.0,
+            reasoning_cost=0.0,
+            total_cost=total_cost,
+            user_id=user_id,
+            context=context,
+            metadata_json=metadata_json
+        )
+
+        logger.info(
+            f"[COSTS] image_generation | Model: {model} | "
+            f"Size: {size}, Quality: {quality}, Count: {n} | "
+            f"Cost: ${total_cost:.4f}"
+        )
+
+    except Exception as e:
+        logger.error(f"[COSTS] Failed to track image generation: {e}", exc_info=True)
