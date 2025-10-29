@@ -74,20 +74,22 @@ def calculate_cost(
     model: str,
     input_tokens: int,
     output_tokens: int,
-    reasoning_tokens: int = 0
+    reasoning_tokens: int = 0,
+    cached_input_tokens: int = 0
 ) -> dict:
     """
     Calculate cost breakdown for an AI API call
 
     Args:
         model: Model name (gpt-5, gpt-4.1, etc.)
-        input_tokens: Number of input tokens
+        input_tokens: Number of input tokens (total, including cached)
         output_tokens: Number of output tokens
         reasoning_tokens: Number of reasoning tokens (note: GPT-5 no longer charges separately for reasoning)
+        cached_input_tokens: Number of cached input tokens (charged at 90% discount)
 
     Returns:
         Dict with:
-            - input_cost: Cost for input tokens
+            - input_cost: Cost for input tokens (non-cached + cached)
             - output_cost: Cost for output tokens
             - reasoning_cost: Cost for reasoning tokens (always 0 for GPT-5)
             - total_cost: Total cost
@@ -95,8 +97,16 @@ def calculate_cost(
     # Get pricing for model (default to gpt-5 if unknown)
     pricing = PRICING.get(model, PRICING["gpt-5"])
 
+    # Calculate non-cached input tokens
+    non_cached_input_tokens = input_tokens - cached_input_tokens
+
     # Calculate costs (per million tokens)
-    input_cost = (input_tokens / 1_000_000) * pricing["input"]
+    # Non-cached input tokens at regular price
+    non_cached_input_cost = (non_cached_input_tokens / 1_000_000) * pricing["input"]
+    # Cached input tokens at discounted price (90% discount)
+    cached_input_cost = (cached_input_tokens / 1_000_000) * pricing.get("input_cached", pricing["input"] * 0.1)
+    input_cost = non_cached_input_cost + cached_input_cost
+
     output_cost = (output_tokens / 1_000_000) * pricing["output"]
 
     # Reasoning cost - GPT-5 no longer charges separately for reasoning
@@ -153,6 +163,14 @@ def track_openai_call(
         output_tokens = getattr(usage, 'output_tokens', 0) or 0
         logger.info(f"[COSTS DEBUG] Base tokens - Input: {input_tokens}, Output: {output_tokens}")
 
+        # Handle cached input tokens (90% discount)
+        cached_input_tokens = 0
+        if hasattr(usage, 'input_tokens_details'):
+            input_details = usage.input_tokens_details
+            logger.info(f"[COSTS DEBUG] Input tokens details: {input_details}")
+            cached_input_tokens = getattr(input_details, 'cached_tokens', 0) or 0
+            logger.info(f"[COSTS DEBUG] Cached input tokens: {cached_input_tokens}")
+
         # Handle reasoning tokens (for tracking purposes - GPT-5 no longer charges separately)
         reasoning_tokens = 0
         if hasattr(usage, 'output_tokens_details'):
@@ -172,7 +190,8 @@ def track_openai_call(
             model=model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            reasoning_tokens=reasoning_tokens
+            reasoning_tokens=reasoning_tokens,
+            cached_input_tokens=cached_input_tokens
         )
 
         # Convert metadata to JSON string if provided
@@ -194,15 +213,24 @@ def track_openai_call(
             total_cost=costs["total_cost"],
             user_id=user_id,
             workflow=workflow,
+            cached_input_tokens=cached_input_tokens,
             context=context,
             metadata_json=metadata_json
         )
 
-        logger.info(
-            f"[COSTS] {call_type} | Model: {model} | "
-            f"Tokens: {input_tokens}in + {output_tokens}out + {reasoning_tokens}reasoning | "
-            f"Cost: ${costs['total_cost']:.4f}"
-        )
+        # Log with cached token info if applicable
+        if cached_input_tokens > 0:
+            logger.info(
+                f"[COSTS] {call_type} | Model: {model} | "
+                f"Tokens: {input_tokens}in ({cached_input_tokens} cached) + {output_tokens}out + {reasoning_tokens}reasoning | "
+                f"Cost: ${costs['total_cost']:.4f}"
+            )
+        else:
+            logger.info(
+                f"[COSTS] {call_type} | Model: {model} | "
+                f"Tokens: {input_tokens}in + {output_tokens}out + {reasoning_tokens}reasoning | "
+                f"Cost: ${costs['total_cost']:.4f}"
+            )
 
     except Exception as e:
         logger.error(f"[COSTS] Failed to track OpenAI call: {e}", exc_info=True)

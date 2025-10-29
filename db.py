@@ -130,6 +130,7 @@ CREATE TABLE IF NOT EXISTS ai_costs (
     user_id TEXT,
     context TEXT,
     input_tokens INTEGER,
+    cached_input_tokens INTEGER DEFAULT 0,
     output_tokens INTEGER,
     reasoning_tokens INTEGER DEFAULT 0,
     total_tokens INTEGER,
@@ -188,25 +189,44 @@ def _run_migrations(conn):
     """
     cursor = conn.cursor()
 
+    # Check if ai_costs table exists first
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ai_costs'")
+    if not cursor.fetchone():
+        logger.debug("[DB MIGRATION] ai_costs table doesn't exist yet, skipping migrations")
+        return
+
+    # Get existing columns
+    cursor.execute("PRAGMA table_info(ai_costs)")
+    columns = [row[1] for row in cursor.fetchall()]
+
     # Migration 1: Add workflow column to ai_costs if it doesn't exist
     try:
-        # Check if ai_costs table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ai_costs'")
-        if cursor.fetchone():
-            # Check if workflow column exists
-            cursor.execute("PRAGMA table_info(ai_costs)")
-            columns = [row[1] for row in cursor.fetchall()]
-
-            if 'workflow' not in columns:
-                logger.info("[DB MIGRATION] Adding workflow column to ai_costs table")
-                cursor.execute("ALTER TABLE ai_costs ADD COLUMN workflow TEXT")
-                conn.commit()
-                logger.info("[DB MIGRATION] Successfully added workflow column")
-            else:
-                logger.debug("[DB MIGRATION] workflow column already exists")
+        if 'workflow' not in columns:
+            logger.info("[DB MIGRATION] Adding workflow column to ai_costs table")
+            cursor.execute("ALTER TABLE ai_costs ADD COLUMN workflow TEXT")
+            conn.commit()
+            logger.info("[DB MIGRATION] Successfully added workflow column")
+        else:
+            logger.debug("[DB MIGRATION] workflow column already exists")
     except Exception as e:
         logger.error(f"[DB MIGRATION] Failed to add workflow column: {e}")
-        # Don't fail the entire initialization if migration fails
+        pass
+
+    # Migration 2: Add cached_input_tokens column to ai_costs if it doesn't exist
+    try:
+        # Refresh column list after previous migration
+        cursor.execute("PRAGMA table_info(ai_costs)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if 'cached_input_tokens' not in columns:
+            logger.info("[DB MIGRATION] Adding cached_input_tokens column to ai_costs table")
+            cursor.execute("ALTER TABLE ai_costs ADD COLUMN cached_input_tokens INTEGER DEFAULT 0")
+            conn.commit()
+            logger.info("[DB MIGRATION] Successfully added cached_input_tokens column")
+        else:
+            logger.debug("[DB MIGRATION] cached_input_tokens column already exists")
+    except Exception as e:
+        logger.error(f"[DB MIGRATION] Failed to add cached_input_tokens column: {e}")
         pass
 
 
@@ -952,6 +972,7 @@ def log_ai_cost(
     total_cost: float,
     user_id: Optional[str] = None,
     workflow: Optional[str] = None,
+    cached_input_tokens: int = 0,
     context: Optional[str] = None,
     metadata_json: Optional[str] = None,
     timestamp: Optional[str] = None
@@ -965,12 +986,13 @@ def log_ai_cost(
         input_tokens: Number of input tokens
         output_tokens: Number of output tokens
         reasoning_tokens: Number of reasoning tokens (for GPT-5 with reasoning)
-        input_cost: Cost for input tokens
+        input_cost: Cost for input tokens (including cached token discount)
         output_cost: Cost for output tokens
         reasoning_cost: Cost for reasoning tokens
         total_cost: Total cost for this call
         user_id: Slack user ID who made the request (optional)
         workflow: Workflow type (mockup_upload, mockup_ai, bo_parsing, bo_editing, bo_revision, proposal_generation, general_chat, location_management)
+        cached_input_tokens: Number of cached input tokens (charged at 90% discount)
         context: Additional context about the call (optional)
         metadata_json: JSON string with additional metadata (optional)
         timestamp: Timestamp in ISO format (optional, defaults to now)
@@ -989,14 +1011,14 @@ def log_ai_cost(
             """
             INSERT INTO ai_costs (
                 timestamp, call_type, workflow, model, user_id, context,
-                input_tokens, output_tokens, reasoning_tokens, total_tokens,
+                input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, total_tokens,
                 input_cost, output_cost, reasoning_cost, total_cost,
                 metadata_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 timestamp, call_type, workflow, model, user_id, context,
-                input_tokens, output_tokens, reasoning_tokens, total_tokens,
+                input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, total_tokens,
                 input_cost, output_cost, reasoning_cost, total_cost,
                 metadata_json
             )
