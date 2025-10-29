@@ -120,6 +120,29 @@ CREATE TABLE IF NOT EXISTS bo_approval_workflows (
 );
 
 CREATE INDEX IF NOT EXISTS idx_bo_workflows_updated ON bo_approval_workflows(updated_at);
+
+CREATE TABLE IF NOT EXISTS ai_costs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    call_type TEXT NOT NULL,
+    model TEXT NOT NULL,
+    user_id TEXT,
+    context TEXT,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    reasoning_tokens INTEGER DEFAULT 0,
+    total_tokens INTEGER,
+    input_cost REAL,
+    output_cost REAL,
+    reasoning_cost REAL DEFAULT 0,
+    total_cost REAL,
+    metadata_json TEXT,
+    CONSTRAINT call_type_check CHECK (call_type IN ('classification', 'parsing', 'coordinator_thread', 'main_llm', 'mockup_analysis', 'other'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_costs_timestamp ON ai_costs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_ai_costs_call_type ON ai_costs(call_type);
+CREATE INDEX IF NOT EXISTS idx_ai_costs_user ON ai_costs(user_id);
 """
 
 
@@ -876,6 +899,177 @@ def get_all_active_bo_workflows() -> list[tuple[str, str]]:
             "SELECT workflow_id, workflow_data FROM bo_approval_workflows ORDER BY updated_at DESC"
         )
         return cursor.fetchall()
+    finally:
+        conn.close()
+
+
+def log_ai_cost(
+    call_type: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    reasoning_tokens: int,
+    input_cost: float,
+    output_cost: float,
+    reasoning_cost: float,
+    total_cost: float,
+    user_id: Optional[str] = None,
+    context: Optional[str] = None,
+    metadata_json: Optional[str] = None,
+    timestamp: Optional[str] = None
+) -> None:
+    """
+    Log AI API costs to database
+
+    Args:
+        call_type: Type of call (classification, parsing, coordinator_thread, main_llm, mockup_analysis, other)
+        model: Model used (e.g., gpt-5, gpt-4.1)
+        input_tokens: Number of input tokens
+        output_tokens: Number of output tokens
+        reasoning_tokens: Number of reasoning tokens (for GPT-5 with reasoning)
+        input_cost: Cost for input tokens
+        output_cost: Cost for output tokens
+        reasoning_cost: Cost for reasoning tokens
+        total_cost: Total cost for this call
+        user_id: Slack user ID who made the request (optional)
+        context: Additional context about the call (optional)
+        metadata_json: JSON string with additional metadata (optional)
+        timestamp: Timestamp in ISO format (optional, defaults to now)
+    """
+    if not timestamp:
+        from datetime import datetime, timezone, timedelta
+        uae_tz = timezone(timedelta(hours=4))
+        timestamp = datetime.now(uae_tz).isoformat()
+
+    total_tokens = input_tokens + output_tokens + reasoning_tokens
+
+    conn = _connect()
+    try:
+        conn.execute("BEGIN")
+        conn.execute(
+            """
+            INSERT INTO ai_costs (
+                timestamp, call_type, model, user_id, context,
+                input_tokens, output_tokens, reasoning_tokens, total_tokens,
+                input_cost, output_cost, reasoning_cost, total_cost,
+                metadata_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                timestamp, call_type, model, user_id, context,
+                input_tokens, output_tokens, reasoning_tokens, total_tokens,
+                input_cost, output_cost, reasoning_cost, total_cost,
+                metadata_json
+            )
+        )
+        conn.execute("COMMIT")
+        logger.debug(f"[COSTS] Logged {call_type} call: ${total_cost:.4f} ({total_tokens} tokens)")
+    except Exception as e:
+        conn.execute("ROLLBACK")
+        logger.error(f"[COSTS] Failed to log AI cost: {e}")
+    finally:
+        conn.close()
+
+
+def get_ai_costs_summary(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    call_type: Optional[str] = None,
+    user_id: Optional[str] = None
+) -> dict:
+    """
+    Get AI costs summary with optional filters
+
+    Returns dict with:
+        - total_cost: Total cost in dollars
+        - total_calls: Number of API calls
+        - total_tokens: Total tokens used
+        - by_call_type: Breakdown by call type
+        - by_model: Breakdown by model
+    """
+    conn = _connect()
+    try:
+        # Build WHERE clause
+        where_parts = []
+        params = []
+
+        if start_date:
+            where_parts.append("timestamp >= ?")
+            params.append(start_date)
+        if end_date:
+            where_parts.append("timestamp <= ?")
+            params.append(end_date)
+        if call_type:
+            where_parts.append("call_type = ?")
+            params.append(call_type)
+        if user_id:
+            where_parts.append("user_id = ?")
+            params.append(user_id)
+
+        where_clause = " AND ".join(where_parts) if where_parts else "1=1"
+
+        # Get overall totals
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT
+                COUNT(*) as total_calls,
+                SUM(total_tokens) as total_tokens,
+                SUM(total_cost) as total_cost,
+                SUM(input_tokens) as total_input_tokens,
+                SUM(output_tokens) as total_output_tokens,
+                SUM(reasoning_tokens) as total_reasoning_tokens
+            FROM ai_costs
+            WHERE {where_clause}
+            """,
+            params
+        )
+        row = cursor.fetchone()
+
+        # Get breakdown by call_type
+        cursor.execute(
+            f"""
+            SELECT
+                call_type,
+                COUNT(*) as calls,
+                SUM(total_tokens) as tokens,
+                SUM(total_cost) as cost
+            FROM ai_costs
+            WHERE {where_clause}
+            GROUP BY call_type
+            ORDER BY cost DESC
+            """,
+            params
+        )
+        by_call_type = {r[0]: {"calls": r[1], "tokens": r[2], "cost": r[3]} for r in cursor.fetchall()}
+
+        # Get breakdown by model
+        cursor.execute(
+            f"""
+            SELECT
+                model,
+                COUNT(*) as calls,
+                SUM(total_tokens) as tokens,
+                SUM(total_cost) as cost
+            FROM ai_costs
+            WHERE {where_clause}
+            GROUP BY model
+            ORDER BY cost DESC
+            """,
+            params
+        )
+        by_model = {r[0]: {"calls": r[1], "tokens": r[2], "cost": r[3]} for r in cursor.fetchall()}
+
+        return {
+            "total_calls": row[0] or 0,
+            "total_tokens": row[1] or 0,
+            "total_cost": row[2] or 0.0,
+            "total_input_tokens": row[3] or 0,
+            "total_output_tokens": row[4] or 0,
+            "total_reasoning_tokens": row[5] or 0,
+            "by_call_type": by_call_type,
+            "by_model": by_model
+        }
     finally:
         conn.close()
 
