@@ -524,6 +524,41 @@ async def metrics():
     }
 
 
+@app.get("/costs")
+async def get_costs(
+    start_date: str = None,
+    end_date: str = None,
+    call_type: str = None,
+    user_id: str = None
+):
+    """
+    Get AI costs summary with optional filters
+
+    Query parameters:
+        - start_date: Filter by start date (ISO format)
+        - end_date: Filter by end date (ISO format)
+        - call_type: Filter by call type (classification, parsing, coordinator_thread, main_llm, etc.)
+        - user_id: Filter by Slack user ID
+    """
+    summary = db.get_ai_costs_summary(
+        start_date=start_date,
+        end_date=end_date,
+        call_type=call_type,
+        user_id=user_id
+    )
+
+    return {
+        "summary": summary,
+        "filters": {
+            "start_date": start_date,
+            "end_date": end_date,
+            "call_type": call_type,
+            "user_id": user_id
+        },
+        "timestamp": get_uae_time().isoformat()
+    }
+
+
 # Mockup Generator Routes
 @app.get("/mockup")
 async def mockup_setup_page():

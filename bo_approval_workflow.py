@@ -1193,6 +1193,16 @@ Examples:
             store=False
         )
 
+        # Track cost
+        import cost_tracking
+        cost_tracking.track_openai_call(
+            response=res,
+            call_type="coordinator_thread",
+            user_id=user_id,
+            context=f"Workflow: {workflow_id}",
+            metadata={"workflow_id": workflow_id, "thread_length": len(thread_history)}
+        )
+
         decision = json.loads(res.output_text)
         action = decision.get('action')
         message = decision.get('message', '')

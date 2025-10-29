@@ -252,6 +252,15 @@ Analyze the uploaded file and respond with:
                 store=False
             )
 
+            # Track cost
+            import cost_tracking
+            cost_tracking.track_openai_call(
+                response=response,
+                call_type="classification",
+                context=f"File: {file_path.name}",
+                metadata={"file_type": suffix, "has_user_message": bool(user_message)}
+            )
+
             if not response.output or len(response.output) == 0:
                 logger.warning("[BOOKING PARSER] Empty classification response")
                 return {"classification": "ARTWORK", "confidence": "low", "reasoning": "No response from model"}
@@ -419,6 +428,15 @@ The user provided this message with the file: "{user_message}"
                     }
                 },
                 store=False
+            )
+
+            # Track cost
+            import cost_tracking
+            cost_tracking.track_openai_call(
+                response=response,
+                call_type="parsing",
+                context=f"File: {file_path.name}, Company: {self.company}",
+                metadata={"file_type": file_type, "has_user_message": bool(user_message), "company": self.company}
             )
 
             if not response.output or len(response.output) == 0:
