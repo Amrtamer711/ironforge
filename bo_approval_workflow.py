@@ -941,6 +941,83 @@ async def start_revision_workflow(
         return {"success": False, "error": str(e)}
 
 
+async def handle_bo_cancellation(
+    workflow_id: str,
+    cancelled_by_user_id: str,
+    cancellation_reason: str,
+    stage: str  # "coordinator" or "hos"
+):
+    """
+    Handle booking order cancellation from coordinator or HoS
+    - Update button messages to show cancellation
+    - Notify original sales person who submitted
+    - Clean up workflow from database
+    - Delete workflow state
+    """
+    import bo_slack_messaging
+
+    workflow = await get_workflow_with_cache(workflow_id)
+    if not workflow:
+        logger.error(f"[BO CANCEL] Workflow {workflow_id} not found")
+        return
+
+    logger.info(f"[BO CANCEL] Cancelling workflow {workflow_id} at {stage} stage by {cancelled_by_user_id}")
+
+    # Get canceller name
+    canceller_name = await bo_slack_messaging.get_user_real_name(cancelled_by_user_id)
+
+    # Update the button message to show cancellation
+    if stage == "coordinator":
+        msg_ts = workflow.get("coordinator_msg_ts")
+        channel = workflow.get("coordinator_thread_channel")
+        if msg_ts and channel:
+            await bo_slack_messaging.update_button_message(
+                channel=channel,
+                message_ts=msg_ts,
+                new_text=f"🚫 *CANCELLED* by {canceller_name}\n\n**Reason:** {cancellation_reason}",
+                approved=False
+            )
+    elif stage == "hos":
+        msg_ts = workflow.get("hos_msg_ts")
+        channel = workflow.get("hos_channel")
+        if msg_ts and channel:
+            await bo_slack_messaging.update_button_message(
+                channel=channel,
+                message_ts=msg_ts,
+                new_text=f"�� *CANCELLED* by {canceller_name}\n\n**Reason:** {cancellation_reason}",
+                approved=False
+            )
+
+    # Notify original sales person who submitted the BO
+    sales_user_id = workflow.get("sales_user_id")
+    if sales_user_id:
+        await config.slack_client.chat_postMessage(
+            channel=sales_user_id,
+            text=config.markdown_to_slack(
+                f"🚫 **Booking Order Cancelled**\n\n"
+                f"**Client:** {workflow['data'].get('client', 'N/A')}\n"
+                f"**Campaign:** {workflow['data'].get('brand_campaign', 'N/A')}\n"
+                f"**Cancelled by:** {canceller_name} ({stage.upper()})\n"
+                f"**Reason:** {cancellation_reason}\n\n"
+                f"The booking order workflow has been cancelled and removed from the system."
+            )
+        )
+
+    # Clean up workflow from database
+    try:
+        db.delete_bo_workflow(workflow_id)
+        logger.info(f"[BO CANCEL] Deleted workflow {workflow_id} from database")
+    except Exception as e:
+        logger.error(f"[BO CANCEL] Failed to delete workflow {workflow_id} from database: {e}")
+
+    # Delete workflow state from memory
+    if workflow_id in approval_workflows:
+        del approval_workflows[workflow_id]
+        logger.info(f"[BO CANCEL] Removed workflow {workflow_id} from memory cache")
+
+    logger.info(f"[BO CANCEL] Successfully cancelled workflow {workflow_id}")
+
+
 async def handle_coordinator_thread_message(
     workflow_id: str,
     user_id: str,

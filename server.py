@@ -289,6 +289,33 @@ async def slack_interactive(request: Request):
 
             logger.info(f"[BO APPROVAL] Started edit conversation in thread {thread_ts} for {workflow_id}")
 
+        elif action_id == "cancel_bo_coordinator":
+            logger.info(f"[BO APPROVAL] Coordinator {user_id} clicked CANCEL for workflow {workflow_id}, opening modal")
+            # Open modal for cancellation reason
+            await config.slack_client.views_open(
+                trigger_id=payload.get("trigger_id"),
+                view={
+                    "type": "modal",
+                    "callback_id": f"cancel_bo_coordinator_modal:{workflow_id}",
+                    "title": {"type": "plain_text", "text": "Cancel BO"},
+                    "submit": {"type": "plain_text", "text": "Confirm Cancel"},
+                    "close": {"type": "plain_text", "text": "Go Back"},
+                    "blocks": [
+                        {
+                            "type": "input",
+                            "block_id": "cancellation_reason",
+                            "label": {"type": "plain_text", "text": "Cancellation Reason"},
+                            "element": {
+                                "type": "plain_text_input",
+                                "action_id": "reason_input",
+                                "multiline": True,
+                                "placeholder": {"type": "plain_text", "text": "Explain why you're cancelling this booking order..."}
+                            }
+                        }
+                    ]
+                }
+            )
+
         elif action_id == "approve_bo_hos":
             logger.info(f"[BO APPROVAL] Head of Sales {user_id} clicked APPROVE for workflow {workflow_id}")
             # Send wait message
@@ -320,6 +347,33 @@ async def slack_interactive(request: Request):
                                 "action_id": "reason_input",
                                 "multiline": True,
                                 "placeholder": {"type": "plain_text", "text": "Explain why you're rejecting this booking order..."}
+                            }
+                        }
+                    ]
+                }
+            )
+
+        elif action_id == "cancel_bo_hos":
+            logger.info(f"[BO APPROVAL] Head of Sales {user_id} clicked CANCEL for workflow {workflow_id}, opening modal")
+            # Open modal for cancellation reason
+            await config.slack_client.views_open(
+                trigger_id=payload.get("trigger_id"),
+                view={
+                    "type": "modal",
+                    "callback_id": f"cancel_bo_hos_modal:{workflow_id}",
+                    "title": {"type": "plain_text", "text": "Cancel BO"},
+                    "submit": {"type": "plain_text", "text": "Confirm Cancel"},
+                    "close": {"type": "plain_text", "text": "Go Back"},
+                    "blocks": [
+                        {
+                            "type": "input",
+                            "block_id": "cancellation_reason",
+                            "label": {"type": "plain_text", "text": "Cancellation Reason"},
+                            "element": {
+                                "type": "plain_text_input",
+                                "action_id": "reason_input",
+                                "multiline": True,
+                                "placeholder": {"type": "plain_text", "text": "Explain why you're cancelling this booking order..."}
                             }
                         }
                     ]
@@ -366,6 +420,42 @@ async def slack_interactive(request: Request):
             # Process rejection asynchronously
             asyncio.create_task(bo_approval_workflow.handle_hos_rejection(
                 workflow_id, user_id, None, rejection_reason
+            ))
+
+            # Return empty response to close modal
+            return JSONResponse({})
+
+        # Handle coordinator cancellation modal
+        elif callback_id.startswith("cancel_bo_coordinator_modal:"):
+            workflow_id = callback_id.split(":")[1]
+
+            # Extract cancellation reason from modal
+            values = payload.get("view", {}).get("state", {}).get("values", {})
+            cancellation_reason = values.get("cancellation_reason", {}).get("reason_input", {}).get("value", "No reason provided")
+
+            logger.info(f"[BO APPROVAL] Coordinator {user_id} submitted cancellation modal for {workflow_id}: {cancellation_reason[:50]}...")
+
+            # Process cancellation asynchronously
+            asyncio.create_task(bo_approval_workflow.handle_bo_cancellation(
+                workflow_id, user_id, cancellation_reason, "coordinator"
+            ))
+
+            # Return empty response to close modal
+            return JSONResponse({})
+
+        # Handle HoS cancellation modal
+        elif callback_id.startswith("cancel_bo_hos_modal:"):
+            workflow_id = callback_id.split(":")[1]
+
+            # Extract cancellation reason from modal
+            values = payload.get("view", {}).get("state", {}).get("values", {})
+            cancellation_reason = values.get("cancellation_reason", {}).get("reason_input", {}).get("value", "No reason provided")
+
+            logger.info(f"[BO APPROVAL] Head of Sales {user_id} submitted cancellation modal for {workflow_id}: {cancellation_reason[:50]}...")
+
+            # Process cancellation asynchronously
+            asyncio.create_task(bo_approval_workflow.handle_bo_cancellation(
+                workflow_id, user_id, cancellation_reason, "hos"
             ))
 
             # Return empty response to close modal

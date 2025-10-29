@@ -88,6 +88,12 @@ async def send_coordinator_approval_buttons(
                     "style": "danger",
                     "value": workflow_id,
                     "action_id": "reject_bo_coordinator"
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "🚫 Cancel"},
+                    "value": workflow_id,
+                    "action_id": "cancel_bo_coordinator"
                 }
             ]
         }
@@ -96,7 +102,7 @@ async def send_coordinator_approval_buttons(
     # Post buttons as separate message
     button_result = await config.slack_client.chat_postMessage(
         channel=channel,
-        text="Please review and approve or reject:",
+        text="Please review and approve, reject, or cancel:",
         blocks=blocks
     )
 
@@ -143,7 +149,7 @@ async def send_to_head_of_sales(
     if missing_required:
         text += f"\n❗ *Missing Required Fields:* {', '.join(missing_required)}\n"
 
-    text += f"\nPlease review the combined PDF (parsed data + original BO) and approve or reject."
+    text += f"\nPlease review the combined PDF (parsed data + original BO) and approve, reject, or cancel."
 
     # Create blocks with buttons
     blocks = [
@@ -170,6 +176,12 @@ async def send_to_head_of_sales(
                     "style": "danger",
                     "value": workflow_id,
                     "action_id": "reject_bo_hos"
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "🚫 Cancel"},
+                    "value": workflow_id,
+                    "action_id": "cancel_bo_hos"
                 }
             ]
         }
@@ -190,7 +202,7 @@ async def send_to_head_of_sales(
     # Post buttons as separate message (blocks with file upload don't show buttons reliably)
     button_result = await config.slack_client.chat_postMessage(
         channel=channel,
-        text="Please review and approve or reject:",
+        text="Please review and approve, reject, or cancel:",
         blocks=blocks
     )
 
@@ -266,7 +278,7 @@ async def send_to_coordinator(
     if missing_required:
         text += f"❗ **Missing Required Fields:** {', '.join(missing_required)}\n"
 
-    text += f"\nPlease review the combined PDF (parsed data + original BO) and approve or reject."
+    text += f"\nPlease review the combined PDF (parsed data + original BO) and approve, reject, or cancel."
 
     # Create blocks with buttons
     blocks = [
@@ -293,6 +305,12 @@ async def send_to_coordinator(
                     "style": "danger",
                     "value": workflow_id,
                     "action_id": "reject_bo_coordinator"
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "🚫 Cancel"},
+                    "value": workflow_id,
+                    "action_id": "cancel_bo_coordinator"
                 }
             ]
         }
