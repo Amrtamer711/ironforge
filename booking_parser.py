@@ -658,12 +658,15 @@ This tells you the municipality fee is AED 520.
 
 **Location/Asset Details (usually in a table):**
 For EACH billboard location, extract:
-- Location name/code: **EXTRACT ONLY THE LOCATION CODE/NAME, NOT DESCRIPTIONS**
-  - ✅ CORRECT: "UAE02", "UAE03", "UAE21", "SZR Tower", "The Gateway"
-  - ❌ WRONG: "UAE02 (Unipole 16x8, Jebel Ali)", "UAE03 - Digital Screen", "The Gateway (LED)"
+- Location name/code: **EXTRACT AS NATURAL LANGUAGE DISPLAY NAME**
+  - ✅ CORRECT: "The Dubai Gateway", "Dubai Jawhara", "The Dubai Frame", "UAE02", "UAE03"
+  - ❌ WRONG: "dubai_gateway", "dubai_jawhara", "dubai_frame" (these are system keys, not names!)
+  - ❌ WRONG: "UAE02 (Unipole 16x8, Jebel Ali)", "The Gateway (LED)" (remove technical descriptions)
+  - **Use the natural language name from the location reference list above** (e.g., "The Dubai Gateway" not "dubai_gateway")
   - Remove any parenthetical descriptions, dimensions, area names, or technical specs
+  - If document shows "The Dubai Gateway (LED Screen)" → extract as "The Dubai Gateway"
   - If document shows "UAE02 (Unipole 16x8, Jebel Ali) & UAE03 (Billboard, Al Quoz)" → extract as TWO locations: "UAE02" and "UAE03"
-  - Only extract the core location identifier, nothing else
+  - Match the location to the display name from the reference list above when possible
 - Start date (campaign start date)
 - End date (campaign end date)
 - Campaign duration **IMPORTANT:** Calculate this as the period between start and end date
