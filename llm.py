@@ -2060,7 +2060,18 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         logger.info(f"[LLM] Admin user {user_id} - added {len(admin_tools)} admin-only tools")
 
     try:
+        logger.info(f"[API REQUEST DEBUG] ===== Main LLM API Request =====")
+        logger.info(f"[API REQUEST DEBUG] Model: {config.OPENAI_MODEL}")
+        logger.info(f"[API REQUEST DEBUG] Input type: text only (conversation)")
+        logger.info(f"[API REQUEST DEBUG] Message count: {len(messages)}")
+        logger.info(f"[API REQUEST DEBUG] Tool count: {len(tools)}")
+        logger.info(f"[API REQUEST DEBUG] Has files: {has_files}")
+
         res = await config.openai_client.responses.create(model=config.OPENAI_MODEL, input=messages, tools=tools, tool_choice="auto")
+
+        logger.info(f"[API RESPONSE DEBUG] ===== Main LLM API Response =====")
+        logger.info(f"[API RESPONSE DEBUG] Response type: {type(res)}")
+        logger.info(f"[API RESPONSE DEBUG] Response dir: {dir(res)}")
 
         # Track cost
         import cost_tracking

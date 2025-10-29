@@ -148,6 +148,14 @@ class BookingOrderParser:
                     purpose="user_data"
                 )
             file_id = file_obj.id
+            logger.info(f"[FILE UPLOAD DEBUG] ===== File Upload Response (Classification) =====")
+            logger.info(f"[FILE UPLOAD DEBUG] File type: PDF")
+            logger.info(f"[FILE UPLOAD DEBUG] File path: {pdf_path}")
+            logger.info(f"[FILE UPLOAD DEBUG] Response type: {type(file_obj)}")
+            logger.info(f"[FILE UPLOAD DEBUG] Response dir: {dir(file_obj)}")
+            logger.info(f"[FILE UPLOAD DEBUG] File ID: {file_id}")
+            if hasattr(file_obj, 'bytes'):
+                logger.info(f"[FILE UPLOAD DEBUG] File size (bytes): {file_obj.bytes}")
             logger.info(f"[BOOKING PARSER] Uploaded file to OpenAI: {file_id}")
         except Exception as e:
             logger.error(f"[BOOKING PARSER] Failed to upload file: {e}")
@@ -207,6 +215,12 @@ Analyze the uploaded file and respond with:
 """
 
         try:
+            logger.info(f"[API REQUEST DEBUG] ===== Classification API Request =====")
+            logger.info(f"[API REQUEST DEBUG] Model: {config.OPENAI_MODEL}")
+            logger.info(f"[API REQUEST DEBUG] Input type: text + file (PDF)")
+            logger.info(f"[API REQUEST DEBUG] File ID: {file_id}")
+            logger.info(f"[API REQUEST DEBUG] Has structured output: Yes (json_schema)")
+
             # Use VendorAI syntax with structured JSON output
             response = await config.openai_client.responses.create(
                 model=config.OPENAI_MODEL,
@@ -251,6 +265,10 @@ Analyze the uploaded file and respond with:
                 },
                 store=False
             )
+
+            logger.info(f"[API RESPONSE DEBUG] ===== Classification API Response =====")
+            logger.info(f"[API RESPONSE DEBUG] Response type: {type(response)}")
+            logger.info(f"[API RESPONSE DEBUG] Response dir: {dir(response)}")
 
             # Track cost
             import cost_tracking
@@ -311,6 +329,14 @@ Analyze the uploaded file and respond with:
                     purpose="user_data"
                 )
             file_id = file_obj.id
+            logger.info(f"[FILE UPLOAD DEBUG] ===== File Upload Response (Parsing) =====")
+            logger.info(f"[FILE UPLOAD DEBUG] File type: {file_type}")
+            logger.info(f"[FILE UPLOAD DEBUG] File path: {file_path}")
+            logger.info(f"[FILE UPLOAD DEBUG] Response type: {type(file_obj)}")
+            logger.info(f"[FILE UPLOAD DEBUG] Response dir: {dir(file_obj)}")
+            logger.info(f"[FILE UPLOAD DEBUG] File ID: {file_id}")
+            if hasattr(file_obj, 'bytes'):
+                logger.info(f"[FILE UPLOAD DEBUG] File size (bytes): {file_obj.bytes}")
             logger.info(f"[BOOKING PARSER] Uploaded file for parsing: {file_id}")
         except Exception as e:
             logger.error(f"[BOOKING PARSER] Failed to upload file for parsing: {e}")
@@ -334,6 +360,14 @@ The user provided this message with the file: "{user_message}"
 """
 
         try:
+            logger.info(f"[API REQUEST DEBUG] ===== Parsing API Request =====")
+            logger.info(f"[API REQUEST DEBUG] Model: gpt-5")
+            logger.info(f"[API REQUEST DEBUG] Reasoning effort: medium")
+            logger.info(f"[API REQUEST DEBUG] Input type: text + file ({file_type})")
+            logger.info(f"[API REQUEST DEBUG] File ID: {file_id}")
+            logger.info(f"[API REQUEST DEBUG] Has structured output: Yes (json_schema)")
+            logger.info(f"[API REQUEST DEBUG] Has code_interpreter: Yes")
+
             # Use structured outputs with JSON schema + code_interpreter for better table parsing
             response = await config.openai_client.responses.create(
                 model="gpt-5",
@@ -429,6 +463,10 @@ The user provided this message with the file: "{user_message}"
                 },
                 store=False
             )
+
+            logger.info(f"[API RESPONSE DEBUG] ===== Parsing API Response =====")
+            logger.info(f"[API RESPONSE DEBUG] Response type: {type(response)}")
+            logger.info(f"[API RESPONSE DEBUG] Response dir: {dir(response)}")
 
             # Track cost
             import cost_tracking

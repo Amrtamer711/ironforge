@@ -841,6 +841,20 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
             quality='high',
         )
 
+        # Log image API response structure
+        logger.info(f"[IMAGE API DEBUG] ===== Image Generation API Response =====")
+        logger.info(f"[IMAGE API DEBUG] Response type: {type(img)}")
+        logger.info(f"[IMAGE API DEBUG] Response dir: {dir(img)}")
+        logger.info(f"[IMAGE API DEBUG] Response data: {img.data}")
+        if img.data:
+            logger.info(f"[IMAGE API DEBUG] Data[0] type: {type(img.data[0])}")
+            logger.info(f"[IMAGE API DEBUG] Data[0] dir: {dir(img.data[0])}")
+        # Check if usage/cost info is available
+        if hasattr(img, 'usage'):
+            logger.info(f"[IMAGE API DEBUG] Usage found: {img.usage}")
+        else:
+            logger.info(f"[IMAGE API DEBUG] No usage attribute in image response")
+
         # Track cost for image generation
         # Images API doesn't return token usage, so we track with fixed cost
         # gpt-image-1 high quality: $0.080 per image
