@@ -973,6 +973,11 @@ Even if the source document lists fees per location, you MUST sum them into sing
             data["net_excl_sla_calc"] = round(net - data["sla_deduction"], 2)
 
         # Normalize dates
+        # Normalize bo_date
+        if data.get("bo_date"):
+            data["bo_date"] = self._normalize_date(data["bo_date"])
+
+        # Normalize location dates
         for location in data.get("locations", []):
             for date_field in ["start_date", "end_date"]:
                 if location.get(date_field):
@@ -981,7 +986,10 @@ Even if the source document lists fees per location, you MUST sum them into sing
         return data
 
     def _normalize_date(self, date_str: str) -> str:
-        """Try to normalize date to YYYY-MM-DD format"""
+        """
+        Try to normalize date to English format: "Xth Month YYYY"
+        Examples: "1st January 2025", "23rd March 2025"
+        """
         if not date_str:
             return None
 
@@ -989,12 +997,30 @@ Even if the source document lists fees per location, you MUST sum them into sing
         for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y", "%Y/%m/%d"]:
             try:
                 dt = datetime.strptime(date_str, fmt)
-                return dt.strftime("%Y-%m-%d")
+                # Format as "Xth Month YYYY"
+                return self._format_date_english(dt)
             except:
                 continue
 
         # Return original if can't parse
         return date_str
+
+    def _format_date_english(self, dt: datetime) -> str:
+        """
+        Format datetime object as "Xth Month YYYY"
+        Examples: "1st January 2025", "23rd March 2025"
+        """
+        day = dt.day
+        month = dt.strftime("%B")  # Full month name
+        year = dt.year
+
+        # Add ordinal suffix (st, nd, rd, th)
+        if 10 <= day % 100 <= 20:
+            suffix = "th"
+        else:
+            suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+
+        return f"{day}{suffix} {month} {year}"
 
     def _generate_warnings(self, data: Dict[str, Any]) -> List[str]:
         """Generate warnings about inconsistencies"""
@@ -1208,7 +1234,13 @@ Even if the source document lists fees per location, you MUST sum them into sing
         # Use the max of B17 and E17 line counts for row 17
         ws.row_dimensions[17].height = max(ws.row_dimensions[17].height, num_lines_e17 * 15)
 
-        ws["E19"] = format_value(data.get("category"))                  # Category
+        # Category in E19 - also set wrap text and check if it needs more height
+        category_value = format_value(data.get("category"))
+        ws["E19"] = category_value
+        ws["E19"].alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
+        num_lines_e19 = category_value.count('\n') + 1 if category_value else 1
+        # Use the max of B19 and E19 line counts for row 19
+        ws.row_dimensions[19].height = max(ws.row_dimensions[19].height, num_lines_e19 * 15)
         ws["E21"] = data.get("sla_pct", 0)                              # SLA
         ws["E23"] = data.get("municipality_fee", 0)                     # DM (Dubai Municipality)
 

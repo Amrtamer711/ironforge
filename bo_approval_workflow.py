@@ -764,6 +764,182 @@ async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str
 # THREAD-BASED COORDINATOR FLOW
 # =========================
 
+async def start_revision_workflow(
+    bo_data: Dict[str, Any],
+    requester_user_id: str,
+    requester_channel: str
+) -> Dict[str, Any]:
+    """
+    Start a revision workflow for an existing booking order (ADMIN ONLY)
+
+    - Fetches existing BO data from database
+    - Creates NEW workflow with revision flag
+    - Sends to coordinator with NEW thread (not reusing original)
+    - Full approval flow: Coordinator → HoS → Finance
+    - If rejected at any stage, sends back to previous stage
+
+    Args:
+        bo_data: Dictionary containing existing booking order data from database
+        requester_user_id: User ID of admin requesting revision
+        requester_channel: Channel where admin made request
+
+    Returns:
+        Dictionary with workflow_id and status
+    """
+    import bo_slack_messaging
+    from pathlib import Path
+
+    logger.info(f"[BO_REVISE] Starting revision workflow for BO: {bo_data.get('bo_ref')} requested by {requester_user_id}")
+
+    company = bo_data.get("company")
+    if not company:
+        logger.error(f"[BO_REVISE] No company found in BO data")
+        return {"success": False, "error": "Company not specified in booking order"}
+
+    # Create new workflow for revision (similar to new BO but marked as revision)
+    workflow_id = create_workflow_id(company)
+
+    # Extract relevant data for workflow (matching structure of create_approval_workflow)
+    workflow_data = {
+        "workflow_id": workflow_id,
+        "sales_user_id": requester_user_id,  # Admin who requested revision
+        "company": company,
+        "data": {
+            # Copy all booking order fields
+            "client": bo_data.get("client"),
+            "brand_campaign": bo_data.get("brand_campaign"),
+            "bo_number": bo_data.get("bo_number"),
+            "bo_date": bo_data.get("bo_date"),
+            "net_pre_vat": bo_data.get("net_pre_vat"),
+            "vat_calc": bo_data.get("vat_calc"),
+            "gross_calc": bo_data.get("gross_calc"),
+            "agency": bo_data.get("agency"),
+            "sales_person": bo_data.get("sales_person"),
+            "sla_pct": bo_data.get("sla_pct"),
+            "payment_terms": bo_data.get("payment_terms"),
+            "commission_pct": bo_data.get("commission_pct"),
+            "notes": bo_data.get("notes"),
+            "category": bo_data.get("category"),
+            "municipality_fee": bo_data.get("municipality_fee"),
+            "production_upload_fee": bo_data.get("production_upload_fee"),
+            "asset": bo_data.get("asset"),
+            "locations": bo_data.get("locations", []),
+            "tenure": bo_data.get("tenure"),
+        },
+        "warnings": bo_data.get("warnings", []),
+        "missing_required": bo_data.get("missing_required", []),
+        "original_file_path": bo_data.get("original_file_path", ""),
+        "original_filename": bo_data.get("original_filename", ""),
+        "file_type": bo_data.get("original_file_type", "pdf"),
+        "user_notes": f"REVISION of {bo_data.get('bo_ref')}",
+        "stage": "coordinator",
+        "status": "pending",
+        "created_at": datetime.now().isoformat(),
+        "is_revision": True,  # Mark as revision
+        "original_bo_ref": bo_data.get("bo_ref"),  # Track original BO reference
+
+        # Stage-specific data
+        "coordinator_thread_ts": None,
+        "coordinator_thread_channel": None,
+        "coordinator_approved": False,
+        "coordinator_approved_by": None,
+        "coordinator_approved_at": None,
+        "coordinator_msg_ts": None,
+
+        "hos_approved": False,
+        "hos_approved_by": None,
+        "hos_approved_at": None,
+        "hos_msg_ts": None,
+        "hos_rejection_reason": None,
+
+        "finance_notified": False,
+        "finance_notified_at": None,
+        "finance_msg_ts": None,
+
+        "bo_ref": None,
+        "saved_to_db": False
+    }
+
+    # Cache and persist
+    approval_workflows[workflow_id] = workflow_data
+    await save_workflow_to_db(workflow_id, workflow_data)
+
+    logger.info(f"[BO_REVISE] Created revision workflow {workflow_id} for {company}")
+
+    # Get coordinator channel
+    coordinator_channel = await get_coordinator_channel(company)
+    if not coordinator_channel:
+        logger.error(f"[BO_REVISE] No coordinator configured for {company}")
+        return {"success": False, "error": f"No coordinator configured for {company}"}
+
+    # Send to coordinator with NEW thread (indicating this is a revision)
+    try:
+        # Generate combined PDF for coordinator review
+        parser = BookingOrderParser(company=company)
+        original_bo_path = Path(bo_data.get("original_file_path", ""))
+
+        # If original file doesn't exist, we'll create Excel-only PDF
+        if not original_bo_path.exists():
+            logger.warning(f"[BO_REVISE] Original BO file not found at {original_bo_path}, will generate Excel-only PDF")
+            # Generate Excel-only PDF
+            temp_combined_pdf = await parser.generate_combined_pdf(
+                workflow_data["data"],
+                f"REVISION_{workflow_id}",
+                None  # No original BO to attach
+            )
+        else:
+            # Generate combined PDF with original BO
+            temp_combined_pdf = await parser.generate_combined_pdf(
+                workflow_data["data"],
+                f"REVISION_{workflow_id}",
+                original_bo_path
+            )
+
+        # Send to coordinator
+        result = await bo_slack_messaging.send_to_coordinator(
+            channel=coordinator_channel,
+            workflow_id=workflow_id,
+            company=company,
+            data=workflow_data["data"],
+            warnings=workflow_data["warnings"],
+            missing_required=workflow_data["missing_required"],
+            combined_pdf_path=str(temp_combined_pdf),
+            is_revision=True,  # Flag to indicate this is a revision
+            original_bo_ref=bo_data.get("bo_ref")
+        )
+
+        # Update workflow with coordinator message info
+        await update_workflow(workflow_id, {
+            "coordinator_msg_ts": result["message_id"],
+            "coordinator_thread_channel": result["channel"],
+            "coordinator_thread_ts": result["message_id"]  # Use message as thread root
+        })
+
+        # Notify admin that revision workflow started
+        await config.slack_client.chat_postMessage(
+            channel=requester_channel,
+            text=config.markdown_to_slack(
+                f"✅ **Revision Workflow Started**\n\n"
+                f"**Original BO:** {bo_data.get('bo_ref')}\n"
+                f"**Client:** {bo_data.get('client')}\n"
+                f"**Workflow ID:** {workflow_id}\n\n"
+                f"The booking order has been sent to the Sales Coordinator for revision."
+            )
+        )
+
+        logger.info(f"[BO_REVISE] Successfully started revision workflow {workflow_id} for BO {bo_data.get('bo_ref')}")
+
+        return {
+            "success": True,
+            "workflow_id": workflow_id,
+            "coordinator_channel": coordinator_channel
+        }
+
+    except Exception as e:
+        logger.error(f"[BO_REVISE] Failed to start revision workflow: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+
 async def handle_coordinator_thread_message(
     workflow_id: str,
     user_id: str,

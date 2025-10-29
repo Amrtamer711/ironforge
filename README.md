@@ -6,7 +6,7 @@ An AI-powered Slack bot for BackLite Media that streamlines sales operations inc
 
 ## Table of Contents
 
-- [For Sales People & Head of Sales](#for-sales-people--head-of-sales)
+- [For Sales People &amp; Head of Sales](#for-sales-people--head-of-sales)
   - [1. Proposal Generation](#1-proposal-generation)
   - [2. Mockup Generation](#2-mockup-generation)
   - [3. Booking Order Submission](#3-booking-order-submission)
@@ -27,10 +27,12 @@ Generate professional financial proposals for advertising locations with automat
 #### Available Location Types
 
 **Digital Locations** (LED screens):
+
 - Net rate + upload fee (automatically added by system)
 - No need to specify upload fee - it's pre-configured per location
 
 **Static Locations** (Traditional billboards):
+
 - Net rate + production fee (you must provide)
 - Always ask: "What's the production fee?" for static locations
 
@@ -58,6 +60,7 @@ client: Adidas
 ```
 
 Bot generates:
+
 - Individual PowerPoint for each location
 - Combined PDF with all proposals
 
@@ -96,7 +99,8 @@ Visualize your creative designs on actual billboard locations.
 
 #### Setup Required (One-Time)
 
-Visit the mockup setup website to upload billboard photos:
+The mockup generator coordinator must visit the mockup setup website to upload billboard photos:
+
 ```
 [Bot will provide URL when asked]
 ```
@@ -108,12 +112,14 @@ Upload high-quality photos of billboard locations with frames marked for creativ
 ##### A) Upload Your Own Creative
 
 Upload image(s) with your request:
+
 ```
 [Attach image file(s)]
 make me a mockup for landmark
 ```
 
 **Frame Matching**:
+
 - Upload 1 image → Works with any location (image duplicated across frames)
 - Upload 3 images → Only uses locations with exactly 3 frames
 - Upload N images → Only uses locations with exactly N frames
@@ -121,6 +127,7 @@ make me a mockup for landmark
 ##### B) AI-Generated Creative
 
 Describe what you want - AI generates it:
+
 ```
 make me a landmark mockup with a luxury watch on black background with gold accents
 ```
@@ -142,12 +149,14 @@ Submit booking orders for approval workflow (Sales → Coordinator → Head of S
 #### How to Submit a Booking Order
 
 Upload the booking order document with your message:
+
 ```
 [Attach PDF/Excel/Image file]
 parse this booking order for Backlite
 ```
 
 Or:
+
 ```
 [Attach file]
 booking order for Viola, upload fee is 2000, client is Nike
@@ -190,6 +199,7 @@ As Head of Sales, you're part of the approval workflow.
 #### When You Receive a Booking Order
 
 You'll get a Slack message with:
+
 - All booking order details
 - Current approval status
 - PDF preview of the booking order
@@ -235,6 +245,7 @@ Sales Person → YOU (Sales Coordinator) → Head of Sales → Finance
 #### When You Receive a Booking Order
 
 You'll get a Slack DM with:
+
 - Complete booking order details
 - All extracted data (client, locations, fees, dates)
 - PDF preview
@@ -243,6 +254,7 @@ You'll get a Slack DM with:
 #### Review Process
 
 Check for:
+
 - ✅ Client name and campaign details correct
 - ✅ Locations are correct with proper net amounts
 - ✅ Municipality fee included (if applicable)
@@ -257,21 +269,23 @@ Check for:
 If something needs to be changed:
 
 1. **Reply in the thread** with what needs changing:
+
    ```
    change municipality fee to 5000
    ```
 
    Or:
+
    ```
    update location dubai_gateway net amount to 150000
    ```
-
 2. **Bot updates automatically**:
+
    - Recalculates VAT and gross total
    - Updates the PDF preview
    - Shows you the new values
-
 3. **Multiple edits supported**:
+
    ```
    change client to "Nike Middle East"
    change payment terms to "50% upfront, 50% on installation"
@@ -281,28 +295,33 @@ If something needs to be changed:
 #### Edit Examples
 
 ##### Change fees:
+
 ```
 change municipality fee to 8000
 change production upload fee to 3000
 ```
 
 ##### Change location amounts:
+
 ```
 change location landmark net amount to 250000
 ```
 
 ##### Change client details:
+
 ```
 change client to "Adidas UAE"
 change brand campaign to "Winter Collection 2025"
 ```
 
 ##### Change dates:
+
 ```
 change tenure to "1st Jan 2026 - 31st Jan 2026"
 ```
 
 ##### Change payment terms:
+
 ```
 change payment terms to "100% advance payment"
 ```
@@ -310,6 +329,7 @@ change payment terms to "100% advance payment"
 #### What Gets Recalculated Automatically
 
 When you edit:
+
 - **Fees** (municipality, production/upload) → Net pre-VAT recalculated
 - **Location amounts** → Net pre-VAT recalculated
 - **Net pre-VAT changes** → VAT (5%) recalculated
@@ -355,6 +375,7 @@ If booking order needs major changes:
 #### Common Edit Scenarios
 
 ##### Scenario 1: Wrong Fee Amount
+
 ```
 Coordinator: "change municipality fee to 12000"
 Bot: Updates fee, recalculates net, VAT, gross, shows new totals
@@ -362,6 +383,7 @@ Coordinator: Reviews, clicks Accept
 ```
 
 ##### Scenario 2: Location Amount Error
+
 ```
 Coordinator: "change location dubai_gateway net amount to 180000"
 Bot: Updates location, recalculates totals
@@ -369,6 +391,7 @@ Coordinator: "looks good now" → Clicks Accept
 ```
 
 ##### Scenario 3: Multiple Changes Needed
+
 ```
 Coordinator: "change client to Nike UAE"
 Coordinator: "change payment terms to 50% advance 50% on completion"
@@ -378,6 +401,7 @@ Coordinator: Reviews all changes, clicks Accept
 ```
 
 ##### Scenario 4: Major Issues - Rejection
+
 ```
 Coordinator: Reviews booking order, spots issues
 Coordinator: Clicks Reject
@@ -392,6 +416,7 @@ Bot: Sends feedback to Sales Person
 ### Environment Variables
 
 Required:
+
 ```
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
@@ -402,6 +427,7 @@ DATABASE_URL=sqlite:///./proposals.db
 ### Database
 
 SQLite database with tables:
+
 - `proposals` - All generated proposals
 - `booking_orders` - All booking orders with workflow status
 - `workflow_state` - Active approval workflows
@@ -410,6 +436,7 @@ SQLite database with tables:
 ### Deployment
 
 The bot runs on Render and connects to Slack workspace. Updates are deployed via GitHub:
+
 - `dev` branch - Testing environment
 - `main` branch - Production environment
 
@@ -420,6 +447,7 @@ The bot runs on Render and connects to Slack workspace. Updates are deployed via
 Admin users have access to additional tools:
 
 ### Location Management
+
 ```
 add location [provides form for location details]
 delete location [location_name]
@@ -427,16 +455,19 @@ list locations
 ```
 
 ### Database Exports
+
 ```
 export all proposals to excel
 export all booking orders to excel
 ```
 
 ### Configuration
+
 - **hos_config.json** - Configure Head of Sales and Finance team members
 - **Admin permissions** - Set via slack_user_id in hos_config.json
 
 ### Booking Order Number Format
+
 - **User-facing**: DPD-XXX, VLA-XXX (shown on documents)
 - **Internal**: bo_TIMESTAMP_COMPANY (database reference)
 
@@ -445,6 +476,7 @@ export all booking orders to excel
 ## Support
 
 For issues or questions:
+
 1. Check the bot's help: Send "help" in Slack
 2. Check logs for errors (admin access required)
 3. Contact development team

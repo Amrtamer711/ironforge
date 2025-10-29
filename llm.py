@@ -1986,6 +1986,18 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         },
         {
             "type": "function",
+            "name": "revise_booking_order",
+            "description": "Start a revision workflow for an existing booking order. Sends the BO to Sales Coordinator for edits, then through the full approval flow (Coordinator → HoS → Finance). Use this when admin wants to revise/update an already submitted BO. ADMIN ONLY.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "bo_number": {"type": "string", "description": "The booking order number to revise (e.g., 'DPD-112652', 'VLA-001')"}
+                },
+                "required": ["bo_number"]
+            }
+        },
+        {
+            "type": "function",
             "name": "generate_mockup",
             "description": "Generate a billboard mockup. IMPORTANT: If user uploads image file(s) and mentions a location for mockup, call this function IMMEDIATELY - do not ask for clarification. User can upload image(s) OR provide a text prompt for AI generation OR reuse creatives from recent mockup (within 30 min) by just specifying new location. System stores creative files for 30 minutes enabling follow-up requests on different locations. Supports multiple frames: 1 creative = duplicate across all, N creatives = match to N frames. System validates frame count compatibility automatically. Billboard variations can be specified with time_of_day (day/night/all) and finish (gold/silver/all). Use 'all' or omit to randomly select from all available variations.",
             "parameters": {
@@ -2582,6 +2594,60 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     await config.slack_client.chat_postMessage(
                         channel=channel,
                         text=config.markdown_to_slack(f"❌ **Error:** Failed to fetch booking order `{bo_ref}`. Error: {str(e)}")
+                    )
+
+            elif msg.name == "revise_booking_order":
+                # Admin permission gate
+                logger.info(f"[BO_REVISE] Checking admin privileges for user: {user_id}")
+                is_admin_user = config.is_admin(user_id)
+                logger.info(f"[BO_REVISE] User {user_id} admin status: {is_admin_user}")
+
+                if not is_admin_user:
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** You need admin privileges to revise booking orders."))
+                    return
+
+                args = json.loads(msg.arguments)
+                bo_number = args.get("bo_number")
+                logger.info(f"[BO_REVISE] Admin requested revision for BO: '{bo_number}'")
+
+                try:
+                    import db
+                    import bo_approval_workflow
+
+                    # Fetch existing BO from database
+                    bo_data = db.get_booking_order_by_number(bo_number)
+                    logger.info(f"[BO_REVISE] Database query result: {'Found' if bo_data else 'Not found'}")
+
+                    if not bo_data:
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                        await config.slack_client.chat_postMessage(
+                            channel=channel,
+                            text=config.markdown_to_slack(f"❌ **Booking Order Not Found**\n\nBO Number: `{bo_number}` does not exist in the database.")
+                        )
+                        return
+
+                    # Start revision workflow (sends to coordinator with new thread)
+                    await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Starting revision workflow..._")
+
+                    result = await bo_approval_workflow.start_revision_workflow(
+                        bo_data=bo_data,
+                        requester_user_id=user_id,
+                        requester_channel=channel
+                    )
+
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await config.slack_client.chat_postMessage(
+                        channel=channel,
+                        text=config.markdown_to_slack(f"✅ **Revision workflow started for BO {bo_number}**\n\nThe booking order has been sent to the Sales Coordinator for edits.")
+                    )
+
+                except Exception as e:
+                    logger.error(f"[BO_REVISE] Error: {e}", exc_info=True)
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await config.slack_client.chat_postMessage(
+                        channel=channel,
+                        text=config.markdown_to_slack(f"❌ **Error:** Failed to start revision workflow. Error: {str(e)}")
                     )
 
             elif msg.name == "get_proposals_stats":

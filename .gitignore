@@ -28,6 +28,7 @@ Thumbs.db
 data/
 render_data/
 render_main_data/
+test_data/
 
 # Generated proposals
 *.pdf
