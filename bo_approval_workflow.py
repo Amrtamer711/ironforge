@@ -22,7 +22,7 @@ import asyncio
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import logging
 
 import config
@@ -30,6 +30,13 @@ import db
 from booking_parser import BookingOrderParser, COMBINED_BOS_DIR
 
 logger = logging.getLogger("proposal-bot")
+
+# UAE timezone (GMT+4)
+UAE_TZ = timezone(timedelta(hours=4))
+
+def get_uae_time():
+    """Get current time in UAE timezone (GMT+4)"""
+    return datetime.now(UAE_TZ)
 
 # In-memory cache for active approval workflows
 approval_workflows: Dict[str, Dict[str, Any]] = {}
@@ -210,7 +217,7 @@ async def create_approval_workflow(
         "user_notes": user_notes,
         "stage": "coordinator",  # Current stage: coordinator, hos, finance
         "status": "pending",  # pending, approved, rejected
-        "created_at": datetime.now().isoformat(),
+        "created_at": get_uae_time().isoformat(),
 
         # Stage-specific data
         "coordinator_thread_ts": None,  # Thread where coordinator reviews (created immediately)
@@ -249,7 +256,7 @@ async def save_workflow_to_db(workflow_id: str, workflow_data: Dict[str, Any]):
         db.save_bo_workflow(
             workflow_id=workflow_id,
             workflow_data=json.dumps(workflow_data),
-            updated_at=datetime.now().isoformat()
+            updated_at=get_uae_time().isoformat()
         )
     except Exception as e:
         logger.error(f"[BO APPROVAL] Failed to save workflow {workflow_id}: {e}")
@@ -367,7 +374,7 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
     await update_workflow(workflow_id, {
         "coordinator_approved": True,
         "coordinator_approved_by": user_id,
-        "coordinator_approved_at": datetime.now().isoformat(),
+        "coordinator_approved_at": get_uae_time().isoformat(),
         "stage": "hos",
         "status": "pending"
     })
@@ -482,7 +489,7 @@ async def handle_coordinator_rejection(workflow_id: str, user_id: str, response_
         "status": "coordinator_rejected",
         "coordinator_rejection_reason": rejection_reason,
         "coordinator_rejected_by": user_id,
-        "coordinator_rejected_at": datetime.now().isoformat(),
+        "coordinator_rejected_at": get_uae_time().isoformat(),
         "coordinator_thread_ts": message_ts,  # Use button message as thread root
         "coordinator_thread_channel": channel
     })
@@ -552,7 +559,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     await update_workflow(workflow_id, {
         "hos_approved": True,
         "hos_approved_by": user_id,
-        "hos_approved_at": datetime.now().isoformat()
+        "hos_approved_at": get_uae_time().isoformat()
     })
 
     # Generate final BO reference
@@ -637,7 +644,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
         # Update workflow after sending to all finance users
         await update_workflow(workflow_id, {
             "finance_notified": True,
-            "finance_notified_at": datetime.now().isoformat(),
+            "finance_notified_at": get_uae_time().isoformat(),
             "finance_msg_ts": result["message_id"]  # Store last message ID
         })
 
@@ -722,7 +729,7 @@ async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str
         "stage": "coordinator",  # Move back to coordinator
         "hos_rejection_reason": rejection_reason,
         "hos_rejected_by": user_id,
-        "hos_rejected_at": datetime.now().isoformat(),
+        "hos_rejected_at": get_uae_time().isoformat(),
         "hos_approved": False,  # Clear HoS approval
         "coordinator_approved": False  # Clear coordinator approval (they need to re-approve)
     })
@@ -834,7 +841,7 @@ async def start_revision_workflow(
         "user_notes": f"REVISION of {bo_data.get('bo_ref')}",
         "stage": "coordinator",
         "status": "pending",
-        "created_at": datetime.now().isoformat(),
+        "created_at": get_uae_time().isoformat(),
         "is_revision": True,  # Mark as revision
         "original_bo_ref": bo_data.get("bo_ref"),  # Track original BO reference
 

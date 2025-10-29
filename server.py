@@ -1,9 +1,16 @@
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import subprocess
 import shutil
 from contextlib import asynccontextmanager
 from typing import Optional
+
+# UAE timezone (GMT+4)
+UAE_TZ = timezone(timedelta(hours=4))
+
+def get_uae_time():
+    """Get current time in UAE timezone (GMT+4)"""
+    return datetime.now(UAE_TZ)
 
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
@@ -51,7 +58,7 @@ async def periodic_cleanup():
             from datetime import timedelta
             
             # Clean user histories older than 1 hour
-            cutoff = datetime.now() - timedelta(hours=1)
+            cutoff = get_uae_time() - timedelta(hours=1)
             expired_users = []
             for uid, history in user_history.items():
                 if history and hasattr(history[-1], 'get'):
@@ -71,10 +78,10 @@ async def periodic_cleanup():
                 logger.info(f"[CLEANUP] Removed {len(expired_users)} old user histories")
                 
             # Clean pending locations older than 10 minutes
-            location_cutoff = datetime.now() - timedelta(minutes=10)
+            location_cutoff = get_uae_time() - timedelta(minutes=10)
             expired_locations = [
                 uid for uid, data in pending_location_additions.items()
-                if data.get("timestamp", datetime.now()) < location_cutoff
+                if data.get("timestamp", get_uae_time()) < location_cutoff
             ]
             for uid in expired_locations:
                 del pending_location_additions[uid]
@@ -284,7 +291,7 @@ async def slack_interactive(request: Request):
             await bo_approval_workflow.update_workflow(workflow_id, {
                 "status": "coordinator_rejected",
                 "coordinator_rejected_by": user_id,
-                "coordinator_rejected_at": datetime.now().isoformat()
+                "coordinator_rejected_at": get_uae_time().isoformat()
             })
 
             logger.info(f"[BO APPROVAL] Started edit conversation in thread {thread_ts} for {workflow_id}")
@@ -470,8 +477,9 @@ async def health():
     environment = os.getenv("ENVIRONMENT", "development")
     return {
         "status": "healthy",
-        "timestamp": datetime.now().isoformat(),
-        "environment": environment
+        "timestamp": get_uae_time().isoformat(),
+        "environment": environment,
+        "timezone": "UAE (GMT+4)"
     }
 
 
@@ -512,7 +520,7 @@ async def metrics():
             "pending_locations": len(pending_location_additions),
             "templates_cached": len(config.get_location_mapping()),
         },
-        "timestamp": datetime.now().isoformat()
+        "timestamp": get_uae_time().isoformat()
     }
 
 
