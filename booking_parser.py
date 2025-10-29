@@ -275,6 +275,7 @@ Analyze the uploaded file and respond with:
             cost_tracking.track_openai_call(
                 response=response,
                 call_type="classification",
+                workflow="bo_parsing",
                 context=f"File: {file_path.name}",
                 metadata={"file_type": suffix, "has_user_message": bool(user_message)}
             )
@@ -473,6 +474,7 @@ The user provided this message with the file: "{user_message}"
             cost_tracking.track_openai_call(
                 response=response,
                 call_type="parsing",
+                workflow="bo_parsing",
                 context=f"File: {file_path.name}, Company: {self.company}",
                 metadata={"file_type": file_type, "has_user_message": bool(user_message), "company": self.company}
             )

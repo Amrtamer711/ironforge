@@ -2073,12 +2073,27 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         logger.info(f"[API RESPONSE DEBUG] Response type: {type(res)}")
         logger.info(f"[API RESPONSE DEBUG] Response dir: {dir(res)}")
 
+        # Determine workflow based on function being called
+        workflow = "general_chat"  # Default
+        if res.output and len(res.output) > 0:
+            function_call = next((item for item in res.output if item.type == "function_call"), None)
+            if function_call and hasattr(function_call, 'name'):
+                func_name = function_call.name
+                if func_name == "generate_mockup":
+                    # Determine if AI or upload based on parameters
+                    workflow = "mockup_upload"  # Default, may be updated to mockup_ai later
+                elif func_name in ["get_separate_proposals", "get_combined_proposal"]:
+                    workflow = "proposal_generation"
+                elif func_name == "add_location":
+                    workflow = "location_management"
+
         # Track cost
         import cost_tracking
         cost_tracking.track_openai_call(
             response=res,
             call_type="main_llm",
             user_id=user_id,
+            workflow=workflow,
             context=f"Channel: {channel}",
             metadata={"has_files": has_files, "message_length": len(user_input)}
         )

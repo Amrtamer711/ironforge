@@ -1,15 +1,30 @@
 """
 AI Cost Tracking Utilities
 
-OpenAI Pricing (as of 2025):
-- GPT-5 with reasoning:
-  - Input: $2.50 / 1M tokens
-  - Output: $10.00 / 1M tokens
-  - Reasoning: $10.00 / 1M tokens (cached at 50% after first use)
+OpenAI Pricing (as of January 2025):
 
-- GPT-4.1:
-  - Input: $0.30 / 1M tokens
-  - Output: $1.20 / 1M tokens
+GPT-5 (Text):
+  - Input: $1.250 / 1M tokens
+  - Cached Input: $0.125 / 1M tokens (90% discount)
+  - Output: $10.000 / 1M tokens
+
+GPT-image-1 (Image Generation):
+  Text Input:
+    - Input: $5.00 / 1M tokens
+    - Cached Input: $1.25 / 1M tokens
+  Image Input:
+    - Input: $10.00 / 1M tokens
+    - Cached Input: $2.50 / 1M tokens
+    - Output: $40.00 / 1M tokens
+
+GPT-image-1-mini:
+  Text Input:
+    - Input: $2.00 / 1M tokens
+    - Cached Input: $0.20 / 1M tokens
+  Image Input:
+    - Input: $2.50 / 1M tokens
+    - Cached Input: $0.25 / 1M tokens
+    - Output: $8.00 / 1M tokens
 """
 
 import logging
@@ -22,17 +37,33 @@ logger = logging.getLogger("proposal-bot")
 PRICING = {
     "gpt-5": {
         "input": 1.25,
+        "input_cached": 0.125,  # 90% discount
         "output": 10.00,
-        "reasoning": 10.00,
-        "reasoning_cached": 5.00  # 50% discount for cached reasoning
+        "reasoning": 0.00  # GPT-5 doesn't have separate reasoning pricing
+    },
+    "gpt-image-1": {
+        "text_input": 5.00,
+        "text_input_cached": 1.25,
+        "image_input": 10.00,
+        "image_input_cached": 2.50,
+        "output": 40.00
+    },
+    "gpt-image-1-mini": {
+        "text_input": 2.00,
+        "text_input_cached": 0.20,
+        "image_input": 2.50,
+        "image_input_cached": 0.25,
+        "output": 8.00
     },
     "gpt-4.1": {
         "input": 0.30,
+        "input_cached": 0.03,
         "output": 1.20,
-        "reasoning": 0.00  # GPT-4.1 doesn't have reasoning
+        "reasoning": 0.00
     },
     "gpt-4": {
         "input": 0.30,
+        "input_cached": 0.03,
         "output": 1.20,
         "reasoning": 0.00
     }
@@ -43,8 +74,7 @@ def calculate_cost(
     model: str,
     input_tokens: int,
     output_tokens: int,
-    reasoning_tokens: int = 0,
-    reasoning_cached: bool = False
+    reasoning_tokens: int = 0
 ) -> dict:
     """
     Calculate cost breakdown for an AI API call
@@ -53,14 +83,13 @@ def calculate_cost(
         model: Model name (gpt-5, gpt-4.1, etc.)
         input_tokens: Number of input tokens
         output_tokens: Number of output tokens
-        reasoning_tokens: Number of reasoning tokens (GPT-5 only)
-        reasoning_cached: Whether reasoning tokens are cached (50% off)
+        reasoning_tokens: Number of reasoning tokens (note: GPT-5 no longer charges separately for reasoning)
 
     Returns:
         Dict with:
             - input_cost: Cost for input tokens
             - output_cost: Cost for output tokens
-            - reasoning_cost: Cost for reasoning tokens
+            - reasoning_cost: Cost for reasoning tokens (always 0 for GPT-5)
             - total_cost: Total cost
     """
     # Get pricing for model (default to gpt-5 if unknown)
@@ -70,10 +99,9 @@ def calculate_cost(
     input_cost = (input_tokens / 1_000_000) * pricing["input"]
     output_cost = (output_tokens / 1_000_000) * pricing["output"]
 
-    if reasoning_tokens > 0 and reasoning_cached:
-        reasoning_cost = (reasoning_tokens / 1_000_000) * pricing["reasoning_cached"]
-    else:
-        reasoning_cost = (reasoning_tokens / 1_000_000) * pricing["reasoning"]
+    # Reasoning cost - GPT-5 no longer charges separately for reasoning
+    # Reasoning tokens are included in regular output token cost
+    reasoning_cost = (reasoning_tokens / 1_000_000) * pricing.get("reasoning", 0.0)
 
     total_cost = input_cost + output_cost + reasoning_cost
 
@@ -89,6 +117,7 @@ def track_openai_call(
     response: any,
     call_type: str,
     user_id: Optional[str] = None,
+    workflow: Optional[str] = None,
     context: Optional[str] = None,
     metadata: Optional[dict] = None
 ):
@@ -99,6 +128,7 @@ def track_openai_call(
         response: OpenAI API response object
         call_type: Type of call (classification, parsing, coordinator_thread, main_llm, etc.)
         user_id: Slack user ID (optional)
+        workflow: Workflow type - mockup_upload, mockup_ai, bo_parsing, bo_editing, bo_revision, proposal_generation, general_chat, location_management (optional)
         context: Additional context (optional)
         metadata: Additional metadata dict (optional)
     """
@@ -123,9 +153,8 @@ def track_openai_call(
         output_tokens = getattr(usage, 'output_tokens', 0) or 0
         logger.info(f"[COSTS DEBUG] Base tokens - Input: {input_tokens}, Output: {output_tokens}")
 
-        # Handle reasoning tokens (GPT-5 with reasoning)
+        # Handle reasoning tokens (for tracking purposes - GPT-5 no longer charges separately)
         reasoning_tokens = 0
-        reasoning_cached = False
         if hasattr(usage, 'output_tokens_details'):
             details = usage.output_tokens_details
             logger.info(f"[COSTS DEBUG] Output tokens details: {details}")
@@ -143,8 +172,7 @@ def track_openai_call(
             model=model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
-            reasoning_tokens=reasoning_tokens,
-            reasoning_cached=reasoning_cached
+            reasoning_tokens=reasoning_tokens
         )
 
         # Convert metadata to JSON string if provided
@@ -165,6 +193,7 @@ def track_openai_call(
             reasoning_cost=costs["reasoning_cost"],
             total_cost=costs["total_cost"],
             user_id=user_id,
+            workflow=workflow,
             context=context,
             metadata_json=metadata_json
         )
@@ -185,6 +214,7 @@ def track_image_generation(
     quality: str,
     n: int = 1,
     user_id: Optional[str] = None,
+    workflow: Optional[str] = None,
     context: Optional[str] = None,
     metadata: Optional[dict] = None
 ):
@@ -197,6 +227,7 @@ def track_image_generation(
         quality: Image quality ("standard" or "high")
         n: Number of images generated
         user_id: Slack user ID or "website_mockup" for public API
+        workflow: Workflow type - typically 'mockup_ai' for AI-generated mockups (optional)
         context: Additional context (optional)
         metadata: Additional metadata dict (optional)
     """
@@ -235,6 +266,7 @@ def track_image_generation(
             reasoning_cost=0.0,
             total_cost=total_cost,
             user_id=user_id,
+            workflow=workflow,
             context=context,
             metadata_json=metadata_json
         )

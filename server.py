@@ -529,6 +529,7 @@ async def get_costs(
     start_date: str = None,
     end_date: str = None,
     call_type: str = None,
+    workflow: str = None,
     user_id: str = None
 ):
     """
@@ -538,12 +539,14 @@ async def get_costs(
         - start_date: Filter by start date (ISO format)
         - end_date: Filter by end date (ISO format)
         - call_type: Filter by call type (classification, parsing, coordinator_thread, main_llm, etc.)
+        - workflow: Filter by workflow (mockup_upload, mockup_ai, bo_parsing, bo_editing, bo_revision, proposal_generation, general_chat, location_management)
         - user_id: Filter by Slack user ID
     """
     summary = db.get_ai_costs_summary(
         start_date=start_date,
         end_date=end_date,
         call_type=call_type,
+        workflow=workflow,
         user_id=user_id
     )
 
@@ -553,6 +556,7 @@ async def get_costs(
             "start_date": start_date,
             "end_date": end_date,
             "call_type": call_type,
+            "workflow": workflow,
             "user_id": user_id
         },
         "timestamp": get_uae_time().isoformat()

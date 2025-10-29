@@ -1210,6 +1210,7 @@ Examples:
             response=res,
             call_type="coordinator_thread",
             user_id=user_id,
+            workflow="bo_editing",
             context=f"Workflow: {workflow_id}",
             metadata={"workflow_id": workflow_id, "thread_length": len(thread_history)}
         )
