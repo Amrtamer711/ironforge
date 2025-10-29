@@ -794,6 +794,12 @@ async def _handle_booking_order_parse(
                         "style": "danger",
                         "value": workflow_id,
                         "action_id": "reject_bo_coordinator"
+                    },
+                    {
+                        "type": "button",
+                        "text": {"type": "plain_text", "text": "🚫 Cancel"},
+                        "value": workflow_id,
+                        "action_id": "cancel_bo_coordinator"
                     }
                 ]
             }
