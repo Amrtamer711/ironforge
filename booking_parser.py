@@ -1232,14 +1232,18 @@ Even if the source document lists fees per location, you MUST sum them into sing
         ws["B17"].alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
         # Adjust row height based on number of lines (each line ~15 points)
         num_lines_b17 = start_dates_value.count('\n') + 1 if start_dates_value else 1
-        ws.row_dimensions[17].height = max(15, num_lines_b17 * 15)
+        initial_height_b17 = max(15, num_lines_b17 * 15)
+        ws.row_dimensions[17].height = initial_height_b17
+        logger.info(f"[EXCEL] Row 17 B17 (start dates): {num_lines_b17} lines, height set to {initial_height_b17}")
 
         # Durations with dynamic row height
         durations_value = get_durations()
         ws["B19"] = durations_value
         ws["B19"].alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
         num_lines_b19 = durations_value.count('\n') + 1 if durations_value else 1
-        ws.row_dimensions[19].height = max(15, num_lines_b19 * 15)
+        initial_height_b19 = max(15, num_lines_b19 * 15)
+        ws.row_dimensions[19].height = initial_height_b19
+        logger.info(f"[EXCEL] Row 19 B19 (durations): {num_lines_b19} lines, height set to {initial_height_b19}")
 
         ws["B21"] = data.get("gross_calc", 0)                           # Gross (net + vat)
         ws["B23"] = get_production_upload_fee()                         # Production/Upload Cost(s)
@@ -1257,7 +1261,10 @@ Even if the source document lists fees per location, you MUST sum them into sing
         ws["E17"].alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
         num_lines_e17 = end_dates_value.count('\n') + 1 if end_dates_value else 1
         # Use the max of B17 and E17 line counts for row 17
-        ws.row_dimensions[17].height = max(ws.row_dimensions[17].height, num_lines_e17 * 15)
+        before_height_17 = ws.row_dimensions[17].height
+        final_height_17 = max(before_height_17, num_lines_e17 * 15)
+        ws.row_dimensions[17].height = final_height_17
+        logger.info(f"[EXCEL] Row 17 E17 (end dates): {num_lines_e17} lines, before={before_height_17}, after={final_height_17}")
 
         # Category in E19 - also set wrap text and check if it needs more height
         category_value = format_value(data.get("category"))
@@ -1265,7 +1272,10 @@ Even if the source document lists fees per location, you MUST sum them into sing
         ws["E19"].alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
         num_lines_e19 = category_value.count('\n') + 1 if category_value else 1
         # Use the max of B19 and E19 line counts for row 19
-        ws.row_dimensions[19].height = max(ws.row_dimensions[19].height, num_lines_e19 * 15)
+        before_height_19 = ws.row_dimensions[19].height
+        final_height_19 = max(before_height_19, num_lines_e19 * 15)
+        ws.row_dimensions[19].height = final_height_19
+        logger.info(f"[EXCEL] Row 19 E19 (category): {num_lines_e19} lines, before={before_height_19}, after={final_height_19}")
 
         # SLA percentage - convert decimal to percentage for display (0.10 → 10%)
         # Set as percentage number format
