@@ -2080,7 +2080,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             call_type="main_llm",
             user_id=user_id,
             context=f"Channel: {channel}",
-            metadata={"has_files": has_files, "message_length": len(user_message)}
+            metadata={"has_files": has_files, "message_length": len(user_input)}
         )
 
         if not res.output or len(res.output) == 0:
