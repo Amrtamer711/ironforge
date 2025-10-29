@@ -3101,27 +3101,35 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
 - No white borders, frames, or margins around the design"""
 
                         # Extensive system prompt for billboard artwork generation
-                        enhanced_prompt = f"""Create a professional outdoor advertising billboard creative - IMPORTANT: This is the FLAT 2D ARTWORK FILE that will be printed and placed ON a billboard, NOT a photograph of an existing billboard.
+                        enhanced_prompt = f"""Create a professional flat 2D artwork/creative design for outdoor advertising.
 
 ═══════════════════════════════════════════════════════════
-CRITICAL DISTINCTIONS:
+🚨 CRITICAL: WHAT YOU ARE CREATING
 ═══════════════════════════════════════════════════════════
+
+YOU ARE CREATING: **ARTWORK/CREATIVE CONTENT ONLY**
+- This is the flat graphic design file (like a Photoshop/Illustrator artwork)
+- This artwork will later be placed on a billboard template by our system
+- Generate ONLY the creative content, NOT a billboard mockup or photo
 
 ✅ CORRECT OUTPUT (what we want):
-- A flat, rectangular advertisement design (like a Photoshop/Illustrator file)
-- The actual graphic design artwork that goes ON the billboard surface
-- Think: magazine ad, poster design, digital banner creative
-- Perfectly rectangular, no perspective, no angle, no depth
-- Edge-to-edge design filling the entire rectangular canvas
-- Like looking at a computer screen showing the ad design
+- A flat, rectangular advertisement design filling the entire canvas
+- The actual graphic artwork (like a poster, magazine ad, or digital banner)
+- Perfectly flat with no perspective, no 3D elements, no depth
+- Edge-to-edge design with no borders, frames, or margins
+- Think: the content you'd see on a computer screen when designing an ad
+- Like a print-ready advertisement file before it's mounted anywhere
 
 ❌ INCORRECT OUTPUT (what we DON'T want):
-- A photograph of a physical billboard in a street scene
-- 3D rendering showing billboard from an angle/perspective
-- Image with billboard frame, poles, or support structure visible
-- Photo showing buildings, sky, roads, or environment around billboard
-- Any mockup showing how the billboard looks in real life
-- Perspective view, vanishing points, or dimensional representation
+- ❌ DO NOT create a photo of a physical billboard
+- ❌ DO NOT show billboard frames, poles, or support structures
+- ❌ DO NOT include perspective, angles, or 3D rendering
+- ❌ DO NOT show street scenes, buildings, sky, roads, or environment
+- ❌ DO NOT create a mockup showing how the billboard looks when installed
+- ❌ DO NOT add vanishing points or dimensional representation
+
+**REMEMBER:** You are creating the ARTWORK that will go ON the billboard,
+not a picture OF a billboard. We have a separate template system for that.
 
 ═══════════════════════════════════════════════════════════
 DETAILED DESIGN REQUIREMENTS:
