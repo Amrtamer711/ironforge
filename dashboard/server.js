@@ -4,7 +4,6 @@ const cors = require('cors');
 const path = require('path');
 const session = require('express-session');
 const FileStore = require('session-file-store')(session);
-const bcrypt = require('bcrypt');
 const cookieParser = require('cookie-parser');
 
 const app = express();
@@ -52,16 +51,30 @@ function requireAuth(req, res, next) {
 app.post('/api/login', (req, res) => {
   const { password } = req.body;
 
+  console.log('[AUTH] Login attempt received');
+  console.log('[AUTH] Password provided:', password ? 'yes' : 'no');
+  console.log('[AUTH] Expected password:', DASHBOARD_PASSWORD);
+
   if (!password) {
+    console.log('[AUTH] ❌ No password provided');
     return res.status(400).json({ error: 'Password required' });
   }
 
   // Simple password comparison (upgrade to bcrypt if needed later)
   if (password === DASHBOARD_PASSWORD) {
     req.session.authenticated = true;
-    console.log(`✅ Dashboard login successful`);
-    res.json({ success: true, message: 'Login successful' });
+    // Save the session before responding
+    req.session.save((err) => {
+      if (err) {
+        console.error('[AUTH] ❌ Session save error:', err);
+        return res.status(500).json({ error: 'Session save failed' });
+      }
+      console.log(`✅ Dashboard login successful, session saved`);
+      console.log('[AUTH] Session ID:', req.sessionID);
+      res.json({ success: true, message: 'Login successful' });
+    });
   } else {
+    console.log('[AUTH] ❌ Invalid password');
     res.status(401).json({ error: 'Invalid password' });
   }
 });
