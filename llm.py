@@ -1038,7 +1038,10 @@ Return JSON with: action, fields (ALL changed fields including cascading updates
                     workflow_id=workflow_id,
                     company=edit_data.get("company"),
                     data=current_data,
-                    combined_pdf_path=str(combined_pdf)
+                    combined_pdf_path=str(combined_pdf),
+                    warnings=edit_data.get("warnings", []),
+                    missing_required=edit_data.get("missing_required", []),
+                    user_notes=edit_data.get("user_notes", "")
                 )
 
                 # Update workflow with coordinator message info

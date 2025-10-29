@@ -905,7 +905,8 @@ async def start_revision_workflow(
             missing_required=workflow_data["missing_required"],
             combined_pdf_path=str(temp_combined_pdf),
             is_revision=True,  # Flag to indicate this is a revision
-            original_bo_ref=bo_data.get("bo_ref")
+            original_bo_ref=bo_data.get("bo_ref"),
+            user_notes=workflow_data.get("user_notes", "")
         )
 
         # Update workflow with coordinator message info

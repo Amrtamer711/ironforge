@@ -210,7 +210,8 @@ async def send_to_coordinator(
     warnings: Optional[list] = None,
     missing_required: Optional[list] = None,
     is_revision: bool = False,
-    original_bo_ref: Optional[str] = None
+    original_bo_ref: Optional[str] = None,
+    user_notes: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Send booking order to Sales Coordinator with Approve/Reject buttons
@@ -225,6 +226,7 @@ async def send_to_coordinator(
         missing_required: List of missing required fields (optional)
         is_revision: True if this is a revision of existing BO (optional)
         original_bo_ref: Original BO reference if revision (optional)
+        user_notes: Notes from sales person submitting the BO (optional)
 
     Returns: {"message_id": ts, "channel": channel}
     """
@@ -253,6 +255,10 @@ async def send_to_coordinator(
         if len(locations) > 3:
             text += f"...and {len(locations) - 3} more\n"
         text += "\n"
+
+    # Show sales person's notes if provided (important for clarifying parsing issues)
+    if user_notes and user_notes.strip():
+        text += f"💬 **Sales Person Notes:**\n{user_notes}\n\n"
 
     if warnings:
         text += f"⚠️ **Warnings:** {len(warnings)}\n"

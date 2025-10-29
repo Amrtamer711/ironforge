@@ -541,12 +541,14 @@ Booking orders (BOs) are contracts where clients purchase billboard advertising 
    - These fees may appear mixed in with location rows - use intelligence to identify them
 
 3. **SLA (Service Level Agreement) %:**
-   - This is a DEDUCTION percentage (e.g., 0.4% = 0.004 as decimal)
-   - Usually user-inputted or negotiated
+   - This is a DEDUCTION percentage (e.g., "0.4%" = 0.004 as decimal, "10%" = 0.10 as decimal)
+   - Usually appears as a percentage field or row in the BO (look for "SLA", "SLA%", "Service Level Agreement")
+   - **CRITICAL:** If you see an "SLA" field or row with a percentage, ALWAYS extract it! Don't leave it as null/0
    - Applied ONLY to the net rental amount (rental + production/upload fees + municipality fees)
    - SLA deduction happens BEFORE VAT is calculated
    - Formula: Net after SLA = Net rental - (Net rental × SLA%)
    - Then VAT is applied: Gross = (Net after SLA) × 1.05
+   - **If user message mentions SLA, prioritize that value over what's in the document**
 
 4. **Location Types:**
    - **Digital/LED screens:** Get upload fees, no production fees
@@ -772,12 +774,14 @@ Booking orders (BOs) are contracts where clients purchase billboard advertising 
    - These fees may appear mixed in with location rows - use intelligence to identify them
 
 3. **SLA (Service Level Agreement) %:**
-   - This is a DEDUCTION percentage (e.g., 0.4% = 0.004 as decimal)
-   - Usually user-inputted or negotiated
+   - This is a DEDUCTION percentage (e.g., "0.4%" = 0.004 as decimal, "10%" = 0.10 as decimal)
+   - Usually appears as a percentage field or row in the BO (look for "SLA", "SLA%", "Service Level Agreement")
+   - **CRITICAL:** If you see an "SLA" field or row with a percentage, ALWAYS extract it! Don't leave it as null/0
    - Applied ONLY to the net rental amount (rental + production/upload fees + municipality fees)
    - SLA deduction happens BEFORE VAT is calculated
    - Formula: Net after SLA = Net rental - (Net rental × SLA%)
    - Then VAT is applied: Gross = (Net after SLA) × 1.05
+   - **If user message mentions SLA, prioritize that value over what's in the document**
 
 **FINANCIAL CALCULATION FLOW (CRITICAL - USE THIS TO IDENTIFY FEES):**
 
@@ -1192,8 +1196,8 @@ Even if the source document lists fees per location, you MUST sum them into sing
             return data.get("production_upload_fee", 0) or 0
 
         # Calculate Net Rentals excl SLA (for the merged cell A-E33)
-        # This is the net amount before SLA deduction
-        net_rentals_excl_sla = data.get("net_pre_vat", 0)
+        # This is the net amount AFTER SLA deduction
+        net_rentals_excl_sla = data.get("net_excl_sla_calc", data.get("net_pre_vat", 0))
 
         # Inject values into template cells
         # Left column (B)
@@ -1241,7 +1245,12 @@ Even if the source document lists fees per location, you MUST sum them into sing
         num_lines_e19 = category_value.count('\n') + 1 if category_value else 1
         # Use the max of B19 and E19 line counts for row 19
         ws.row_dimensions[19].height = max(ws.row_dimensions[19].height, num_lines_e19 * 15)
-        ws["E21"] = data.get("sla_pct", 0)                              # SLA
+
+        # SLA percentage - convert decimal to percentage for display (0.10 → 10%)
+        # Set as percentage number format
+        sla_pct_value = data.get("sla_pct", 0) or 0
+        ws["E21"] = sla_pct_value
+        ws["E21"].number_format = '0.00%'  # Format as percentage
         ws["E23"] = data.get("municipality_fee", 0)                     # DM (Dubai Municipality)
 
         # Payment terms with dynamic row height
