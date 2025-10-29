@@ -29,4 +29,26 @@ services:
     disk:
       name: proposal-bot-data
       mountPath: /data
-      sizeGB: 5 
+      sizeGB: 5
+
+  - type: web
+    name: ai-costs-dashboard
+    runtime: node
+    region: singapore
+    rootDir: dashboard
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "18"
+      - key: BACKEND_URL
+        fromService:
+          type: web
+          name: proposal-bot
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DASHBOARD_USERNAME
+        sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false
