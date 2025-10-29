@@ -143,47 +143,30 @@ def track_openai_call(
         metadata: Additional metadata dict (optional)
     """
     try:
-        # Log full response structure for debugging
-        logger.info(f"[COSTS DEBUG] ===== {call_type} API Response Structure =====")
-        logger.info(f"[COSTS DEBUG] Response type: {type(response)}")
-        logger.info(f"[COSTS DEBUG] Response dir: {dir(response)}")
-
         # Extract usage from response
         usage = response.usage if hasattr(response, 'usage') else None
         if not usage:
             logger.warning(f"[COSTS] No usage data in response for {call_type}")
             return
 
-        logger.info(f"[COSTS DEBUG] Usage object: {usage}")
-        logger.info(f"[COSTS DEBUG] Usage type: {type(usage)}")
-        logger.info(f"[COSTS DEBUG] Usage dir: {dir(usage)}")
-
         # Get token counts
         input_tokens = getattr(usage, 'input_tokens', 0) or 0
         output_tokens = getattr(usage, 'output_tokens', 0) or 0
-        logger.info(f"[COSTS DEBUG] Base tokens - Input: {input_tokens}, Output: {output_tokens}")
 
         # Handle cached input tokens (90% discount)
         cached_input_tokens = 0
         if hasattr(usage, 'input_tokens_details'):
             input_details = usage.input_tokens_details
-            logger.info(f"[COSTS DEBUG] Input tokens details: {input_details}")
             cached_input_tokens = getattr(input_details, 'cached_tokens', 0) or 0
-            logger.info(f"[COSTS DEBUG] Cached input tokens: {cached_input_tokens}")
 
         # Handle reasoning tokens (for tracking purposes - GPT-5 no longer charges separately)
         reasoning_tokens = 0
         if hasattr(usage, 'output_tokens_details'):
             details = usage.output_tokens_details
-            logger.info(f"[COSTS DEBUG] Output tokens details: {details}")
-            logger.info(f"[COSTS DEBUG] Details type: {type(details)}")
-            logger.info(f"[COSTS DEBUG] Details dir: {dir(details)}")
             reasoning_tokens = getattr(details, 'reasoning_tokens', 0) or 0
-            logger.info(f"[COSTS DEBUG] Reasoning tokens: {reasoning_tokens}")
 
         # Get model from response
         model = getattr(response, 'model', 'unknown')
-        logger.info(f"[COSTS DEBUG] Model: {model}")
 
         # Calculate costs
         costs = calculate_cost(

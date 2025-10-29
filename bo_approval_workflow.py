@@ -1126,13 +1126,6 @@ Examples:
         # Add current user message
         input_messages.append({"role": "user", "content": user_input})
 
-        logger.info(f"[API REQUEST DEBUG] ===== Coordinator Thread API Request =====")
-        logger.info(f"[API REQUEST DEBUG] Model: {config.OPENAI_MODEL}")
-        logger.info(f"[API REQUEST DEBUG] Reasoning effort: medium")
-        logger.info(f"[API REQUEST DEBUG] Input type: text only (conversation)")
-        logger.info(f"[API REQUEST DEBUG] Thread length: {len(input_messages)} messages")
-        logger.info(f"[API REQUEST DEBUG] Has structured output: Yes (json_schema)")
-
         res = await config.openai_client.responses.create(
             model=config.OPENAI_MODEL,
             reasoning={"effort": "medium"},
@@ -1199,10 +1192,6 @@ Examples:
             },
             store=False
         )
-
-        logger.info(f"[API RESPONSE DEBUG] ===== Coordinator Thread API Response =====")
-        logger.info(f"[API RESPONSE DEBUG] Response type: {type(res)}")
-        logger.info(f"[API RESPONSE DEBUG] Response dir: {dir(res)}")
 
         # Track cost
         import cost_tracking
