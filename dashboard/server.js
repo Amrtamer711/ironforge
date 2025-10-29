@@ -13,15 +13,9 @@ const PORT = process.env.PORT || 3000;
 // Configuration from environment
 const API_URL = process.env.BACKEND_URL || 'http://localhost:8000';
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-in-production';
-const DASHBOARD_USERNAME = process.env.DASHBOARD_USERNAME || 'admin';
-const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'admin';
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'nour';
 
-// Hash the password for comparison
-let hashedPassword;
-bcrypt.hash(DASHBOARD_PASSWORD, 10).then(hash => {
-  hashedPassword = hash;
-  console.log('🔐 Authentication enabled');
-});
+console.log('🔐 Password-only authentication enabled');
 
 // Middleware
 app.use(cors());
@@ -55,50 +49,38 @@ function requireAuth(req, res, next) {
 }
 
 // Authentication endpoints
-app.post('/api/login', async (req, res) => {
-  const { username, password } = req.body;
+app.post('/api/login', (req, res) => {
+  const { password } = req.body;
 
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username and password required' });
+  if (!password) {
+    return res.status(400).json({ error: 'Password required' });
   }
 
-  if (username !== DASHBOARD_USERNAME) {
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
-
-  try {
-    const match = await bcrypt.compare(password, hashedPassword);
-    if (match) {
-      req.session.authenticated = true;
-      req.session.username = username;
-      console.log(`✅ User ${username} logged in`);
-      res.json({ success: true, message: 'Login successful' });
-    } else {
-      res.status(401).json({ error: 'Invalid credentials' });
-    }
-  } catch (error) {
-    console.error('[AUTH] Login error:', error);
-    res.status(500).json({ error: 'Authentication failed' });
+  // Simple password comparison (upgrade to bcrypt if needed later)
+  if (password === DASHBOARD_PASSWORD) {
+    req.session.authenticated = true;
+    console.log(`✅ Dashboard login successful`);
+    res.json({ success: true, message: 'Login successful' });
+  } else {
+    res.status(401).json({ error: 'Invalid password' });
   }
 });
 
 app.post('/api/logout', (req, res) => {
-  const username = req.session.username;
   req.session.destroy((err) => {
     if (err) {
       console.error('[AUTH] Logout error:', err);
       return res.status(500).json({ error: 'Logout failed' });
     }
     res.clearCookie('connect.sid');
-    console.log(`👋 User ${username} logged out`);
+    console.log(`👋 Dashboard logged out`);
     res.json({ success: true, message: 'Logout successful' });
   });
 });
 
 app.get('/api/auth/check', (req, res) => {
   res.json({
-    authenticated: !!(req.session && req.session.authenticated),
-    username: req.session?.username
+    authenticated: !!(req.session && req.session.authenticated)
   });
 });
 
