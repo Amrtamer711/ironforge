@@ -1125,8 +1125,10 @@ def get_ai_costs_summary(
             where_parts.append("timestamp >= ?")
             params.append(start_date)
         if end_date:
+            # Append end-of-day time to include full day (timestamps are ISO format with time)
+            end_date_full = f"{end_date}T23:59:59" if 'T' not in end_date else end_date
             where_parts.append("timestamp <= ?")
-            params.append(end_date)
+            params.append(end_date_full)
         if call_type:
             where_parts.append("call_type = ?")
             params.append(call_type)
