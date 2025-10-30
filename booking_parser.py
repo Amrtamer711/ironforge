@@ -531,6 +531,8 @@ Booking orders (BOs) are contracts where clients purchase billboard advertising 
    - Example: "UAE02 & UAE03 - AED 320,000" → SPLIT 320k: UAE02=160k, UAE03=160k
    - Example: "Package (UAE03, UAE04, UAE05) - AED 480,000" → SPLIT: 160k each
    - Signals: Locations connected with "&", comma, or grouped in one table row
+   - **DEFAULT BEHAVIOR:** If you see ONE total payment for ALL locations with no individual amounts specified, SPLIT IT EVENLY across all locations
+   - Example: Document shows 5 locations with total payment of AED 500,000 and no per-location breakdown → Split evenly: 100k each
 
    **SEPARATE LOCATIONS (Full payment):**
    When a location has its own dedicated row with its own payment:
@@ -696,6 +698,8 @@ Booking orders have TWO types of costs:
    - Each location has its own rental amount (e.g., UAE02: AED 80,000, UAE03: AED 80,000)
    - This is ONLY the rental cost for that specific billboard
    - Extract as `net_amount` for each location
+   - **IMPORTANT:** If document shows ONLY a total rental amount with no per-location breakdown, SPLIT IT EVENLY across all locations
+   - Example: 5 locations with total rental AED 500,000 → Each location gets AED 100,000
 
 2. **GLOBAL Fees** (top-level fields, NOT per-location):
    - **municipality_fee**: Dubai Municipality regulatory fee for the ENTIRE booking
