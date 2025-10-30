@@ -701,14 +701,25 @@ async def _handle_booking_order_parse(
         preview_text += f"**Client:** {result.data.get('client', 'N/A')}\n"
         preview_text += f"**Campaign:** {result.data.get('brand_campaign', 'N/A')}\n"
         preview_text += f"**BO Number:** {result.data.get('bo_number', 'N/A')}\n"
-        preview_text += f"**Net (pre-VAT):** AED {result.data.get('net_pre_vat', 0):,.2f}\n"
-        preview_text += f"**VAT (5%):** AED {result.data.get('vat_calc', 0):,.2f}\n"
-        preview_text += f"**Gross Total:** AED {result.data.get('gross_calc', 0):,.2f}\n"
+
+        # Format monetary values safely (handle None from parser failures)
+        net_pre_vat = result.data.get('net_pre_vat')
+        vat_calc = result.data.get('vat_calc')
+        gross_calc = result.data.get('gross_calc')
+
+        # Log warning if critical financial fields are missing (parser should have extracted these)
+        if net_pre_vat is None or vat_calc is None or gross_calc is None:
+            logger.warning(f"[BO APPROVAL] Parser failed to extract financial fields: net_pre_vat={net_pre_vat}, vat_calc={vat_calc}, gross_calc={gross_calc}")
+
+        preview_text += f"**Net (pre-VAT):** AED {net_pre_vat or 0:,.2f}\n"
+        preview_text += f"**VAT (5%):** AED {vat_calc or 0:,.2f}\n"
+        preview_text += f"**Gross Total:** AED {gross_calc or 0:,.2f}\n"
 
         if result.data.get("locations"):
             preview_text += f"\n**Locations:** {len(result.data['locations'])}\n"
             for loc in result.data["locations"][:3]:  # Show first 3
-                preview_text += f"  • {loc.get('name', 'Unknown')}: {loc.get('start_date', '?')} to {loc.get('end_date', '?')} (AED {loc.get('net_amount', 0):,.2f})\n"
+                net_amount = loc.get('net_amount')
+                preview_text += f"  • {loc.get('name', 'Unknown')}: {loc.get('start_date', '?')} to {loc.get('end_date', '?')} (AED {net_amount or 0:,.2f})\n"
             if len(result.data["locations"]) > 3:
                 preview_text += f"  ...and {len(result.data['locations']) - 3} more\n"
 
