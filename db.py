@@ -1089,7 +1089,8 @@ def log_ai_cost(
         logger.debug(f"[COSTS] Logged {call_type} call: ${total_cost:.4f} ({total_tokens} tokens)")
     except Exception as e:
         conn.execute("ROLLBACK")
-        logger.error(f"[COSTS] Failed to log AI cost: {e}")
+        logger.error(f"[COSTS] Failed to log AI cost: {e}", exc_info=True)
+        raise  # Re-raise to make the error visible
     finally:
         conn.close()
 
