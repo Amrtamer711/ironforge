@@ -1,148 +1,115 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - AI Costs Dashboard</title>
-    <link rel="stylesheet" href="styles.css">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
     <style>
-        .login-container {
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
             min-height: 100vh;
-            background: var(--bg-dark);
         }
 
-        .login-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 1rem;
-            padding: 2.5rem;
-            width: 100%;
-            max-width: 400px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .login-header {
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-
-        .login-header h1 {
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
+        .gradient-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
-        .login-header p {
-            color: var(--text-secondary);
-            font-size: 0.875rem;
+        .pulse-dot {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
 
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-            font-weight: 500;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: 0.75rem 1rem;
-            background: var(--bg-dark);
-            border: 1px solid var(--border);
-            border-radius: 0.5rem;
-            color: var(--text-primary);
-            font-size: 1rem;
-            transition: all 0.2s;
-        }
-
-        .form-group input:focus {
-            outline: none;
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-        }
-
-        .btn-login {
-            width: 100%;
-            padding: 0.875rem;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            color: white;
-            border: none;
-            border-radius: 0.5rem;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .btn-login:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);
-        }
-
-        .btn-login:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .error-message {
-            padding: 0.75rem;
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid var(--danger);
-            border-radius: 0.5rem;
-            color: var(--danger);
-            font-size: 0.875rem;
-            margin-bottom: 1rem;
-            display: none;
-        }
-
-        .error-message.show {
-            display: block;
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
         }
     </style>
 </head>
-<body>
-    <div class="login-container">
-        <div class="login-card">
-            <div class="login-header">
-                <h1>🤖 AI Costs Dashboard</h1>
-                <p>Sign in to view analytics</p>
+<body class="text-white flex items-center justify-center min-h-screen p-4">
+    <div class="glass-card p-8 rounded-2xl w-full max-w-md">
+        <div class="text-center mb-8">
+            <div class="w-20 h-20 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-robot text-4xl"></i>
+            </div>
+            <h1 class="text-3xl font-bold gradient-text mb-2">AI Costs Dashboard</h1>
+            <p class="text-gray-400">Enter password to continue</p>
+        </div>
+
+        <div id="errorMessage" class="mb-4 p-3 bg-red-500 bg-opacity-20 border border-red-500 rounded-lg text-red-300 text-sm text-center hidden">
+            <!-- Error message will appear here -->
+        </div>
+
+        <form id="loginForm" class="space-y-6">
+            <div>
+                <label for="password" class="block text-sm font-medium text-gray-300 mb-2">
+                    <i class="fas fa-lock mr-2"></i>Password
+                </label>
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    required
+                    autofocus
+                    class="w-full px-4 py-3 rounded-lg bg-white bg-opacity-5 border border-gray-600 focus:border-indigo-500 focus:outline-none transition-all text-white placeholder-gray-500"
+                    placeholder="Enter your password"
+                />
             </div>
 
-            <div id="errorMessage" class="error-message"></div>
+            <button
+                type="submit"
+                id="loginBtn"
+                class="w-full px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg font-semibold hover:from-indigo-600 hover:to-purple-700 transition-all transform hover:scale-105 shadow-lg"
+            >
+                <i class="fas fa-sign-in-alt mr-2"></i>Sign In
+            </button>
+        </form>
 
-            <form id="loginForm">
-                <div class="form-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" name="password" required autocomplete="current-password" autofocus>
-                </div>
-
-                <button type="submit" class="btn-login" id="loginBtn">
-                    Sign In
-                </button>
-            </form>
+        <div class="mt-6 text-center text-gray-500 text-xs">
+            <div class="flex items-center justify-center space-x-2">
+                <span class="w-2 h-2 bg-green-500 rounded-full pulse-dot"></span>
+                <span>Secure Connection</span>
+            </div>
         </div>
     </div>
 
     <script>
         // Check if already authenticated
-        fetch('/api/auth/check')
-            .then(res => res.json())
-            .then(data => {
+        window.addEventListener('load', async () => {
+            try {
+                const response = await fetch('/api/auth/check');
+                const data = await response.json();
+
                 if (data.authenticated) {
                     window.location.href = '/dashboard.html';
                 }
-            });
+            } catch (error) {
+                console.error('Auth check failed:', error);
+            }
+        });
 
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -151,9 +118,9 @@
             const errorMessage = document.getElementById('errorMessage');
             const loginBtn = document.getElementById('loginBtn');
 
-            errorMessage.classList.remove('show');
+            errorMessage.classList.add('hidden');
             loginBtn.disabled = true;
-            loginBtn.textContent = 'Signing in...';
+            loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Signing in...';
 
             try {
                 const response = await fetch('/api/login', {
@@ -168,15 +135,15 @@
                     window.location.href = '/dashboard.html';
                 } else {
                     errorMessage.textContent = data.error || 'Login failed';
-                    errorMessage.classList.add('show');
+                    errorMessage.classList.remove('hidden');
                     loginBtn.disabled = false;
-                    loginBtn.textContent = 'Sign In';
+                    loginBtn.innerHTML = '<i class="fas fa-sign-in-alt mr-2"></i>Sign In';
                 }
             } catch (error) {
                 errorMessage.textContent = 'Network error. Please try again.';
-                errorMessage.classList.add('show');
+                errorMessage.classList.remove('hidden');
                 loginBtn.disabled = false;
-                loginBtn.textContent = 'Sign In';
+                loginBtn.innerHTML = '<i class="fas fa-sign-in-alt mr-2"></i>Sign In';
             }
         });
     </script>

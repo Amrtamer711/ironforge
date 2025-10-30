@@ -1,137 +1,286 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Costs Dashboard</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-    <link rel="stylesheet" href="styles.css">
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            min-height: 100vh;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%);
+            transform: scale(1.02);
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .pulse-dot {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+
+        .loading-spinner {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid #667eea;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(99, 102, 241, 0.6);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(99, 102, 241, 0.9);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 350px;
+        }
+    </style>
 </head>
-<body>
-    <div class="dashboard">
-        <!-- Header -->
-        <header class="header">
-            <div class="header-content">
-                <h1>🤖 AI Costs Dashboard</h1>
-                <div class="header-actions">
-                    <button class="btn btn-refresh" onclick="refreshData()">
-                        <span class="icon">🔄</span> Refresh
-                    </button>
-                    <div class="date-range">
-                        <input type="date" id="startDate" class="date-input">
-                        <span>to</span>
-                        <input type="date" id="endDate" class="date-input">
-                        <button class="btn btn-filter" onclick="applyDateFilter()">Apply</button>
+<body class="text-white">
+    <!-- Header -->
+    <header class="glass-card mb-8 sticky top-0 z-50">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-4">
+                    <div class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-robot text-2xl"></i>
                     </div>
-                    <button class="btn" onclick="logout()" style="background: var(--danger);">
-                        Logout
+                    <div>
+                        <h1 class="text-2xl font-bold gradient-text">AI Costs Dashboard</h1>
+                        <p class="text-sm text-gray-400">Real-time analytics & monitoring</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="flex items-center space-x-2">
+                        <span class="w-2 h-2 bg-green-500 rounded-full pulse-dot"></span>
+                        <span class="text-sm text-gray-300">Live</span>
+                    </div>
+                    <button onclick="logout()" class="px-4 py-2 bg-red-500 bg-opacity-20 hover:bg-opacity-30 rounded-lg transition-all text-sm">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
                     </button>
                 </div>
             </div>
-        </header>
+        </div>
+    </header>
+
+    <div class="container mx-auto px-6 pb-12">
+        <!-- Date Range Filter -->
+        <div class="glass-card p-6 mb-8 rounded-2xl">
+            <div class="flex flex-wrap items-end gap-4">
+                <div class="flex-1 min-w-[200px]">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">
+                        <i class="fas fa-calendar-alt mr-2"></i>Start Date
+                    </label>
+                    <input type="date" id="startDate" class="w-full px-4 py-2 rounded-lg bg-white bg-opacity-5 border border-gray-600 focus:border-indigo-500 focus:outline-none transition-all">
+                </div>
+                <div class="flex-1 min-w-[200px]">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">
+                        <i class="fas fa-calendar-alt mr-2"></i>End Date
+                    </label>
+                    <input type="date" id="endDate" class="w-full px-4 py-2 rounded-lg bg-white bg-opacity-5 border border-gray-600 focus:border-indigo-500 focus:outline-none transition-all">
+                </div>
+                <button onclick="fetchData()" class="px-6 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg font-semibold hover:from-indigo-600 hover:to-purple-700 transition-all transform hover:scale-105 shadow-lg">
+                    <i class="fas fa-sync-alt mr-2"></i>Refresh
+                </button>
+            </div>
+        </div>
 
         <!-- Loading State -->
-        <div id="loading" class="loading">
-            <div class="spinner"></div>
-            <p>Loading costs data...</p>
+        <div id="loadingState" class="text-center py-20">
+            <div class="loading-spinner mx-auto mb-4"></div>
+            <p class="text-gray-400">Loading dashboard data...</p>
         </div>
 
         <!-- Error State -->
-        <div id="error" class="error" style="display: none;">
-            <p id="errorMessage"></p>
-            <button class="btn" onclick="refreshData()">Retry</button>
+        <div id="errorState" class="glass-card p-8 rounded-2xl text-center hidden">
+            <i class="fas fa-exclamation-triangle text-red-400 text-5xl mb-4"></i>
+            <h3 class="text-xl font-bold mb-2">Failed to Load Data</h3>
+            <p class="text-gray-400 mb-4" id="errorMessage">Unable to fetch costs data</p>
+            <button onclick="fetchData()" class="px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg font-semibold hover:from-indigo-600 hover:to-purple-700 transition-all">
+                <i class="fas fa-redo mr-2"></i>Try Again
+            </button>
         </div>
 
         <!-- Dashboard Content -->
-        <div id="content" class="content" style="display: none;">
+        <div id="dashboardContent" style="display: none;">
             <!-- Summary Cards -->
-            <div class="summary-cards">
-                <div class="card">
-                    <div class="card-icon">💰</div>
-                    <div class="card-content">
-                        <h3>Total Cost</h3>
-                        <p class="card-value" id="totalCost">$0.00</p>
-                        <p class="card-subtitle" id="totalCalls">0 API calls</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div class="stat-card p-6 rounded-2xl">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-blue-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-dollar-sign text-blue-400 text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold" id="totalCost">$0.00</span>
                     </div>
+                    <p class="text-gray-400 text-sm">Total Cost</p>
                 </div>
 
-                <div class="card">
-                    <div class="card-icon">📊</div>
-                    <div class="card-content">
-                        <h3>Average Cost</h3>
-                        <p class="card-value" id="avgCost">$0.00</p>
-                        <p class="card-subtitle">per call</p>
+                <div class="stat-card p-6 rounded-2xl">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-purple-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-calculator text-purple-400 text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold" id="avgCost">$0.00</span>
                     </div>
+                    <p class="text-gray-400 text-sm">Average Cost per Call</p>
                 </div>
 
-                <div class="card">
-                    <div class="card-icon">🔥</div>
-                    <div class="card-content">
-                        <h3>Most Used</h3>
-                        <p class="card-value" id="mostUsed">-</p>
-                        <p class="card-subtitle" id="mostUsedCount">0 calls</p>
+                <div class="stat-card p-6 rounded-2xl">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-green-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-hashtag text-green-400 text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold" id="totalCalls">0</span>
                     </div>
+                    <p class="text-gray-400 text-sm">Total API Calls</p>
                 </div>
 
-                <div class="card">
-                    <div class="card-icon">⚡</div>
-                    <div class="card-content">
-                        <h3>Cache Hit Rate</h3>
-                        <p class="card-value" id="cacheRate">0%</p>
-                        <p class="card-subtitle" id="cacheSavings">$0.00 saved</p>
+                <div class="stat-card p-6 rounded-2xl">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-yellow-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-coins text-yellow-400 text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold" id="cacheRate">0%</span>
                     </div>
+                    <p class="text-gray-400 text-sm">Cache Hit Rate</p>
                 </div>
             </div>
 
             <!-- Charts Row 1 -->
-            <div class="charts-row">
-                <div class="chart-card">
-                    <h3>Cost by Call Type</h3>
-                    <canvas id="callTypeChart"></canvas>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <div class="glass-card p-6 rounded-2xl">
+                    <h3 class="text-xl font-semibold mb-4 flex items-center">
+                        <i class="fas fa-chart-pie mr-3 text-indigo-400"></i>
+                        Costs by Call Type
+                    </h3>
+                    <div class="chart-container">
+                        <canvas id="callTypeChart"></canvas>
+                    </div>
                 </div>
-                <div class="chart-card">
-                    <h3>Cost by Workflow</h3>
-                    <canvas id="workflowChart"></canvas>
+
+                <div class="glass-card p-6 rounded-2xl">
+                    <h3 class="text-xl font-semibold mb-4 flex items-center">
+                        <i class="fas fa-chart-pie mr-3 text-purple-400"></i>
+                        Costs by Workflow
+                    </h3>
+                    <div class="chart-container">
+                        <canvas id="workflowChart"></canvas>
+                    </div>
                 </div>
             </div>
 
             <!-- Charts Row 2 -->
-            <div class="charts-row">
-                <div class="chart-card chart-wide">
-                    <h3>Cost Over Time</h3>
-                    <canvas id="timelineChart"></canvas>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <div class="glass-card p-6 rounded-2xl">
+                    <h3 class="text-xl font-semibold mb-4 flex items-center">
+                        <i class="fas fa-chart-line mr-3 text-blue-400"></i>
+                        Daily Cost Timeline
+                    </h3>
+                    <div class="chart-container">
+                        <canvas id="timelineChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="glass-card p-6 rounded-2xl">
+                    <h3 class="text-xl font-semibold mb-4 flex items-center">
+                        <i class="fas fa-chart-bar mr-3 text-green-400"></i>
+                        Token Usage
+                    </h3>
+                    <div class="chart-container">
+                        <canvas id="tokenChart"></canvas>
+                    </div>
                 </div>
             </div>
 
-            <!-- Charts Row 3 -->
-            <div class="charts-row">
-                <div class="chart-card">
-                    <h3>Token Usage Breakdown</h3>
-                    <canvas id="tokenChart"></canvas>
-                </div>
-                <div class="chart-card">
-                    <h3>Model Distribution</h3>
-                    <canvas id="modelChart"></canvas>
-                </div>
-            </div>
-
-            <!-- Detailed Table -->
-            <div class="table-card">
-                <h3>Recent API Calls</h3>
-                <div class="table-container">
-                    <table id="callsTable">
+            <!-- Recent Calls Table -->
+            <div class="glass-card p-6 rounded-2xl">
+                <h3 class="text-xl font-semibold mb-6 flex items-center">
+                    <i class="fas fa-history mr-3 text-cyan-400"></i>
+                    Recent API Calls
+                </h3>
+                <div class="overflow-x-auto">
+                    <table class="w-full">
                         <thead>
-                            <tr>
-                                <th>Timestamp</th>
-                                <th>Call Type</th>
-                                <th>Workflow</th>
-                                <th>Model</th>
-                                <th>Tokens</th>
-                                <th>Cost</th>
+                            <tr class="border-b border-gray-700">
+                                <th class="text-left py-3 px-4 text-gray-400 font-semibold">Timestamp</th>
+                                <th class="text-left py-3 px-4 text-gray-400 font-semibold">Call Type</th>
+                                <th class="text-left py-3 px-4 text-gray-400 font-semibold">Workflow</th>
+                                <th class="text-left py-3 px-4 text-gray-400 font-semibold">Model</th>
+                                <th class="text-right py-3 px-4 text-gray-400 font-semibold">Tokens</th>
+                                <th class="text-right py-3 px-4 text-gray-400 font-semibold">Cost</th>
                             </tr>
                         </thead>
-                        <tbody id="callsTableBody">
-                            <!-- Populated by JavaScript -->
+                        <tbody id="recentCallsTable">
+                            <!-- Populated by JS -->
                         </tbody>
                     </table>
                 </div>

@@ -74,13 +74,13 @@ function applyDateFilter() {
     refreshData();
 }
 
-async function refreshData() {
-    const loading = document.getElementById('loading');
-    const error = document.getElementById('error');
-    const content = document.getElementById('content');
+async function fetchData() {
+    const loading = document.getElementById('loadingState');
+    const error = document.getElementById('errorState');
+    const content = document.getElementById('dashboardContent');
 
-    loading.style.display = 'flex';
-    error.style.display = 'none';
+    loading.style.display = 'block';
+    error.classList.add('hidden');
     content.style.display = 'none';
 
     try {
@@ -93,7 +93,10 @@ async function refreshData() {
         }
 
         const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText || 'Failed to fetch data'}`);
+        }
 
         const data = await response.json();
 
@@ -106,15 +109,22 @@ async function refreshData() {
     } catch (err) {
         console.error('Error fetching data:', err);
         loading.style.display = 'none';
-        error.style.display = 'flex';
-        document.getElementById('errorMessage').textContent = `Failed to load data: ${err.message}`;
+        error.classList.remove('hidden');
+        document.getElementById('errorMessage').textContent = err.message || 'Failed to load data';
     }
 }
 
+// Alias for compatibility
+async function refreshData() {
+    await fetchData();
+}
+
 function updateSummaryCards(data) {
-    // Total cost and calls
+    // Total cost
     document.getElementById('totalCost').textContent = `$${data.summary.total_cost.toFixed(4)}`;
-    document.getElementById('totalCalls').textContent = `${data.summary.total_calls.toLocaleString()} API calls`;
+
+    // Total calls
+    document.getElementById('totalCalls').textContent = data.summary.total_calls.toLocaleString();
 
     // Average cost
     const avgCost = data.summary.total_calls > 0
@@ -122,27 +132,12 @@ function updateSummaryCards(data) {
         : 0;
     document.getElementById('avgCost').textContent = `$${avgCost.toFixed(4)}`;
 
-    // Most used call type
-    const byCallType = data.summary.by_call_type || {};
-    let mostUsed = { type: '-', calls: 0 };
-    Object.entries(byCallType).forEach(([type, stats]) => {
-        if (stats.calls > mostUsed.calls) {
-            mostUsed = { type, calls: stats.calls };
-        }
-    });
-    document.getElementById('mostUsed').textContent = mostUsed.type.replace('_', ' ');
-    document.getElementById('mostUsedCount').textContent = `${mostUsed.calls.toLocaleString()} calls`;
-
     // Cache hit rate
     const totalTokens = data.summary.total_input_tokens || 0;
     const cachedTokens = data.summary.total_cached_tokens || 0;
     const cacheRate = totalTokens > 0 ? (cachedTokens / totalTokens) * 100 : 0;
 
-    // Estimate savings (90% discount on cached tokens)
-    const cacheSavings = (cachedTokens / 1_000_000) * 1.25 * 0.9; // GPT-5 pricing
-
     document.getElementById('cacheRate').textContent = `${cacheRate.toFixed(1)}%`;
-    document.getElementById('cacheSavings').textContent = `$${cacheSavings.toFixed(4)} saved`;
 }
 
 function updateCharts(data) {
@@ -381,7 +376,7 @@ function createModelChart(data) {
 }
 
 function updateTable(data) {
-    const tbody = document.getElementById('callsTableBody');
+    const tbody = document.getElementById('recentCallsTable');
     tbody.innerHTML = '';
 
     const calls = data.calls || [];
@@ -389,21 +384,22 @@ function updateTable(data) {
 
     recentCalls.forEach(call => {
         const row = document.createElement('tr');
+        row.className = 'border-b border-gray-700 hover:bg-white hover:bg-opacity-5 transition-colors';
 
         const timestamp = new Date(call.timestamp).toLocaleString();
-        const callType = call.call_type.replace('_', ' ');
-        const workflow = call.workflow ? call.workflow.replace('_', ' ') : '-';
+        const callType = call.call_type.replace(/_/g, ' ');
+        const workflow = call.workflow ? call.workflow.replace(/_/g, ' ') : '-';
         const model = call.model || '-';
-        const tokens = `${call.input_tokens}in + ${call.output_tokens}out${call.cached_input_tokens > 0 ? ` (${call.cached_input_tokens} cached)` : ''}`;
+        const tokens = `${call.input_tokens} + ${call.output_tokens}${call.cached_input_tokens > 0 ? ` (${call.cached_input_tokens} 🗲)` : ''}`;
         const cost = `$${call.total_cost.toFixed(4)}`;
 
         row.innerHTML = `
-            <td>${timestamp}</td>
-            <td><span class="badge badge-primary">${callType}</span></td>
-            <td><span class="badge badge-success">${workflow}</span></td>
-            <td>${model}</td>
-            <td>${tokens}</td>
-            <td><strong>${cost}</strong></td>
+            <td class="py-3 px-4 text-sm">${timestamp}</td>
+            <td class="py-3 px-4"><span class="px-2 py-1 bg-indigo-500 bg-opacity-20 text-indigo-300 rounded text-xs">${callType}</span></td>
+            <td class="py-3 px-4"><span class="px-2 py-1 bg-purple-500 bg-opacity-20 text-purple-300 rounded text-xs">${workflow}</span></td>
+            <td class="py-3 px-4 text-sm text-gray-300">${model}</td>
+            <td class="py-3 px-4 text-sm text-right text-gray-300">${tokens}</td>
+            <td class="py-3 px-4 text-sm text-right font-semibold text-green-400">${cost}</td>
         `;
 
         tbody.appendChild(row);
