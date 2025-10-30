@@ -654,7 +654,7 @@ async def _handle_booking_order_parse(
                 channel=channel,
                 ts=status_ts,
                 text=config.markdown_to_slack(
-                    f"❌ *Error:* Sorry, OpenAI took too long and seems to be hanging.\n\n"
+                    f"❌ **Error:** Sorry, OpenAI took too long and seems to be hanging.\n\n"
                     f"Please try uploading the booking order again. If this persists, contact the AI team."
                 )
             )
