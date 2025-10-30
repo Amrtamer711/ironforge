@@ -564,11 +564,25 @@ async def get_costs(
 
 
 @app.delete("/costs/clear")
-async def clear_costs():
+async def clear_costs(auth_code: str = None):
     """
     Clear all AI cost tracking data (useful for testing/resetting)
     WARNING: This will delete all cost history!
+
+    Requires authentication code in query parameter:
+    DELETE /costs/clear?auth_code=YOUR_CODE
     """
+    import os
+    from fastapi import HTTPException
+
+    # Check authentication code
+    required_code = os.getenv("COSTS_CLEAR_AUTH_CODE", "nour2024")
+    if not auth_code or auth_code != required_code:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized: Invalid or missing authentication code"
+        )
+
     db.clear_ai_costs()
     return {
         "status": "success",
