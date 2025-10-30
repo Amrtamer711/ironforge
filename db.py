@@ -1205,6 +1205,88 @@ def get_ai_costs_summary(
         )
         by_model = {r[0]: {"calls": r[1], "tokens": r[2], "cost": r[3]} for r in cursor.fetchall()}
 
+        # Get breakdown by user
+        cursor.execute(
+            f"""
+            SELECT
+                user_id,
+                COUNT(*) as calls,
+                SUM(total_tokens) as tokens,
+                SUM(total_cost) as cost
+            FROM ai_costs
+            WHERE {where_clause} AND user_id IS NOT NULL
+            GROUP BY user_id
+            ORDER BY cost DESC
+            """,
+            params
+        )
+        by_user = {r[0]: {"calls": r[1], "tokens": r[2], "cost": r[3]} for r in cursor.fetchall()}
+
+        # Get daily breakdown for timeline
+        cursor.execute(
+            f"""
+            SELECT
+                DATE(timestamp) as date,
+                COUNT(*) as calls,
+                SUM(total_cost) as cost
+            FROM ai_costs
+            WHERE {where_clause}
+            GROUP BY DATE(timestamp)
+            ORDER BY date ASC
+            """,
+            params
+        )
+        daily_costs = [{"date": r[0], "calls": r[1], "cost": r[2]} for r in cursor.fetchall()]
+
+        # Get cached tokens total
+        cursor.execute(
+            f"""
+            SELECT
+                SUM(cached_input_tokens) as total_cached_tokens
+            FROM ai_costs
+            WHERE {where_clause}
+            """,
+            params
+        )
+        cached_row = cursor.fetchone()
+        total_cached_tokens = cached_row[0] or 0
+
+        # Get recent calls (last 100)
+        cursor.execute(
+            f"""
+            SELECT
+                id,
+                timestamp,
+                call_type,
+                workflow,
+                model,
+                input_tokens,
+                output_tokens,
+                reasoning_tokens,
+                cached_input_tokens,
+                total_cost,
+                user_id
+            FROM ai_costs
+            WHERE {where_clause}
+            ORDER BY timestamp DESC
+            LIMIT 100
+            """,
+            params
+        )
+        calls = [{
+            "id": r[0],
+            "timestamp": r[1],
+            "call_type": r[2],
+            "workflow": r[3],
+            "model": r[4],
+            "input_tokens": r[5],
+            "output_tokens": r[6],
+            "reasoning_tokens": r[7],
+            "cached_input_tokens": r[8],
+            "total_cost": r[9],
+            "user_id": r[10]
+        } for r in cursor.fetchall()]
+
         return {
             "total_calls": row[0] or 0,
             "total_tokens": row[1] or 0,
@@ -1212,9 +1294,13 @@ def get_ai_costs_summary(
             "total_input_tokens": row[3] or 0,
             "total_output_tokens": row[4] or 0,
             "total_reasoning_tokens": row[5] or 0,
+            "total_cached_tokens": total_cached_tokens,
             "by_call_type": by_call_type,
             "by_workflow": by_workflow,
-            "by_model": by_model
+            "by_model": by_model,
+            "by_user": by_user,
+            "daily_costs": daily_costs,
+            "calls": calls
         }
     finally:
         conn.close()

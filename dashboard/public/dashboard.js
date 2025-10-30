@@ -145,7 +145,8 @@ function updateCharts(data) {
     createWorkflowChart(data);
     createTimelineChart(data);
     createTokenChart(data);
-    createModelChart(data);
+    updateSalespersonBreakdown(data);
+    // Removed createModelChart - canvas doesn't exist in new design
 }
 
 function createCallTypeChart(data) {
@@ -230,23 +231,16 @@ function createWorkflowChart(data) {
 
 function createTimelineChart(data) {
     const ctx = document.getElementById('timelineChart');
-    const calls = data.calls || [];
+    const dailyCosts = data.summary.daily_costs || [];
 
-    // Group by date
-    const dailyCosts = {};
-    calls.forEach(call => {
-        const date = call.timestamp.split('T')[0];
-        dailyCosts[date] = (dailyCosts[date] || 0) + call.total_cost;
-    });
-
-    const sortedDates = Object.keys(dailyCosts).sort();
-    const costs = sortedDates.map(date => dailyCosts[date]);
+    const dates = dailyCosts.map(d => d.date);
+    const costs = dailyCosts.map(d => d.cost);
 
     destroyChart('timelineChart');
     charts.timelineChart = new Chart(ctx, {
         type: 'line',
         data: {
-            labels: sortedDates,
+            labels: dates,
             datasets: [{
                 label: 'Daily Cost',
                 data: costs,
@@ -410,4 +404,37 @@ function destroyChart(chartId) {
     if (charts[chartId]) {
         charts[chartId].destroy();
     }
+}
+
+function updateSalespersonBreakdown(data) {
+    const container = document.getElementById('salespersonList');
+    const byUser = data.summary.by_user || {};
+
+    container.innerHTML = '';
+
+    if (Object.keys(byUser).length === 0) {
+        container.innerHTML = '<p class="text-gray-400 text-center col-span-full">No user data available</p>';
+        return;
+    }
+
+    Object.entries(byUser).forEach(([userId, stats]) => {
+        const card = document.createElement('div');
+        card.className = 'stat-card p-6 rounded-xl';
+
+        card.innerHTML = `
+            <div class="flex items-center justify-between mb-4">
+                <div class="w-10 h-10 bg-purple-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                    <i class="fas fa-user text-purple-400"></i>
+                </div>
+                <span class="text-2xl font-bold text-green-400">$${stats.cost.toFixed(4)}</span>
+            </div>
+            <p class="text-gray-300 font-semibold mb-2">${userId}</p>
+            <div class="flex justify-between text-sm text-gray-400">
+                <span>${stats.calls} calls</span>
+                <span>${stats.tokens.toLocaleString()} tokens</span>
+            </div>
+        `;
+
+        container.appendChild(card);
+    });
 }
