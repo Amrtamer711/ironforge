@@ -252,14 +252,13 @@ Analyze the uploaded file and respond with:
                 store=False
             )
 
-            # Track cost
+            # Track cost (user_id should already be converted to user_name by caller)
             import cost_tracking
-            user_name = cost_tracking.get_user_name_sync(user_id) if user_id else None
             cost_tracking.track_openai_call(
                 response=response,
                 call_type="classification",
                 workflow="bo_parsing",
-                user_id=user_name,
+                user_id=user_id,
                 context=f"File: {file_path.name}",
                 metadata={"file_type": suffix, "has_user_message": bool(user_message)}
             )
@@ -433,14 +432,13 @@ The user provided this message with the file: "{user_message}"
                 store=False
             )
 
-            # Track cost
+            # Track cost (user_id should already be converted to user_name by caller)
             import cost_tracking
-            user_name = cost_tracking.get_user_name_sync(user_id) if user_id else None
             cost_tracking.track_openai_call(
                 response=response,
                 call_type="parsing",
                 workflow="bo_parsing",
-                user_id=user_name,
+                user_id=user_id,
                 context=f"File: {file_path.name}, Company: {self.company}",
                 metadata={"file_type": file_type, "has_user_message": bool(user_message), "company": self.company}
             )

@@ -612,7 +612,11 @@ async def _handle_booking_order_parse(
         logger.error(f"[SLACK] Failed to update status message while classifying: {e}", exc_info=True)
         # Continue processing - status update failure shouldn't stop the workflow
 
-    classification = await parser.classify_document(tmp_file, user_message=user_message, user_id=user_id)
+    # Convert user_id to user_name for cost tracking
+    from bo_slack_messaging import get_user_real_name
+    user_name = await get_user_real_name(user_id) if user_id else None
+
+    classification = await parser.classify_document(tmp_file, user_message=user_message, user_id=user_name)
     logger.info(f"[BOOKING] Classification: {classification}")
 
     # Check if it's actually a booking order
@@ -638,7 +642,7 @@ async def _handle_booking_order_parse(
     except Exception as e:
         logger.error(f"[SLACK] Failed to update status message while parsing: {e}", exc_info=True)
     try:
-        result = await parser.parse_file(tmp_file, file_type, user_message=user_message, user_id=user_id)
+        result = await parser.parse_file(tmp_file, file_type, user_message=user_message, user_id=user_name)
     except Exception as e:
         logger.error(f"[BOOKING] Parsing failed: {e}", exc_info=True)
         try:
@@ -1803,8 +1807,10 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
 
                 # Classify using existing classifier (converts to PDF, sends to OpenAI, returns classification)
                 from booking_parser import BookingOrderParser
+                from bo_slack_messaging import get_user_real_name
+                user_name = await get_user_real_name(user_id) if user_id else None
                 parser = BookingOrderParser(company="backlite")  # Company will be determined by classifier
-                classification = await parser.classify_document(tmp_file, user_message=user_input, user_id=user_id)
+                classification = await parser.classify_document(tmp_file, user_message=user_input, user_id=user_name)
 
                 logger.info(f"[PRE-ROUTER] Classification: {classification}")
 
