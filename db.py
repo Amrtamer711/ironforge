@@ -1086,7 +1086,9 @@ def log_ai_cost(
             )
         )
         conn.execute("COMMIT")
-        logger.debug(f"[COSTS] Logged {call_type} call: ${total_cost:.4f} ({total_tokens} tokens)")
+        # Get the row ID to confirm write succeeded
+        row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        logger.info(f"[COSTS] Successfully logged {call_type} call to database (row_id={row_id}): ${total_cost:.4f} ({total_tokens} tokens)")
     except Exception as e:
         conn.execute("ROLLBACK")
         logger.error(f"[COSTS] Failed to log AI cost: {e}", exc_info=True)
