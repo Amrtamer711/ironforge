@@ -33,17 +33,28 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: false, // Render terminates SSL at load balancer
     httpOnly: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-  }
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    sameSite: 'lax' // Allow cookies on same-site navigation
+  },
+  proxy: true // Trust proxy headers from Render
 }));
 
 // Authentication middleware
 function requireAuth(req, res, next) {
+  console.log('[AUTH] requireAuth check:', {
+    hasSession: !!req.session,
+    sessionID: req.sessionID,
+    authenticated: req.session?.authenticated,
+    cookies: req.cookies,
+    headers: req.headers.cookie
+  });
+
   if (req.session && req.session.authenticated) {
     return next();
   }
+  console.log('[AUTH] ❌ Authentication failed - not authenticated');
   res.status(401).json({ error: 'Authentication required' });
 }
 
