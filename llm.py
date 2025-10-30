@@ -636,19 +636,19 @@ async def _handle_booking_order_parse(
         tmp_file.unlink(missing_ok=True)
         return
 
-    # Parse the booking order with 10-minute timeout
+    # Parse the booking order with 15-minute timeout
     try:
         await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Extracting booking order data..._")
     except Exception as e:
         logger.error(f"[SLACK] Failed to update status message while parsing: {e}", exc_info=True)
     try:
-        # Wrap parse_file with 10-minute timeout (600 seconds)
+        # Wrap parse_file with 15-minute timeout (900 seconds)
         result = await asyncio.wait_for(
             parser.parse_file(tmp_file, file_type, user_message=user_message, user_id=user_name),
-            timeout=600.0
+            timeout=900.0
         )
     except asyncio.TimeoutError:
-        logger.error(f"[BOOKING] Parsing timed out after 10 minutes", exc_info=True)
+        logger.error(f"[BOOKING] Parsing timed out after 15 minutes", exc_info=True)
         try:
             await config.slack_client.chat_update(
                 channel=channel,
