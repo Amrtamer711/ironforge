@@ -438,7 +438,8 @@ function updateTable(data) {
     tbody.innerHTML = '';
 
     const calls = data.summary.calls || [];
-    const recentCalls = calls.slice(-50).reverse(); // Last 50 calls
+    // Backend already returns sorted by timestamp DESC (newest first), limit to 50 for display
+    const recentCalls = calls.slice(0, 50);
 
     if (recentCalls.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-400">No API calls recorded yet</td></tr>';
