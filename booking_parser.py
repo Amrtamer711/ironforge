@@ -1405,6 +1405,15 @@ Even if the source document lists fees per location, you MUST sum them into sing
                 top_left_cell = ws.cell(row=min_row, column=min_col)
                 top_left_cell.value = net_excl_sla_text
                 top_left_cell.alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
+                # Remove underline formatting that may be inherited from template
+                top_left_cell.font = openpyxl.styles.Font(
+                    name=top_left_cell.font.name,
+                    size=top_left_cell.font.size,
+                    bold=top_left_cell.font.bold,
+                    italic=top_left_cell.font.italic,
+                    underline='none',
+                    color=top_left_cell.font.color
+                )
                 break
 
         # Save to temporary file
