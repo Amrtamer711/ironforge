@@ -733,8 +733,10 @@ async def _handle_booking_order_parse(
         if result.missing_required:
             preview_text += "\n❌ **Missing Required:**\n" + "\n".join(f"• {m}" for m in result.missing_required)
 
-        if user_notes:
-            preview_text += f"\n📝 **Sales Notes:** {user_notes}\n"
+        # Always include the sales person's message (from user_message or user_notes)
+        sales_message = user_notes or user_message
+        if sales_message:
+            preview_text += f"\n📝 **Sales Person Message:** {sales_message}\n"
 
         preview_text += "\n\n📎 **Please review the Excel file attached below, then:**\n"
         preview_text += "• Press **Approve** to send to Head of Sales\n"
