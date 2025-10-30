@@ -1011,9 +1011,22 @@ Even if the source document lists fees per location, you MUST sum them into sing
             else:
                 data["gross_calc"] = gross
 
-            # Calculate SLA deduction
-            data["sla_deduction"] = round(net * sla_pct, 2)
+            # Calculate SLA deduction on RENTAL AMOUNTS ONLY (excluding production, DM, upload fees)
+            # Sum all location net_amounts (this is the rental total)
+            locations = data.get("locations", [])
+            rental_total = sum(loc.get("net_amount", 0) for loc in locations)
+
+            # Calculate SLA deduction on rental total only
+            data["sla_deduction"] = round(rental_total * sla_pct, 2)
+
+            # Net excl SLA = full net_pre_vat minus the SLA deduction
             data["net_excl_sla_calc"] = round(net - data["sla_deduction"], 2)
+
+            # Calculate per-location post-SLA amounts
+            # Each location's post-SLA amount = location.net_amount * (1 - sla_pct)
+            for location in locations:
+                location_rental = location.get("net_amount", 0)
+                location["post_sla_amount"] = round(location_rental * (1 - sla_pct), 2)
 
         # Normalize dates
         # Normalize bo_date
@@ -1344,13 +1357,38 @@ Even if the source document lists fees per location, you MUST sum them into sing
             ws["B39"].font = openpyxl.styles.Font(italic=True)
 
         # Net rentals excl SLA in merged cell (A-E 32-37 range)
+        # Show breakdown with per-location post-SLA amounts if SLA was applied
+        sla_pct = data.get("sla_pct", 0) or 0
+
+        # Build the Net excl SLA display text
+        net_excl_sla_text = f"Net excl SLA: {net_rentals_excl_sla:,.2f}"
+
+        # If SLA was applied, show per-location breakdown
+        if sla_pct > 0:
+            locations = data.get("locations", [])
+            location_lines = []
+
+            for location in locations:
+                loc_name = location.get("location", "Unknown")
+                pre_sla = location.get("net_amount", 0)
+                post_sla = location.get("post_sla_amount", pre_sla)
+
+                # Only show location breakdown if post-SLA differs from pre-SLA
+                if abs(post_sla - pre_sla) > 0.01:
+                    location_lines.append(f"  {loc_name}: {post_sla:,.2f}")
+
+            # Add location breakdown if any locations had SLA applied
+            if location_lines:
+                net_excl_sla_text += "\n" + "\n".join(location_lines)
+
         # For merged cells, we must write to the top-left cell of the range
         for merged_range in ws.merged_cells.ranges:
             if "A33" in merged_range:
                 # Get the top-left cell of the merged range
                 min_col, min_row = merged_range.bounds[0], merged_range.bounds[1]
                 top_left_cell = ws.cell(row=min_row, column=min_col)
-                top_left_cell.value = f"Net excl SLA: {net_rentals_excl_sla:,.2f}"
+                top_left_cell.value = net_excl_sla_text
+                top_left_cell.alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
                 break
 
         # Save to temporary file
