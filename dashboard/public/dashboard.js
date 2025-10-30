@@ -28,6 +28,14 @@ const chartColors = [
     colors.teal
 ];
 
+// Date picker state
+let datePickerMode = 'month';
+let selectedYear = new Date().getFullYear();
+let selectedMonth = new Date().getMonth();
+let rangeStart = null;
+let rangeEnd = null;
+let rangePicking = 'start';
+
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', () => {
     checkAuthentication();
@@ -62,16 +70,11 @@ async function logout() {
 }
 
 function initializeDateInputs() {
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 7); // Default to last 7 days
-
-    document.getElementById('endDate').valueAsDate = endDate;
-    document.getElementById('startDate').valueAsDate = startDate;
-}
-
-function applyDateFilter() {
-    refreshData();
+    // Set default to current month
+    const now = new Date();
+    selectedYear = now.getFullYear();
+    selectedMonth = now.getMonth();
+    updateDateRangeDisplay();
 }
 
 async function fetchData() {
@@ -84,12 +87,31 @@ async function fetchData() {
     content.style.display = 'none';
 
     try {
-        const startDate = document.getElementById('startDate').value;
-        const endDate = document.getElementById('endDate').value;
+        // Calculate date range based on picker mode
+        let startDate, endDate;
+
+        if (datePickerMode === 'month') {
+            startDate = new Date(selectedYear, selectedMonth, 1);
+            endDate = new Date(selectedYear, selectedMonth + 1, 0);
+        } else if (datePickerMode === 'year') {
+            startDate = new Date(selectedYear, 0, 1);
+            endDate = new Date(selectedYear, 11, 31);
+        } else if (datePickerMode === 'range' && rangeStart && rangeEnd) {
+            startDate = rangeStart;
+            endDate = rangeEnd;
+        } else {
+            // Default to last 7 days
+            endDate = new Date();
+            startDate = new Date();
+            startDate.setDate(startDate.getDate() - 7);
+        }
+
+        const startDateStr = startDate ? startDate.toISOString().split('T')[0] : null;
+        const endDateStr = endDate ? endDate.toISOString().split('T')[0] : null;
 
         let url = '/api/costs';
-        if (startDate && endDate) {
-            url += `?start_date=${startDate}&end_date=${endDate}`;
+        if (startDateStr && endDateStr) {
+            url += `?start_date=${startDateStr}&end_date=${endDateStr}`;
         }
 
         const response = await fetch(url);
@@ -99,6 +121,20 @@ async function fetchData() {
         }
 
         const data = await response.json();
+
+        // Log the entire response for debugging
+        console.log('=== API RESPONSE DATA ===');
+        console.log('Full Response:', JSON.stringify(data, null, 2));
+        console.log('Summary:', data.summary);
+        console.log('Total Calls:', data.summary?.total_calls);
+        console.log('Total Cost:', data.summary?.total_cost);
+        console.log('Total Cached Tokens:', data.summary?.total_cached_tokens);
+        console.log('By Call Type:', data.summary?.by_call_type);
+        console.log('By Workflow:', data.summary?.by_workflow);
+        console.log('By User:', data.summary?.by_user);
+        console.log('Daily Costs:', data.summary?.daily_costs);
+        console.log('Calls Array Length:', data.summary?.calls?.length || 0);
+        console.log('========================');
 
         loading.style.display = 'none';
         content.style.display = 'block';
@@ -437,4 +473,198 @@ function updateSalespersonBreakdown(data) {
 
         container.appendChild(card);
     });
+}
+
+// ========== DATE RANGE PICKER FUNCTIONS ==========
+
+function openDateRangeModal() {
+    const modal = document.getElementById('dateRangeModal');
+    modal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    renderCalendar();
+}
+
+function closeDateRangeModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    const modal = document.getElementById('dateRangeModal');
+    modal.classList.add('hidden');
+    document.body.style.overflow = '';
+}
+
+function switchDateMode(mode) {
+    datePickerMode = mode;
+
+    // Update button styles
+    document.querySelectorAll('.date-mode-btn').forEach(btn => {
+        btn.classList.remove('bg-indigo-500', 'text-white');
+        btn.classList.add('bg-gray-700', 'text-gray-300');
+    });
+
+    const activeBtn = document.getElementById(mode + 'ModeBtn');
+    activeBtn.classList.remove('bg-gray-700', 'text-gray-300');
+    activeBtn.classList.add('bg-indigo-500', 'text-white');
+
+    // Reset range selection when switching modes
+    if (mode === 'range') {
+        rangeStart = null;
+        rangeEnd = null;
+        rangePicking = 'start';
+    }
+
+    renderCalendar();
+}
+
+function renderCalendar() {
+    const content = document.getElementById('calendarContent');
+
+    if (datePickerMode === 'month') {
+        content.innerHTML = renderMonthPicker();
+    } else if (datePickerMode === 'year') {
+        content.innerHTML = renderYearPicker();
+    } else if (datePickerMode === 'range') {
+        content.innerHTML = renderRangePicker();
+    }
+}
+
+function renderMonthPicker() {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const html = [];
+
+    html.push('<div class="mb-6"><div class="flex items-center justify-between mb-4">');
+    html.push('<button onclick="changeYear(-1)" class="p-2 hover:bg-gray-700 rounded-lg transition-all"><i class="fas fa-chevron-left"></i></button>');
+    html.push(`<h4 class="text-xl font-bold">${selectedYear}</h4>`);
+    html.push('<button onclick="changeYear(1)" class="p-2 hover:bg-gray-700 rounded-lg transition-all"><i class="fas fa-chevron-right"></i></button>');
+    html.push('</div><div class="grid grid-cols-3 gap-4">');
+
+    months.forEach((month, index) => {
+        const isSelected = index === selectedMonth && selectedYear === new Date().getFullYear();
+        const btnClass = isSelected ? 'bg-indigo-500 text-white' : 'bg-white bg-opacity-5 hover:bg-opacity-10 text-gray-300';
+        html.push(`<button onclick="selectMonth(${index})" class="${btnClass} px-4 py-3 rounded-lg font-semibold transition-all">${month}</button>`);
+    });
+
+    html.push('</div></div>');
+    return html.join('');
+}
+
+function renderYearPicker() {
+    const currentYear = new Date().getFullYear();
+    const html = ['<div class="grid grid-cols-3 gap-4">'];
+
+    for (let year = currentYear - 5; year <= currentYear + 5; year++) {
+        const isSelected = year === selectedYear;
+        const btnClass = isSelected ? 'bg-indigo-500 text-white' : 'bg-white bg-opacity-5 hover:bg-opacity-10 text-gray-300';
+        html.push(`<button onclick="selectYear(${year})" class="${btnClass} px-4 py-3 rounded-lg font-semibold transition-all">${year}</button>`);
+    }
+
+    html.push('</div>');
+    return html.join('');
+}
+
+function renderRangePicker() {
+    const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const firstDay = new Date(selectedYear, selectedMonth, 1).getDay();
+    const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+    const html = [];
+
+    html.push('<div class="mb-4"><div class="flex items-center justify-between mb-4">');
+    html.push('<button onclick="changeRangeMonth(-1)" class="p-2 hover:bg-gray-700 rounded-lg transition-all"><i class="fas fa-chevron-left"></i></button>');
+    html.push(`<h4 class="text-xl font-bold">${months[selectedMonth]} ${selectedYear}</h4>`);
+    html.push('<button onclick="changeRangeMonth(1)" class="p-2 hover:bg-gray-700 rounded-lg transition-all"><i class="fas fa-chevron-right"></i></button>');
+    html.push('</div><div class="grid grid-cols-7 gap-2 mb-2">');
+
+    daysOfWeek.forEach(day => html.push(`<div class="text-center text-sm text-gray-400 font-semibold">${day}</div>`));
+    html.push('</div><div class="grid grid-cols-7 gap-2">');
+
+    for (let i = 0; i < firstDay; i++) html.push('<div></div>');
+
+    for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(selectedYear, selectedMonth, day);
+        const isStart = rangeStart && date.toDateString() === rangeStart.toDateString();
+        const isEnd = rangeEnd && date.toDateString() === rangeEnd.toDateString();
+        const isInRange = rangeStart && rangeEnd && date >= rangeStart && date <= rangeEnd;
+        let btnClass = 'bg-white bg-opacity-5 hover:bg-opacity-10 text-gray-300';
+        if (isStart || isEnd) btnClass = 'bg-indigo-500 text-white';
+        else if (isInRange) btnClass = 'bg-indigo-500 bg-opacity-30 text-white';
+        html.push(`<button onclick="selectRangeDate(${selectedYear}, ${selectedMonth}, ${day})" class="${btnClass} px-3 py-2 rounded-lg font-semibold transition-all">${day}</button>`);
+    }
+
+    html.push('</div></div><div class="flex gap-4 text-sm">');
+    html.push('<div class="flex-1 p-3 bg-white bg-opacity-5 rounded-lg"><p class="text-gray-400 mb-1">Start Date</p>');
+    html.push(`<p class="font-semibold">${rangeStart ? formatDateLong(rangeStart) : 'Not selected'}</p></div>`);
+    html.push('<div class="flex-1 p-3 bg-white bg-opacity-5 rounded-lg"><p class="text-gray-400 mb-1">End Date</p>');
+    html.push(`<p class="font-semibold">${rangeEnd ? formatDateLong(rangeEnd) : 'Not selected'}</p></div></div>`);
+
+    return html.join('');
+}
+
+function changeYear(delta) {
+    selectedYear += delta;
+    renderCalendar();
+}
+
+function changeRangeMonth(delta) {
+    selectedMonth += delta;
+    if (selectedMonth < 0) {
+        selectedMonth = 11;
+        selectedYear--;
+    } else if (selectedMonth > 11) {
+        selectedMonth = 0;
+        selectedYear++;
+    }
+    renderCalendar();
+}
+
+function selectMonth(month) {
+    selectedMonth = month;
+    closeDateRangeModal();
+    updateDateRangeDisplay();
+    fetchData();
+}
+
+function selectYear(year) {
+    selectedYear = year;
+    closeDateRangeModal();
+    updateDateRangeDisplay();
+    fetchData();
+}
+
+function selectRangeDate(year, month, day) {
+    const date = new Date(year, month, day);
+    if (rangePicking === 'start') {
+        rangeStart = date;
+        rangeEnd = null;
+        rangePicking = 'end';
+    } else {
+        if (rangeStart && date >= rangeStart) {
+            rangeEnd = date;
+        }
+    }
+    renderCalendar();
+}
+
+function formatDateLong(date) {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+function updateDateRangeDisplay() {
+    const textElement = document.getElementById('dateRangeText');
+    if (!textElement) return;
+    if (datePickerMode === 'month') {
+        const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        textElement.textContent = `${months[selectedMonth]} ${selectedYear}`;
+    } else if (datePickerMode === 'year') {
+        textElement.textContent = `${selectedYear}`;
+    } else if (datePickerMode === 'range' && rangeStart && rangeEnd) {
+        textElement.textContent = `${formatDateLong(rangeStart)} - ${formatDateLong(rangeEnd)}`;
+    } else {
+        textElement.textContent = 'Select Date Range';
+    }
+}
+
+function applyDateRange() {
+    closeDateRangeModal();
+    updateDateRangeDisplay();
+    fetchData();
 }

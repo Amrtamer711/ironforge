@@ -135,22 +135,16 @@
     <div class="container mx-auto px-6 pb-12">
         <!-- Date Range Filter -->
         <div class="glass-card p-6 mb-8 rounded-2xl">
-            <div class="flex flex-wrap items-end gap-4">
-                <div class="flex-1 min-w-[200px]">
+            <div class="flex items-center gap-4">
+                <div class="flex-1">
                     <label class="block text-sm font-medium text-gray-300 mb-2">
-                        <i class="fas fa-calendar-alt mr-2"></i>Start Date
+                        <i class="fas fa-calendar-alt mr-2"></i>Date Range
                     </label>
-                    <input type="date" id="startDate" class="w-full px-4 py-2 rounded-lg bg-white bg-opacity-5 border border-gray-600 focus:border-indigo-500 focus:outline-none transition-all">
+                    <button id="dateRangeButton" onclick="openDateRangeModal()" class="w-full px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg font-semibold hover:from-indigo-600 hover:to-purple-700 transition-all transform hover:scale-105 shadow-lg text-left flex items-center justify-between">
+                        <span id="dateRangeText">Last 7 Days</span>
+                        <i class="fas fa-calendar-alt ml-2"></i>
+                    </button>
                 </div>
-                <div class="flex-1 min-w-[200px]">
-                    <label class="block text-sm font-medium text-gray-300 mb-2">
-                        <i class="fas fa-calendar-alt mr-2"></i>End Date
-                    </label>
-                    <input type="date" id="endDate" class="w-full px-4 py-2 rounded-lg bg-white bg-opacity-5 border border-gray-600 focus:border-indigo-500 focus:outline-none transition-all">
-                </div>
-                <button onclick="fetchData()" class="px-6 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg font-semibold hover:from-indigo-600 hover:to-purple-700 transition-all transform hover:scale-105 shadow-lg">
-                    <i class="fas fa-sync-alt mr-2"></i>Refresh
-                </button>
             </div>
         </div>
 
@@ -295,6 +289,49 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Date Range Picker Modal -->
+    <div id="dateRangeModal" class="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4" onclick="closeDateRangeModal(event)">
+        <div class="glass-card rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden transform transition-all" onclick="event.stopPropagation()">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between p-6 border-b border-gray-700">
+                <h3 class="text-2xl font-bold gradient-text">Select Date Range</h3>
+                <button onclick="closeDateRangeModal()" class="text-gray-400 hover:text-white transition-colors p-2">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+
+            <!-- Mode Selector -->
+            <div class="p-6 border-b border-gray-700">
+                <div class="grid grid-cols-3 gap-4">
+                    <button onclick="switchDateMode('month')" id="monthModeBtn" class="date-mode-btn px-6 py-3 rounded-lg font-semibold transition-all bg-indigo-500 text-white">
+                        <i class="fas fa-calendar mr-2"></i>Month
+                    </button>
+                    <button onclick="switchDateMode('year')" id="yearModeBtn" class="date-mode-btn px-6 py-3 rounded-lg font-semibold transition-all bg-gray-700 text-gray-300 hover:bg-gray-600">
+                        <i class="fas fa-calendar-alt mr-2"></i>Year
+                    </button>
+                    <button onclick="switchDateMode('range')" id="rangeModeBtn" class="date-mode-btn px-6 py-3 rounded-lg font-semibold transition-all bg-gray-700 text-gray-300 hover:bg-gray-600">
+                        <i class="fas fa-calendar-week mr-2"></i>Range
+                    </button>
+                </div>
+            </div>
+
+            <!-- Calendar Content -->
+            <div class="p-6 overflow-y-auto max-h-[60vh]" id="calendarContent">
+                <!-- Calendar will be rendered here -->
+            </div>
+
+            <!-- Footer Actions -->
+            <div class="p-6 border-t border-gray-700 flex justify-end gap-4">
+                <button onclick="closeDateRangeModal()" class="px-6 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg font-semibold transition-all">
+                    Cancel
+                </button>
+                <button onclick="applyDateRange()" class="px-6 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg font-semibold hover:from-indigo-600 hover:to-purple-700 transition-all">
+                    Apply
+                </button>
             </div>
         </div>
     </div>
