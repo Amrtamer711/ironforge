@@ -90,7 +90,7 @@ class BookingOrderParser:
         else:
             return "unknown"
 
-    async def classify_document(self, file_path: Path, user_message: str = "") -> Dict[str, str]:
+    async def classify_document(self, file_path: Path, user_message: str = "", user_id: str = None) -> Dict[str, str]:
         """
         Classify document as BOOKING_ORDER or ARTWORK using OpenAI Responses API.
         Biased toward ARTWORK unless clear booking order fields present.
@@ -254,10 +254,12 @@ Analyze the uploaded file and respond with:
 
             # Track cost
             import cost_tracking
+            user_name = cost_tracking.get_user_name_sync(user_id) if user_id else None
             cost_tracking.track_openai_call(
                 response=response,
                 call_type="classification",
                 workflow="bo_parsing",
+                user_id=user_name,
                 context=f"File: {file_path.name}",
                 metadata={"file_type": suffix, "has_user_message": bool(user_message)}
             )
@@ -290,7 +292,7 @@ Analyze the uploaded file and respond with:
             except:
                 pass
 
-    async def parse_file(self, file_path: Path, file_type: str, user_message: str = "") -> ParseResult:
+    async def parse_file(self, file_path: Path, file_type: str, user_message: str = "", user_id: str = None) -> ParseResult:
         """
         Parse booking order file using OpenAI Responses API with structured JSON output.
         No hallucinations - only extract what's clearly present.
@@ -433,10 +435,12 @@ The user provided this message with the file: "{user_message}"
 
             # Track cost
             import cost_tracking
+            user_name = cost_tracking.get_user_name_sync(user_id) if user_id else None
             cost_tracking.track_openai_call(
                 response=response,
                 call_type="parsing",
                 workflow="bo_parsing",
+                user_id=user_name,
                 context=f"File: {file_path.name}, Company: {self.company}",
                 metadata={"file_type": file_type, "has_user_message": bool(user_message), "company": self.company}
             )
