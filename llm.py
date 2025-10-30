@@ -2095,10 +2095,12 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
 
         # Track cost
         import cost_tracking
+        from bo_slack_messaging import get_user_real_name
+        user_name = await get_user_real_name(user_id) if user_id else None
         cost_tracking.track_openai_call(
             response=res,
             call_type="main_llm",
-            user_id=user_id,
+            user_id=user_name,
             workflow=workflow,
             context=f"Channel: {channel}",
             metadata={"has_files": has_files, "message_length": len(user_input)}
