@@ -168,8 +168,8 @@ def track_openai_call(
         metadata: Additional metadata dict (optional)
     """
     try:
-        # Convert user_id to user_name
-        user_name = get_user_name_sync(user_id) if user_id else None
+        # Note: user_id parameter should already be the user name (converted by caller)
+        user_name = user_id
         # Extract usage from response
         usage = response.usage if hasattr(response, 'usage') else None
         if not usage:
@@ -272,8 +272,8 @@ def track_image_generation(
         metadata: Additional metadata dict (optional)
     """
     try:
-        # Convert user_id to user_name
-        user_name = get_user_name_sync(user_id) if user_id else None
+        # Note: user_id parameter should already be the user name (converted by caller)
+        user_name = user_id
         # Try to extract usage from response first (token-based pricing)
         if response and hasattr(response, 'usage') and response.usage:
             usage = response.usage
