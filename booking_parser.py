@@ -328,11 +328,16 @@ Analyze the uploaded file and respond with:
 **USER'S MESSAGE CONTEXT:**
 The user provided this message with the file: "{user_message}"
 
-**IMPORTANT:** Use this context to help with extraction:
-- If user mentions specific values (e.g., "upload fee is 2000"), prioritize this information
-- If user mentions client/company name, use that if document is unclear
-- If user provides clarifications about fees, dates, or locations, incorporate them
-- User message helps disambiguate unclear information in the document
+**CRITICAL - PRIORITIZE USER MESSAGE:** The user message often contains important information that may be missing from or clarify the document. Pay special attention to:
+- **SLA amount/percentage**: User may specify "10% SLA" or "SLA is 5%" - ALWAYS extract this if mentioned
+- **Payment terms**: User may specify "60 days PDC" or "30 days credit" - extract if mentioned
+- **Sales person name**: User may say "this is for John" or "sales person is Sarah" - extract if mentioned
+- **Location payment splits**: User may clarify "UAE02 is 100k, UAE03 is 200k" - use these exact amounts
+- **Fee amounts**: User may specify "production fee is 2000" or "municipality fee is 500" - prioritize these values
+- **Client/company details**: If user mentions client name or category, use that information
+- **Any clarifications**: User message helps resolve ambiguities in the document
+
+**PRIORITIZATION RULE:** If the user message contains explicit values for any field, those values OVERRIDE what's in the document.
 """
 
         try:
@@ -567,11 +572,11 @@ Booking orders (BOs) are contracts where clients purchase billboard advertising 
    - This is a DEDUCTION percentage (e.g., "0.4%" = 0.004 as decimal, "10%" = 0.10 as decimal)
    - Usually appears as a percentage field or row in the BO (look for "SLA", "SLA%", "Service Level Agreement")
    - **CRITICAL:** If you see an "SLA" field or row with a percentage, ALWAYS extract it! Don't leave it as null/0
+   - **CHECK USER MESSAGE FIRST:** User often provides SLA in their message (e.g., "10% SLA", "SLA is 5%") - this OVERRIDES the document
    - Applied ONLY to the net rental amount (rental + production/upload fees + municipality fees)
    - SLA deduction happens BEFORE VAT is calculated
    - Formula: Net after SLA = Net rental - (Net rental × SLA%)
    - Then VAT is applied: Gross = (Net after SLA) × 1.05
-   - **If user message mentions SLA, prioritize that value over what's in the document**
 
 4. **Location Types:**
    - **Digital/LED screens:** Get upload fees, no production fees
@@ -732,8 +737,8 @@ Even if the source document lists fees per location, you MUST sum them into sing
 - SLA % (deduction percentage, e.g., 10% = 0.10)
 
 **Additional Information:**
-- Payment terms (e.g., "60 days PDC", "30 days credit")
-- Salesperson name
+- Payment terms (e.g., "60 days PDC", "30 days credit") - **CHECK USER MESSAGE** as this is often provided there
+- Salesperson name - **CHECK USER MESSAGE** as user may specify who the sales person is
 - Commission %
 
 **CRITICAL NOTES:**
@@ -812,11 +817,11 @@ Booking orders (BOs) are contracts where clients purchase billboard advertising 
    - This is a DEDUCTION percentage (e.g., "0.4%" = 0.004 as decimal, "10%" = 0.10 as decimal)
    - Usually appears as a percentage field or row in the BO (look for "SLA", "SLA%", "Service Level Agreement")
    - **CRITICAL:** If you see an "SLA" field or row with a percentage, ALWAYS extract it! Don't leave it as null/0
+   - **CHECK USER MESSAGE FIRST:** User often provides SLA in their message (e.g., "10% SLA", "SLA is 5%") - this OVERRIDES the document
    - Applied ONLY to the net rental amount (rental + production/upload fees + municipality fees)
    - SLA deduction happens BEFORE VAT is calculated
    - Formula: Net after SLA = Net rental - (Net rental × SLA%)
    - Then VAT is applied: Gross = (Net after SLA) × 1.05
-   - **If user message mentions SLA, prioritize that value over what's in the document**
 
 **FINANCIAL CALCULATION FLOW (CRITICAL - USE THIS TO IDENTIFY FEES):**
 
@@ -962,8 +967,8 @@ Even if the source document lists fees per location, you MUST sum them into sing
 - SLA % (deduction percentage, e.g., 10% = 0.10)
 
 **Additional Information:**
-- Payment terms (e.g., "60 days PDC", "30 days credit")
-- Salesperson name
+- Payment terms (e.g., "60 days PDC", "30 days credit") - **CHECK USER MESSAGE** as this is often provided there
+- Salesperson name - **CHECK USER MESSAGE** as user may specify who the sales person is
 - Commission %
 
 **CRITICAL NOTES:**
