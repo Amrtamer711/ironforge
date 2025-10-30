@@ -673,10 +673,17 @@ For EACH billboard location, extract:
   - Match the location to the display name from the reference list above when possible
 - Start date (campaign start date)
 - End date (campaign end date)
-- Campaign duration **IMPORTANT:** Calculate this as the period between start and end date
-  - If start: 2025-02-21, end: 2025-03-20 → duration: "28 days" or "1 month"
-  - Calculate the number of days between dates
-  - Can express as days (e.g., "28 days") or months (e.g., "1 month", "2 months")
+- Campaign duration **IMPORTANT:** Calculate and format intelligently:
+  - Calculate number of days between start and end date
+  - **Format rules (approximate to nearest unit):**
+    * 28-31 days → "1 month"
+    * 56-62 days → "2 months"
+    * 84-93 days → "3 months"
+    * 14-15 days → "2 weeks"
+    * 21-22 days → "3 weeks"
+    * 7-8 days → "1 week"
+    * Only use "X days" if it doesn't fit these approximations
+  - Examples: 30 days = "1 month", 15 days = "2 weeks", 60 days = "2 months", 10 days = "10 days"
   - If explicitly stated in BO (rare), use that value; otherwise calculate from dates
 - Net amount (rental cost for THIS location - may need to split bundled payments)
 - Production/Upload cost (if specified per-location)
@@ -896,10 +903,17 @@ For EACH billboard location, extract:
   - Just the code: 2 digits + optional letter (04B, 03A, 15C, etc.)
 - Start date (campaign start date)
 - End date (campaign end date)
-- Campaign duration **IMPORTANT:** Calculate this as the period between start and end date
-  - If start: 2025-02-21, end: 2025-03-20 → duration: "28 days" or "1 month"
-  - Calculate the number of days between dates
-  - Can express as days (e.g., "28 days") or months (e.g., "1 month", "2 months")
+- Campaign duration **IMPORTANT:** Calculate and format intelligently:
+  - Calculate number of days between start and end date
+  - **Format rules (approximate to nearest unit):**
+    * 28-31 days → "1 month"
+    * 56-62 days → "2 months"
+    * 84-93 days → "3 months"
+    * 14-15 days → "2 weeks"
+    * 21-22 days → "3 weeks"
+    * 7-8 days → "1 week"
+    * Only use "X days" if it doesn't fit these approximations
+  - Examples: 30 days = "1 month", 15 days = "2 weeks", 60 days = "2 months", 10 days = "10 days"
   - If explicitly stated in BO (rare), use that value; otherwise calculate from dates
 - Net amount (rental cost for THIS location - may need to split bundled payments)
 - Production/Upload cost (if specified per-location)
@@ -1304,11 +1318,10 @@ Even if the source document lists fees per location, you MUST sum them into sing
         ws.row_dimensions[19].height = final_height_19
         logger.info(f"[EXCEL] Row 19 E19 (category): {num_lines_e19} lines, before={before_height_19}, after={final_height_19}")
 
-        # SLA percentage - convert decimal to percentage for display (0.10 → 10%)
-        # Set as percentage number format
-        sla_pct_value = data.get("sla_pct", 0) or 0
-        ws["E21"] = sla_pct_value
-        ws["E21"].number_format = '0.00%'  # Format as percentage
+        # SLA - show the deduction amount, not the percentage
+        # E.g., if 10% of 462,520 = 46,252, show 46,252
+        sla_deduction = data.get("sla_deduction", 0) or 0
+        ws["E21"] = sla_deduction
         ws["E23"] = data.get("municipality_fee", 0)                     # DM (Dubai Municipality)
 
         # Payment terms with dynamic row height
