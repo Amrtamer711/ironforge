@@ -123,6 +123,31 @@ def calculate_cost(
     }
 
 
+def get_user_name_sync(user_id: Optional[str]) -> Optional[str]:
+    """
+    Get user's real name from Slack synchronously.
+    Returns the real name or None if lookup fails.
+    """
+    if not user_id:
+        return None
+
+    try:
+        import asyncio
+        from bo_slack_messaging import get_user_real_name
+
+        # Run async function synchronously
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            user_name = loop.run_until_complete(get_user_real_name(user_id))
+            return user_name
+        finally:
+            loop.close()
+    except Exception as e:
+        logger.warning(f"[COSTS] Failed to get user name for {user_id}: {e}")
+        return user_id  # Fall back to ID
+
+
 def track_openai_call(
     response: any,
     call_type: str,
@@ -137,12 +162,14 @@ def track_openai_call(
     Args:
         response: OpenAI API response object
         call_type: Type of call (classification, parsing, coordinator_thread, main_llm, etc.)
-        user_id: Slack user ID (optional)
+        user_id: Slack user ID (optional) - will be converted to user name
         workflow: Workflow type - mockup_upload, mockup_ai, bo_parsing, bo_editing, bo_revision, proposal_generation, general_chat, location_management (optional)
         context: Additional context (optional)
         metadata: Additional metadata dict (optional)
     """
     try:
+        # Convert user_id to user_name
+        user_name = get_user_name_sync(user_id) if user_id else None
         # Extract usage from response
         usage = response.usage if hasattr(response, 'usage') else None
         if not usage:
@@ -183,7 +210,7 @@ def track_openai_call(
             import json
             metadata_json = json.dumps(metadata)
 
-        # Log to database
+        # Log to database with user_name instead of user_id
         db.log_ai_cost(
             call_type=call_type,
             model=model,
@@ -194,7 +221,7 @@ def track_openai_call(
             output_cost=costs["output_cost"],
             reasoning_cost=costs["reasoning_cost"],
             total_cost=costs["total_cost"],
-            user_id=user_id,
+            user_id=user_name,  # Store user name, not ID
             workflow=workflow,
             cached_input_tokens=cached_input_tokens,
             context=context,
@@ -239,12 +266,14 @@ def track_image_generation(
         size: Image size (e.g., "1024x1024") - fallback if no response
         quality: Image quality ("standard" or "high") - fallback if no response
         n: Number of images generated - fallback if no response
-        user_id: Slack user ID or "website_mockup" for public API
+        user_id: Slack user ID or "website_mockup" for public API - will be converted to user name
         workflow: Workflow type - typically 'mockup_ai' for AI-generated mockups (optional)
         context: Additional context (optional)
         metadata: Additional metadata dict (optional)
     """
     try:
+        # Convert user_id to user_name
+        user_name = get_user_name_sync(user_id) if user_id else None
         # Try to extract usage from response first (token-based pricing)
         if response and hasattr(response, 'usage') and response.usage:
             usage = response.usage
@@ -292,7 +321,7 @@ def track_image_generation(
                 output_cost=output_cost,
                 reasoning_cost=0.0,
                 total_cost=total_cost,
-                user_id=user_id,
+                user_id=user_name,  # Store user name, not ID
                 workflow=workflow,
                 context=context,
                 metadata_json=metadata_json
@@ -341,7 +370,7 @@ def track_image_generation(
                 output_cost=0.0,
                 reasoning_cost=0.0,
                 total_cost=total_cost,
-                user_id=user_id,
+                user_id=user_name,  # Store user name, not ID
                 workflow=workflow,
                 context=context,
                 metadata_json=metadata_json

@@ -318,6 +318,7 @@ function createTokenChart(data) {
 
     const totalInput = data.summary.total_input_tokens || 0;
     const totalCached = data.summary.total_cached_tokens || 0;
+    const uncachedInput = totalInput - totalCached;
     const totalOutput = data.summary.total_output_tokens || 0;
     const totalReasoning = data.summary.total_reasoning_tokens || 0;
 
@@ -325,31 +326,58 @@ function createTokenChart(data) {
     charts.tokenChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: ['Input', 'Cached', 'Output', 'Reasoning'],
-            datasets: [{
-                data: [totalInput, totalCached, totalOutput, totalReasoning],
-                backgroundColor: [colors.primary, colors.success, colors.warning, colors.secondary],
-                borderWidth: 0
-            }]
+            labels: ['Input Tokens', 'Output Tokens', 'Reasoning Tokens'],
+            datasets: [
+                {
+                    label: 'Uncached Input',
+                    data: [uncachedInput, 0, 0],
+                    backgroundColor: colors.primary,
+                    borderWidth: 0
+                },
+                {
+                    label: 'Cached Input',
+                    data: [totalCached, 0, 0],
+                    backgroundColor: colors.success,
+                    borderWidth: 0
+                },
+                {
+                    label: 'Output',
+                    data: [0, totalOutput, 0],
+                    backgroundColor: colors.warning,
+                    borderWidth: 0
+                },
+                {
+                    label: 'Reasoning',
+                    data: [0, 0, totalReasoning],
+                    backgroundColor: colors.secondary,
+                    borderWidth: 0
+                }
+            ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: { display: false },
+                legend: {
+                    display: true,
+                    position: 'bottom',
+                    labels: { color: '#f1f5f9', padding: 15 }
+                },
                 tooltip: {
                     callbacks: {
-                        label: (context) => `${context.parsed.y.toLocaleString()} tokens`
+                        label: (context) => `${context.dataset.label}: ${context.parsed.y.toLocaleString()} tokens`
                     }
                 }
             },
             scales: {
                 y: {
                     beginAtZero: true,
+                    stacked: true,
                     ticks: { color: '#94a3b8' },
                     grid: { color: '#334155' }
                 },
                 x: {
+                    stacked: true,
                     ticks: { color: '#94a3b8' },
                     grid: { display: false }
                 }
