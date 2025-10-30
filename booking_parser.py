@@ -637,6 +637,14 @@ This tells you the municipality fee is AED 520.
 2. Percentages: Convert to decimal (e.g., "5%" → 0.05, "0.4%" → 0.004)
 3. Numbers: Pure numbers without currency symbols (e.g., "AED 295,596.00" → 295596.00)
 4. Asset codes: Extract as list: ["UAE02", "UAE03", "UAE21"]
+5. **Text fields - Proper capitalization and formatting:**
+   - **Sales person names:** Proper title case (e.g., "john smith" → "John Smith", "SARAH JONES" → "Sarah Jones")
+   - **Client names:** Proper case for company names (e.g., "EMAAR PROPERTIES" → "Emaar Properties")
+   - **Brand/Campaign:** Proper case (e.g., "mercedes benz campaign" → "Mercedes Benz Campaign")
+   - **Location names:** Use proper display names from reference list or title case (e.g., "THE DUBAI GATEWAY" → "The Dubai Gateway")
+   - **Payment terms:** Standard format (e.g., "60 DAYS PDC" → "60 days PDC", "30 days credit" → "30 days credit")
+   - **Category:** Proper case (e.g., "real estate" → "Real Estate", "FMCG" → "FMCG")
+   - **General rule:** Make all text look professional and properly formatted as it will appear in official documents
 
 **DOCUMENT STRUCTURE TO LOOK FOR:**
 
@@ -1377,7 +1385,7 @@ Even if the source document lists fees per location, you MUST sum them into sing
             location_lines = []
 
             for location in locations:
-                loc_name = location.get("location", "Unknown")
+                loc_name = location.get("name", "Unknown")
                 pre_sla = location.get("net_amount", 0)
                 post_sla = location.get("post_sla_amount", pre_sla)
 
