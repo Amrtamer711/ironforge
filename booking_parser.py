@@ -344,15 +344,14 @@ The user provided this message with the file: "{user_message}"
                     {"role": "system", "content": """You are a precise booking order data extractor.
 
 **CRITICAL - MANDATORY FOR LOCATION TABLES AND FEES:**
-1. **MUST use code_interpreter (Python) to extract all table data** containing location names, dates, and amounts
-2. Use PyMuPDF (import fitz) or pdfplumber to programmatically parse tables from the PDF
+1. **Carefully extract ALL table data** containing location names, dates, and amounts
+2. **Pay special attention to tables with columns:** Location/Site, Start Date, End Date, Duration, Net Amount/Cost
 3. **Also extract fee line items:** Production Fee, Upload Fee, Municipality Fee (DM), etc.
-4. Print/show the raw extracted table data AND fee amounts in your code output for verification
-5. ONLY use numbers that appear in your code output - NEVER visually estimate or guess
-6. If code extraction fails or is unclear, use null rather than guessing
+4. **Be precise with numbers** - only extract numbers that are clearly visible in the document
+5. If any field is unclear or ambiguous, use null rather than guessing
 
-**For other fields (client, brand, category):** Standard extraction is fine, inference allowed.
-**For numbers, locations, and fees:** Code extraction MANDATORY. No visual estimation.
+**For other fields (client, brand, category):** Standard extraction is fine, reasonable inference allowed.
+**For numbers, locations, and fees:** Extract exactly what you see. Do NOT estimate, interpolate, or calculate missing values.
 
 **Fee Extraction Rules:**
 - Look for rows labeled: "Production Fee", "Upload Fee", "Production Cost", "Upload Cost"
