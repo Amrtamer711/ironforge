@@ -437,8 +437,13 @@ function updateTable(data) {
     const tbody = document.getElementById('recentCallsTable');
     tbody.innerHTML = '';
 
-    const calls = data.calls || [];
+    const calls = data.summary.calls || [];
     const recentCalls = calls.slice(-50).reverse(); // Last 50 calls
+
+    if (recentCalls.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-gray-400">No API calls recorded yet</td></tr>';
+        return;
+    }
 
     recentCalls.forEach(call => {
         const row = document.createElement('tr');

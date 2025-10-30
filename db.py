@@ -1306,5 +1306,19 @@ def get_ai_costs_summary(
         conn.close()
 
 
+def clear_ai_costs():
+    """
+    Clear all AI cost tracking data (useful for testing/resetting)
+    """
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM ai_costs")
+        conn.commit()
+        logger.info("[DB] Cleared all AI cost tracking data")
+    finally:
+        conn.close()
+
+
 # Initialize DB on import
 init_db() 

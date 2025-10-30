@@ -563,6 +563,20 @@ async def get_costs(
     }
 
 
+@app.delete("/costs/clear")
+async def clear_costs():
+    """
+    Clear all AI cost tracking data (useful for testing/resetting)
+    WARNING: This will delete all cost history!
+    """
+    db.clear_ai_costs()
+    return {
+        "status": "success",
+        "message": "All AI cost data cleared",
+        "timestamp": get_uae_time().isoformat()
+    }
+
+
 # Mockup Generator Routes
 @app.get("/mockup")
 async def mockup_setup_page():
