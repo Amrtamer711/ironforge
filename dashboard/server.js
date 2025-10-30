@@ -10,7 +10,27 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Configuration from environment
-const API_URL = process.env.BACKEND_URL || 'http://localhost:8000';
+// Auto-detect backend URL based on environment
+let API_URL;
+if (process.env.BACKEND_URL) {
+  // Explicitly set backend URL (for custom setups)
+  API_URL = process.env.BACKEND_URL;
+} else if (process.env.RENDER) {
+  // On Render: Set MAIN_SERVICE_URL env var on dashboard service to point to proposal bot
+  // Example: MAIN_SERVICE_URL=https://proposal-bot-ymrm.onrender.com
+  if (!process.env.MAIN_SERVICE_URL) {
+    console.error('❌ ERROR: MAIN_SERVICE_URL environment variable not set!');
+    console.error('   Please set it in Render dashboard to your proposal bot URL');
+    console.error('   Example: MAIN_SERVICE_URL=https://proposal-bot-ymrm.onrender.com');
+    process.exit(1);
+  }
+  API_URL = process.env.MAIN_SERVICE_URL;
+  console.log(`🔗 Using Render backend: ${API_URL}`);
+} else {
+  // Local development
+  API_URL = 'http://localhost:8000';
+}
+
 const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-secret-change-in-production';
 const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || 'nour';
 
