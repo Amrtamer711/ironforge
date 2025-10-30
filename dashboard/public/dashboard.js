@@ -451,6 +451,7 @@ function updateTable(data) {
         row.className = 'border-b border-gray-700 hover:bg-white hover:bg-opacity-5 transition-colors';
 
         const timestamp = new Date(call.timestamp).toLocaleString();
+        const userName = call.user_id || '-';
         const callType = call.call_type.replace(/_/g, ' ');
         const workflow = call.workflow ? call.workflow.replace(/_/g, ' ') : '-';
         const model = call.model || '-';
@@ -459,6 +460,7 @@ function updateTable(data) {
 
         row.innerHTML = `
             <td class="py-3 px-4 text-sm">${timestamp}</td>
+            <td class="py-3 px-4 text-sm text-gray-300">${userName}</td>
             <td class="py-3 px-4"><span class="px-2 py-1 bg-indigo-500 bg-opacity-20 text-indigo-300 rounded text-xs">${callType}</span></td>
             <td class="py-3 px-4"><span class="px-2 py-1 bg-purple-500 bg-opacity-20 text-purple-300 rounded text-xs">${workflow}</span></td>
             <td class="py-3 px-4 text-sm text-gray-300">${model}</td>
