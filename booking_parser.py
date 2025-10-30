@@ -1272,9 +1272,10 @@ Even if the source document lists fees per location, you MUST sum them into sing
         asset_value = format_value(data.get("asset"))
         ws["E15"] = asset_value
         ws["E15"].alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
-        # Count commas to estimate lines (each comma likely means a new line/item)
+        # Count commas but divide by 2 (assets are often short, don't need full line each)
         num_commas_e15 = asset_value.count(',') if asset_value else 0
-        num_lines_e15 = max(asset_value.count('\n') + 1 if asset_value else 1, num_commas_e15 + 1)
+        # Use newlines primarily, but add some buffer for commas (every 2-3 commas = 1 extra line)
+        num_lines_e15 = max(asset_value.count('\n') + 1 if asset_value else 1, 1 + (num_commas_e15 // 3))
         # Use the max of B15 and E15 line counts for row 15
         before_height_15 = ws.row_dimensions[15].height
         final_height_15 = max(before_height_15, num_lines_e15 * 20)

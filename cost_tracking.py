@@ -244,6 +244,7 @@ def track_openai_call(
 
     except Exception as e:
         logger.error(f"[COSTS] Failed to track OpenAI call: {e}", exc_info=True)
+        raise  # Re-raise to make errors visible in INFO logs
 
 
 def track_image_generation(
@@ -384,3 +385,4 @@ def track_image_generation(
 
     except Exception as e:
         logger.error(f"[COSTS] Failed to track image generation: {e}", exc_info=True)
+        raise  # Re-raise to make errors visible in INFO logs
