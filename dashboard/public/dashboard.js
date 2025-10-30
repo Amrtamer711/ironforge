@@ -453,7 +453,7 @@ function updateTable(data) {
         const callType = call.call_type.replace(/_/g, ' ');
         const workflow = call.workflow ? call.workflow.replace(/_/g, ' ') : '-';
         const model = call.model || '-';
-        const tokens = `${call.input_tokens} + ${call.output_tokens}${call.cached_input_tokens > 0 ? ` (${call.cached_input_tokens} 🗲)` : ''}`;
+        const tokens = `${call.input_tokens} + ${call.output_tokens}${call.cached_input_tokens > 0 ? ` (${call.cached_input_tokens} ⚡)` : ''}`;
         const cost = `$${call.total_cost.toFixed(4)}`;
 
         row.innerHTML = `
