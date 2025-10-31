@@ -497,13 +497,23 @@ async def _generate_ai_mockup_queued(
         try:
             logger.info(f"[QUEUE] Generating {num_prompts} AI creative(s) for {location_key} in parallel")
 
+            # Log the raw ai_prompts array as received from LLM
+            logger.info(f"[AI PROMPTS ARRAY] Received {num_prompts} prompts from LLM:")
+            for i, user_prompt in enumerate(ai_prompts, 1):
+                logger.info(f"[AI PROMPTS ARRAY] [{i}] = {repr(user_prompt)}")
+
             # Build all prompts first
             full_prompts = []
             for i, user_prompt in enumerate(ai_prompts, 1):
-                logger.info(f"[AI QUEUE] Preparing creative {i}/{num_prompts}: {user_prompt[:100]}...")
+                logger.info(f"[AI QUEUE] Preparing creative {i}/{num_prompts}")
                 # Inject user's prompt into the enhanced template
                 full_prompt = enhanced_prompt_template.replace("{{USER_PROMPT}}", user_prompt)
                 full_prompts.append(full_prompt)
+
+                # Log the FULL prompt being sent to gpt-image-1
+                logger.info(f"[FULL PROMPT {i}] ==================== START ====================")
+                logger.info(full_prompt)
+                logger.info(f"[FULL PROMPT {i}] ===================== END =====================")
 
             # Generate all creatives in parallel (asyncio.gather preserves order)
             logger.info(f"[AI QUEUE] Executing {num_prompts} image generation(s) in parallel...")
@@ -2800,7 +2810,9 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     logger.info(f"[MOCKUP] No AI prompts provided")
                 else:
                     num_ai_frames = len(ai_prompts)
-                    logger.info(f"[MOCKUP] User provided {num_ai_frames} AI prompt(s)")
+                    logger.info(f"[MOCKUP] LLM extracted {num_ai_frames} AI prompt(s) from function call:")
+                    for i, prompt in enumerate(ai_prompts, 1):
+                        logger.info(f"[MOCKUP] ai_prompts[{i}] = {repr(prompt)}")
 
                 # Convert display name to location key
                 location_key = config.get_location_key_from_display_name(location_name)
