@@ -463,14 +463,12 @@ async def _generate_mockup_queued(
 
 
 async def _generate_ai_mockup_queued(
-    ai_prompt: str,
-    enhanced_prompt: str,
-    num_ai_frames: int,
+    ai_prompts: List[str],
+    enhanced_prompt_template: str,
     location_key: str,
     time_of_day: str,
     finish: str,
-    user_id: Optional[str] = None,
-    frame_prompts: Optional[List[str]] = None
+    user_id: Optional[str] = None
 ):
     """
     Wrapper for AI mockup generation (AI creative generation + mockup) through the queue.
@@ -478,14 +476,12 @@ async def _generate_ai_mockup_queued(
     is treated as ONE queued task to prevent memory spikes.
 
     Args:
-        ai_prompt: User's original AI prompt (used for single-frame or fallback)
-        enhanced_prompt: Full enhanced system prompt template
-        num_ai_frames: Number of frames to generate
+        ai_prompts: List of AI prompts (1 for tiled, N for multi-frame)
+        enhanced_prompt_template: Full enhanced system prompt template with placeholder
         location_key: Location identifier
         time_of_day: Time of day variation
         finish: Finish type
         user_id: Optional Slack user ID for cost tracking
-        frame_prompts: Optional list of per-frame prompts (LLM-generated for multi-frame narratives)
 
     Returns:
         Tuple of (result_path, ai_creative_paths)
@@ -494,38 +490,26 @@ async def _generate_ai_mockup_queued(
     import gc
 
     logger = config.logger
-    logger.info(f"[QUEUE] AI mockup requested for {location_key} ({num_ai_frames} frames)")
+    num_prompts = len(ai_prompts)
+    logger.info(f"[QUEUE] AI mockup requested for {location_key} ({num_prompts} prompt(s))")
 
     async def _generate():
         try:
-            logger.info(f"[QUEUE] Generating {num_ai_frames} AI creative(s) for {location_key}")
+            logger.info(f"[QUEUE] Generating {num_prompts} AI creative(s) for {location_key}")
             ai_creative_paths = []
 
-            if num_ai_frames > 1 and frame_prompts and len(frame_prompts) == num_ai_frames:
-                # Multi-frame with distinct prompts per frame (LLM-generated narrative)
-                logger.info(f"[AI QUEUE] Generating {num_ai_frames} distinct creatives from frame_prompts")
-                for i, frame_prompt in enumerate(frame_prompts, 1):
-                    logger.info(f"[AI QUEUE] Generating creative {i}/{num_ai_frames}")
-                    # Replace placeholder with frame-specific prompt
-                    frame_enhanced_prompt = enhanced_prompt.replace(ai_prompt, frame_prompt)
-                    creative_path = await mockup_generator.generate_ai_creative(
-                        prompt=frame_enhanced_prompt,
-                        location_key=location_key,
-                        user_id=user_id
-                    )
-                    if not creative_path:
-                        raise Exception(f"Failed to generate AI creative {i}/{num_ai_frames}")
-                    ai_creative_paths.append(creative_path)
-            else:
-                # Single frame (tiled across all template frames if multi-frame location)
-                logger.info(f"[AI QUEUE] Generating 1 creative (will be tiled if multi-frame template)")
+            # Generate one creative per prompt
+            for i, user_prompt in enumerate(ai_prompts, 1):
+                logger.info(f"[AI QUEUE] Generating creative {i}/{num_prompts}")
+                # Inject user's prompt into the enhanced template
+                full_prompt = enhanced_prompt_template.replace("{{USER_PROMPT}}", user_prompt)
                 creative_path = await mockup_generator.generate_ai_creative(
-                    prompt=enhanced_prompt,
+                    prompt=full_prompt,
                     location_key=location_key,
                     user_id=user_id
                 )
                 if not creative_path:
-                    raise Exception("Failed to generate AI creative")
+                    raise Exception(f"Failed to generate AI creative {i}/{num_prompts}")
                 ai_creative_paths.append(creative_path)
 
             logger.info(f"[QUEUE] AI creatives ready, generating mockup for {location_key}")
@@ -2063,8 +2047,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     "location": {"type": "string", "description": "The location name - intelligently match to available locations. If user says 'gateway' or 'the gateway', match to 'dubai_gateway'. If user says 'jawhara', match to 'dubai_jawhara'. Use your best judgment to infer the correct location from the available list."},
                     "time_of_day": {"type": "string", "description": "Optional time of day: 'day', 'night', or 'all' (default). Use 'all' for random selection from all time variations.", "enum": ["day", "night", "all"]},
                     "finish": {"type": "string", "description": "Optional billboard finish: 'gold', 'silver', or 'all' (default). Use 'all' for random selection from all finish variations.", "enum": ["gold", "silver", "all"]},
-                    "ai_prompt": {"type": "string", "description": "AI prompt to generate billboard-ready ARTWORK ONLY (flat advertisement design, NO billboards/signs/streets in the image). System will automatically place the artwork onto the billboard. Example: 'A luxury watch advertisement with gold accents and elegant typography'. For multi-frame templates, ONE prompt generates one creative that is automatically tiled across all frames. For distinct per-frame creatives with narrative/evolution, use frame_prompts instead."},
-                    "frame_prompts": {"type": "array", "items": {"type": "string"}, "description": "For multi-frame AI generation with distinct creatives per frame. When user requests multi-frame mockups with narrative/evolution/variations (e.g., 'product journey', 'before/after/final', 'story sequence'), create N prompts that tell a cohesive story. Example: ['Luxury handbag raw materials', 'Handbag with branding applied', 'Final glamour shot with dramatic lighting']. System generates exactly len(frame_prompts) artworks and matches them 1:1 to template frames. Must match template frame count or error occurs. Use ai_prompt for single/tiled requests instead."}
+                    "ai_prompts": {"type": "array", "items": {"type": "string"}, "description": "Array of AI prompts to generate billboard-ready ARTWORK. Each prompt generates one creative. System automatically places artworks onto the billboard template. If array length is 1, that creative is tiled across all frames (like uploading 1 image). If array length matches template frame count, creatives are matched 1:1 to frames (like uploading N images). If array length doesn't match frame count (and isn't 1), an error occurs. Examples: ['Luxury watch ad'] (tiled), or ['Product raw form', 'Product assembly', 'Final product'] (3 distinct frames)."}
                 },
                 "required": ["location"]
             }
@@ -2792,18 +2775,22 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 location_name = args.get("location", "").strip()
                 time_of_day = args.get("time_of_day", "").strip().lower() or "all"
                 finish = args.get("finish", "").strip().lower() or "all"
-                ai_prompt = args.get("ai_prompt", "").strip()
-                frame_prompts = args.get("frame_prompts", []) or []  # Optional array of per-frame prompts
+                ai_prompts = args.get("ai_prompts", []) or []
                 
-                # Determine number of frames based on frame_prompts or default to 1
-                if frame_prompts and isinstance(frame_prompts, list) and len(frame_prompts) > 0:
-                    num_ai_frames = len(frame_prompts)
-                    # Use placeholder for template replacement (will be replaced with each frame_prompt)
-                    if not ai_prompt:
-                        ai_prompt = "{{FRAME_CREATIVE_BRIEF}}"
-                    logger.info(f"[MOCKUP] LLM provided {num_ai_frames} frame-specific prompts for multi-frame AI generation")
+                # Convert to list if needed and validate
+                if not isinstance(ai_prompts, list):
+                    ai_prompts = [ai_prompts] if ai_prompts else []
+                
+                # Clean and validate prompts
+                ai_prompts = [str(p).strip() for p in ai_prompts if p]
+                
+                if not ai_prompts:
+                    # No AI prompts provided - this is fine, user might be uploading images
+                    num_ai_frames = 0
+                    logger.info(f"[MOCKUP] No AI prompts provided")
                 else:
-                    num_ai_frames = 1  # Default to single frame if no frame_prompts provided
+                    num_ai_frames = len(ai_prompts)
+                    logger.info(f"[MOCKUP] User provided {num_ai_frames} AI prompt(s)")
 
                 # Convert display name to location key
                 location_key = config.get_location_key_from_display_name(location_name)
@@ -3110,8 +3097,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         import gc
                         gc.collect()
 
-                elif ai_prompt or frame_prompts:
-                    # AI MODE: User provided a description for AI generation (single prompt or frame-specific prompts)
+                elif ai_prompts:
+                    # AI MODE: User provided AI prompt(s) for generation
 
                     # Validate frame count: Allow 1 (tile across all) OR exact match to template frame count
                     is_valid_count = (num_ai_frames == 1) or (num_ai_frames == new_location_frame_count)
@@ -3122,10 +3109,10 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                             channel=channel,
                             text=config.markdown_to_slack(
                                 f"⚠️ **Frame Count Mismatch**\n\n"
-                                f"You provided **{num_ai_frames} frame prompt(s)**, but **{location_name}** has **{new_location_frame_count} frame(s)**.\n\n"
+                                f"You provided **{num_ai_frames} AI prompt(s)**, but **{location_name}** has **{new_location_frame_count} frame(s)**.\n\n"
                                 f"**Valid options:**\n"
-                                f"• Provide **1 prompt** (will be tiled across all frames) → use `ai_prompt` field\n"
-                                f"• Provide **{new_location_frame_count} prompts** (one per frame) → use `frame_prompts` array with {new_location_frame_count} entries"
+                                f"• Provide **1 prompt** (will be tiled across all frames)\n"
+                                f"• Provide **{new_location_frame_count} prompts** (one per frame)"
                             )
                         )
                         return
@@ -3240,7 +3227,7 @@ DETAILED DESIGN REQUIREMENTS:
 CREATIVE BRIEF:
 ═══════════════════════════════════════════════════════════
 
-{ai_prompt}
+{{USER_PROMPT}}
 
 ═══════════════════════════════════════════════════════════
 ⚠️ CRITICAL - FINAL REMINDER - READ CAREFULLY:
@@ -3280,14 +3267,12 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
 
                         # Generate AI creative(s) + mockup through queue (prevents memory spikes)
                         result_path, ai_creative_paths = await _generate_ai_mockup_queued(
-                            ai_prompt=ai_prompt,
-                            enhanced_prompt=enhanced_prompt,
-                            num_ai_frames=num_ai_frames,
+                            ai_prompts=ai_prompts,
+                            enhanced_prompt_template=enhanced_prompt,
                             location_key=location_key,
                             time_of_day=time_of_day,
                             finish=finish,
-                            user_id=user_id,
-                            frame_prompts=frame_prompts if frame_prompts else None
+                            user_id=user_id
                         )
 
                         if not result_path:
