@@ -507,7 +507,8 @@ async def _generate_ai_mockup_queued(
             for i, user_prompt in enumerate(ai_prompts, 1):
                 logger.info(f"[AI QUEUE] Preparing creative {i}/{num_prompts}")
                 # Inject user's prompt into the enhanced template
-                full_prompt = enhanced_prompt_template.replace("{{USER_PROMPT}}", user_prompt)
+                # Note: template uses {USER_PROMPT} (single braces) because f-string converts {{ to {
+                full_prompt = enhanced_prompt_template.replace("{USER_PROMPT}", user_prompt)
                 full_prompts.append(full_prompt)
 
                 # Log the FULL prompt being sent to gpt-image-1
