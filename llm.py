@@ -1664,11 +1664,11 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"     1. User provides location AND creative description in request\n"
         f"     2. System generates creative using gpt-image-1 model (NO upload needed)\n"
         f"     3. MULTI-FRAME AI SUPPORT:\n"
-        f"        • Default: Generates 1 artwork (duplicated across frames if multi-frame template)\n"
-        f"        • User can request multiple variations: 'dual frame mockup', 'triple frame with 3 different ads'\n"
-        f"        • Set num_ai_frames parameter to generate N DIFFERENT artworks for N frames\n"
-        f"        • System uses prompt parser to create variations, then matches to N-frame template\n"
-        f"        • Example: 'triple crown with 3 different nike ads' → num_ai_frames=3\n"
+        f"        • CRITICAL: ALWAYS default to 1 prompt UNLESS user EXPLICITLY requests multiple frames\n"
+        f"        • Single prompt (default): ai_prompts=['description'] → generates 1 artwork, tiled across all frames\n"
+        f"        • Multi-frame (explicit only): User says '3-frame mockup' or 'show evolution' → ai_prompts=['prompt1', 'prompt2', 'prompt3']\n"
+        f"        • Example DEFAULT: 'Nike ad on triple crown' → ai_prompts=['Nike advertisement']\n"
+        f"        • Example MULTI-FRAME: 'triple crown with 3 different nike ads showing product evolution' → ai_prompts=['Nike raw shoe', 'Nike assembly', 'Nike final product']\n"
         f"     4. System applies AI creative(s) to billboard and returns mockup\n"
         f"     IMPORTANT: If description provided = AI mode, ignore any uploaded images\n"
         f"  Decision Logic:\n"
@@ -2047,7 +2047,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     "location": {"type": "string", "description": "The location name - intelligently match to available locations. If user says 'gateway' or 'the gateway', match to 'dubai_gateway'. If user says 'jawhara', match to 'dubai_jawhara'. Use your best judgment to infer the correct location from the available list."},
                     "time_of_day": {"type": "string", "description": "Optional time of day: 'day', 'night', or 'all' (default). Use 'all' for random selection from all time variations.", "enum": ["day", "night", "all"]},
                     "finish": {"type": "string", "description": "Optional billboard finish: 'gold', 'silver', or 'all' (default). Use 'all' for random selection from all finish variations.", "enum": ["gold", "silver", "all"]},
-                    "ai_prompts": {"type": "array", "items": {"type": "string"}, "description": "Array of AI prompts to generate billboard-ready ARTWORK. Each prompt generates one creative. System automatically places artworks onto the billboard template. IMPORTANT: ALWAYS default to 1 prompt (single array entry) unless user EXPLICITLY requests multiple frames (e.g., '3-frame mockup', 'multi-frame with different designs', 'show evolution across frames'). If array length is 1, that creative is tiled across all frames (like uploading 1 image). If array length matches template frame count, creatives are matched 1:1 to frames. If array length doesn't match frame count (and isn't 1), an error occurs. Examples: ['Luxury watch ad'] (default - tiled), or ['Product raw form', 'Product assembly', 'Final product'] (only when user explicitly asks for 3 distinct frames)."}
+                    "ai_prompts": {"type": "array", "items": {"type": "string"}, "description": "Optional array of AI prompts to generate billboard-ready ARTWORK. Each prompt generates one creative. Can be omitted/empty if user is uploading images instead. IMPORTANT: When using AI generation, ALWAYS default to 1 prompt (single array entry) unless user EXPLICITLY requests multiple frames (e.g., '3-frame mockup', 'show evolution across frames'). If array length is 1, that creative is tiled across all frames (like uploading 1 image). If array length matches template frame count, creatives are matched 1:1 to frames. If array length doesn't match frame count (and isn't 1), an error occurs. Examples: ['Luxury watch ad'] (default - tiled), or ['Product raw form', 'Product assembly', 'Final product'] (only when user explicitly asks for 3 distinct frames), or [] (when user uploads images)."}
                 },
                 "required": ["location"]
             }
