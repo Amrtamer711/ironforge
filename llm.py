@@ -1675,10 +1675,10 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"     2. System generates creative using gpt-image-1 model (NO upload needed)\n"
         f"     3. MULTI-FRAME AI SUPPORT:\n"
         f"        • CRITICAL: ALWAYS default to 1 prompt UNLESS user EXPLICITLY requests multiple frames\n"
-        f"        • Single prompt (default): ai_prompts=['description'] → generates 1 artwork, tiled across all frames\n"
-        f"        • Multi-frame (explicit only): User says '3-frame mockup' or 'show evolution' → ai_prompts=['prompt1', 'prompt2', 'prompt3']\n"
-        f"        • Example DEFAULT: 'Nike ad on triple crown' → ai_prompts=['Nike advertisement']\n"
-        f"        • Example MULTI-FRAME: 'triple crown with 3 different nike ads showing product evolution' → ai_prompts=['Nike raw shoe', 'Nike assembly', 'Nike final product']\n"
+        f"        • Single prompt (default): ai_prompts=['full detailed description'] → generates 1 artwork, tiled across all frames\n"
+        f"        • Multi-frame (explicit only): User says '3-frame mockup' or 'show evolution' → ai_prompts=['detailed prompt 1', 'detailed prompt 2', 'detailed prompt 3']\n"
+        f"        • Example DEFAULT: 'Nike ad on triple crown' → ai_prompts=['Nike athletic shoe advertisement with swoosh logo, bold \"Just Do It\" slogan, dynamic sports imagery, modern minimalist design with black and white color scheme']\n"
+        f"        • Example MULTI-FRAME: 'triple crown with 3 different nike ads showing product evolution' → ai_prompts=['Nike Air Max shoe components laid out artistically - leather pieces, rubber sole, mesh fabric against dark industrial background with Nike swoosh logo prominent', 'Nike Air Max in assembly process with hands stitching components together, workshop setting with professional lighting highlighting craftsmanship and Nike branding', 'Finished Nike Air Max shoe in hero shot on gradient background, dramatic lighting, 3/4 angle showing sleek design, large Nike swoosh and \"Just Do It\" text in bold typography']\n"
         f"     4. System applies AI creative(s) to billboard and returns mockup\n"
         f"     IMPORTANT: If description provided = AI mode, ignore any uploaded images\n"
         f"  Decision Logic:\n"
@@ -2057,7 +2057,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     "location": {"type": "string", "description": "The location name - intelligently match to available locations. If user says 'gateway' or 'the gateway', match to 'dubai_gateway'. If user says 'jawhara', match to 'dubai_jawhara'. Use your best judgment to infer the correct location from the available list."},
                     "time_of_day": {"type": "string", "description": "Optional time of day: 'day', 'night', or 'all' (default). Use 'all' for random selection from all time variations.", "enum": ["day", "night", "all"]},
                     "finish": {"type": "string", "description": "Optional billboard finish: 'gold', 'silver', or 'all' (default). Use 'all' for random selection from all finish variations.", "enum": ["gold", "silver", "all"]},
-                    "ai_prompts": {"type": "array", "items": {"type": "string"}, "description": "Optional array of AI prompts to generate billboard-ready ARTWORK. Each prompt generates one creative. Can be omitted/empty if user is uploading images instead. IMPORTANT: When using AI generation, ALWAYS default to 1 prompt (single array entry) unless user EXPLICITLY requests multiple frames (e.g., '3-frame mockup', 'show evolution across frames'). If array length is 1, that creative is tiled across all frames (like uploading 1 image). If array length matches template frame count, creatives are matched 1:1 to frames. If array length doesn't match frame count (and isn't 1), an error occurs. Examples: ['Luxury watch ad'] (default - tiled), or ['Product raw form', 'Product assembly', 'Final product'] (only when user explicitly asks for 3 distinct frames), or [] (when user uploads images)."}
+                    "ai_prompts": {"type": "array", "items": {"type": "string"}, "description": "Optional array of DETAILED AI prompts to generate billboard-ready ARTWORK. Each prompt generates one creative image. CRITICAL PROMPT QUALITY RULES: Each prompt MUST be comprehensive and detailed (minimum 2-3 sentences), including: specific product/brand name, visual elements, colors, mood/atmosphere, composition details, text/slogans, and any specific details user mentioned. DO NOT use vague 1-2 word descriptions. ALWAYS default to 1 prompt unless user EXPLICITLY requests multiple frames (e.g., '3-frame mockup', 'show evolution'). If 1 prompt: tiled across all frames. If N prompts: matched 1:1 to N frames. GOOD examples: ['Luxury Rolex watch advertisement featuring gold Submariner model on black velvet surface, dramatic spotlight creating reflections, \"Timeless Elegance\" text in elegant serif font, Rolex crown logo prominent'] (single frame - tiled), or ['Mercedes-Benz S-Class sedan front 3/4 view on wet asphalt with city lights bokeh background, sleek silver paint, dramatic evening lighting, \"The Best or Nothing\" slogan', 'Mercedes interior shot showing leather seats and dashboard technology, ambient lighting, sophisticated luxury atmosphere', 'Mercedes driving on mountain road at sunset, dynamic motion blur, aspirational lifestyle imagery'] (3-frame evolution). BAD examples: ['watch ad'], ['car', 'interior', 'driving']. [] means user uploads images."}
                 },
                 "required": ["location"]
             }
@@ -3234,12 +3234,6 @@ DETAILED DESIGN REQUIREMENTS:
 - Polished, agency-level execution
 
 ═══════════════════════════════════════════════════════════
-CREATIVE BRIEF:
-═══════════════════════════════════════════════════════════
-
-{{USER_PROMPT}}
-
-═══════════════════════════════════════════════════════════
 ⚠️ CRITICAL - FINAL REMINDER - READ CAREFULLY:
 ═══════════════════════════════════════════════════════════
 
@@ -3265,7 +3259,13 @@ Your job: create the artwork. Their job: put it on the billboard.
 Example: If asked for a "Nike shoe ad," create the advertisement graphic (shoe + slogan + logo),
 NOT a photo of a billboard displaying that ad on the street.
 
-DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
+DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE.
+
+═══════════════════════════════════════════════════════════
+🎯 YOUR CREATIVE BRIEF (FOLLOW THIS EXACTLY):
+═══════════════════════════════════════════════════════════
+
+{{USER_PROMPT}}"""
 
                         # Update status to show we're generating
                         frames_text = f"{num_ai_frames} artworks and mockup" if num_ai_frames > 1 else "AI artwork and mockup"
