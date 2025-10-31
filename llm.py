@@ -1761,9 +1761,9 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"   - Replaces any stored creatives with new upload\n"
         f"   - DO NOT ask for clarification if user uploads images with location mention\n\n"
 
-        f"2. AI MODE: User provides creative description (no upload) → Call generate_mockup with ai_prompt\n"
-        f"   - Example: 'mockup for Dubai Gateway with luxury watch ad, gold and elegant'\n"
-        f"   - For multi-frame locations, specify num_ai_frames parameter\n"
+        f"2. AI MODE: User provides creative description (no upload) → Call generate_mockup with ai_prompts array\n"
+        f"   - Example: 'mockup for Dubai Gateway with luxury watch ad, gold and elegant' → ai_prompts=['luxury watch ad with gold and elegant styling']\n"
+        f"   - Default to single prompt unless user explicitly requests multiple frames\n"
         f"   - System generates flat artwork designs (NOT photos of billboards)\n\n"
 
         f"3. FOLLOW-UP MODE: User requests different location (no upload, no AI, within 30 min)\n"
@@ -2865,7 +2865,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 # Validation happens later at line ~1916 where we check creative count, not stored frame count
 
                 # FOLLOW-UP MODE: Check if this is a follow-up request (no upload, no AI, has history)
-                if not has_images and not ai_prompt and mockup_user_hist:
+                if not has_images and not ai_prompts and mockup_user_hist:
                     # This is a follow-up request to apply previous creatives to a different location
                     stored_frames = mockup_user_hist.get("metadata", {}).get("num_frames", 1)
                     stored_creative_paths = mockup_user_hist.get("creative_paths", [])
