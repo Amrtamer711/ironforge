@@ -34,6 +34,43 @@ logger = logging.getLogger("proposal-bot")
 # UAE timezone (GMT+4)
 UAE_TZ = timezone(timedelta(hours=4))
 
+
+def _convert_booking_order_currency(data: Dict[str, Any], from_currency: str, to_currency: str) -> None:
+    """Mutate booking order dict to convert monetary fields between currencies."""
+    if not data or from_currency == to_currency:
+        return
+
+    amount_fields = [
+        "net_pre_vat",
+        "net_excl_sla_calc",
+        "vat_value",
+        "vat_calc",
+        "gross_amount",
+        "gross_calc",
+        "municipality_fee",
+        "production_upload_fee",
+        "sla_deduction",
+    ]
+
+    for field in amount_fields:
+        if field in data and data[field] is not None:
+            data[field] = config.convert_currency_value(data[field], from_currency, to_currency)
+
+    # Locations
+    for location in data.get("locations", []) or []:
+        if location.get("net_amount") is not None:
+            location["net_amount"] = config.convert_currency_value(location["net_amount"], from_currency, to_currency)
+        if location.get("post_sla_amount") is not None:
+            location["post_sla_amount"] = config.convert_currency_value(location["post_sla_amount"], from_currency, to_currency)
+
+    # Notes or other numeric strings are left untouched intentionally
+
+
+def _format_amount(data: Dict[str, Any], amount: Optional[float]) -> str:
+    currency = data.get("currency", config.DEFAULT_CURRENCY) if data else config.DEFAULT_CURRENCY
+    return config.format_currency_value(amount, currency)
+
+
 def get_uae_time():
     """Get current time in UAE timezone (GMT+4)"""
     return datetime.now(UAE_TZ)
@@ -368,7 +405,11 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
         })
         return
 
-    logger.info(f"[BO APPROVAL] ✅ Coordinator {user_id} approved {workflow_id} - Client: {workflow['data'].get('client', 'N/A')}, Gross: AED {workflow['data'].get('gross_calc', 0):,.2f}")
+    workflow_data = workflow.get("data", {})
+    logger.info(
+        f"[BO APPROVAL] ✅ Coordinator {user_id} approved {workflow_id} - "
+        f"Client: {workflow_data.get('client', 'N/A')}, Gross: {_format_amount(workflow_data, workflow_data.get('gross_calc'))}"
+    )
 
     # IMMEDIATELY mark as approved to prevent duplicate button presses during the wait period
     await update_workflow(workflow_id, {
@@ -403,7 +444,7 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
             channel=sales_user_id,
             text=config.markdown_to_slack(
                 f"✅ *Approved by {approver_name}*\n\n"
-                f"Your booking order for **{workflow['data'].get('client', 'N/A')}** has been approved by the Sales Coordinator "
+                f"Your booking order for **{workflow_data.get('client', 'N/A')}** has been approved by the Sales Coordinator "
                 f"and is now moving to Head of Sales for review."
             )
         )
@@ -473,6 +514,8 @@ async def handle_coordinator_rejection(workflow_id: str, user_id: str, response_
     if not workflow:
         return
 
+    workflow_data = workflow.get("data", {})
+
     # Prevent duplicate rejection (clicking button multiple times)
     if workflow.get("status") == "coordinator_rejected":
         logger.warning(f"[BO APPROVAL] Workflow {workflow_id} already rejected by coordinator - ignoring duplicate")
@@ -482,7 +525,8 @@ async def handle_coordinator_rejection(workflow_id: str, user_id: str, response_
         })
         return
 
-    logger.info(f"[BO APPROVAL] ❌ Coordinator {user_id} rejected {workflow_id} - Client: {workflow['data'].get('client', 'N/A')} - Reason: {rejection_reason[:100]}")
+    workflow_data = workflow.get("data", {})
+    logger.info(f"[BO APPROVAL] ❌ Coordinator {user_id} rejected {workflow_id} - Client: {workflow_data.get('client', 'N/A')} - Reason: {rejection_reason[:100]}")
 
     # Update workflow
     await update_workflow(workflow_id, {
@@ -511,9 +555,9 @@ async def handle_coordinator_rejection(workflow_id: str, user_id: str, response_
             f"❌ **Booking Order Rejected**\n\n"
             f"**Reason:** {rejection_reason}\n\n"
             f"**Current Details:**\n"
-            f"• Client: {workflow['data'].get('client', 'N/A')}\n"
-            f"• Campaign: {workflow['data'].get('brand_campaign', 'N/A')}\n"
-            f"• Gross Total: AED {workflow['data'].get('gross_calc', 0):,.2f}\n\n"
+            f"• Client: {workflow_data.get('client', 'N/A')}\n"
+            f"• Campaign: {workflow_data.get('brand_campaign', 'N/A')}\n"
+            f"• Gross Total: {_format_amount(workflow_data, workflow_data.get('gross_calc'))}\n\n"
             f"💬 **Please tell me what changes are needed:**\n"
             f"Examples:\n"
             f"• 'Change client to Acme Corp'\n"
@@ -553,7 +597,12 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
         })
         return
 
-    logger.info(f"[BO APPROVAL] ✅ Head of Sales {user_id} approved {workflow_id} - Client: {workflow['data'].get('client', 'N/A')}, Gross: AED {workflow['data'].get('gross_calc', 0):,.2f}")
+    workflow_data = workflow.get("data", {})
+
+    logger.info(
+        f"[BO APPROVAL] ✅ Head of Sales {user_id} approved {workflow_id} - "
+        f"Client: {workflow_data.get('client', 'N/A')}, Gross: {_format_amount(workflow_data, workflow_data.get('gross_calc'))}"
+    )
 
     # IMMEDIATELY mark as approved to prevent duplicate button presses during processing
     await update_workflow(workflow_id, {
@@ -570,13 +619,13 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     logger.info(f"[BO APPROVAL] Adding HoS signature for {workflow['company']}: {hos_name}")
 
     # Add HoS signature to data (will be added to Excel in italics)
-    workflow["data"]["hos_signature"] = hos_name
+    workflow_data["hos_signature"] = hos_name
 
     # Generate final combined PDF (Excel + Original BO) with HoS signature
     parser = BookingOrderParser(company=workflow["company"])
     permanent_original_path = Path(workflow["original_file_path"])
     final_combined_pdf = await parser.generate_combined_pdf(
-        workflow["data"],
+        workflow_data,
         bo_ref,
         permanent_original_path
     )
@@ -663,8 +712,8 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
         text=config.markdown_to_slack(
             f"✅ **Booking Order Approved & Finalized**\n\n"
             f"**BO Number:** {bo_number}\n"
-            f"**Client:** {workflow['data'].get('client', 'N/A')}\n"
-            f"**Gross Total:** AED {workflow['data'].get('gross_calc', 0):,.2f}\n\n"
+            f"**Client:** {workflow_data.get('client', 'N/A')}\n"
+            f"**Gross Total:** {_format_amount(workflow_data, workflow_data.get('gross_calc'))}\n\n"
             f"The booking order has been approved by all stakeholders and saved to the database."
         )
     )
@@ -684,7 +733,10 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
             )
         )
 
-    logger.info(f"[BO APPROVAL] ✅ COMPLETE - BO Reference: {bo_ref} - Client: {workflow['data'].get('client', 'N/A')}, Gross: AED {workflow['data'].get('gross_calc', 0):,.2f} - Workflow: {workflow_id}")
+    logger.info(
+        f"[BO APPROVAL] ✅ COMPLETE - BO Reference: {bo_ref} - "
+        f"Client: {workflow_data.get('client', 'N/A')}, Gross: {_format_amount(workflow_data, workflow_data.get('gross_calc'))} - Workflow: {workflow_id}"
+    )
 
 
 async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str, rejection_reason: str):
@@ -708,7 +760,8 @@ async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str
         })
         return
 
-    logger.info(f"[BO APPROVAL] ❌ Head of Sales {user_id} rejected {workflow_id} - Client: {workflow['data'].get('client', 'N/A')} - Reason: {rejection_reason[:100]}")
+    workflow_data = workflow.get("data", {})
+    logger.info(f"[BO APPROVAL] ❌ Head of Sales {user_id} rejected {workflow_id} - Client: {workflow_data.get('client', 'N/A')} - Reason: {rejection_reason[:100]}")
 
     # Update HoS button message to show rejection
     import bo_slack_messaging
@@ -746,9 +799,9 @@ async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str
                 f"❌ **REJECTED BY HEAD OF SALES**\n\n"
                 f"**Reason:** {rejection_reason}\n\n"
                 f"**Current Details:**\n"
-                f"• Client: {workflow['data'].get('client', 'N/A')}\n"
-                f"• Campaign: {workflow['data'].get('brand_campaign', 'N/A')}\n"
-                f"• Gross Total: AED {workflow['data'].get('gross_calc', 0):,.2f}\n\n"
+                f"• Client: {workflow_data.get('client', 'N/A')}\n"
+                f"• Campaign: {workflow_data.get('brand_campaign', 'N/A')}\n"
+                f"• Gross Total: {_format_amount(workflow_data, workflow_data.get('gross_calc'))}\n\n"
                 f"Please make the necessary amendments. Tell me what changes are needed, or say 'execute' when ready to resubmit."
             )
         )
@@ -1055,8 +1108,20 @@ async def handle_coordinator_thread_message(
     logger.info(f"[BO APPROVAL] Coordinator {user_id} message in thread {thread_ts}: '{user_input[:50]}...' for workflow {workflow_id} (history: {len(thread_history)} messages)")
 
     # Build system prompt for OpenAI Responses API
+    current_currency = current_data.get("currency", config.DEFAULT_CURRENCY)
+    currency_context = config.CURRENCY_PROMPT_CONTEXT
+
     system_prompt = f"""
 You are helping a Sales Coordinator review and amend a booking order.
+
+**Currency handling:**
+Current booking order currency: {current_currency}
+{currency_context}
+
+When the coordinator requests a different currency:
+- Include "currency" in the JSON response (fields.currency) set to the target ISO code (e.g., "USD").
+- Do NOT invent exchange rates. The backend will convert the existing amounts using the table above.
+- Leave numeric fields as pure numbers in the requested currency. Only change values if the coordinator specifies new numbers.
 
 Determine their intent and parse any field updates:
 - If they want to execute/submit/approve/done: action = 'execute'
@@ -1128,7 +1193,7 @@ Examples:
 
         res = await config.openai_client.responses.create(
             model=config.OPENAI_MODEL,
-            reasoning={"effort": "medium"},
+            reasoning={"effort": "low"},
             input=input_messages,
             text={
                 'format': {
@@ -1160,6 +1225,7 @@ Examples:
                                     'category': {'type': 'string'},
                                     'municipality_fee': {'type': 'number'},
                                     'production_upload_fee': {'type': 'number'},
+                                    'currency': {'type': 'string'},
                                     'asset': {
                                         'anyOf': [
                                             {'type': 'string'},
@@ -1267,7 +1333,7 @@ Examples:
             text = f"✅ *Ready for Approval*\n\n"
             text += f"*Client:* {current_data.get('client', 'N/A')}\n"
             text += f"*Campaign:* {current_data.get('brand_campaign', 'N/A')}\n"
-            text += f"*Gross Total:* AED {current_data.get('gross_calc', 0):,.2f}\n\n"
+            text += f"*Gross Total:* {_format_amount(current_data, current_data.get('gross_calc'))}\n\n"
             text += "Please review the combined PDF above and approve or reject:"
 
             blocks = [
@@ -1320,20 +1386,40 @@ Examples:
         elif action == 'edit':
             # Apply field updates
             fields = decision.get('fields', {})
+            currency_changed = False
+            currency_value = None
+
             if fields:
-                logger.info(f"[BO APPROVAL] Coordinator editing {len(fields)} fields in {workflow_id}: {list(fields.keys())}")
-                # Update the data
-                for field, value in fields.items():
-                    current_data[field] = value
+                if 'currency' in fields and fields['currency']:
+                    currency_value = str(fields.pop('currency')).upper()
+                    currency_value = currency_value.strip()
+                    if currency_value:
+                        previous_currency = current_data.get('currency', config.DEFAULT_CURRENCY)
+                        if currency_value != previous_currency:
+                            _convert_booking_order_currency(current_data, previous_currency, currency_value)
+                            current_data['currency'] = currency_value
+                            currency_changed = True
+                            logger.info(
+                                f"[BO APPROVAL] Converted amounts from {previous_currency} to {currency_value} for {workflow_id}"
+                            )
+                        else:
+                            # No actual change, ensure canonical format
+                            current_data['currency'] = previous_currency
+
+                remaining_fields = fields
+                if remaining_fields:
+                    logger.info(
+                        f"[BO APPROVAL] Coordinator editing {len(remaining_fields)} fields in {workflow_id}: {list(remaining_fields.keys())}"
+                    )
+                    for field, value in remaining_fields.items():
+                        current_data[field] = value
 
                 # Intelligent recalculation logic
-                needs_recalc = False
+                needs_recalc = currency_changed
 
-                # Check if any fields that affect net_pre_vat changed
-                if any(key in fields for key in ['locations', 'municipality_fee', 'production_upload_fee']):
+                if any(key in remaining_fields for key in ['locations', 'municipality_fee', 'production_upload_fee']):
                     needs_recalc = True
 
-                    # Recalculate net_pre_vat from components
                     locations_total = sum(
                         loc.get('net_amount', 0)
                         for loc in current_data.get('locations', [])
@@ -1345,46 +1431,63 @@ Examples:
                         locations_total + municipality_fee + production_upload_fee,
                         2
                     )
-                    logger.info(f"[BO APPROVAL] Recalculated net_pre_vat = {current_data['net_pre_vat']} (locations: {locations_total}, fees: {municipality_fee + production_upload_fee})")
+                    logger.info(
+                        f"[BO APPROVAL] Recalculated net_pre_vat = {current_data['net_pre_vat']} "
+                        f"(locations: {locations_total}, fees: {municipality_fee + production_upload_fee})"
+                    )
 
-                # If net_pre_vat changed (either directly or from recalculation), recalculate VAT and gross
-                if 'net_pre_vat' in fields or needs_recalc:
+                if 'net_pre_vat' in remaining_fields or needs_recalc:
                     net = current_data.get('net_pre_vat', 0) or 0
                     sla_pct = current_data.get('sla_pct', 0) or 0
 
-                    # Calculate VAT (5% standard in UAE)
                     current_data['vat_calc'] = round(net * 0.05, 2)
-
-                    # Calculate gross total (net + VAT)
                     current_data['gross_calc'] = round(net + current_data['vat_calc'], 2)
 
-                    # Calculate SLA deduction if applicable
                     if sla_pct > 0:
                         current_data['sla_deduction'] = round(net * sla_pct, 2)
                         current_data['net_excl_sla_calc'] = round(net - current_data['sla_deduction'], 2)
 
-                    logger.info(f"[BO APPROVAL] Recalculated: VAT={current_data['vat_calc']}, Gross={current_data['gross_calc']}, SLA={current_data.get('sla_deduction', 0)}")
+                    logger.info(
+                        f"[BO APPROVAL] Recalculated totals: VAT={current_data['vat_calc']}, "
+                        f"Gross={current_data['gross_calc']}, SLA={current_data.get('sla_deduction', 0)}"
+                    )
 
-                # If SLA percentage changed, recalculate SLA deduction
-                if 'sla_pct' in fields:
+                if 'sla_pct' in remaining_fields:
                     net = current_data.get('net_pre_vat', 0) or 0
                     sla_pct = current_data.get('sla_pct', 0) or 0
                     current_data['sla_deduction'] = round(net * sla_pct, 2)
                     current_data['net_excl_sla_calc'] = round(net - current_data['sla_deduction'], 2)
-                    logger.info(f"[BO APPROVAL] Recalculated SLA: deduction={current_data['sla_deduction']}, net_excl_sla={current_data['net_excl_sla_calc']}")
+                    logger.info(
+                        f"[BO APPROVAL] Recalculated SLA: deduction={current_data['sla_deduction']}, "
+                        f"net_excl_sla={current_data['net_excl_sla_calc']}"
+                    )
 
-                # Save updated data back to workflow
                 await update_workflow(workflow_id, {
                     "data": current_data
                 })
 
-                # Use message from LLM (which should be in natural language)
-                # Fall back to generic message if no message provided
                 if message:
                     return message
-                else:
-                    return "✅ **Changes applied!**\n\nLet me know if you need any other changes, or say 'execute' to generate the Excel and approval buttons."
+
+                if currency_changed and not remaining_fields:
+                    display_currency = current_data.get('currency', config.DEFAULT_CURRENCY)
+                    return (
+                        f"✅ **All amounts converted to {display_currency}.**\n\n"
+                        "Let me know if you need any other updates, or say 'execute' when you're ready."
+                    )
+
+                return "✅ **Changes applied!**\n\nLet me know if you need any other changes, or say 'execute' to generate the Excel and approval buttons."
             else:
+                if currency_value and currency_changed:
+                    display_currency = current_data.get('currency', config.DEFAULT_CURRENCY)
+                    await update_workflow(workflow_id, {
+                        "data": current_data
+                    })
+                    return (
+                        f"✅ **All amounts converted to {display_currency}.**\n\n"
+                        "Let me know if you need any other updates, or say 'execute' when you're ready."
+                    )
+
                 return message or "I didn't catch any changes. What would you like to update?"
 
         elif action == 'view':
@@ -1394,9 +1497,9 @@ Examples:
             preview += f"**Campaign:** {current_data.get('brand_campaign', 'N/A')}\n"
             preview += f"**BO Number:** {current_data.get('bo_number', 'N/A')}\n"
             preview += f"**BO Date:** {current_data.get('bo_date', 'N/A')}\n"
-            preview += f"**Net (pre-VAT):** AED {current_data.get('net_pre_vat', 0):,.2f}\n"
-            preview += f"**VAT (5%):** AED {current_data.get('vat_calc', 0):,.2f}\n"
-            preview += f"**Gross Total:** AED {current_data.get('gross_calc', 0):,.2f}\n"
+            preview += f"**Net (pre-VAT):** {_format_amount(current_data, current_data.get('net_pre_vat'))}\n"
+            preview += f"**VAT (5%):** {_format_amount(current_data, current_data.get('vat_calc'))}\n"
+            preview += f"**Gross Total:** {_format_amount(current_data, current_data.get('gross_calc'))}\n"
             preview += f"**Agency:** {current_data.get('agency', 'N/A')}\n"
             preview += f"**Sales Person:** {current_data.get('sales_person', 'N/A')}\n\n"
 

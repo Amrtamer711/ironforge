@@ -1,7 +1,7 @@
 import os
 import logging
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Any, Dict, List, Tuple, Optional
 import json
 
 from dotenv import load_dotenv
@@ -55,6 +55,187 @@ _DISPLAY_CACHE: Optional[List[str]] = None
 
 # HOS config
 _HOS_CONFIG: Dict[str, Dict[str, Dict[str, object]]] = {}
+
+
+# Currency configuration (static for now, but easily swappable to dynamic)
+if os.path.exists("/data/"):
+    CURRENCY_CONFIG_FILE = Path("/data/currency_config.json")
+else:
+    CURRENCY_CONFIG_FILE = BASE_DIR / "render_main_data" / "currency_config.json"
+
+DEFAULT_CURRENCY: str = os.getenv("DEFAULT_CURRENCY", "AED").upper()
+CURRENCY_CONFIG: Dict[str, Any] = {}
+CURRENCY_PROMPT_CONTEXT: str = ""
+
+
+def _default_currency_config() -> Dict[str, Any]:
+    """Static fallback currency configuration (base AED)."""
+    return {
+        "base_currency": "AED",
+        "currencies": {
+            "AED": {
+                "symbol": "AED",
+                "position": "suffix",
+                "decimals": 2,
+                "aed_per_unit": 1.0
+            },
+            "USD": {
+                "symbol": "$",
+                "position": "prefix",
+                "decimals": 2,
+                "aed_per_unit": 3.6725
+            },
+            "EUR": {
+                "symbol": "€",
+                "position": "prefix",
+                "decimals": 2,
+                "aed_per_unit": 3.97
+            },
+            "GBP": {
+                "symbol": "£",
+                "position": "prefix",
+                "decimals": 2,
+                "aed_per_unit": 4.62
+            }
+        }
+    }
+
+
+def _apply_currency_config(config_data: Dict[str, Any], source: str = "static") -> None:
+    """Normalize and cache currency config (supports dynamic overrides)."""
+    global CURRENCY_CONFIG, CURRENCY_PROMPT_CONTEXT, DEFAULT_CURRENCY
+
+    base_currency = str(config_data.get("base_currency", DEFAULT_CURRENCY or "AED")).upper()
+    currencies_in = config_data.get("currencies", {}) or {}
+
+    normalized: Dict[str, Dict[str, Any]] = {}
+    for code, meta in currencies_in.items():
+        if not isinstance(meta, dict):
+            continue
+        code_upper = str(code).upper()
+        normalized[code_upper] = {
+            "symbol": meta.get("symbol", code_upper),
+            "position": str(meta.get("position", "suffix")).lower(),
+            "decimals": int(meta.get("decimals", 2)),
+            "aed_per_unit": float(meta.get("aed_per_unit", 1.0)) or 1.0
+        }
+
+    # Ensure base currency exists
+    if base_currency not in normalized:
+        normalized[base_currency] = {
+            "symbol": base_currency,
+            "position": "suffix",
+            "decimals": 2,
+            "aed_per_unit": 1.0
+        }
+
+    DEFAULT_CURRENCY = base_currency
+    CURRENCY_CONFIG = {
+        "base_currency": base_currency,
+        "currencies": normalized,
+        "source": source
+    }
+
+    # Build prompt reference for LLM instructions
+    lines: List[str] = []
+    lines.append("**CURRENCY REFERENCE**")
+    lines.append(f"Base currency: {base_currency}. Amounts default to this unless explicitly changed.")
+    lines.append("For conversions use the ratios below (AED per 1 unit). Keep numeric fields as pure numbers without symbols.")
+
+    for code in sorted(normalized.keys()):
+        meta = normalized[code]
+        aed_per_unit = float(meta.get("aed_per_unit", 1.0)) or 1.0
+        inverse = 0.0 if aed_per_unit == 0 else 1 / aed_per_unit
+        lines.append(
+            f"- {code}: symbol '{meta.get('symbol', code)}' ({meta.get('position', 'suffix')}), "
+            f"1 {code} = {aed_per_unit:.4f} AED | 1 AED = {inverse:.4f} {code}"
+        )
+
+    lines.append("If a requested currency is missing, tell the user conversion is not supported yet.")
+    lines.append("Always include a top-level 'currency' field using ISO codes.")
+
+    CURRENCY_PROMPT_CONTEXT = "\n".join(lines)
+    logger.info(f"[CURRENCY] Applied currency config (base: {base_currency}, currencies: {len(normalized)})")
+
+
+def load_currency_config() -> None:
+    """Load currency config from static file (with safe defaults)."""
+    config_data = _default_currency_config()
+
+    if CURRENCY_CONFIG_FILE.exists():
+        try:
+            file_data = json.loads(CURRENCY_CONFIG_FILE.read_text(encoding="utf-8"))
+            if isinstance(file_data, dict):
+                config_data.update({k: v for k, v in file_data.items() if k != "currencies"})
+                file_currencies = file_data.get("currencies", {})
+                if isinstance(file_currencies, dict):
+                    config_data["currencies"].update({str(k).upper(): v for k, v in file_currencies.items()})
+        except Exception as e:
+            logger.warning(f"[CURRENCY] Failed to load {CURRENCY_CONFIG_FILE}: {e}")
+
+    _apply_currency_config(config_data)
+
+
+def update_currency_config(config_data: Dict[str, Any], source: str = "dynamic") -> None:
+    """Allow runtime overrides (e.g., future API fetch)."""
+    if not isinstance(config_data, dict):
+        raise ValueError("Currency config must be a dict")
+    merged = _default_currency_config()
+    merged.update({k: v for k, v in config_data.items() if k != "currencies"})
+    if "currencies" in config_data and isinstance(config_data["currencies"], dict):
+        merged["currencies"].update({str(k).upper(): v for k, v in config_data["currencies"].items()})
+    _apply_currency_config(merged, source=source)
+
+
+def get_currency_metadata(currency: Optional[str]) -> Dict[str, Any]:
+    """Return metadata for currency (falls back to default)."""
+    code = str(currency or DEFAULT_CURRENCY).upper()
+    currencies = CURRENCY_CONFIG.get("currencies", {})
+    meta = currencies.get(code)
+    if not meta:
+        meta = currencies.get(DEFAULT_CURRENCY, {
+            "symbol": DEFAULT_CURRENCY,
+            "position": "suffix",
+            "decimals": 2,
+            "aed_per_unit": 1.0
+        })
+        code = DEFAULT_CURRENCY
+    return {**meta, "code": code}
+
+
+def convert_currency_value(amount: Optional[float], from_currency: Optional[str], to_currency: Optional[str]) -> Optional[float]:
+    """Convert using AED as intermediary. Returns rounded amount."""
+    if amount is None:
+        return None
+
+    from_meta = get_currency_metadata(from_currency)
+    to_meta = get_currency_metadata(to_currency)
+
+    if from_meta["code"] == to_meta["code"]:
+        return round(float(amount), int(to_meta.get("decimals", 2)))
+
+    amount_aed = float(amount) * float(from_meta.get("aed_per_unit", 1.0))
+    converted = amount_aed / float(to_meta.get("aed_per_unit", 1.0))
+    return round(converted, int(to_meta.get("decimals", 2)))
+
+
+def format_currency_value(amount: Optional[float], currency: Optional[str] = None) -> str:
+    """Format amount with currency symbol and correct placement."""
+    if amount is None:
+        amount = 0.0
+
+    meta = get_currency_metadata(currency)
+    decimals = int(meta.get("decimals", 2))
+    value = f"{float(amount):,.{decimals}f}"
+    symbol = str(meta.get("symbol", meta["code"]))
+    position = str(meta.get("position", "suffix")).lower()
+
+    if position == "prefix":
+        return f"{symbol}{value}"
+    return f"{value} {symbol}".strip()
+
+
+load_currency_config()
 
 
 def load_hos_config() -> None:

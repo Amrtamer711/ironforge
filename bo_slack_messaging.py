@@ -10,6 +10,11 @@ import config
 logger = logging.getLogger("proposal-bot")
 
 
+def _format_amount(data: Optional[Dict[str, Any]], amount: Optional[float]) -> str:
+    currency = (data or {}).get("currency", config.DEFAULT_CURRENCY)
+    return config.format_currency_value(amount, currency)
+
+
 async def get_user_real_name(user_id: str) -> str:
     """
     Get user's real name from Slack.
@@ -130,9 +135,9 @@ async def send_to_head_of_sales(
     text += f"*Client:* {data.get('client', 'N/A')}\n"
     text += f"*Campaign:* {data.get('brand_campaign', 'N/A')}\n"
     text += f"*BO Number:* {data.get('bo_number', 'N/A')}\n"
-    text += f"*Net (pre-VAT):* AED {data.get('net_pre_vat', 0):,.2f}\n"
-    text += f"*VAT (5%):* AED {data.get('vat_calc', 0):,.2f}\n"
-    text += f"*Gross Total:* AED {data.get('gross_calc', 0):,.2f}\n\n"
+    text += f"*Net (pre-VAT):* {_format_amount(data, data.get('net_pre_vat'))}\n"
+    text += f"*VAT (5%):* {_format_amount(data, data.get('vat_calc'))}\n"
+    text += f"*Gross Total:* {_format_amount(data, data.get('gross_calc'))}\n\n"
 
     # Locations
     locations = data.get('locations', [])
@@ -254,9 +259,9 @@ async def send_to_coordinator(
     text += f"**Client:** {data.get('client', 'N/A')}\n"
     text += f"**Campaign:** {data.get('brand_campaign', 'N/A')}\n"
     text += f"**BO Number:** {data.get('bo_number', 'N/A')}\n"
-    text += f"**Net (pre-VAT):** AED {data.get('net_pre_vat', 0):,.2f}\n"
-    text += f"**VAT (5%):** AED {data.get('vat_calc', 0):,.2f}\n"
-    text += f"**Gross Total:** AED {data.get('gross_calc', 0):,.2f}\n\n"
+    text += f"**Net (pre-VAT):** {_format_amount(data, data.get('net_pre_vat'))}\n"
+    text += f"**VAT (5%):** {_format_amount(data, data.get('vat_calc'))}\n"
+    text += f"**Gross Total:** {_format_amount(data, data.get('gross_calc'))}\n\n"
 
     # Show locations summary
     locations = data.get('locations', [])
@@ -362,7 +367,7 @@ async def notify_finance(
     text += f"**Company:** {company.upper()}\n"
     text += f"**Client:** {data.get('client', 'N/A')}\n"
     text += f"**Campaign:** {data.get('brand_campaign', 'N/A')}\n"
-    text += f"**Gross Total:** AED {data.get('gross_calc', 0):,.2f}\n\n"
+    text += f"**Gross Total:** {_format_amount(data, data.get('gross_calc'))}\n\n"
     text += f"This booking order has been approved by all stakeholders and is now finalized."
 
     # Upload Excel file with sanitized bo_number as filename
@@ -431,7 +436,7 @@ async def send_rejection_to_thread(
     text += f"**Current Details:**\n"
     text += f"• Client: {data.get('client', 'N/A')}\n"
     text += f"• Campaign: {data.get('brand_campaign', 'N/A')}\n"
-    text += f"• Gross Total: AED {data.get('gross_calc', 0):,.2f}\n\n"
+    text += f"• Gross Total: {_format_amount(data, data.get('gross_calc'))}\n\n"
     text += f"Please tell me what changes are needed, and I'll update the booking order."
 
     result = await config.slack_client.chat_postMessage(

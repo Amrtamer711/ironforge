@@ -403,6 +403,7 @@ The user provided this message with the file: "{user_message}"
                                 },
                                 "payment_terms": {"type": ["string", "null"]},
                                 "sales_person": {"type": ["string", "null"]},
+                                "currency": {"type": ["string", "null"]},
                                 "commission_pct": {"type": ["number", "null"]},
                                 "sla_pct": {"type": ["number", "null"]},
                                 "municipality_fee": {"type": ["number", "null"]},
@@ -428,7 +429,7 @@ The user provided this message with the file: "{user_message}"
                                     }
                                 }
                             },
-                            "required": ["bo_number", "bo_date", "client", "agency", "brand_campaign", "category", "asset", "payment_terms", "sales_person", "commission_pct", "sla_pct", "municipality_fee", "production_upload_fee", "net_pre_vat", "vat_value", "gross_amount", "notes", "locations"],
+                            "required": ["bo_number", "bo_date", "client", "agency", "brand_campaign", "category", "asset", "payment_terms", "sales_person", "currency", "commission_pct", "sla_pct", "municipality_fee", "production_upload_fee", "net_pre_vat", "vat_value", "gross_amount", "notes", "locations"],
                             "additionalProperties": False
                         }
                     }
@@ -519,11 +520,23 @@ Use this reference to determine if a location should have upload fees (digital) 
 If a location isn't listed, make an intelligent guess based on naming patterns and fee descriptions in the BO.
 """
 
+        currency_context = f"""
+**CURRENCY HANDLING (STATIC CONFIG - EASY TO UPGRADE LATER):**
+{config.CURRENCY_PROMPT_CONTEXT}
+
+- ALWAYS include a top-level field `currency` with the 3-letter ISO code (default {config.DEFAULT_CURRENCY}).
+- Keep all numeric fields as pure numbers without symbols.
+- If the document clearly uses a non-{config.DEFAULT_CURRENCY} currency, set `currency` accordingly and keep the numbers as shown.
+- Do NOT guess exchange rates. The backend handles conversions using the table above when instructed.
+- If no currency is specified, assume {config.DEFAULT_CURRENCY}.
+"""
+
         return f"""You are an expert at extracting data from BACKLITE booking orders - a billboard/outdoor advertising company.
 
 **TAKE YOUR TIME AND BE INTELLIGENT:**
 These booking orders come from EXTERNAL clients and may have horrible, inconsistent structures. Do NOT rush. Carefully dissect the entire document, understand the business context, and intelligently parse the information. Think step-by-step about what you're seeing.
 {location_context}
+{currency_context}
 **CRITICAL BILLBOARD INDUSTRY CONTEXT:**
 
 **Understanding Billboard Purchases:**
@@ -769,6 +782,15 @@ These booking orders come from EXTERNAL clients and may have horrible, inconsist
 **VIOLA LOCATION CODES:**
 Viola uses alphanumeric location codes. Common codes include: {viola_locations}
 
+**CURRENCY HANDLING (STATIC CONFIG - EASY TO UPGRADE LATER):**
+{config.CURRENCY_PROMPT_CONTEXT}
+
+- ALWAYS include a top-level field `currency` with the 3-letter ISO code (default {config.DEFAULT_CURRENCY}).
+- Keep all numeric fields as pure numbers without symbols.
+- If the document clearly uses a non-{config.DEFAULT_CURRENCY} currency, set `currency` accordingly and keep the numbers as shown.
+- Do NOT guess exchange rates. The backend handles conversions using the table above when instructed.
+- If no currency is specified, assume {config.DEFAULT_CURRENCY}.
+
 **CRITICAL FOR VIOLA LOCATIONS:**
 - Extract ONLY the location CODE (e.g., "04B", "03A", "15C")
 - Viola locations often have descriptive names, but we only want the CODE
@@ -1008,6 +1030,12 @@ Even if the source document lists fees per location, you MUST sum them into sing
 
     def _post_process_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Post-process parsed data: normalize, calculate derived fields"""
+        currency = data.get("currency")
+        if isinstance(currency, str) and currency.strip():
+            data["currency"] = currency.strip().upper()
+        else:
+            data["currency"] = config.DEFAULT_CURRENCY
+
         # Calculate derived fields
         net = data.get("net_pre_vat")
         vat = data.get("vat_value")
@@ -1141,18 +1169,23 @@ Even if the source document lists fees per location, you MUST sum them into sing
 
     def format_for_slack(self, data: Dict[str, Any], bo_ref: str) -> str:
         """Format booking order data for Slack display"""
+        currency = data.get("currency", config.DEFAULT_CURRENCY)
         lines = [
             f"**Booking Order:** {bo_ref}",
             f"**Client:** {data.get('client', 'N/A')}",
             f"**Campaign:** {data.get('brand_campaign', 'N/A')}",
-            f"**Net (pre-VAT):** AED {data.get('net_pre_vat', 0):,.2f}",
-            f"**VAT (5%):** AED {data.get('vat_calc', 0):,.2f}",
-            f"**Gross Total:** AED {data.get('gross_calc', 0):,.2f}",
+            f"**Net (pre-VAT):** {config.format_currency_value(data.get('net_pre_vat'), currency)}",
+            f"**VAT (5%):** {config.format_currency_value(data.get('vat_calc'), currency)}",
+            f"**Gross Total:** {config.format_currency_value(data.get('gross_calc'), currency)}",
         ]
 
         if data.get("sla_pct"):
-            lines.append(f"**SLA Deduction:** AED {data.get('sla_deduction', 0):,.2f} ({data['sla_pct']*100:.1f}%)")
-            lines.append(f"**Net (excl SLA):** AED {data.get('net_excl_sla_calc', 0):,.2f}")
+            lines.append(
+                f"**SLA Deduction:** {config.format_currency_value(data.get('sla_deduction'), currency)} ({data['sla_pct']*100:.1f}%)"
+            )
+            lines.append(
+                f"**Net (excl SLA):** {config.format_currency_value(data.get('net_excl_sla_calc'), currency)}"
+            )
 
         if data.get("locations"):
             lines.append(f"\n**Locations:** {len(data['locations'])}")
