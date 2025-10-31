@@ -1,6 +1,6 @@
 import json
 import asyncio
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import os
 from pathlib import Path
 import aiohttp
@@ -469,7 +469,8 @@ async def _generate_ai_mockup_queued(
     location_key: str,
     time_of_day: str,
     finish: str,
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
+    frame_prompts: Optional[List[str]] = None
 ):
     """
     Wrapper for AI mockup generation (AI creative generation + mockup) through the queue.
@@ -477,13 +478,14 @@ async def _generate_ai_mockup_queued(
     is treated as ONE queued task to prevent memory spikes.
 
     Args:
-        ai_prompt: User's original AI prompt
-        enhanced_prompt: Full enhanced system prompt
+        ai_prompt: User's original AI prompt (used for single-frame or fallback)
+        enhanced_prompt: Full enhanced system prompt template
         num_ai_frames: Number of frames to generate
         location_key: Location identifier
         time_of_day: Time of day variation
         finish: Finish type
         user_id: Optional Slack user ID for cost tracking
+        frame_prompts: Optional list of per-frame prompts (LLM-generated for multi-frame narratives)
 
     Returns:
         Tuple of (result_path, ai_creative_paths)
@@ -500,8 +502,15 @@ async def _generate_ai_mockup_queued(
             ai_creative_paths = []
 
             if num_ai_frames > 1:
-                # Multi-frame: parse prompt into variations
-                prompt_variations = await mockup_generator.parse_prompt_for_multi_frame(ai_prompt, num_ai_frames)
+                # Multi-frame generation
+                # Priority 1: Use LLM-provided frame_prompts if available (intelligent narrative breakdown)
+                if frame_prompts and len(frame_prompts) == num_ai_frames:
+                    logger.info(f"[AI QUEUE] Using {num_ai_frames} LLM-generated frame prompts")
+                    prompt_variations = frame_prompts
+                else:
+                    # Priority 2: Fallback to regex-based parsing (legacy support)
+                    logger.info(f"[AI QUEUE] Falling back to prompt parser for {num_ai_frames} frames")
+                    prompt_variations = await mockup_generator.parse_prompt_for_multi_frame(ai_prompt, num_ai_frames)
 
                 # Generate each creative
                 for i, variation_prompt in enumerate(prompt_variations, 1):
@@ -515,7 +524,7 @@ async def _generate_ai_mockup_queued(
                         raise Exception(f"Failed to generate AI creative {i}/{num_ai_frames}")
                     ai_creative_paths.append(creative_path)
             else:
-                # Single frame
+                # Single frame - use base prompt
                 creative_path = await mockup_generator.generate_ai_creative(
                     prompt=enhanced_prompt,
                     location_key=location_key,
@@ -2060,8 +2069,9 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     "location": {"type": "string", "description": "The location name - intelligently match to available locations. If user says 'gateway' or 'the gateway', match to 'dubai_gateway'. If user says 'jawhara', match to 'dubai_jawhara'. Use your best judgment to infer the correct location from the available list."},
                     "time_of_day": {"type": "string", "description": "Optional time of day: 'day', 'night', or 'all' (default). Use 'all' for random selection from all time variations.", "enum": ["day", "night", "all"]},
                     "finish": {"type": "string", "description": "Optional billboard finish: 'gold', 'silver', or 'all' (default). Use 'all' for random selection from all finish variations.", "enum": ["gold", "silver", "all"]},
-                    "ai_prompt": {"type": "string", "description": "Optional: AI prompt to generate billboard-ready ARTWORK ONLY (flat advertisement design, NO billboards/signs/streets in the image). System will automatically place the artwork onto the billboard. Example: 'A luxury watch advertisement with gold accents and elegant typography' - this creates the ad design itself, not a photo of a billboard"},
-                    "num_ai_frames": {"type": "integer", "description": "Optional: For AI generation only - specify number of different artworks to generate (e.g., 2 for dual frames, 3 for triple frames). System will use prompt parser to create N variations and match to template with N frames. Default is 1 (single artwork)."}
+                    "ai_prompt": {"type": "string", "description": "Optional: AI prompt to generate billboard-ready ARTWORK ONLY (flat advertisement design, NO billboards/signs/streets in the image). System will automatically place the artwork onto the billboard. Example: 'A luxury watch advertisement with gold accents and elegant typography' - this creates the ad design itself, not a photo of a billboard. For single-frame or when you want the same prompt duplicated."},
+                    "frame_prompts": {"type": "array", "items": {"type": "string"}, "description": "Optional: For multi-frame AI generation - provide an array of distinct prompts (one per frame). When user requests multi-frame mockups with narrative/evolution/variations, intelligently create N prompts that tell a cohesive story. Example: ['Luxury handbag raw materials', 'Handbag assembly with branding', 'Final glamour shot with dramatic lighting']. If provided, overrides ai_prompt and num_ai_frames. System generates exactly len(frame_prompts) artworks."},
+                    "num_ai_frames": {"type": "integer", "description": "DEPRECATED: Use frame_prompts instead for multi-frame requests. Only use this if you want to duplicate the same ai_prompt across N frames (rare)."}
                 },
                 "required": ["location"]
             }
@@ -2790,7 +2800,16 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 time_of_day = args.get("time_of_day", "").strip().lower() or "all"
                 finish = args.get("finish", "").strip().lower() or "all"
                 ai_prompt = args.get("ai_prompt", "").strip()
+                frame_prompts = args.get("frame_prompts", []) or []  # Optional array of per-frame prompts
                 num_ai_frames = args.get("num_ai_frames", 1) or 1  # Default to 1 if not specified
+                
+                # If frame_prompts provided, override num_ai_frames and prepare multi-frame AI flow
+                if frame_prompts and isinstance(frame_prompts, list) and len(frame_prompts) > 0:
+                    num_ai_frames = len(frame_prompts)
+                    # Use placeholder for template replacement (will be replaced with each frame_prompt)
+                    if not ai_prompt:
+                        ai_prompt = "{{FRAME_CREATIVE_BRIEF}}"
+                    logger.info(f"[MOCKUP] LLM provided {num_ai_frames} frame-specific prompts for multi-frame AI generation")
 
                 # Convert display name to location key
                 location_key = config.get_location_key_from_display_name(location_name)
@@ -3097,8 +3116,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         import gc
                         gc.collect()
 
-                elif ai_prompt:
-                    # AI MODE: User provided a description for AI generation
+                elif ai_prompt or frame_prompts:
+                    # AI MODE: User provided a description for AI generation (single prompt or frame-specific prompts)
 
                     # Validate num_ai_frames: Allow 1 (tile) OR match frame count
                     is_valid_ai_count = (num_ai_frames == 1) or (num_ai_frames == new_location_frame_count)
@@ -3273,7 +3292,8 @@ DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE."""
                             location_key=location_key,
                             time_of_day=time_of_day,
                             finish=finish,
-                            user_id=user_id
+                            user_id=user_id,
+                            frame_prompts=frame_prompts if frame_prompts else None
                         )
 
                         if not result_path:
