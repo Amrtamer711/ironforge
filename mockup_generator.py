@@ -874,21 +874,20 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
         if len(img_array.shape) == 3 and img_array.shape[2] == 3:
             img_array = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
 
-        # Apply subtle sharpening (weakened to avoid artifacts)
-        # Old: 1.8x sharpening was too aggressive
-        # New: 1.2x mild sharpening to slightly enhance AI image without degradation
+        # Apply strong sharpening to enhance detail after upscaling
+        # Increased from 1.2x to 1.8x for much crisper output
         gaussian = cv2.GaussianBlur(img_array, (0, 0), 2.0)
-        sharpened = cv2.addWeighted(img_array, 1.2, gaussian, -0.2, 0)
+        sharpened = cv2.addWeighted(img_array, 1.8, gaussian, -0.8, 0)
 
-        # Apply very subtle contrast enhancement
+        # Apply stronger contrast enhancement for more vibrant images
         lab = cv2.cvtColor(sharpened, cv2.COLOR_BGR2LAB)
         l, a, b = cv2.split(lab)
-        clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(8, 8))
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
         l = clahe.apply(l)
         enhanced = cv2.merge([l, a, b])
         enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
 
-        logger.info("[AI_CREATIVE] Applied subtle sharpening (1.2x) and contrast enhancement to AI image")
+        logger.info("[AI_CREATIVE] Applied strong sharpening (1.8x) and contrast enhancement (2.5 CLAHE) to AI image")
 
         # Save enhanced image to temp file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")

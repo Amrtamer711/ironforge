@@ -418,29 +418,44 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
 • The artwork must comply with DM's guidelines.
 • This proposal is valid until the {validity_date_str}."""
 
-    bullet_top = table_shape.top + table_shape.height + int(Inches(0.3) * scale_y)
-    max_top = slide_height - int(Inches(2.2) * scale_y)
-    bullet_top = min(bullet_top, max_top)
+    # Smart T&C positioning: calculate available space and auto-scale font
+    min_spacing = int(Inches(0.2) * scale_y)  # Minimum gap between table and T&C
+    bottom_margin = int(Inches(0.3) * scale_y)  # Space at bottom of slide
+
+    bullet_top = table_shape.top + table_shape.height + min_spacing
+    available_height = slide_height - bullet_top - bottom_margin
+
+    # Ensure we have reasonable space
+    if available_height < int(Inches(1.0) * scale_y):
+        available_height = int(Inches(1.0) * scale_y)
+        bullet_top = slide_height - available_height - bottom_margin
 
     bullet_box = slide.shapes.add_textbox(
         left=int(Inches(0.75) * scale_x),
         top=bullet_top,
         width=int(Inches(18.5) * scale_x),
-        height=int(Inches(2.0) * scale_y),
+        height=available_height,
     )
 
     tf = bullet_box.text_frame
     tf.word_wrap = True
     tf.margin_left = Inches(0)
     tf.margin_right = Inches(0)
-    tf.margin_top = Inches(0.05)  # Reduced from 0.1
-    tf.margin_bottom = Inches(0)
+    tf.margin_top = Inches(0.05)
+    tf.margin_bottom = Inches(0.05)
+
+    # Auto-scale font to fit available space (7 bullet points with line spacing)
+    # Estimate: each line needs ~1.2x font size in height
+    num_lines = 7  # Number of bullet points
+    line_spacing = 1.15  # Tighter line spacing
+    target_font_size = int((available_height / (num_lines * line_spacing * scale)) * 0.85)  # 0.85 for safety margin
+    font_size = max(8, min(target_font_size, int(11 * scale)))  # Clamp between 8pt and 11pt*scale
 
     p = tf.paragraphs[0]
     p.text = bullet_text
-    p.font.size = Pt(int(11 * scale))  # Reduced from 14pt to 11pt
+    p.font.size = Pt(font_size)
     p.font.color.rgb = RGBColor(0, 0, 0)
-    p.line_spacing = 1.2  # Reduced from 1.3 to 1.2
+    p.line_spacing = line_spacing
 
     return vat_amounts, total_amounts
 
@@ -680,28 +695,43 @@ def create_combined_financial_proposal_slide(
 • The artwork must comply with DM's guidelines.
 • This proposal is valid until the {validity_date_str}."""
 
-    bullet_top = table_shape.top + table_shape.height + int(Inches(0.3) * scale_y)
-    max_top = slide_height - int(Inches(2.2) * scale_y)
-    bullet_top = min(bullet_top, max_top)
+    # Smart T&C positioning: calculate available space and auto-scale font
+    min_spacing = int(Inches(0.2) * scale_y)  # Minimum gap between table and T&C
+    bottom_margin = int(Inches(0.3) * scale_y)  # Space at bottom of slide
+
+    bullet_top = table_shape.top + table_shape.height + min_spacing
+    available_height = slide_height - bullet_top - bottom_margin
+
+    # Ensure we have reasonable space
+    if available_height < int(Inches(1.0) * scale_y):
+        available_height = int(Inches(1.0) * scale_y)
+        bullet_top = slide_height - available_height - bottom_margin
 
     bullet_box = slide.shapes.add_textbox(
         left=int(Inches(0.75) * scale_x),
         top=bullet_top,
         width=int(Inches(18.5) * scale_x),
-        height=int(Inches(2.0) * scale_y),
+        height=available_height,
     )
 
     tf = bullet_box.text_frame
     tf.word_wrap = True
     tf.margin_left = Inches(0)
     tf.margin_right = Inches(0)
-    tf.margin_top = Inches(0.05)  # Reduced from 0.1
-    tf.margin_bottom = Inches(0)
+    tf.margin_top = Inches(0.05)
+    tf.margin_bottom = Inches(0.05)
+
+    # Auto-scale font to fit available space (7 bullet points with line spacing)
+    # Estimate: each line needs ~1.2x font size in height
+    num_lines = 7  # Number of bullet points
+    line_spacing = 1.15  # Tighter line spacing
+    target_font_size = int((available_height / (num_lines * line_spacing * scale)) * 0.85)  # 0.85 for safety margin
+    font_size = max(8, min(target_font_size, int(11 * scale)))  # Clamp between 8pt and 11pt*scale
 
     p = tf.paragraphs[0]
     p.text = bullet_text
-    p.font.size = Pt(int(11 * scale))  # Reduced from 14pt to 11pt
+    p.font.size = Pt(font_size)
     p.font.color.rgb = RGBColor(0, 0, 0)
-    p.line_spacing = 1.2  # Reduced from 1.3 to 1.2
+    p.line_spacing = line_spacing
 
     return f"AED {total:,.0f}" 
