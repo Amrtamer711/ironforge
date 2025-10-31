@@ -158,7 +158,7 @@ def create_proposal_with_template(source_path: str, financial_data: dict) -> Tup
     return tmp.name, vat_amounts, total_amounts
 
 
-def create_combined_proposal_with_template(source_path: str, proposals_data: list, combined_net_rate: str) -> Tuple[str, str]:
+def create_combined_proposal_with_template(source_path: str, proposals_data: list, combined_net_rate: str, client_name: str) -> Tuple[str, str]:
     import tempfile
 
     pres = Presentation(source_path)
@@ -173,7 +173,14 @@ def create_combined_proposal_with_template(source_path: str, proposals_data: lis
         if hasattr(shape, "text_frame"):
             shape.text_frame.clear()
 
-    total_combined = create_combined_financial_proposal_slide(financial_slide, proposals_data, combined_net_rate, slide_width, slide_height)
+    total_combined = create_combined_financial_proposal_slide(
+        financial_slide,
+        proposals_data,
+        combined_net_rate,
+        slide_width,
+        slide_height,
+        client_name,
+    )
 
     xml_slides = pres.slides._sldIdLst
     slides_list = list(xml_slides)
@@ -258,7 +265,12 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
 
         if idx == len(validated_proposals) - 1:
             pptx_file, total_combined = await loop.run_in_executor(
-                None, create_combined_proposal_with_template, str(src), validated_proposals, combined_net_rate
+                None,
+                create_combined_proposal_with_template,
+                str(src),
+                validated_proposals,
+                combined_net_rate,
+                client_name,
             )
         else:
             pptx_file = str(src)
@@ -501,6 +513,7 @@ async def process_proposals(
             "durations": durations,
             "net_rates": net_rates,
             "spots": spots,
+            "client_name": client_name,
         }
         
         # Add production fee if provided

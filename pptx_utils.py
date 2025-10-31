@@ -59,76 +59,11 @@ def format_date_for_display(date_str: str) -> str:
 
 
 def add_location_text_with_colored_sov(paragraph, location_text: str, scale: float) -> None:
-    """Add location text with red coloring for the middle section (spots - duration - SOV).
-    Format: Series: Location - Size (H x W) - Faces - [RED: spots - duration - SOV] - loop
-    """
-    import re
-
-    # For digital displays: Find pattern "faces - X spots - Y Seconds - Z% SOV - loop"
-    # We want to color red from "X spots" to "Z% SOV" (inclusive)
-    digital_pattern = r"(\d+\s*faces\s*-\s*)(\d+\s*spots?\s*-\s*\d+\s*Seconds\s*-\s*[\d.]+%\s*SOV)(\s*-\s*\d+\s*seconds\s*loop)"
-    digital_match = re.search(digital_pattern, location_text, re.IGNORECASE)
-    
-    # For static displays: Find pattern "faces - X spots"
-    static_pattern = r"(\d+\s*faces\s*-\s*)(\d+\s*spots?)"
-    static_match = re.search(static_pattern, location_text, re.IGNORECASE)
-
-    if digital_match:
-        # Split into parts for digital display
-        before_red = location_text[:digital_match.start(2)]
-        red_text = digital_match.group(2)
-        after_red = location_text[digital_match.end(2):]
-
-        # Before red section
-        if before_red:
-            run1 = paragraph.add_run()
-            run1.text = before_red
-            run1.font.size = Pt(int(20 * scale))
-            run1.font.color.rgb = RGBColor(0, 0, 0)
-
-        # Red section
-        run2 = paragraph.add_run()
-        run2.text = red_text
-        run2.font.size = Pt(int(20 * scale))
-        run2.font.color.rgb = RGBColor(255, 0, 0)
-
-        # After red section
-        if after_red:
-            run3 = paragraph.add_run()
-            run3.text = after_red
-            run3.font.size = Pt(int(20 * scale))
-            run3.font.color.rgb = RGBColor(0, 0, 0)
-    elif static_match:
-        # Split into parts for static display
-        before_red = location_text[:static_match.start(2)]
-        red_text = static_match.group(2)
-        after_red = location_text[static_match.end(2):]
-
-        # Before red section
-        if before_red:
-            run1 = paragraph.add_run()
-            run1.text = before_red
-            run1.font.size = Pt(int(20 * scale))
-            run1.font.color.rgb = RGBColor(0, 0, 0)
-
-        # Red section (just the spots for static)
-        run2 = paragraph.add_run()
-        run2.text = red_text
-        run2.font.size = Pt(int(20 * scale))
-        run2.font.color.rgb = RGBColor(255, 0, 0)
-
-        # After red section
-        if after_red:
-            run3 = paragraph.add_run()
-            run3.text = after_red
-            run3.font.size = Pt(int(20 * scale))
-            run3.font.color.rgb = RGBColor(0, 0, 0)
-    else:
-        # Fallback: no coloring
-        run = paragraph.add_run()
-        run.text = location_text
-        run.font.size = Pt(int(20 * scale))
-        run.font.color.rgb = RGBColor(0, 0, 0)
+    """Render location text in a single consistent style (all black)."""
+    run = paragraph.add_run()
+    run.text = location_text
+    run.font.size = Pt(int(20 * scale))
+    run.font.color.rgb = RGBColor(0, 0, 0)
 
 
 def set_cell_border(cell, edges=("L", "R", "T", "B")) -> None:
@@ -274,6 +209,9 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     col1_width = int(Inches(4.0) * scale_x)
     col2_width = table_width - col1_width
 
+    client_name = financial_data.get("client_name", "").strip()
+    header_text = f"{client_name} Investment Sheet" if client_name else "Investment Sheet"
+
     location_name = financial_data["location"]
     start_date = format_date_for_display(financial_data["start_date"])
     durations = financial_data["durations"]
@@ -310,7 +248,7 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     vat_amounts, total_amounts = _calc_vat_and_total_for_rates(net_rates, upload_fee, municipality_fee)
 
     data = [
-        ("Financial Proposal", None),
+        (header_text, None),
         ("Location:", location_text),
         ("Start Date:", start_date),
         ("Duration:", durations if len(durations) > 1 else durations[0]),
@@ -381,15 +319,15 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
         run.text = label
         run.font.size = Pt(int(20 * scale))
 
+        run.font.color.rgb = RGBColor(0, 0, 0)
+        run.font.bold = False
+
         if label == "Total:":
             run.font.color.rgb = RGBColor(255, 255, 255)
             run.font.bold = True
             run.font.size = Pt(int(28 * scale))
         elif label == "Net Rate:":
-            run.font.color.rgb = RGBColor(255, 0, 0)
             run.font.bold = True
-        else:
-            run.font.color.rgb = RGBColor(0, 0, 0)
 
         if isinstance(value, list):
             for j, val in enumerate(value):
@@ -411,16 +349,13 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
                 run = p.add_run()
                 run.text = val
                 run.font.size = Pt(int(20 * scale))
+                run.font.color.rgb = RGBColor(0, 0, 0)
+                run.font.bold = label == "Net Rate:"
 
                 if label == "Total:":
                     run.font.color.rgb = RGBColor(255, 255, 255)
                     run.font.bold = True
                     run.font.size = Pt(int(28 * scale))
-                elif label == "Net Rate:":
-                    run.font.color.rgb = RGBColor(255, 0, 0)
-                    run.font.bold = True
-                else:
-                    run.font.color.rgb = RGBColor(0, 0, 0)
         else:
             val_cell = table.cell(i, 1)
             val_cell.merge(table.cell(i, cols - 1))
@@ -446,18 +381,13 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
                 run = p.add_run()
                 run.text = value
                 run.font.size = Pt(int(20 * scale))
+                run.font.color.rgb = RGBColor(0, 0, 0)
+                run.font.bold = label == "Net Rate:"
 
             if label == "Total:" and run is not None:
                 run.font.color.rgb = RGBColor(255, 255, 255)
                 run.font.bold = True
                 run.font.size = Pt(int(28 * scale))
-            elif label == "Net Rate:" and run is not None:
-                run.font.color.rgb = RGBColor(255, 0, 0)
-                run.font.bold = True
-            elif run is not None and "Fee" in label:
-                run.font.color.rgb = RGBColor(35, 78, 173)
-            elif run is not None:
-                run.font.color.rgb = RGBColor(0, 0, 0)
 
     for row in table.rows:
         for cell in row.cells:
@@ -488,11 +418,15 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
 • The artwork must comply with DM's guidelines.
 • This proposal is valid until the {validity_date_str}."""
 
+    bullet_top = table_shape.top + table_shape.height + int(Inches(0.3) * scale_y)
+    max_top = slide_height - int(Inches(2.2) * scale_y)
+    bullet_top = min(bullet_top, max_top)
+
     bullet_box = slide.shapes.add_textbox(
         left=int(Inches(0.75) * scale_x),
-        top=int(Inches(9.5) * scale_y),  # Moved down from 9.0 to 9.5
+        top=bullet_top,
         width=int(Inches(18.5) * scale_x),
-        height=int(Inches(2.0) * scale_y),  # Reduced height from 2.5 to 2.0
+        height=int(Inches(2.0) * scale_y),
     )
 
     tf = bullet_box.text_frame
@@ -511,7 +445,14 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     return vat_amounts, total_amounts
 
 
-def create_combined_financial_proposal_slide(slide, proposals_data: list, combined_net_rate: str, slide_width, slide_height) -> str:
+def create_combined_financial_proposal_slide(
+    slide,
+    proposals_data: list,
+    combined_net_rate: str,
+    slide_width,
+    slide_height,
+    client_name: str = "",
+) -> str:
     logger = config.logger
     logger.info(f"[CREATE_COMBINED] Creating combined slide for {len(proposals_data)} locations")
     logger.info(f"[CREATE_COMBINED] Proposals data: {proposals_data}")
@@ -610,8 +551,10 @@ def create_combined_financial_proposal_slide(slide, proposals_data: list, combin
     vat = subtotal * 0.05
     total = subtotal + vat
 
+    header_text = f"{client_name.strip()} Investment Sheet" if client_name.strip() else "Investment Sheet"
+
     data = [
-        ("Financial Proposal", None),
+        (header_text, None),
         ("Location:", locations),
         ("Start Date:", start_dates),
         ("Duration:", durations),
@@ -659,15 +602,15 @@ def create_combined_financial_proposal_slide(slide, proposals_data: list, combin
         run.text = label
         run.font.size = Pt(int(20 * scale))
 
+        run.font.color.rgb = RGBColor(0, 0, 0)
+        run.font.bold = False
+
         if label == "Total:":
             run.font.color.rgb = RGBColor(255, 255, 255)
             run.font.bold = True
             run.font.size = Pt(int(28 * scale))
         elif label == "Net Rate:":
-            run.font.color.rgb = RGBColor(255, 0, 0)
             run.font.bold = True
-        else:
-            run.font.color.rgb = RGBColor(0, 0, 0)
 
         if isinstance(value, list):
             for j, val in enumerate(value[:num_locations]):
@@ -688,10 +631,8 @@ def create_combined_financial_proposal_slide(slide, proposals_data: list, combin
                     run = p.add_run()
                     run.text = val
                     run.font.size = Pt(int(20 * scale))
-                if label == "Upload Fee:":
-                    run.font.color.rgb = RGBColor(35, 78, 173)
-                else:
                     run.font.color.rgb = RGBColor(0, 0, 0)
+                    run.font.bold = label == "Net Rate:"
         else:
             val_cell = table.cell(i, 1)
             val_cell.merge(table.cell(i, cols - 1))
@@ -711,17 +652,12 @@ def create_combined_financial_proposal_slide(slide, proposals_data: list, combin
             run = p.add_run()
             run.text = value
             run.font.size = Pt(int(20 * scale))
+            run.font.color.rgb = RGBColor(0, 0, 0)
+            run.font.bold = label == "Net Rate:"
             if label == "Total":
                 run.font.color.rgb = RGBColor(255, 255, 255)
                 run.font.bold = True
                 run.font.size = Pt(int(28 * scale))
-            elif label == "Net Rate:":
-                run.font.color.rgb = RGBColor(255, 0, 0)
-                run.font.bold = True
-            elif "Fee" in label:
-                run.font.color.rgb = RGBColor(35, 78, 173)
-            else:
-                run.font.color.rgb = RGBColor(0, 0, 0)
 
     for row in table.rows:
         for cell in row.cells:
@@ -744,11 +680,15 @@ def create_combined_financial_proposal_slide(slide, proposals_data: list, combin
 • The artwork must comply with DM's guidelines.
 • This proposal is valid until the {validity_date_str}."""
 
+    bullet_top = table_shape.top + table_shape.height + int(Inches(0.3) * scale_y)
+    max_top = slide_height - int(Inches(2.2) * scale_y)
+    bullet_top = min(bullet_top, max_top)
+
     bullet_box = slide.shapes.add_textbox(
         left=int(Inches(0.75) * scale_x),
-        top=int(Inches(9.5) * scale_y),  # Moved down from 9.0 to 9.5
+        top=bullet_top,
         width=int(Inches(18.5) * scale_x),
-        height=int(Inches(2.0) * scale_y),  # Reduced height from 2.5 to 2.0
+        height=int(Inches(2.0) * scale_y),
     )
 
     tf = bullet_box.text_frame
