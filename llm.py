@@ -495,24 +495,34 @@ async def _generate_ai_mockup_queued(
 
     async def _generate():
         try:
-            logger.info(f"[QUEUE] Generating {num_prompts} AI creative(s) for {location_key}")
-            ai_creative_paths = []
+            logger.info(f"[QUEUE] Generating {num_prompts} AI creative(s) for {location_key} in parallel")
 
-            # Generate one creative per prompt
+            # Build all prompts first
+            full_prompts = []
             for i, user_prompt in enumerate(ai_prompts, 1):
-                logger.info(f"[AI QUEUE] Generating creative {i}/{num_prompts}")
+                logger.info(f"[AI QUEUE] Preparing creative {i}/{num_prompts}: {user_prompt[:100]}...")
                 # Inject user's prompt into the enhanced template
                 full_prompt = enhanced_prompt_template.replace("{{USER_PROMPT}}", user_prompt)
-                creative_path = await mockup_generator.generate_ai_creative(
-                    prompt=full_prompt,
+                full_prompts.append(full_prompt)
+
+            # Generate all creatives in parallel (asyncio.gather preserves order)
+            logger.info(f"[AI QUEUE] Executing {num_prompts} image generation(s) in parallel...")
+            creative_tasks = [
+                mockup_generator.generate_ai_creative(
+                    prompt=prompt,
                     location_key=location_key,
                     user_id=user_id
                 )
+                for prompt in full_prompts
+            ]
+            ai_creative_paths = await asyncio.gather(*creative_tasks)
+
+            # Check if any failed
+            for i, creative_path in enumerate(ai_creative_paths, 1):
                 if not creative_path:
                     raise Exception(f"Failed to generate AI creative {i}/{num_prompts}")
-                ai_creative_paths.append(creative_path)
 
-            logger.info(f"[QUEUE] AI creatives ready, generating mockup for {location_key}")
+            logger.info(f"[QUEUE] All AI creatives ready, generating mockup for {location_key}")
 
             # Generate mockup with AI creatives
             result_path, metadata = mockup_generator.generate_mockup(
