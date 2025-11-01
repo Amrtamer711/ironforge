@@ -1405,49 +1405,48 @@ Even if the source document lists fees per location, you MUST sum them into sing
             ws["B39"] = hos_signature
             ws["B39"].font = openpyxl.styles.Font(italic=True)
 
-        # Net rentals excl SLA in merged cell (A-E 32-37 range)
-        # Show breakdown with per-location post-SLA amounts if SLA was applied
+        # Net rentals excl SLA: write value to B29 and breakdown to A33
         sla_pct = data.get("sla_pct", 0) or 0
 
-        # Build the Net excl SLA display text
-        net_excl_sla_text = f"Net excl SLA: {net_rentals_excl_sla:,.2f}"
+        # Write net excl SLA value directly to cell B29 (just the number)
+        ws['B29'] = net_rentals_excl_sla
 
-        # If SLA was applied, show per-location breakdown
-        if sla_pct > 0:
-            locations = data.get("locations", [])
-            location_lines = []
+        # Always show location breakdown in A33 with numbered list
+        locations = data.get("locations", [])
+        location_lines = ["Location splits excl SLA:"]
 
-            for location in locations:
-                loc_name = location.get("name", "Unknown")
-                pre_sla = location.get("net_amount", 0)
-                post_sla = location.get("post_sla_amount", pre_sla)
+        for idx, location in enumerate(locations, 1):
+            loc_name = location.get("name", "Unknown")
+            # If SLA was applied, use post_sla_amount; otherwise use net_amount
+            if sla_pct > 0:
+                amount = location.get("post_sla_amount", 0)
+            else:
+                amount = location.get("net_amount", 0)
 
-                # Only show location breakdown if post-SLA differs from pre-SLA
-                if abs(post_sla - pre_sla) > 0.01:
-                    location_lines.append(f"  {loc_name}: {post_sla:,.2f}")
+            if amount > 0:
+                location_lines.append(f"{idx}. {loc_name} - {amount:,.2f}")
 
-            # Add location breakdown if any locations had SLA applied
-            if location_lines:
-                net_excl_sla_text += "\n" + "\n".join(location_lines)
+        # Write location splits to A33 (merged cell)
+        if len(location_lines) > 1:
+            location_splits_text = "\n".join(location_lines)
 
-        # For merged cells, we must write to the top-left cell of the range
-        for merged_range in ws.merged_cells.ranges:
-            if "A33" in merged_range:
-                # Get the top-left cell of the merged range
-                min_col, min_row = merged_range.bounds[0], merged_range.bounds[1]
-                top_left_cell = ws.cell(row=min_row, column=min_col)
-                top_left_cell.value = net_excl_sla_text
-                top_left_cell.alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
-                # Remove underline formatting that may be inherited from template
-                top_left_cell.font = openpyxl.styles.Font(
-                    name=top_left_cell.font.name,
-                    size=top_left_cell.font.size,
-                    bold=top_left_cell.font.bold,
-                    italic=top_left_cell.font.italic,
-                    underline='none',
-                    color=top_left_cell.font.color
-                )
-                break
+            for merged_range in ws.merged_cells.ranges:
+                if "A33" in merged_range:
+                    # Get the top-left cell of the merged range
+                    min_col, min_row = merged_range.bounds[0], merged_range.bounds[1]
+                    top_left_cell = ws.cell(row=min_row, column=min_col)
+                    top_left_cell.value = location_splits_text
+                    top_left_cell.alignment = openpyxl.styles.Alignment(wrap_text=True, vertical='top')
+                    # Remove underline formatting
+                    top_left_cell.font = openpyxl.styles.Font(
+                        name=top_left_cell.font.name,
+                        size=top_left_cell.font.size,
+                        bold=top_left_cell.font.bold,
+                        italic=top_left_cell.font.italic,
+                        underline='none',
+                        color=top_left_cell.font.color
+                    )
+                    break
 
         # Save to temporary file
         temp_excel = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
