@@ -419,8 +419,8 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
 • This proposal is valid until the {validity_date_str}."""
 
     # Smart T&C positioning: calculate available space and auto-scale font
-    min_spacing = int(Inches(0.2) * scale_y)  # Minimum gap between table and T&C
-    bottom_margin = int(Inches(0.3) * scale_y)  # Space at bottom of slide
+    min_spacing = int(Inches(0.6) * scale_y)  # Minimum gap between table and T&C (increased to prevent overlap)
+    bottom_margin = int(Inches(0.2) * scale_y)  # Space at bottom of slide
 
     bullet_top = table_shape.top + table_shape.height + min_spacing
     available_height = slide_height - bullet_top - bottom_margin
@@ -696,8 +696,8 @@ def create_combined_financial_proposal_slide(
 • This proposal is valid until the {validity_date_str}."""
 
     # Smart T&C positioning: calculate available space and auto-scale font
-    min_spacing = int(Inches(0.2) * scale_y)  # Minimum gap between table and T&C
-    bottom_margin = int(Inches(0.3) * scale_y)  # Space at bottom of slide
+    min_spacing = int(Inches(0.6) * scale_y)  # Minimum gap between table and T&C (increased to prevent overlap)
+    bottom_margin = int(Inches(0.2) * scale_y)  # Space at bottom of slide
 
     bullet_top = table_shape.top + table_shape.height + min_spacing
     available_height = slide_height - bullet_top - bottom_margin
