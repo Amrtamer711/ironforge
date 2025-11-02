@@ -472,12 +472,12 @@ def create_combined_financial_proposal_slide(
     logger.info(f"[CREATE_COMBINED] Creating combined slide for {len(proposals_data)} locations")
     logger.info(f"[CREATE_COMBINED] Proposals data: {proposals_data}")
     logger.info(f"[CREATE_COMBINED] Combined net rate: {combined_net_rate}")
-    
+
     scale_x = slide_width / Inches(20)
     scale_y = slide_height / Inches(12)
     scale = min(scale_x, scale_y)
 
-    num_locations = len(proposals_data)
+    num_locations = len(proposals_data)  # Will be used for dynamic T&C spacing
     cols = num_locations + 1
     rows = 9
 
@@ -696,7 +696,10 @@ def create_combined_financial_proposal_slide(
 • This proposal is valid until the {validity_date_str}."""
 
     # Smart T&C positioning: calculate available space and auto-scale font
-    min_spacing = int(Inches(0.8) * scale_y)  # Minimum gap between table and T&C (increased to prevent overlap)
+    # Scale spacing based on number of locations (more locations = taller location row = need more spacing)
+    base_spacing = 0.8  # Base spacing in inches
+    location_factor = num_locations * 0.15  # Add 0.15" per location
+    min_spacing = int(Inches(base_spacing + location_factor) * scale_y)
     bottom_margin = int(Inches(0.2) * scale_y)  # Space at bottom of slide
 
     bullet_top = table_shape.top + table_shape.height + min_spacing
