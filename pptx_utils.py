@@ -697,8 +697,9 @@ def create_combined_financial_proposal_slide(
 
     # Smart T&C positioning: calculate available space and auto-scale font
     # Scale spacing based on number of locations (more locations = taller location row = need more spacing)
-    base_spacing = 0.8  # Base spacing in inches
-    location_factor = num_locations * 0.15  # Add 0.15" per location
+    # Formula calibrated so 3 locations = 0.8" (known good value)
+    base_spacing = 0.5  # Base spacing in inches
+    location_factor = num_locations * 0.1  # Add 0.1" per location
     min_spacing = int(Inches(base_spacing + location_factor) * scale_y)
     bottom_margin = int(Inches(0.2) * scale_y)  # Space at bottom of slide
 
