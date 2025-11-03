@@ -1652,10 +1652,10 @@ Even if the source document lists fees per location, you MUST sum them into sing
             can = canvas.Canvas(packet, pagesize=(float(reader.pages[best_page_idx].mediabox.width),
                                                    float(reader.pages[best_page_idx].mediabox.height)))
 
-            # Draw stamp at calculated position
+            # Draw stamp at calculated position with exact size
             can.drawImage(ImageReader(stamp_img_path), best_x, best_y,
                          width=best_size[0], height=best_size[1],
-                         mask='auto', preserveAspectRatio=True)
+                         mask='auto', preserveAspectRatio=False)
             can.save()
 
             # Move to the beginning of the BytesIO buffer
