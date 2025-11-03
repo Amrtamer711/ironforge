@@ -10,6 +10,9 @@ from pptx.oxml.xmlchemy import OxmlElement
 from pptx.oxml.ns import qn
 import config
 
+# Optional DM Guidelines URL - if set, the T&C text will include a hyperlink
+DM_GUIDELINES_URL = ""  # Set to URL like "https://dm.gov.ae/guidelines" to enable hyperlink
+
 
 def format_date_for_display(date_str: str) -> str:
     """Convert various date formats to 'Xth Month YYYY' format (e.g., '5th November 2025')."""
@@ -457,7 +460,39 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     font_size = max(8, min(target_font_size, int(11 * scale)))  # Clamp between 8pt and 11pt*scale
 
     p = tf.paragraphs[0]
-    p.text = bullet_text
+
+    # If DM Guidelines URL is set, split text and add hyperlink to that line
+    if DM_GUIDELINES_URL:
+        lines = bullet_text.split('\n')
+        for i, line in enumerate(lines):
+            if i > 0:
+                p.add_run().text = '\n'
+
+            # Check if this line contains "DM's guidelines"
+            if "DM's guidelines" in line:
+                # Split at the guidelines text
+                before, after = line.split("DM's guidelines", 1)
+                p.add_run().text = before
+
+                # Add hyperlink for "DM's guidelines"
+                run = p.add_run()
+                run.text = "DM's guidelines"
+                run.font.color.rgb = RGBColor(0, 0, 255)  # Blue color for link
+                run.font.underline = True
+                # Add hyperlink
+                rPr = run._element.get_or_add_rPr()
+                hlinkClick = OxmlElement('a:hlinkClick')
+                hlinkClick.set(qn('r:id'), '')
+                hlinkClick.set('tooltip', 'DM Guidelines')
+                hlinkClick.set('action', DM_GUIDELINES_URL)
+                rPr.append(hlinkClick)
+
+                p.add_run().text = after
+            else:
+                p.add_run().text = line
+    else:
+        p.text = bullet_text
+
     p.font.size = Pt(font_size)
     p.font.color.rgb = RGBColor(0, 0, 0)
     p.line_spacing = line_spacing
@@ -765,7 +800,39 @@ def create_combined_financial_proposal_slide(
     font_size = max(8, min(target_font_size, int(11 * scale)))  # Clamp between 8pt and 11pt*scale
 
     p = tf.paragraphs[0]
-    p.text = bullet_text
+
+    # If DM Guidelines URL is set, split text and add hyperlink to that line
+    if DM_GUIDELINES_URL:
+        lines = bullet_text.split('\n')
+        for i, line in enumerate(lines):
+            if i > 0:
+                p.add_run().text = '\n'
+
+            # Check if this line contains "DM's guidelines"
+            if "DM's guidelines" in line:
+                # Split at the guidelines text
+                before, after = line.split("DM's guidelines", 1)
+                p.add_run().text = before
+
+                # Add hyperlink for "DM's guidelines"
+                run = p.add_run()
+                run.text = "DM's guidelines"
+                run.font.color.rgb = RGBColor(0, 0, 255)  # Blue color for link
+                run.font.underline = True
+                # Add hyperlink
+                rPr = run._element.get_or_add_rPr()
+                hlinkClick = OxmlElement('a:hlinkClick')
+                hlinkClick.set(qn('r:id'), '')
+                hlinkClick.set('tooltip', 'DM Guidelines')
+                hlinkClick.set('action', DM_GUIDELINES_URL)
+                rPr.append(hlinkClick)
+
+                p.add_run().text = after
+            else:
+                p.add_run().text = line
+    else:
+        p.text = bullet_text
+
     p.font.size = Pt(font_size)
     p.font.color.rgb = RGBColor(0, 0, 0)
     p.line_spacing = line_spacing

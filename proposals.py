@@ -254,21 +254,36 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
 
     loop = asyncio.get_event_loop()
     pdf_files: List[str] = []
-    
+
     # Check if we'll have intro/outro slides
     intro_outro_info = _get_location_info_for_intro_outro(validated_proposals)
 
-    for idx, proposal in enumerate(validated_proposals):
+    # Deduplicate deck slides - same location can appear multiple times (multiple durations)
+    # but we only want to show the deck slides once
+    seen_locations = set()
+    unique_proposals_for_deck = []
+
+    for proposal in validated_proposals:
+        location_key = proposal["location"]
+        if location_key not in seen_locations:
+            seen_locations.add(location_key)
+            unique_proposals_for_deck.append(proposal)
+            logger.info(f"[COMBINED] Including deck slides for '{location_key}' (first occurrence)")
+        else:
+            logger.info(f"[COMBINED] Skipping duplicate deck slides for '{location_key}'")
+
+    for idx, proposal in enumerate(unique_proposals_for_deck):
         src = config.TEMPLATES_DIR / proposal["filename"]
         if not src.exists():
             return {"success": False, "error": f"{proposal['filename']} not found"}
 
-        if idx == len(validated_proposals) - 1:
+        if idx == len(unique_proposals_for_deck) - 1:
+            # Investment sheet uses ALL validated_proposals (including duplicates for multiple durations)
             pptx_file, total_combined = await loop.run_in_executor(
                 None,
                 create_combined_proposal_with_template,
                 str(src),
-                validated_proposals,
+                validated_proposals,  # Use original list with all proposals
                 combined_net_rate,
                 client_name,
             )
