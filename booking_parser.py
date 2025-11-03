@@ -1494,44 +1494,52 @@ Even if the source document lists fees per location, you MUST sum them into sing
         """
         logger.info(f"[BOOKING PARSER] Generating combined PDF for {bo_ref}, original_bo_path: {original_bo_path} (type: {type(original_bo_path)})")
 
-        # Step 1: Generate Excel
-        logger.info(f"[BOOKING PARSER] Step 1: Generating Excel for {bo_ref}")
-        excel_path = await self.generate_excel(data, bo_ref)
-        logger.info(f"[BOOKING PARSER] Excel generated: {excel_path}")
+        excel_path = None
+        excel_pdf_path = None
+        original_pdf_path = None
+        stamped_pdf_path = None
 
-        # Step 2: Convert Excel to PDF using LibreOffice
-        logger.info(f"[BOOKING PARSER] Step 2: Converting Excel to PDF")
-        excel_pdf_path = await self._convert_excel_to_pdf(excel_path)
-        logger.info(f"[BOOKING PARSER] Excel PDF created: {excel_pdf_path}")
-
-        # Step 3: Ensure original BO is PDF (convert if needed)
-        logger.info(f"[BOOKING PARSER] Step 3: Ensuring original BO is PDF, path: {original_bo_path}")
-        original_pdf_path = await self._ensure_pdf(original_bo_path)
-        logger.info(f"[BOOKING PARSER] Original BO PDF ready: {original_pdf_path}")
-
-        # Step 3.5: Apply stamp to original BO PDF (HoS approval stamp)
-        logger.info(f"[BOOKING PARSER] Step 3.5: Applying HoS approval stamp")
-        stamped_pdf_path = await self._apply_stamp_to_pdf(original_pdf_path)
-        logger.info(f"[BOOKING PARSER] Stamped PDF ready: {stamped_pdf_path}")
-
-        # Step 4: Concatenate PDFs (Excel PDF first, then stamped original BO)
-        combined_pdf_path = COMBINED_BOS_DIR / f"{bo_ref}_combined.pdf"
-        await self._concatenate_pdfs([excel_pdf_path, stamped_pdf_path], combined_pdf_path)
-
-        # Clean up temporary files
         try:
-            excel_path.unlink()
-            if excel_pdf_path != excel_path:
-                excel_pdf_path.unlink()
-            if original_pdf_path != original_bo_path:
-                original_pdf_path.unlink()
-            if stamped_pdf_path != original_pdf_path:
-                stamped_pdf_path.unlink()
-        except Exception as e:
-            logger.warning(f"[BOOKING PARSER] Failed to clean up temp files: {e}")
+            # Step 1: Generate Excel
+            logger.info(f"[BOOKING PARSER] Step 1: Generating Excel for {bo_ref}")
+            excel_path = await self.generate_excel(data, bo_ref)
+            logger.info(f"[BOOKING PARSER] Excel generated: {excel_path}")
 
-        logger.info(f"[BOOKING PARSER] Combined PDF generated: {combined_pdf_path}")
-        return combined_pdf_path
+            # Step 2: Convert Excel to PDF using LibreOffice
+            logger.info(f"[BOOKING PARSER] Step 2: Converting Excel to PDF")
+            excel_pdf_path = await self._convert_excel_to_pdf(excel_path)
+            logger.info(f"[BOOKING PARSER] Excel PDF created: {excel_pdf_path}")
+
+            # Step 3: Ensure original BO is PDF (convert if needed)
+            logger.info(f"[BOOKING PARSER] Step 3: Ensuring original BO is PDF, path: {original_bo_path}")
+            original_pdf_path = await self._ensure_pdf(original_bo_path)
+            logger.info(f"[BOOKING PARSER] Original BO PDF ready: {original_pdf_path}")
+
+            # Step 3.5: Apply stamp to original BO PDF (HoS approval stamp)
+            logger.info(f"[BOOKING PARSER] Step 3.5: Applying HoS approval stamp")
+            stamped_pdf_path = await self._apply_stamp_to_pdf(original_pdf_path)
+            logger.info(f"[BOOKING PARSER] Stamped PDF ready: {stamped_pdf_path}")
+
+            # Step 4: Concatenate PDFs (Excel PDF first, then stamped original BO)
+            combined_pdf_path = COMBINED_BOS_DIR / f"{bo_ref}_combined.pdf"
+            await self._concatenate_pdfs([excel_pdf_path, stamped_pdf_path], combined_pdf_path)
+
+            logger.info(f"[BOOKING PARSER] Combined PDF generated: {combined_pdf_path}")
+            return combined_pdf_path
+
+        finally:
+            # Clean up temporary files (always runs, even if there's an error)
+            try:
+                if excel_path and excel_path.exists():
+                    excel_path.unlink()
+                if excel_pdf_path and excel_pdf_path != excel_path and excel_pdf_path.exists():
+                    excel_pdf_path.unlink()
+                if original_pdf_path and original_pdf_path != original_bo_path and original_pdf_path.exists():
+                    original_pdf_path.unlink()
+                if stamped_pdf_path and stamped_pdf_path != original_pdf_path and stamped_pdf_path.exists():
+                    stamped_pdf_path.unlink()
+            except Exception as e:
+                logger.warning(f"[BOOKING PARSER] Failed to clean up temp files: {e}")
 
     async def _convert_excel_to_pdf(self, excel_path: Path) -> Path:
         """Convert Excel file to PDF using LibreOffice"""
@@ -1629,27 +1637,148 @@ Even if the source document lists fees per location, you MUST sum them into sing
             stamp_width, stamp_height = stamp_img.size
 
             # Target stamp size in PDF points (roughly 2 inches wide = 144 points)
-            target_stamp_width = 144
-            target_stamp_height = int(stamp_height * (target_stamp_width / stamp_width))
+            initial_stamp_width = 144
+            initial_stamp_height = int(stamp_height * (initial_stamp_width / stamp_width))
 
-            # Place stamp in middle-right area of first page
-            # Vertically centered, right-aligned with margin
+            # Find suitable position by analyzing page for white space
             first_page = reader.pages[0]
             page_width = float(first_page.mediabox.width)
             page_height = float(first_page.mediabox.height)
-            margin = 20
 
-            best_page_idx = 0
-            # Right-aligned with margin
-            best_x = page_width - target_stamp_width - margin
-            # Vertically centered
-            best_y = (page_height - target_stamp_height) / 2
-            best_size = (target_stamp_width, target_stamp_height)
+            # Helper function to check if area is mostly white/blank
+            def is_white_space(page_img, x, y, w, h):
+                """Check if region is mostly white (near-white background)"""
+                try:
+                    # Crop region
+                    region = page_img.crop((x, y, x + w, y + h))
+                    # Convert to numpy array
+                    pixels = np.array(region.convert('RGB'))
+                    # Check if most pixels are near-white (>240 for all RGB channels)
+                    white_mask = np.all(pixels > 240, axis=2)
+                    white_ratio = np.sum(white_mask) / (w * h)
+                    return white_ratio > 0.95  # 95% must be white
+                except:
+                    return False
 
-            logger.info(f"[STAMP] Placing stamp on page 1 (middle-right) at ({best_x:.1f}, {best_y:.1f})")
+            # Render first page to image for analysis
+            doc = None
+            rendering_succeeded = False
+            try:
+                import fitz  # PyMuPDF
+                doc = fitz.open(str(pdf_path))
+                page = doc[0]
+                # Render at 150 DPI for reasonable performance
+                pix = page.get_pixmap(dpi=150)
+                page_img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                img_width, img_height = page_img.size
 
-            # Create overlay PDF with stamp
-            stamp_pdf_path = pdf_path.parent / f"stamp_overlay_{pdf_path.name}"
+                # Scale factors to convert PDF points to image pixels
+                scale_x = img_width / page_width
+                scale_y = img_height / page_height
+
+                logger.info(f"[STAMP] Page rendered: {img_width}x{img_height} pixels, PDF: {page_width:.1f}x{page_height:.1f} points")
+                rendering_succeeded = True
+            except Exception as e:
+                logger.warning(f"[STAMP] Could not render page for analysis: {e}, using fallback positioning")
+                # Fallback to middle-right
+                best_page_idx = 0
+                best_x = page_width - initial_stamp_width - 20
+                best_y = (page_height - initial_stamp_height) / 2
+                best_size = (initial_stamp_width, initial_stamp_height)
+                logger.info(f"[STAMP] Fallback: placing stamp at ({best_x:.1f}, {best_y:.1f})")
+            finally:
+                # Always close PyMuPDF document
+                if doc is not None:
+                    doc.close()
+
+            if rendering_succeeded:
+                # Search for white space - try multiple stamp sizes if needed
+                found = False
+                attempt = 0
+                max_attempts = 3
+
+                while not found and attempt < max_attempts:
+                    # Reduce size on each attempt
+                    scale_factor = 1.0 - (attempt * 0.25)  # 100%, 75%, 50%
+                    stamp_w = int(initial_stamp_width * scale_factor)
+                    stamp_h = int(initial_stamp_height * scale_factor)
+
+                    if stamp_w < 72 or stamp_h < 72:  # Minimum 1 inch
+                        break
+
+                    logger.info(f"[STAMP] Attempt {attempt + 1}: searching for {stamp_w}x{stamp_h} space")
+
+                    # Convert to image coordinates
+                    stamp_w_img = int(stamp_w * scale_x)
+                    stamp_h_img = int(stamp_h * scale_y)
+
+                    # Define quadrants: bottom-right, bottom-left, top-right, top-left
+                    quadrants = [
+                        ('bottom-right', img_width // 2, img_width, img_height // 2, img_height),
+                        ('bottom-left', 0, img_width // 2, img_height // 2, img_height),
+                        ('top-right', img_width // 2, img_width, 0, img_height // 2),
+                        ('top-left', 0, img_width // 2, 0, img_height // 2),
+                    ]
+
+                    step = 10  # pixels to move per step
+
+                    for quad_name, x_start, x_end, y_start, y_end in quadrants:
+                        if found:
+                            break
+
+                        logger.info(f"[STAMP] Searching {quad_name} quadrant")
+
+                        # Scan from top to bottom (in image coords, bottom to top in PDF)
+                        y = y_start
+                        while y + stamp_h_img <= y_end and not found:
+                            # Scan horizontally from right to left for bottom/top-right
+                            # or left to right for bottom/top-left
+                            if 'right' in quad_name:
+                                x = x_end - stamp_w_img
+                                x_direction = -step
+                                x_limit = x_start
+                            else:
+                                x = x_start
+                                x_direction = step
+                                x_limit = x_end - stamp_w_img
+
+                            while True:
+                                if 'right' in quad_name and x < x_limit:
+                                    break
+                                if 'left' in quad_name and x > x_limit:
+                                    break
+
+                                if is_white_space(page_img, x, y, stamp_w_img, stamp_h_img):
+                                    # Found white space! Convert back to PDF coordinates
+                                    pdf_x = x / scale_x
+                                    # PDF y-axis is bottom-up, image is top-down
+                                    pdf_y = page_height - ((y + stamp_h_img) / scale_y)
+
+                                    best_page_idx = 0
+                                    best_x = pdf_x
+                                    best_y = pdf_y
+                                    best_size = (stamp_w, stamp_h)
+                                    found = True
+                                    logger.info(f"[STAMP] Found white space in {quad_name} at ({best_x:.1f}, {best_y:.1f})")
+                                    break
+
+                                x += x_direction
+
+                            y += step
+
+                    attempt += 1
+
+                # If still not found, use fallback position (middle-right)
+                if not found:
+                    logger.warning(f"[STAMP] No suitable white space found, using middle-right fallback")
+                    best_page_idx = 0
+                    best_x = page_width - initial_stamp_width - 20
+                    best_y = (page_height - initial_stamp_height) / 2
+                    best_size = (initial_stamp_width, initial_stamp_height)
+
+            logger.info(f"[STAMP] Final position: ({best_x:.1f}, {best_y:.1f}), size: {best_size[0]:.1f}x{best_size[1]:.1f}")
+
+            # Create overlay PDF with stamp (using in-memory buffer, no temp file needed)
             packet = io.BytesIO()
             can = canvas.Canvas(packet, pagesize=(float(reader.pages[best_page_idx].mediabox.width),
                                                    float(reader.pages[best_page_idx].mediabox.height)))
@@ -1673,11 +1802,19 @@ Even if the source document lists fees per location, you MUST sum them into sing
 
             # Write output
             output_path = pdf_path.parent / f"stamped_{pdf_path.name}"
-            with open(output_path, 'wb') as output_file:
-                writer.write(output_file)
-
-            logger.info(f"[STAMP] Successfully applied stamp to {output_path}")
-            return output_path
+            try:
+                with open(output_path, 'wb') as output_file:
+                    writer.write(output_file)
+                logger.info(f"[STAMP] Successfully applied stamp to {output_path}")
+                return output_path
+            except Exception as write_error:
+                # Clean up partial file if write failed
+                if output_path.exists():
+                    try:
+                        output_path.unlink()
+                    except:
+                        pass
+                raise write_error
 
         except Exception as e:
             logger.error(f"[STAMP] Failed to apply stamp: {e}")
