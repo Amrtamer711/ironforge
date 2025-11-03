@@ -707,6 +707,11 @@ def create_combined_financial_proposal_slide(
                     run.font.size = Pt(int(20 * scale))
                     run.font.color.rgb = RGBColor(0, 0, 0)
                     run.font.bold = label == "Net Rate:"
+
+                    if label == "Total:":
+                        run.font.color.rgb = RGBColor(255, 255, 255)
+                        run.font.bold = True
+                        run.font.size = Pt(int(28 * scale))
         else:
             val_cell = table.cell(i, 1)
             val_cell.merge(table.cell(i, cols - 1))
@@ -728,7 +733,7 @@ def create_combined_financial_proposal_slide(
             run.font.size = Pt(int(20 * scale))
             run.font.color.rgb = RGBColor(0, 0, 0)
             run.font.bold = label == "Net Rate:"
-            if label == "Total":
+            if label == "Total:":
                 run.font.color.rgb = RGBColor(255, 255, 255)
                 run.font.bold = True
                 run.font.size = Pt(int(28 * scale))
