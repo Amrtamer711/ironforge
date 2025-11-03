@@ -257,11 +257,6 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
         if production_fee:
             validated_proposal["production_fee"] = production_fee
 
-        # Add payment_terms if provided
-        payment_terms = proposal.get("payment_terms")
-        if payment_terms:
-            validated_proposal["payment_terms"] = payment_terms
-            
         validated_proposals.append(validated_proposal)
 
     loop = asyncio.get_event_loop()
