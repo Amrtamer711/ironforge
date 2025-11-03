@@ -2176,17 +2176,19 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 args = json.loads(msg.arguments)
                 proposals_data = args.get("proposals", [])
                 client_name = args.get("client_name") or "Unknown Client"
-                
+                payment_terms = args.get("payment_terms", "100% upfront")
+
                 logger.info(f"[SEPARATE] Raw args: {args}")
                 logger.info(f"[SEPARATE] Proposals data: {proposals_data}")
                 logger.info(f"[SEPARATE] Client: {client_name}, User: {user_id}")
+                logger.info(f"[SEPARATE] Payment terms: {payment_terms}")
 
                 if not proposals_data:
                     await config.slack_client.chat_delete(channel=channel, ts=status_ts)
                     await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** No proposals data provided"))
                     return
-                
-                result = await process_proposals(proposals_data, "separate", None, user_id, client_name)
+
+                result = await process_proposals(proposals_data, "separate", None, user_id, client_name, payment_terms)
             elif msg.name == "get_combined_proposal":
                 # Update status to Building Proposal
                 await config.slack_client.chat_update(
@@ -2199,11 +2201,13 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 proposals_data = args.get("proposals", [])
                 combined_net_rate = args.get("combined_net_rate", None)
                 client_name = args.get("client_name") or "Unknown Client"
-                
+                payment_terms = args.get("payment_terms", "100% upfront")
+
                 logger.info(f"[COMBINED] Raw args: {args}")
                 logger.info(f"[COMBINED] Proposals data: {proposals_data}")
                 logger.info(f"[COMBINED] Combined rate: {combined_net_rate}")
                 logger.info(f"[COMBINED] Client: {client_name}, User: {user_id}")
+                logger.info(f"[COMBINED] Payment terms: {payment_terms}")
 
                 if not proposals_data:
                     await config.slack_client.chat_delete(channel=channel, ts=status_ts)
@@ -2224,7 +2228,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         proposal["durations"] = [proposal.pop("duration")]
                         logger.info(f"[COMBINED] Transformed proposal: {proposal}")
                         
-                result = await process_proposals(proposals_data, "combined", combined_net_rate, user_id, client_name)
+                result = await process_proposals(proposals_data, "combined", combined_net_rate, user_id, client_name, payment_terms)
             
             # Handle result for both get_separate_proposals and get_combined_proposal
             if msg.name in ["get_separate_proposals", "get_combined_proposal"] and 'result' in locals():

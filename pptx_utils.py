@@ -520,6 +520,7 @@ def create_combined_financial_proposal_slide(
     slide_width,
     slide_height,
     client_name: str = "",
+    payment_terms: str = "100% upfront",
 ) -> str:
     logger = config.logger
     logger.info(f"[CREATE_COMBINED] Creating combined slide for {len(proposals_data)} locations")
@@ -751,11 +752,7 @@ def create_combined_financial_proposal_slide(
         "th"
     )
 
-    # Get payment terms (default to 100% upfront) from proposals_data
-    payment_terms = "100% upfront"
-    if isinstance(proposals_data, list) and len(proposals_data) > 0:
-        payment_terms = proposals_data[0].get("payment_terms", "100% upfront")
-
+    # payment_terms is now passed as a parameter to the function
     bullet_text = f"""• Payment Terms: {payment_terms}
 • A DM fee of AED 520 per image/message applies. The final fee will be confirmed after the final artwork is received.
 • An official booking order is required to secure the location/spot.

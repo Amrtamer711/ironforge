@@ -158,7 +158,7 @@ def create_proposal_with_template(source_path: str, financial_data: dict) -> Tup
     return tmp.name, vat_amounts, total_amounts
 
 
-def create_combined_proposal_with_template(source_path: str, proposals_data: list, combined_net_rate: str, client_name: str) -> Tuple[str, str]:
+def create_combined_proposal_with_template(source_path: str, proposals_data: list, combined_net_rate: str, client_name: str, payment_terms: str = "100% upfront") -> Tuple[str, str]:
     import tempfile
 
     pres = Presentation(source_path)
@@ -180,6 +180,7 @@ def create_combined_proposal_with_template(source_path: str, proposals_data: lis
         slide_width,
         slide_height,
         client_name,
+        payment_terms,
     )
 
     xml_slides = pres.slides._sldIdLst
@@ -193,7 +194,7 @@ def create_combined_proposal_with_template(source_path: str, proposals_data: lis
     return tmp.name, total_combined
 
 
-async def process_combined_package(proposals_data: list, combined_net_rate: str, submitted_by: str, client_name: str) -> Dict[str, Any]:
+async def process_combined_package(proposals_data: list, combined_net_rate: str, submitted_by: str, client_name: str, payment_terms: str = "100% upfront") -> Dict[str, Any]:
     logger = config.logger
     logger.info(f"[COMBINED] Starting process_combined_package")
     logger.info(f"[COMBINED] Proposals: {proposals_data}")
@@ -296,6 +297,7 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
                 validated_proposals,  # Use original list with all proposals
                 combined_net_rate,
                 client_name,
+                payment_terms,
             )
         else:
             pptx_file = str(src)
@@ -456,6 +458,7 @@ async def process_proposals(
     combined_net_rate: str = None,
     submitted_by: str = "",
     client_name: str = "",
+    payment_terms: str = "100% upfront",
 ) -> Dict[str, Any]:
     logger = config.logger
     logger.info(f"[PROCESS] Starting process_proposals")
@@ -473,7 +476,7 @@ async def process_proposals(
 
     if package_type == "combined" and len(proposals_data) > 1:
         logger.info("[PROCESS] Routing to process_combined_package")
-        return await process_combined_package(proposals_data, combined_net_rate, submitted_by, client_name)
+        return await process_combined_package(proposals_data, combined_net_rate, submitted_by, client_name, payment_terms)
 
     individual_files = []
     pdf_files = []
