@@ -1335,10 +1335,27 @@ Even if the source document lists fees per location, you MUST sum them into sing
         ws.row_dimensions[19].height = initial_height_b19
         logger.info(f"[EXCEL] Row 19 B19 (durations): {num_lines_b19} lines ({num_separators_b19} separators), height set to {initial_height_b19}")
 
+        # Get currency metadata for Excel formatting
+        currency = data.get("currency", config.DEFAULT_CURRENCY)
+        currency_meta = config.get_currency_metadata(currency)
+        symbol = currency_meta.get("symbol", currency)
+        position = currency_meta.get("position", "suffix")
+        decimals = int(currency_meta.get("decimals", 2))
+
+        # Build Excel number format based on currency position
+        if position == "prefix":
+            excel_number_format = f'"{symbol}"#,##0.{"0" * decimals}'
+        else:
+            excel_number_format = f'#,##0.{"0" * decimals}" {symbol}"'
+
         ws["B21"] = data.get("gross_calc", 0)                           # Gross (net + vat)
+        ws["B21"].number_format = excel_number_format
         ws["B23"] = get_production_upload_fee()                         # Production/Upload Cost(s)
+        ws["B23"].number_format = excel_number_format
         ws["B25"] = data.get("vat_calc", 0)                             # VAT
+        ws["B25"].number_format = excel_number_format
         ws["B27"] = data.get("net_pre_vat", 0)                          # Net excl VAT (Net amount)
+        ws["B27"].number_format = excel_number_format
 
         # Right column (E)
         ws["E11"] = format_value(data.get("bo_number"))                 # BO No.
@@ -1408,8 +1425,9 @@ Even if the source document lists fees per location, you MUST sum them into sing
         # Net rentals excl SLA: write value to B29 and breakdown to A33
         sla_pct = data.get("sla_pct", 0) or 0
 
-        # Write net excl SLA value directly to cell B29 (just the number)
+        # Write net excl SLA value directly to cell B29 with currency formatting
         ws['B29'] = net_rentals_excl_sla
+        ws['B29'].number_format = excel_number_format
 
         # Always show location breakdown in A33 with numbered list
         locations = data.get("locations", [])
