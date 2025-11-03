@@ -1579,13 +1579,15 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"   Features: Single advertiser has exclusive display, no rotation\n"
         f"   Fee Structure: NET RATE + PRODUCTION FEE (must be collected from user)\n"
         f"   Examples: {static_list}\n"
-        f"   Production Fee: REQUIRED - ask user for production fee amount (e.g., 'AED 5,000')\n\n"
+        f"   Production Fee: REQUIRED - ask user for production fee amount (e.g., 'AED 5,000')\n"
+        f"   Multiple Productions: If client changes artwork during campaign (e.g., 2 productions at AED 20k each), sum them together (total: AED 40,000)\n\n"
 
         f"CRITICAL RULES:\n"
         f"- DIGITAL = Upload fee (automatic) | STATIC = Production fee (ask user)\n"
         f"- NEVER ask for production fee on digital locations\n"
         f"- NEVER skip production fee on static locations\n"
-        f"- If user mentions 'upload fee' for static locations, correct them to 'production fee'\n\n"
+        f"- If user mentions 'upload fee' for static locations, correct them to 'production fee'\n"
+        f"- If multiple production fees mentioned for one location (artwork changes), sum them together\n\n"
         
         f"REQUIRED INFORMATION:\n"
         f"For SEPARATE PACKAGE (each location):\n"
@@ -1935,7 +1937,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                                     "description": "List of net rates corresponding to each duration (e.g., ['AED 1,250,000', 'AED 2,300,000', 'AED 3,300,000'])"
                                 },
                                 "spots": {"type": "integer", "description": "Number of spots (default: 1)", "default": 1},
-                                "production_fee": {"type": "string", "description": "Production fee for static locations (e.g., 'AED 5,000'). Required for static locations."}
+                                "production_fee": {"type": "string", "description": "Production fee for static locations (e.g., 'AED 5,000'). If multiple production fees are mentioned (client changing artwork during campaign), sum them together (e.g., two productions at AED 20,000 each = 'AED 40,000'). Required for static locations."}
                             },
                             "required": ["location", "start_date", "durations", "net_rates"]
                         },
@@ -1965,7 +1967,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                                 "start_date": {"type": "string", "description": "Start date for this location (e.g., 1st January 2026)"},
                                 "duration": {"type": "string", "description": "Duration for this location (e.g., '2 Weeks')"},
                                 "spots": {"type": "integer", "description": "Number of spots (default: 1)", "default": 1},
-                                "production_fee": {"type": "string", "description": "Production fee for static locations (e.g., 'AED 5,000'). Required for static locations."}
+                                "production_fee": {"type": "string", "description": "Production fee for static locations (e.g., 'AED 5,000'). If multiple production fees are mentioned (client changing artwork during campaign), sum them together (e.g., two productions at AED 20,000 each = 'AED 40,000'). Required for static locations."}
                             },
                             "required": ["location", "start_date", "duration"]
                         },

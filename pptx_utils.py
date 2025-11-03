@@ -172,20 +172,18 @@ def build_location_text(location_key: str, spots: int) -> str:
     if display_type == "digital":
         # Number of spots
         parts.append(f"{spots} {'spot' if spots == 1 else 'spots'}")
-        
+
         # Spot Duration x Number of spots
         total_spot_duration = int(spot_duration) * spots
         parts.append(f"{total_spot_duration} Seconds")
-        
+
         # SOV x Number of spots
         effective_sov = base_sov * spots
         parts.append(f"{effective_sov:.1f}% SOV")
-        
+
         # Loop duration
         parts.append(f"{loop_duration} seconds loop")
-    else:
-        # For static displays, just add number of spots
-        parts.append(f"{spots} {'spot' if spots == 1 else 'spots'}")
+    # Note: Static displays don't show spot numbers (makes no sense for static billboards)
     
     # Join all parts with " - "
     description = " - ".join(parts)
