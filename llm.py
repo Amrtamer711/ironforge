@@ -1947,7 +1947,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                                 "spots": {"type": "integer", "description": "Number of spots (default: 1)", "default": 1},
                                 "production_fee": {"type": "string", "description": "Production fee for static locations (e.g., 'AED 5,000'). If multiple production fees are mentioned (client changing artwork during campaign), sum them together (e.g., two productions at AED 20,000 each = 'AED 40,000'). Required for static locations."}
                             },
-                            "required": ["location", "start_date", "durations", "net_rates"]
+                            "required": ["location", "start_date", "end_date", "durations", "net_rates"]
                         },
                         "description": "Array of proposal objects. Each location can have multiple duration/rate options."
                     },
@@ -1961,7 +1961,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         "default": "100% upfront"
                     }
                 },
-                "required": ["proposals", "client_name"]
+                "required": ["proposals", "client_name", "payment_terms"]
             }
         },
         {
@@ -1983,7 +1983,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                                 "spots": {"type": "integer", "description": "Number of spots (default: 1)", "default": 1},
                                 "production_fee": {"type": "string", "description": "Production fee for static locations (e.g., 'AED 5,000'). If multiple production fees are mentioned (client changing artwork during campaign), sum them together (e.g., two productions at AED 20,000 each = 'AED 40,000'). Required for static locations."}
                             },
-                            "required": ["location", "start_date", "duration"]
+                            "required": ["location", "start_date", "end_date", "duration"]
                         },
                         "description": "Array of locations with their individual durations and start dates"
                     },
@@ -2001,7 +2001,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         "default": "100% upfront"
                     }
                 },
-                "required": ["proposals", "combined_net_rate", "client_name"]
+                "required": ["proposals", "combined_net_rate", "client_name", "payment_terms"]
             }
         },
         {"type": "function", "name": "refresh_templates", "parameters": {"type": "object", "properties": {}}},
