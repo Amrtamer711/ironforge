@@ -410,7 +410,12 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
         "th"
     )
 
-    bullet_text = f"""• A DM fee of AED 520 per image/message applies. The final fee will be confirmed after the final artwork is received.
+    # Get payment terms (default to 100% upfront) from financial_data
+    payment_terms = financial_data.get("payment_terms", "100% upfront")
+
+    bullet_text = f"""Payment Terms: {payment_terms}
+
+• A DM fee of AED 520 per image/message applies. The final fee will be confirmed after the final artwork is received.
 • An official booking order is required to secure the location/spot.
 • Once a booking is confirmed, cancellations are not allowed even in case an artwork is rejected by the authorities, the client will be required to submit a revised artwork.
 • All artworks are subject to approval by BackLite Media and DM.
@@ -456,6 +461,20 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     p.font.size = Pt(font_size)
     p.font.color.rgb = RGBColor(0, 0, 0)
     p.line_spacing = line_spacing
+
+    # Add proposal creation date to bottom right
+    date_box = slide.shapes.add_textbox(
+        left=int(Inches(15) * scale_x),
+        top=int((slide_height - Inches(0.5)) * scale_y),
+        width=int(Inches(4) * scale_x),
+        height=int(Inches(0.4) * scale_y)
+    )
+    date_tf = date_box.text_frame
+    date_p = date_tf.paragraphs[0]
+    date_p.text = f"Proposal Date: {datetime.now().strftime('%d/%m/%Y')}"
+    date_p.alignment = PP_ALIGN.RIGHT
+    date_p.font.size = Pt(int(9 * scale))
+    date_p.font.color.rgb = RGBColor(100, 100, 100)
 
     return vat_amounts, total_amounts
 
@@ -693,7 +712,14 @@ def create_combined_financial_proposal_slide(
         "th"
     )
 
-    bullet_text = f"""• A DM fee of AED 520 per image/message applies. The final fee will be confirmed after the final artwork is received.
+    # Get payment terms (default to 100% upfront) from proposals_data
+    payment_terms = "100% upfront"
+    if isinstance(proposals_data, list) and len(proposals_data) > 0:
+        payment_terms = proposals_data[0].get("payment_terms", "100% upfront")
+
+    bullet_text = f"""Payment Terms: {payment_terms}
+
+• A DM fee of AED 520 per image/message applies. The final fee will be confirmed after the final artwork is received.
 • An official booking order is required to secure the location/spot.
 • Once a booking is confirmed, cancellations are not allowed even in case an artwork is rejected by the authorities, the client will be required to submit a revised artwork.
 • All artworks are subject to approval by BackLite Media and DM.
@@ -743,5 +769,19 @@ def create_combined_financial_proposal_slide(
     p.font.size = Pt(font_size)
     p.font.color.rgb = RGBColor(0, 0, 0)
     p.line_spacing = line_spacing
+
+    # Add proposal creation date to bottom right
+    date_box = slide.shapes.add_textbox(
+        left=int(Inches(15) * scale_x),
+        top=int((slide_height - Inches(0.5)) * scale_y),
+        width=int(Inches(4) * scale_x),
+        height=int(Inches(0.4) * scale_y)
+    )
+    date_tf = date_box.text_frame
+    date_p = date_tf.paragraphs[0]
+    date_p.text = f"Proposal Date: {datetime.now().strftime('%d/%m/%Y')}"
+    date_p.alignment = PP_ALIGN.RIGHT
+    date_p.font.size = Pt(int(9 * scale))
+    date_p.font.color.rgb = RGBColor(100, 100, 100)
 
     return f"AED {total:,.0f}" 

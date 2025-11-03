@@ -1954,6 +1954,11 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     "client_name": {
                         "type": "string",
                         "description": "Name of the client (required)"
+                    },
+                    "payment_terms": {
+                        "type": "string",
+                        "description": "Payment terms for the proposal (default: '100% upfront'). ALWAYS validate with user even if not explicitly mentioned. Examples: '100% upfront', '50% upfront, 50% on delivery', '30 days net'",
+                        "default": "100% upfront"
                     }
                 },
                 "required": ["proposals", "client_name"]
@@ -1989,6 +1994,11 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     "client_name": {
                         "type": "string",
                         "description": "Name of the client (required)"
+                    },
+                    "payment_terms": {
+                        "type": "string",
+                        "description": "Payment terms for the proposal (default: '100% upfront'). ALWAYS validate with user even if not explicitly mentioned. Examples: '100% upfront', '50% upfront, 50% on delivery', '30 days net'",
+                        "default": "100% upfront"
                     }
                 },
                 "required": ["proposals", "combined_net_rate", "client_name"]
