@@ -756,8 +756,7 @@ def create_combined_financial_proposal_slide(
     if isinstance(proposals_data, list) and len(proposals_data) > 0:
         payment_terms = proposals_data[0].get("payment_terms", "100% upfront")
 
-    bullet_text = f"""Payment Terms: {payment_terms}
-
+    bullet_text = f"""• Payment Terms: {payment_terms}
 • A DM fee of AED 520 per image/message applies. The final fee will be confirmed after the final artwork is received.
 • An official booking order is required to secure the location/spot.
 • Once a booking is confirmed, cancellations are not allowed even in case an artwork is rejected by the authorities, the client will be required to submit a revised artwork.
