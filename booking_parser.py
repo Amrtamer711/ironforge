@@ -1632,19 +1632,21 @@ Even if the source document lists fees per location, you MUST sum them into sing
             target_stamp_width = 144
             target_stamp_height = int(stamp_height * (target_stamp_width / stamp_width))
 
-            # Prioritize bottom-right placement on first page
-            # Place in bottom-right corner with 20 point margin
+            # Place stamp in middle-right area of first page
+            # Vertically centered, right-aligned with margin
             first_page = reader.pages[0]
             page_width = float(first_page.mediabox.width)
             page_height = float(first_page.mediabox.height)
             margin = 20
 
             best_page_idx = 0
+            # Right-aligned with margin
             best_x = page_width - target_stamp_width - margin
-            best_y = margin  # PDF coordinates start from bottom
+            # Vertically centered
+            best_y = (page_height - target_stamp_height) / 2
             best_size = (target_stamp_width, target_stamp_height)
 
-            logger.info(f"[STAMP] Placing stamp on page 1 (bottom-right) at ({best_x:.1f}, {best_y:.1f})")
+            logger.info(f"[STAMP] Placing stamp on page 1 (middle-right) at ({best_x:.1f}, {best_y:.1f})")
 
             # Create overlay PDF with stamp
             stamp_pdf_path = pdf_path.parent / f"stamp_overlay_{pdf_path.name}"
