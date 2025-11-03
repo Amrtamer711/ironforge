@@ -200,6 +200,7 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
     logger.info(f"[COMBINED] Proposals: {proposals_data}")
     logger.info(f"[COMBINED] Combined rate: {combined_net_rate}")
     logger.info(f"[COMBINED] Client: {client_name}, Submitted by: {submitted_by}")
+    logger.info(f"[COMBINED] Payment terms received: {payment_terms}")
     
     validated_proposals = []
     for idx, proposal in enumerate(proposals_data):
