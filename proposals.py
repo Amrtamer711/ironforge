@@ -244,11 +244,21 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
             "spots": spots,
             "filename": mapping[matched_key],
         }
-        
+
+        # Add end_date if provided
+        end_date = proposal.get("end_date")
+        if end_date:
+            validated_proposal["end_date"] = end_date
+
         # Add production fee if provided
         production_fee = proposal.get("production_fee")
         if production_fee:
             validated_proposal["production_fee"] = production_fee
+
+        # Add payment_terms if provided
+        payment_terms = proposal.get("payment_terms")
+        if payment_terms:
+            validated_proposal["payment_terms"] = payment_terms
             
         validated_proposals.append(validated_proposal)
 
@@ -530,11 +540,21 @@ async def process_proposals(
             "spots": spots,
             "client_name": client_name,
         }
-        
+
+        # Add end_date if provided
+        end_date = proposal.get("end_date")
+        if end_date:
+            financial_data["end_date"] = end_date
+
         # Add production fee if provided
         production_fee = proposal.get("production_fee")
         if production_fee:
             financial_data["production_fee"] = production_fee
+
+        # Add payment_terms if provided
+        payment_terms = proposal.get("payment_terms")
+        if payment_terms:
+            financial_data["payment_terms"] = payment_terms
 
         pptx_file, vat_amounts, total_amounts = await loop.run_in_executor(None, create_proposal_with_template, str(src), financial_data)
 
