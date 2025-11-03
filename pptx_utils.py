@@ -526,6 +526,7 @@ def create_combined_financial_proposal_slide(
     logger.info(f"[CREATE_COMBINED] Creating combined slide for {len(proposals_data)} locations")
     logger.info(f"[CREATE_COMBINED] Proposals data: {proposals_data}")
     logger.info(f"[CREATE_COMBINED] Combined net rate: {combined_net_rate}")
+    logger.info(f"[CREATE_COMBINED] Payment terms: {payment_terms}")
 
     scale_x = slide_width / Inches(20)
     scale_y = slide_height / Inches(12)
