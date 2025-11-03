@@ -1401,7 +1401,9 @@ Even if the source document lists fees per location, you MUST sum them into sing
         # E.g., if 10% of 462,520 = 46,252, show 46,252
         sla_deduction = data.get("sla_deduction", 0) or 0
         ws["E21"] = sla_deduction
+        ws["E21"].number_format = excel_number_format
         ws["E23"] = data.get("municipality_fee", 0)                     # DM (Dubai Municipality)
+        ws["E23"].number_format = excel_number_format
 
         # Payment terms with dynamic row height
         payment_terms_value = format_value(data.get("payment_terms"))
