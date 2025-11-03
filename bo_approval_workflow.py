@@ -1184,8 +1184,8 @@ Examples:
         # Build input with thread history + current user message
         input_messages = [{"role": "system", "content": system_prompt}]
 
-        # Add thread history (last 10 messages to keep context manageable)
-        for msg in thread_history[-10:]:
+        # Add thread history (last 20 messages to keep context manageable)
+        for msg in thread_history[-20:]:
             input_messages.append({"role": msg["role"], "content": msg["content"]})
 
         # Add current user message
