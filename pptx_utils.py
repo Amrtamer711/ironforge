@@ -416,8 +416,7 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     # Get payment terms (default to 100% upfront) from financial_data
     payment_terms = financial_data.get("payment_terms", "100% upfront")
 
-    bullet_text = f"""Payment Terms: {payment_terms}
-
+    bullet_text = f"""• Payment Terms: {payment_terms}
 • A DM fee of AED 520 per image/message applies. The final fee will be confirmed after the final artwork is received.
 • An official booking order is required to secure the location/spot.
 • Once a booking is confirmed, cancellations are not allowed even in case an artwork is rejected by the authorities, the client will be required to submit a revised artwork.
@@ -497,12 +496,12 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     p.font.color.rgb = RGBColor(0, 0, 0)
     p.line_spacing = line_spacing
 
-    # Add proposal creation date to bottom right
+    # Add proposal creation date to bottom right (very bottom of slide)
     date_box = slide.shapes.add_textbox(
         left=int(Inches(15) * scale_x),
-        top=int((slide_height - Inches(0.5)) * scale_y),
+        top=int(slide_height - Inches(0.3) * scale_y),
         width=int(Inches(4) * scale_x),
-        height=int(Inches(0.4) * scale_y)
+        height=int(Inches(0.25) * scale_y)
     )
     date_tf = date_box.text_frame
     date_p = date_tf.paragraphs[0]
@@ -837,12 +836,12 @@ def create_combined_financial_proposal_slide(
     p.font.color.rgb = RGBColor(0, 0, 0)
     p.line_spacing = line_spacing
 
-    # Add proposal creation date to bottom right
+    # Add proposal creation date to bottom right (very bottom of slide)
     date_box = slide.shapes.add_textbox(
         left=int(Inches(15) * scale_x),
-        top=int((slide_height - Inches(0.5)) * scale_y),
+        top=int(slide_height - Inches(0.3) * scale_y),
         width=int(Inches(4) * scale_x),
-        height=int(Inches(0.4) * scale_y)
+        height=int(Inches(0.25) * scale_y)
     )
     date_tf = date_box.text_frame
     date_p = date_tf.paragraphs[0]
