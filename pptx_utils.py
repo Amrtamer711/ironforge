@@ -212,6 +212,8 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
 
     location_name = financial_data["location"]
     start_date = format_date_for_display(financial_data["start_date"])
+    end_date = format_date_for_display(financial_data.get("end_date", ""))
+    date_range = f"{start_date} - {end_date}" if end_date else start_date
     durations = financial_data["durations"]
     net_rates = financial_data["net_rates"]
     spots = int(financial_data.get("spots", 1))
@@ -248,7 +250,7 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     data = [
         (header_text, None),
         ("Location:", location_text),
-        ("Start Date:", start_date),
+        ("Start/End Date:", date_range),
         ("Duration:", durations if len(durations) > 1 else durations[0]),
         ("Net Rate:", net_rates if len(net_rates) > 1 else net_rates[0]),
         (fee_label, fee_str),
@@ -519,7 +521,13 @@ def create_combined_financial_proposal_slide(
 
         location_text = build_location_text(loc_name, spots)
         locations.append(location_text)
-        start_dates.append(format_date_for_display(proposal["start_date"]))
+
+        # Format start/end date range
+        start_date_fmt = format_date_for_display(proposal["start_date"])
+        end_date_fmt = format_date_for_display(proposal.get("end_date", ""))
+        date_range = f"{start_date_fmt} - {end_date_fmt}" if end_date_fmt else start_date_fmt
+        start_dates.append(date_range)
+
         durations.append(proposal["durations"][0] if proposal["durations"] else "2 Weeks")
         
         # Check if location is static
@@ -569,7 +577,7 @@ def create_combined_financial_proposal_slide(
     data = [
         (header_text, None),
         ("Location:", locations),
-        ("Start Date:", start_dates),
+        ("Start/End Date:", start_dates),
         ("Duration:", durations),
         ("Net Rate:", combined_net_rate),
         (fee_label, upload_fees),

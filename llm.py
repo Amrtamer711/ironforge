@@ -1926,6 +1926,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                             "properties": {
                                 "location": {"type": "string", "description": "The location name - intelligently match to available locations. If user says 'gateway' or 'the gateway', match to 'dubai_gateway'. If user says 'jawhara', match to 'dubai_jawhara'. Use your best judgment to infer the correct location from the available list even if the name is abbreviated or has 'the' prefix."},
                                 "start_date": {"type": "string", "description": "Start date for the campaign (e.g., 1st December 2025)"},
+                                "end_date": {"type": "string", "description": "End date for the campaign. Either extract from user message if provided, or calculate from start_date + duration (e.g., start: 1st Dec + 4 weeks = end: 29th Dec). Use the first/shortest duration if multiple durations provided."},
                                 "durations": {
                                     "type": "array",
                                     "items": {"type": "string"},
@@ -1965,6 +1966,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                             "properties": {
                                 "location": {"type": "string", "description": "The location name - intelligently match to available locations. If user says 'gateway' or 'the gateway', match to 'dubai_gateway'. If user says 'jawhara', match to 'dubai_jawhara'. Use your best judgment to infer the correct location from the available list even if the name is abbreviated or has 'the' prefix."},
                                 "start_date": {"type": "string", "description": "Start date for this location (e.g., 1st January 2026)"},
+                                "end_date": {"type": "string", "description": "End date for this location. Either extract from user message if provided, or calculate from start_date + duration (e.g., start: 1st Jan + 2 weeks = end: 15th Jan)."},
                                 "duration": {"type": "string", "description": "Duration for this location (e.g., '2 Weeks')"},
                                 "spots": {"type": "integer", "description": "Number of spots (default: 1)", "default": 1},
                                 "production_fee": {"type": "string", "description": "Production fee for static locations (e.g., 'AED 5,000'). If multiple production fees are mentioned (client changing artwork during campaign), sum them together (e.g., two productions at AED 20,000 each = 'AED 40,000'). Required for static locations."}
