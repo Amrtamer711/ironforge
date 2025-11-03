@@ -1631,53 +1631,20 @@ Even if the source document lists fees per location, you MUST sum them into sing
             # Target stamp size in PDF points (roughly 2 inches wide = 144 points)
             target_stamp_width = 144
             target_stamp_height = int(stamp_height * (target_stamp_width / stamp_width))
-            min_stamp_width = 100  # Minimum acceptable size
 
-            # Find best position for stamp across all pages
-            best_page_idx = None
-            best_x, best_y = None, None
-            best_size = None
+            # Prioritize bottom-right placement on first page
+            # Place in bottom-right corner with 20 point margin
+            first_page = reader.pages[0]
+            page_width = float(first_page.mediabox.width)
+            page_height = float(first_page.mediabox.height)
+            margin = 20
 
-            for page_idx, page in enumerate(reader.pages):
-                page_width = float(page.mediabox.width)
-                page_height = float(page.mediabox.height)
+            best_page_idx = 0
+            best_x = page_width - target_stamp_width - margin
+            best_y = margin  # PDF coordinates start from bottom
+            best_size = (target_stamp_width, target_stamp_height)
 
-                # Prefer lower half of page
-                search_start_y = page_height * 0.5
-
-                logger.info(f"[STAMP] Checking page {page_idx + 1}, size: {page_width}x{page_height}")
-
-                # Try to find white space by converting page to image and analyzing
-                # For now, use a simpler approach: try bottom-right if no white space found
-                # TODO: Implement white space detection using page rendering
-
-                # For first implementation, place in bottom-right of lower half
-                # Leave 20 points margin from edges
-                margin = 20
-                candidate_x = page_width - target_stamp_width - margin
-                candidate_y = margin  # PDF coordinates start from bottom
-
-                # Check if this position is in lower half (PDF y-axis is bottom-up)
-                if candidate_y < page_height * 0.5:
-                    if best_page_idx is None:
-                        best_page_idx = page_idx
-                        best_x = candidate_x
-                        best_y = candidate_y
-                        best_size = (target_stamp_width, target_stamp_height)
-                        logger.info(f"[STAMP] Selected page {page_idx + 1} for stamp at ({best_x}, {best_y})")
-                        break  # Use first page if suitable
-
-            # If no suitable position found, use last page bottom-right
-            if best_page_idx is None:
-                last_page = reader.pages[-1]
-                page_width = float(last_page.mediabox.width)
-                page_height = float(last_page.mediabox.height)
-                margin = 20
-                best_page_idx = len(reader.pages) - 1
-                best_x = page_width - target_stamp_width - margin
-                best_y = margin
-                best_size = (target_stamp_width, target_stamp_height)
-                logger.info(f"[STAMP] No suitable space found, using last page bottom-right at ({best_x}, {best_y})")
+            logger.info(f"[STAMP] Placing stamp on page 1 (bottom-right) at ({best_x:.1f}, {best_y:.1f})")
 
             # Create overlay PDF with stamp
             stamp_pdf_path = pdf_path.parent / f"stamp_overlay_{pdf_path.name}"
