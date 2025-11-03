@@ -14,7 +14,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 
 import config
-from pypdf import PdfMerger
+from pypdf import PdfMerger, PdfReader, PdfWriter
+from PIL import Image
+import io
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
 
 logger = logging.getLogger("proposal-bot")
 
@@ -1505,9 +1509,14 @@ Even if the source document lists fees per location, you MUST sum them into sing
         original_pdf_path = await self._ensure_pdf(original_bo_path)
         logger.info(f"[BOOKING PARSER] Original BO PDF ready: {original_pdf_path}")
 
-        # Step 4: Concatenate PDFs (Excel PDF first, then original BO)
+        # Step 3.5: Apply stamp to original BO PDF (HoS approval stamp)
+        logger.info(f"[BOOKING PARSER] Step 3.5: Applying HoS approval stamp")
+        stamped_pdf_path = await self._apply_stamp_to_pdf(original_pdf_path)
+        logger.info(f"[BOOKING PARSER] Stamped PDF ready: {stamped_pdf_path}")
+
+        # Step 4: Concatenate PDFs (Excel PDF first, then stamped original BO)
         combined_pdf_path = COMBINED_BOS_DIR / f"{bo_ref}_combined.pdf"
-        await self._concatenate_pdfs([excel_pdf_path, original_pdf_path], combined_pdf_path)
+        await self._concatenate_pdfs([excel_pdf_path, stamped_pdf_path], combined_pdf_path)
 
         # Clean up temporary files
         try:
@@ -1516,6 +1525,8 @@ Even if the source document lists fees per location, you MUST sum them into sing
                 excel_pdf_path.unlink()
             if original_pdf_path != original_bo_path:
                 original_pdf_path.unlink()
+            if stamped_pdf_path != original_pdf_path:
+                stamped_pdf_path.unlink()
         except Exception as e:
             logger.warning(f"[BOOKING PARSER] Failed to clean up temp files: {e}")
 
@@ -1583,6 +1594,127 @@ Even if the source document lists fees per location, you MUST sum them into sing
         except Exception as e:
             logger.error(f"[BOOKING PARSER] Failed to convert to PDF: {e}")
             raise
+
+    async def _apply_stamp_to_pdf(self, pdf_path: Path) -> Path:
+        """
+        Apply stamp.png to the PDF document
+        Algorithm:
+        1. Try to find white space (preferably in lower half of first page)
+        2. If no suitable space on first page, check other pages
+        3. If no suitable space found (below size threshold), place bottom-right
+
+        Returns path to stamped PDF
+        """
+        logger.info(f"[STAMP] Applying stamp to PDF: {pdf_path}")
+
+        stamp_img_path = config.BASE_DIR / "stamp.png"
+        if not stamp_img_path.exists():
+            logger.warning(f"[STAMP] stamp.png not found at {stamp_img_path}, skipping stamp")
+            return pdf_path
+
+        try:
+            from pypdf import PdfReader, PdfWriter
+            from PIL import Image
+            import io
+            from reportlab.pdfgen import canvas
+            from reportlab.lib.utils import ImageReader
+            import numpy as np
+
+            # Read the PDF
+            reader = PdfReader(str(pdf_path))
+            writer = PdfWriter()
+
+            # Load stamp image
+            stamp_img = Image.open(stamp_img_path)
+            stamp_width, stamp_height = stamp_img.size
+
+            # Target stamp size in PDF points (roughly 2 inches wide = 144 points)
+            target_stamp_width = 144
+            target_stamp_height = int(stamp_height * (target_stamp_width / stamp_width))
+            min_stamp_width = 100  # Minimum acceptable size
+
+            # Find best position for stamp across all pages
+            best_page_idx = None
+            best_x, best_y = None, None
+            best_size = None
+
+            for page_idx, page in enumerate(reader.pages):
+                page_width = float(page.mediabox.width)
+                page_height = float(page.mediabox.height)
+
+                # Prefer lower half of page
+                search_start_y = page_height * 0.5
+
+                logger.info(f"[STAMP] Checking page {page_idx + 1}, size: {page_width}x{page_height}")
+
+                # Try to find white space by converting page to image and analyzing
+                # For now, use a simpler approach: try bottom-right if no white space found
+                # TODO: Implement white space detection using page rendering
+
+                # For first implementation, place in bottom-right of lower half
+                # Leave 20 points margin from edges
+                margin = 20
+                candidate_x = page_width - target_stamp_width - margin
+                candidate_y = margin  # PDF coordinates start from bottom
+
+                # Check if this position is in lower half (PDF y-axis is bottom-up)
+                if candidate_y < page_height * 0.5:
+                    if best_page_idx is None:
+                        best_page_idx = page_idx
+                        best_x = candidate_x
+                        best_y = candidate_y
+                        best_size = (target_stamp_width, target_stamp_height)
+                        logger.info(f"[STAMP] Selected page {page_idx + 1} for stamp at ({best_x}, {best_y})")
+                        break  # Use first page if suitable
+
+            # If no suitable position found, use last page bottom-right
+            if best_page_idx is None:
+                last_page = reader.pages[-1]
+                page_width = float(last_page.mediabox.width)
+                page_height = float(last_page.mediabox.height)
+                margin = 20
+                best_page_idx = len(reader.pages) - 1
+                best_x = page_width - target_stamp_width - margin
+                best_y = margin
+                best_size = (target_stamp_width, target_stamp_height)
+                logger.info(f"[STAMP] No suitable space found, using last page bottom-right at ({best_x}, {best_y})")
+
+            # Create overlay PDF with stamp
+            stamp_pdf_path = pdf_path.parent / f"stamp_overlay_{pdf_path.name}"
+            packet = io.BytesIO()
+            can = canvas.Canvas(packet, pagesize=(float(reader.pages[best_page_idx].mediabox.width),
+                                                   float(reader.pages[best_page_idx].mediabox.height)))
+
+            # Draw stamp at calculated position
+            can.drawImage(ImageReader(stamp_img_path), best_x, best_y,
+                         width=best_size[0], height=best_size[1],
+                         mask='auto', preserveAspectRatio=True)
+            can.save()
+
+            # Move to the beginning of the BytesIO buffer
+            packet.seek(0)
+            stamp_pdf = PdfReader(packet)
+
+            # Merge stamp onto the selected page
+            for idx, page in enumerate(reader.pages):
+                if idx == best_page_idx:
+                    # Merge stamp overlay onto this page
+                    page.merge_page(stamp_pdf.pages[0])
+                writer.add_page(page)
+
+            # Write output
+            output_path = pdf_path.parent / f"stamped_{pdf_path.name}"
+            with open(output_path, 'wb') as output_file:
+                writer.write(output_file)
+
+            logger.info(f"[STAMP] Successfully applied stamp to {output_path}")
+            return output_path
+
+        except Exception as e:
+            logger.error(f"[STAMP] Failed to apply stamp: {e}")
+            logger.exception(e)
+            # Return original PDF if stamping fails
+            return pdf_path
 
     async def _concatenate_pdfs(self, pdf_paths: List[Path], output_path: Path) -> None:
         """Concatenate multiple PDFs into one"""
