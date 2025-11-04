@@ -1676,10 +1676,9 @@ Even if the source document lists fees per location, you MUST sum them into sing
                             keep[labels == i] = 1
                     ink = keep
 
-                    # Add safety buffer around text (large clearance to prevent any touching)
-                    # Balanced for 96mm stamp - enough clearance without being too restrictive
-                    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
-                    ink = cv2.dilate(ink, kernel, iterations=12)
+                    # Add safety buffer around text - moderate clearance for 96mm stamp
+                    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
+                    ink = cv2.dilate(ink, kernel, iterations=8)
                     return ink
                 except Exception as e:
                     logger.warning(f"[STAMP] Error building ink mask: {e}, using empty mask")
@@ -1730,7 +1729,7 @@ Even if the source document lists fees per location, you MUST sum them into sing
 
                 # Try multiple stamp sizes (with max iteration guard)
                 scale = 1.0
-                max_iterations = 10
+                max_iterations = 25  # Increased to try more size combinations
                 iteration = 0
                 while found is None and scale >= min_scale and iteration < max_iterations:
                     ww = max(8, int(round(stamp_w_px * scale)))
@@ -1754,22 +1753,41 @@ Even if the source document lists fees per location, you MUST sum them into sing
                     try:
                         bg = (ink == 0).astype(np.uint8)
                         dist = cv2.distanceTransform(bg, cv2.DIST_L2, 5)
-                        ww0, wh0 = stamp_w_px, stamp_h_px
-                        half_w, half_h = max(1, ww0 // 2), max(1, wh0 // 2)
 
-                        # Ensure valid region is within bounds
-                        if half_h < H and half_w < W:
-                            valid = np.zeros_like(dist, dtype=bool)
-                            valid[half_h:H - half_h, half_w:W - half_w] = True
-                            dist_masked = np.where(valid, dist, 0)
-                            y0, x0 = np.unravel_index(np.argmax(dist_masked), dist_masked.shape)
-                            x = int(x0 - ww0 // 2)
-                            y = int(y0 - wh0 // 2)
-                            if 0 <= x and 0 <= y and x + ww0 <= W and y + wh0 <= H:
-                                s = integral_sum(integral, x, y, ww0, wh0)
-                                if s / (ww0 * wh0) <= max_ink_ratio:
-                                    found = (x, y)
-                                    used_w, used_h = ww0, wh0
+                        # Try progressively smaller sizes and higher ink tolerance
+                        for fallback_scale in [1.0, 0.8, 0.6, 0.5]:
+                            ww0 = max(8, int(round(stamp_w_px * fallback_scale)))
+                            wh0 = max(8, int(round(stamp_h_px * fallback_scale)))
+                            half_w, half_h = max(1, ww0 // 2), max(1, wh0 // 2)
+
+                            # Ensure valid region is within bounds
+                            if half_h < H and half_w < W:
+                                valid = np.zeros_like(dist, dtype=bool)
+                                valid[half_h:H - half_h, half_w:W - half_w] = True
+                                dist_masked = np.where(valid, dist, 0)
+                                y0, x0 = np.unravel_index(np.argmax(dist_masked), dist_masked.shape)
+                                x = int(x0 - ww0 // 2)
+                                y = int(y0 - wh0 // 2)
+                                if 0 <= x and 0 <= y and x + ww0 <= W and y + wh0 <= H:
+                                    s = integral_sum(integral, x, y, ww0, wh0)
+                                    # Accept up to 20% ink for fallback (more lenient)
+                                    if s / (ww0 * wh0) <= 0.20:
+                                        found = (x, y)
+                                        used_w, used_h = ww0, wh0
+                                        logger.info(f"[STAMP] Distance transform found spot at scale {fallback_scale:.2f}")
+                                        break
+
+                        # Last resort: just place it at bottom-right corner regardless
+                        if found is None:
+                            logger.warning(f"[STAMP] All fallbacks failed, forcing placement at bottom-right")
+                            ww0 = max(8, int(round(stamp_w_px * 0.4)))  # 40% size
+                            wh0 = max(8, int(round(stamp_h_px * 0.4)))
+                            x = max(0, W - ww0 - margin_px)
+                            y = max(0, H - wh0 - margin_px)
+                            if x >= 0 and y >= 0:
+                                found = (x, y)
+                                used_w, used_h = ww0, wh0
+                                logger.info(f"[STAMP] Forced placement at ({x}, {y}) with size {ww0}x{wh0}")
                     except Exception as e:
                         logger.warning(f"[STAMP] Distance transform fallback failed: {e}")
 
@@ -1778,20 +1796,22 @@ Even if the source document lists fees per location, you MUST sum them into sing
             # Configuration
             stamp_width_mm = 96.0  # 96mm = ~3.78 inches (60% bigger than 60mm)
             dpi = 200
-            margin_mm = 20.0  # 20mm (~0.8 inches) margin from page edges
+            margin_mm = 15.0  # 15mm (~0.6 inches) margin from page edges
             stride_px = 12
-            max_ink_ratio = 0.05  # Tolerate 5% ink in region (more flexible for larger stamp)
+            max_ink_ratio = 0.10  # Tolerate 10% ink in region (allows some overlap)
             corner_order = ("BR", "BL", "TR", "TL")
-            min_scale = 0.70  # Try down to 70% of original size (more flexibility)
-            scale_step = 0.92  # 8% reduction per attempt (smaller steps for better fit)
+            min_scale = 0.50  # Try down to 50% of original size (48mm minimum)
+            scale_step = 0.96  # 4% reduction per attempt (smaller steps for more attempts)
 
-            # Load stamp image
+            # Load stamp image and add date
             stamp_img = Image.open(stamp_img_path).convert("RGBA")
 
-            # Add today's date to the stamp
+            # Add today's date to the original stamp
+            dated_stamp_path = None
             try:
                 from datetime import datetime
                 from PIL import ImageDraw, ImageFont
+                import tempfile
 
                 # Get today's date in DD-MM-YYYY format
                 today = datetime.now().strftime("%d-%m-%Y")
@@ -1802,7 +1822,7 @@ Even if the source document lists fees per location, you MUST sum them into sing
                 # Try to use a nice BOLD font, fallback to default
                 try:
                     # Use Helvetica Bold
-                    font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 60, index=1)  # index=1 for bold
+                    font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 60, index=1)
                 except:
                     try:
                         font = ImageFont.truetype("/Library/Fonts/Arial Bold.ttf", 60)
@@ -1817,10 +1837,9 @@ Even if the source document lists fees per location, you MUST sum them into sing
                 bbox = draw.textbbox((0, 0), today, font=font)
                 text_width = bbox[2] - bbox[0]
                 text_x = (width - text_width) // 2 + 40  # Shifted right by 40 pixels
-                text_y = int(height * 0.521)  # Place at 52.1% down from top
+                text_y = int(height * 0.521)
 
                 # Draw date in black with white outline for visibility
-                # Draw outline (white)
                 for adj_x in [-2, -1, 0, 1, 2]:
                     for adj_y in [-2, -1, 0, 1, 2]:
                         if adj_x != 0 or adj_y != 0:
@@ -1828,9 +1847,18 @@ Even if the source document lists fees per location, you MUST sum them into sing
                 # Draw main text (black)
                 draw.text((text_x, text_y), today, fill=(0, 0, 0, 255), font=font)
 
-                logger.info(f"[STAMP] Added date {today} to stamp")
+                # Save dated stamp to temporary file
+                temp_fd, dated_stamp_path = tempfile.mkstemp(suffix='.png')
+                os.close(temp_fd)
+                stamp_img.save(dated_stamp_path)
+
+                logger.info(f"[STAMP] Added date {today} to stamp, saved to temp file")
             except Exception as e:
                 logger.warning(f"[STAMP] Failed to add date to stamp: {e}, using stamp without date")
+                dated_stamp_path = None
+
+            # Use dated stamp if available, otherwise original
+            final_stamp_path = dated_stamp_path if dated_stamp_path else stamp_img_path
 
             stamp_width, stamp_height = stamp_img.size
             stamp_aspect_ratio = stamp_width / stamp_height
@@ -1908,8 +1936,8 @@ Even if the source document lists fees per location, you MUST sum them into sing
             can = canvas.Canvas(packet, pagesize=(float(first_page.mediabox.width),
                                                    float(first_page.mediabox.height)))
 
-            # Draw stamp at calculated position (use in-memory stamp with date)
-            can.drawImage(ImageReader(stamp_img), x_pt, y_pt,
+            # Draw stamp at calculated position (use dated stamp file)
+            can.drawImage(ImageReader(final_stamp_path), x_pt, y_pt,
                          width=w_pt, height=h_pt,
                          mask='auto', preserveAspectRatio=False)
             can.save()
@@ -1929,12 +1957,26 @@ Even if the source document lists fees per location, you MUST sum them into sing
                 with open(output_path, 'wb') as output_file:
                     writer.write(output_file)
                 logger.info(f"[STAMP] Successfully applied stamp to {output_path}")
+
+                # Clean up temp dated stamp file
+                if dated_stamp_path and os.path.exists(dated_stamp_path):
+                    try:
+                        os.unlink(dated_stamp_path)
+                    except:
+                        pass
+
                 return output_path
             except Exception as write_error:
                 # Clean up partial file if write failed
                 if output_path.exists():
                     try:
                         output_path.unlink()
+                    except:
+                        pass
+                # Clean up temp dated stamp file
+                if dated_stamp_path and os.path.exists(dated_stamp_path):
+                    try:
+                        os.unlink(dated_stamp_path)
                     except:
                         pass
                 raise write_error
