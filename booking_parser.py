@@ -1605,11 +1605,18 @@ Even if the source document lists fees per location, you MUST sum them into sing
 
     async def _apply_stamp_to_pdf(self, pdf_path: Path) -> Path:
         """
-        Apply stamp.png to the PDF document in the bottom-right area
+        Apply stamp.png to the PDF document using intelligent placement algorithm
+        that avoids overlapping with existing content.
+
+        Algorithm:
+        1. Renders PDF page to image and builds ink mask (text/graphics detection)
+        2. Searches corners in priority order (BR, BL, TR, TL) for empty space
+        3. If no space found, tries smaller stamp sizes (down to 85% of original)
+        4. Fallback: uses distance transform to find largest empty area
 
         Returns path to stamped PDF
         """
-        logger.info(f"[STAMP] Applying stamp to PDF: {pdf_path}")
+        logger.info(f"[STAMP] Applying stamp to PDF with smart placement: {pdf_path}")
 
         stamp_img_path = config.BASE_DIR / "stamp.png"
         if not stamp_img_path.exists():
@@ -1617,57 +1624,218 @@ Even if the source document lists fees per location, you MUST sum them into sing
             return pdf_path
 
         try:
+            import cv2
+            import numpy as np
             from pypdf import PdfReader, PdfWriter
             from PIL import Image
             import io
             from reportlab.pdfgen import canvas
             from reportlab.lib.utils import ImageReader
+            import fitz  # PyMuPDF
 
-            # Read the PDF
+            # Helper functions for smart placement
+            def mm_to_in(mm):
+                return mm / 25.4
+
+            def px_to_pt(px, dpi):
+                return px / dpi * 72.0
+
+            def integral_sum(ii, x, y, w, h):
+                """Fast sum of rectangle using integral image"""
+                x2, y2 = x + w, y + h
+                return ii[y2, x2] - ii[y, x2] - ii[y2, x] + ii[y, x]
+
+            def build_ink_mask(gray):
+                """Build robust ink mask from grayscale image"""
+                # Background flattening to handle uneven lighting
+                bg = cv2.GaussianBlur(gray, (0, 0), sigmaX=21, sigmaY=21)
+                norm = cv2.divide(gray, bg, scale=128)
+
+                # Adaptive threshold for local text detection
+                bw = cv2.adaptiveThreshold(
+                    norm, 255,
+                    cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                    cv2.THRESH_BINARY, 41, 8
+                )
+                ink = (bw == 0).astype(np.uint8)
+
+                # Remove noise/speckles
+                n, labels, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
+                min_area = 30
+                keep = np.zeros_like(ink)
+                for i in range(1, n):
+                    if stats[i, cv2.CC_STAT_AREA] >= min_area:
+                        keep[labels == i] = 1
+                ink = keep
+
+                # Add safety buffer around text
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+                ink = cv2.dilate(ink, kernel, iterations=2)
+                return ink
+
+            def scan_corner(integral, W, H, ww, wh, corner, margin, stride, max_ink_ratio):
+                """Scan a corner for empty space"""
+                x_min, y_min = margin, margin
+                x_max, y_max = W - margin - ww, H - margin - wh
+                if x_max < x_min or y_max < y_min:
+                    return None
+
+                # Set scan direction based on corner
+                if corner == "BR":
+                    ys = range(y_max, y_min - 1, -stride)
+                    xs = range(x_max, x_min - 1, -stride)
+                elif corner == "BL":
+                    ys = range(y_max, y_min - 1, -stride)
+                    xs = range(x_min, x_max + 1, stride)
+                elif corner == "TR":
+                    ys = range(y_min, y_max + 1, stride)
+                    xs = range(x_max, x_min - 1, -stride)
+                else:  # "TL"
+                    ys = range(y_min, y_max + 1, stride)
+                    xs = range(x_min, x_max + 1, stride)
+
+                area = ww * wh
+                for y in ys:
+                    for x in xs:
+                        s = integral_sum(integral, x, y, ww, wh)
+                        if s / area <= max_ink_ratio:
+                            return (x, y)
+                return None
+
+            def find_spot(ink, dpi, stamp_w_px, stamp_h_px, margin_px, corner_order,
+                          stride_px, max_ink_ratio, min_scale, scale_step):
+                """Find optimal placement for stamp"""
+                H, W = ink.shape
+                integral = cv2.integral(ink)
+                found = None
+                used_w = used_h = None
+
+                # Try multiple stamp sizes
+                scale = 1.0
+                while found is None and scale >= min_scale:
+                    ww = max(8, int(round(stamp_w_px * scale)))
+                    wh = max(8, int(round(stamp_h_px * scale)))
+
+                    for corner in corner_order:
+                        pt = scan_corner(integral, W, H, ww, wh, corner, margin_px, stride_px, max_ink_ratio)
+                        if pt:
+                            found = (pt[0], pt[1])
+                            used_w, used_h = ww, wh
+                            logger.info(f"[STAMP] Found spot in {corner} corner at scale {scale:.2f}")
+                            break
+
+                    if not found:
+                        scale *= scale_step
+
+                # Fallback: distance transform to find largest empty area
+                if found is None:
+                    logger.info(f"[STAMP] No corner worked, using distance transform fallback")
+                    bg = (ink == 0).astype(np.uint8)
+                    dist = cv2.distanceTransform(bg, cv2.DIST_L2, 5)
+                    ww0, wh0 = stamp_w_px, stamp_h_px
+                    half_w, half_h = ww0 // 2, wh0 // 2
+                    valid = np.zeros_like(dist, dtype=bool)
+                    valid[half_h:H - half_h, half_w:W - half_w] = True
+                    dist_masked = np.where(valid, dist, 0)
+                    y0, x0 = np.unravel_index(np.argmax(dist_masked), dist_masked.shape)
+                    x = int(x0 - ww0 // 2)
+                    y = int(y0 - wh0 // 2)
+                    if 0 <= x and 0 <= y and x + ww0 <= W and y + wh0 <= H:
+                        s = integral_sum(integral, x, y, ww0, wh0)
+                        if s / (ww0 * wh0) <= max_ink_ratio:
+                            found = (x, y)
+                            used_w, used_h = ww0, wh0
+
+                return (found, used_w, used_h)
+
+            # Configuration
+            stamp_width_mm = 40.0  # 40mm = ~1.57 inches
+            dpi = 200
+            margin_mm = 6.0
+            stride_px = 12
+            max_ink_ratio = 0.03  # Tolerate 3% ink in region
+            corner_order = ("BR", "BL", "TR", "TL")
+            min_scale = 0.85  # Try down to 85% of original size
+            scale_step = 0.95  # 5% reduction per attempt
+
+            # Load stamp image
+            stamp_img = Image.open(stamp_img_path).convert("RGBA")
+            stamp_width, stamp_height = stamp_img.size
+            stamp_aspect_ratio = stamp_width / stamp_height
+
+            # Calculate stamp size in pixels
+            w_in = mm_to_in(stamp_width_mm)
+            h_in = w_in / stamp_aspect_ratio
+            stamp_w_px = int(round(w_in * dpi))
+            stamp_h_px = int(round(h_in * dpi))
+            margin_px = int(round(mm_to_in(margin_mm) * dpi))
+
+            # Open PDF with PyMuPDF and render first page
+            doc = fitz.open(str(pdf_path))
+            page = doc[0]
+
+            # Render page to image for analysis
+            zoom = dpi / 72.0
+            mat = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
+            if pix.n == 1:
+                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+            # Build ink mask (detects text and graphics)
+            logger.info(f"[STAMP] Building ink mask for content detection")
+            ink = build_ink_mask(gray)
+
+            # Find optimal placement
+            logger.info(f"[STAMP] Searching for optimal stamp placement")
+            (found, ww, wh) = find_spot(
+                ink, dpi, stamp_w_px, stamp_h_px, margin_px, corner_order,
+                stride_px, max_ink_ratio, min_scale, scale_step
+            )
+
+            if not found:
+                logger.warning(f"[STAMP] Could not find suitable placement, skipping stamp")
+                doc.close()
+                return pdf_path
+
+            x_px, y_px = found
+
+            # Convert pixel coordinates to PDF points
+            page_width = float(page.rect.width)
+            page_height = float(page.rect.height)
+            w_pt = px_to_pt(ww, dpi)
+            h_pt = px_to_pt(wh, dpi)
+            x_pt = x_px / zoom
+            y_pt_from_top = y_px / zoom
+            y_pt = page_height - (y_pt_from_top + h_pt)
+
+            logger.info(f"[STAMP] Placing stamp at ({x_pt:.1f}, {y_pt:.1f}), size: {w_pt:.1f}x{h_pt:.1f} pt")
+
+            doc.close()
+
+            # Now use pypdf to add the stamp
             reader = PdfReader(str(pdf_path))
             writer = PdfWriter()
 
-            # Load stamp image
-            stamp_img = Image.open(stamp_img_path)
-            stamp_width, stamp_height = stamp_img.size
-
-            # Target stamp size in PDF points (roughly 2 inches wide = 144 points)
-            stamp_width_pt = 144
-            stamp_height_pt = int(stamp_height * (stamp_width_pt / stamp_width))
-
-            # Get page dimensions
-            first_page = reader.pages[0]
-            page_width = float(first_page.mediabox.width)
-            page_height = float(first_page.mediabox.height)
-
-            # Position: bottom-right area, middle vertically in the bottom quarter
-            margin = 20
-            # X: Right edge minus stamp width minus margin
-            stamp_x = page_width - stamp_width_pt - margin
-            # Y: In the bottom quarter of the page, centered vertically
-            bottom_quarter_height = page_height / 4
-            stamp_y = (bottom_quarter_height - stamp_height_pt) / 2
-
-            logger.info(f"[STAMP] Placing stamp at bottom-right: ({stamp_x:.1f}, {stamp_y:.1f}), size: {stamp_width_pt}x{stamp_height_pt}")
-
-            # Create overlay PDF with stamp (using in-memory buffer, no temp file needed)
+            # Create overlay PDF with stamp
             packet = io.BytesIO()
-            can = canvas.Canvas(packet, pagesize=(page_width, page_height))
+            first_page = reader.pages[0]
+            can = canvas.Canvas(packet, pagesize=(float(first_page.mediabox.width),
+                                                   float(first_page.mediabox.height)))
 
-            # Draw stamp at calculated position with exact size
-            can.drawImage(ImageReader(stamp_img_path), stamp_x, stamp_y,
-                         width=stamp_width_pt, height=stamp_height_pt,
+            # Draw stamp at calculated position
+            can.drawImage(ImageReader(stamp_img_path), x_pt, y_pt,
+                         width=w_pt, height=h_pt,
                          mask='auto', preserveAspectRatio=False)
             can.save()
 
-            # Move to the beginning of the BytesIO buffer
+            # Merge stamp onto first page
             packet.seek(0)
             stamp_pdf = PdfReader(packet)
 
-            # Merge stamp onto the first page only
             for idx, page in enumerate(reader.pages):
                 if idx == 0:
-                    # Merge stamp overlay onto first page
                     page.merge_page(stamp_pdf.pages[0])
                 writer.add_page(page)
 
