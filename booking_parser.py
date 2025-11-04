@@ -1676,9 +1676,9 @@ Even if the source document lists fees per location, you MUST sum them into sing
                             keep[labels == i] = 1
                     ink = keep
 
-                    # Add safety buffer around text
-                    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-                    ink = cv2.dilate(ink, kernel, iterations=2)
+                    # Add safety buffer around text (increased to prevent touching)
+                    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+                    ink = cv2.dilate(ink, kernel, iterations=5)
                     return ink
                 except Exception as e:
                     logger.warning(f"[STAMP] Error building ink mask: {e}, using empty mask")
@@ -1777,7 +1777,7 @@ Even if the source document lists fees per location, you MUST sum them into sing
             # Configuration
             stamp_width_mm = 60.0  # 60mm = ~2.36 inches (increased from 40mm)
             dpi = 200
-            margin_mm = 6.0
+            margin_mm = 10.0  # Increased from 6mm to 10mm for more clearance
             stride_px = 12
             max_ink_ratio = 0.03  # Tolerate 3% ink in region
             corner_order = ("BR", "BL", "TR", "TL")
