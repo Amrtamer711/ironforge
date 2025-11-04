@@ -1677,8 +1677,9 @@ Even if the source document lists fees per location, you MUST sum them into sing
                     ink = keep
 
                     # Add safety buffer around text (large clearance to prevent any touching)
-                    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
-                    ink = cv2.dilate(ink, kernel, iterations=10)
+                    # Balanced for 96mm stamp - enough clearance without being too restrictive
+                    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+                    ink = cv2.dilate(ink, kernel, iterations=12)
                     return ink
                 except Exception as e:
                     logger.warning(f"[STAMP] Error building ink mask: {e}, using empty mask")
@@ -1779,10 +1780,10 @@ Even if the source document lists fees per location, you MUST sum them into sing
             dpi = 200
             margin_mm = 20.0  # 20mm (~0.8 inches) margin from page edges
             stride_px = 12
-            max_ink_ratio = 0.03  # Tolerate 3% ink in region
+            max_ink_ratio = 0.05  # Tolerate 5% ink in region (more flexible for larger stamp)
             corner_order = ("BR", "BL", "TR", "TL")
-            min_scale = 0.85  # Try down to 85% of original size
-            scale_step = 0.95  # 5% reduction per attempt
+            min_scale = 0.70  # Try down to 70% of original size (more flexibility)
+            scale_step = 0.92  # 8% reduction per attempt (smaller steps for better fit)
 
             # Load stamp image
             stamp_img = Image.open(stamp_img_path).convert("RGBA")
