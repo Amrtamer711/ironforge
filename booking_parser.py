@@ -1480,7 +1480,7 @@ Even if the source document lists fees per location, you MUST sum them into sing
 
         return temp_excel_path
 
-    async def generate_combined_pdf(self, data: Dict[str, Any], bo_ref: str, original_bo_path: Path) -> Path:
+    async def generate_combined_pdf(self, data: Dict[str, Any], bo_ref: str, original_bo_path: Path, apply_stamp: bool = False) -> Path:
         """
         Generate combined PDF: Excel (converted to PDF) + Original BO PDF concatenated
 
@@ -1488,11 +1488,12 @@ Even if the source document lists fees per location, you MUST sum them into sing
             data: Parsed booking order data
             bo_ref: BO reference for filename
             original_bo_path: Path to the original BO file (PDF or will be converted)
+            apply_stamp: If True, applies HoS approval stamp to original BO (only on HoS approval)
 
         Returns:
             Path to the combined PDF file
         """
-        logger.info(f"[BOOKING PARSER] Generating combined PDF for {bo_ref}, original_bo_path: {original_bo_path} (type: {type(original_bo_path)})")
+        logger.info(f"[BOOKING PARSER] Generating combined PDF for {bo_ref}, original_bo_path: {original_bo_path} (type: {type(original_bo_path)}), apply_stamp: {apply_stamp}")
 
         excel_path = None
         excel_pdf_path = None
@@ -1515,12 +1516,16 @@ Even if the source document lists fees per location, you MUST sum them into sing
             original_pdf_path = await self._ensure_pdf(original_bo_path)
             logger.info(f"[BOOKING PARSER] Original BO PDF ready: {original_pdf_path}")
 
-            # Step 3.5: Apply stamp to original BO PDF (HoS approval stamp)
-            logger.info(f"[BOOKING PARSER] Step 3.5: Applying HoS approval stamp to original BO")
-            stamped_original_pdf_path = await self._apply_stamp_to_pdf(original_pdf_path)
-            logger.info(f"[BOOKING PARSER] Stamped original BO ready: {stamped_original_pdf_path}")
+            # Step 3.5: Apply stamp to original BO PDF (only if HoS approved)
+            if apply_stamp:
+                logger.info(f"[BOOKING PARSER] Step 3.5: Applying HoS approval stamp to original BO")
+                stamped_original_pdf_path = await self._apply_stamp_to_pdf(original_pdf_path)
+                logger.info(f"[BOOKING PARSER] Stamped original BO ready: {stamped_original_pdf_path}")
+            else:
+                logger.info(f"[BOOKING PARSER] Skipping stamp application (not HoS approved)")
+                stamped_original_pdf_path = original_pdf_path
 
-            # Step 4: Concatenate PDFs (Excel PDF first, then stamped original BO)
+            # Step 4: Concatenate PDFs (Excel PDF first, then original BO)
             combined_pdf_path = COMBINED_BOS_DIR / f"{bo_ref}_combined.pdf"
             await self._concatenate_pdfs([excel_pdf_path, stamped_original_pdf_path], combined_pdf_path)
 

@@ -621,13 +621,14 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     # Add HoS signature to data (will be added to Excel in italics)
     workflow_data["hos_signature"] = hos_name
 
-    # Generate final combined PDF (Excel + Original BO) with HoS signature
+    # Generate final combined PDF (Excel + Original BO) with HoS signature and stamp
     parser = BookingOrderParser(company=workflow["company"])
     permanent_original_path = Path(workflow["original_file_path"])
     final_combined_pdf = await parser.generate_combined_pdf(
         workflow_data,
         bo_ref,
-        permanent_original_path
+        permanent_original_path,
+        apply_stamp=True  # Apply HoS approval stamp
     )
 
     # Clean up permanent original file (we now have the final combined PDF)
