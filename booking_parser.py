@@ -1647,31 +1647,38 @@ Even if the source document lists fees per location, you MUST sum them into sing
 
             def build_ink_mask(gray):
                 """Build robust ink mask from grayscale image"""
-                # Background flattening to handle uneven lighting
-                bg = cv2.GaussianBlur(gray, (0, 0), sigmaX=21, sigmaY=21)
-                norm = cv2.divide(gray, bg, scale=128)
+                try:
+                    # Background flattening to handle uneven lighting
+                    bg = cv2.GaussianBlur(gray, (0, 0), sigmaX=21, sigmaY=21)
+                    # Prevent divide by zero
+                    bg = np.maximum(bg, 1)
+                    norm = cv2.divide(gray, bg, scale=128)
 
-                # Adaptive threshold for local text detection
-                bw = cv2.adaptiveThreshold(
-                    norm, 255,
-                    cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                    cv2.THRESH_BINARY, 41, 8
-                )
-                ink = (bw == 0).astype(np.uint8)
+                    # Adaptive threshold for local text detection
+                    bw = cv2.adaptiveThreshold(
+                        norm, 255,
+                        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                        cv2.THRESH_BINARY, 41, 8
+                    )
+                    ink = (bw == 0).astype(np.uint8)
 
-                # Remove noise/speckles
-                n, labels, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
-                min_area = 30
-                keep = np.zeros_like(ink)
-                for i in range(1, n):
-                    if stats[i, cv2.CC_STAT_AREA] >= min_area:
-                        keep[labels == i] = 1
-                ink = keep
+                    # Remove noise/speckles
+                    n, labels, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
+                    min_area = 30
+                    keep = np.zeros_like(ink)
+                    for i in range(1, n):
+                        if stats[i, cv2.CC_STAT_AREA] >= min_area:
+                            keep[labels == i] = 1
+                    ink = keep
 
-                # Add safety buffer around text
-                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-                ink = cv2.dilate(ink, kernel, iterations=2)
-                return ink
+                    # Add safety buffer around text
+                    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+                    ink = cv2.dilate(ink, kernel, iterations=2)
+                    return ink
+                except Exception as e:
+                    logger.warning(f"[STAMP] Error building ink mask: {e}, using empty mask")
+                    # Return empty mask (all white) if processing fails
+                    return np.zeros_like(gray, dtype=np.uint8)
 
             def scan_corner(integral, W, H, ww, wh, corner, margin, stride, max_ink_ratio):
                 """Scan a corner for empty space"""
@@ -1679,6 +1686,9 @@ Even if the source document lists fees per location, you MUST sum them into sing
                 x_max, y_max = W - margin - ww, H - margin - wh
                 if x_max < x_min or y_max < y_min:
                     return None
+
+                # Integral image is (H+1, W+1), so max valid indices are H, W
+                integral_h, integral_w = integral.shape
 
                 # Set scan direction based on corner
                 if corner == "BR":
@@ -1697,9 +1707,11 @@ Even if the source document lists fees per location, you MUST sum them into sing
                 area = ww * wh
                 for y in ys:
                     for x in xs:
-                        s = integral_sum(integral, x, y, ww, wh)
-                        if s / area <= max_ink_ratio:
-                            return (x, y)
+                        # Bounds check: ensure x+ww and y+wh don't exceed integral bounds
+                        if x + ww < integral_w and y + wh < integral_h:
+                            s = integral_sum(integral, x, y, ww, wh)
+                            if s / area <= max_ink_ratio:
+                                return (x, y)
                 return None
 
             def find_spot(ink, dpi, stamp_w_px, stamp_h_px, margin_px, corner_order,
@@ -1710,9 +1722,11 @@ Even if the source document lists fees per location, you MUST sum them into sing
                 found = None
                 used_w = used_h = None
 
-                # Try multiple stamp sizes
+                # Try multiple stamp sizes (with max iteration guard)
                 scale = 1.0
-                while found is None and scale >= min_scale:
+                max_iterations = 10
+                iteration = 0
+                while found is None and scale >= min_scale and iteration < max_iterations:
                     ww = max(8, int(round(stamp_w_px * scale)))
                     wh = max(8, int(round(stamp_h_px * scale)))
 
@@ -1726,25 +1740,32 @@ Even if the source document lists fees per location, you MUST sum them into sing
 
                     if not found:
                         scale *= scale_step
+                        iteration += 1
 
                 # Fallback: distance transform to find largest empty area
                 if found is None:
                     logger.info(f"[STAMP] No corner worked, using distance transform fallback")
-                    bg = (ink == 0).astype(np.uint8)
-                    dist = cv2.distanceTransform(bg, cv2.DIST_L2, 5)
-                    ww0, wh0 = stamp_w_px, stamp_h_px
-                    half_w, half_h = ww0 // 2, wh0 // 2
-                    valid = np.zeros_like(dist, dtype=bool)
-                    valid[half_h:H - half_h, half_w:W - half_w] = True
-                    dist_masked = np.where(valid, dist, 0)
-                    y0, x0 = np.unravel_index(np.argmax(dist_masked), dist_masked.shape)
-                    x = int(x0 - ww0 // 2)
-                    y = int(y0 - wh0 // 2)
-                    if 0 <= x and 0 <= y and x + ww0 <= W and y + wh0 <= H:
-                        s = integral_sum(integral, x, y, ww0, wh0)
-                        if s / (ww0 * wh0) <= max_ink_ratio:
-                            found = (x, y)
-                            used_w, used_h = ww0, wh0
+                    try:
+                        bg = (ink == 0).astype(np.uint8)
+                        dist = cv2.distanceTransform(bg, cv2.DIST_L2, 5)
+                        ww0, wh0 = stamp_w_px, stamp_h_px
+                        half_w, half_h = max(1, ww0 // 2), max(1, wh0 // 2)
+
+                        # Ensure valid region is within bounds
+                        if half_h < H and half_w < W:
+                            valid = np.zeros_like(dist, dtype=bool)
+                            valid[half_h:H - half_h, half_w:W - half_w] = True
+                            dist_masked = np.where(valid, dist, 0)
+                            y0, x0 = np.unravel_index(np.argmax(dist_masked), dist_masked.shape)
+                            x = int(x0 - ww0 // 2)
+                            y = int(y0 - wh0 // 2)
+                            if 0 <= x and 0 <= y and x + ww0 <= W and y + wh0 <= H:
+                                s = integral_sum(integral, x, y, ww0, wh0)
+                                if s / (ww0 * wh0) <= max_ink_ratio:
+                                    found = (x, y)
+                                    used_w, used_h = ww0, wh0
+                    except Exception as e:
+                        logger.warning(f"[STAMP] Distance transform fallback failed: {e}")
 
                 return (found, used_w, used_h)
 
@@ -1772,20 +1793,32 @@ Even if the source document lists fees per location, you MUST sum them into sing
 
             # Open PDF with PyMuPDF and render first page
             doc = fitz.open(str(pdf_path))
-            page = doc[0]
+            try:
+                page = doc[0]
 
-            # Render page to image for analysis
-            zoom = dpi / 72.0
-            mat = fitz.Matrix(zoom, zoom)
-            pix = page.get_pixmap(matrix=mat, alpha=False)
-            img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
-            if pix.n == 1:
-                img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                # Render page to image for analysis
+                zoom = dpi / 72.0
+                mat = fitz.Matrix(zoom, zoom)
+                pix = page.get_pixmap(matrix=mat, alpha=False)
 
-            # Build ink mask (detects text and graphics)
-            logger.info(f"[STAMP] Building ink mask for content detection")
-            ink = build_ink_mask(gray)
+                # Validate pixmap dimensions
+                if pix.h <= 0 or pix.w <= 0:
+                    logger.warning(f"[STAMP] Invalid page dimensions: {pix.w}x{pix.h}, skipping stamp")
+                    doc.close()
+                    return pdf_path
+
+                img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)
+                if pix.n == 1:
+                    img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+                gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+                # Build ink mask (detects text and graphics)
+                logger.info(f"[STAMP] Building ink mask for content detection")
+                ink = build_ink_mask(gray)
+            except Exception as e:
+                logger.warning(f"[STAMP] Failed to render page: {e}, skipping stamp")
+                doc.close()
+                return pdf_path
 
             # Find optimal placement
             logger.info(f"[STAMP] Searching for optimal stamp placement")
