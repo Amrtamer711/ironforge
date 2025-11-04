@@ -1496,8 +1496,8 @@ Even if the source document lists fees per location, you MUST sum them into sing
 
         excel_path = None
         excel_pdf_path = None
-        stamped_excel_pdf_path = None
         original_pdf_path = None
+        stamped_original_pdf_path = None
 
         try:
             # Step 1: Generate Excel
@@ -1510,19 +1510,19 @@ Even if the source document lists fees per location, you MUST sum them into sing
             excel_pdf_path = await self._convert_excel_to_pdf(excel_path)
             logger.info(f"[BOOKING PARSER] Excel PDF created: {excel_pdf_path}")
 
-            # Step 2.5: Apply stamp to Excel PDF (HoS approval stamp)
-            logger.info(f"[BOOKING PARSER] Step 2.5: Applying HoS approval stamp to Excel PDF")
-            stamped_excel_pdf_path = await self._apply_stamp_to_pdf(excel_pdf_path)
-            logger.info(f"[BOOKING PARSER] Stamped Excel PDF ready: {stamped_excel_pdf_path}")
-
             # Step 3: Ensure original BO is PDF (convert if needed)
             logger.info(f"[BOOKING PARSER] Step 3: Ensuring original BO is PDF, path: {original_bo_path}")
             original_pdf_path = await self._ensure_pdf(original_bo_path)
             logger.info(f"[BOOKING PARSER] Original BO PDF ready: {original_pdf_path}")
 
-            # Step 4: Concatenate PDFs (Stamped Excel PDF first, then original BO)
+            # Step 3.5: Apply stamp to original BO PDF (HoS approval stamp)
+            logger.info(f"[BOOKING PARSER] Step 3.5: Applying HoS approval stamp to original BO")
+            stamped_original_pdf_path = await self._apply_stamp_to_pdf(original_pdf_path)
+            logger.info(f"[BOOKING PARSER] Stamped original BO ready: {stamped_original_pdf_path}")
+
+            # Step 4: Concatenate PDFs (Excel PDF first, then stamped original BO)
             combined_pdf_path = COMBINED_BOS_DIR / f"{bo_ref}_combined.pdf"
-            await self._concatenate_pdfs([stamped_excel_pdf_path, original_pdf_path], combined_pdf_path)
+            await self._concatenate_pdfs([excel_pdf_path, stamped_original_pdf_path], combined_pdf_path)
 
             logger.info(f"[BOOKING PARSER] Combined PDF generated: {combined_pdf_path}")
             return combined_pdf_path
@@ -1534,10 +1534,10 @@ Even if the source document lists fees per location, you MUST sum them into sing
                     excel_path.unlink()
                 if excel_pdf_path and excel_pdf_path != excel_path and excel_pdf_path.exists():
                     excel_pdf_path.unlink()
-                if stamped_excel_pdf_path and stamped_excel_pdf_path != excel_pdf_path and stamped_excel_pdf_path.exists():
-                    stamped_excel_pdf_path.unlink()
                 if original_pdf_path and original_pdf_path != original_bo_path and original_pdf_path.exists():
                     original_pdf_path.unlink()
+                if stamped_original_pdf_path and stamped_original_pdf_path != original_pdf_path and stamped_original_pdf_path.exists():
+                    stamped_original_pdf_path.unlink()
             except Exception as e:
                 logger.warning(f"[BOOKING PARSER] Failed to clean up temp files: {e}")
 
