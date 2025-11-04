@@ -1775,7 +1775,7 @@ Even if the source document lists fees per location, you MUST sum them into sing
                 return (found, used_w, used_h)
 
             # Configuration
-            stamp_width_mm = 40.0  # 40mm = ~1.57 inches
+            stamp_width_mm = 60.0  # 60mm = ~2.36 inches (increased from 40mm)
             dpi = 200
             margin_mm = 6.0
             stride_px = 12
