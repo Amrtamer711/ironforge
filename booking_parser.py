@@ -1841,39 +1841,37 @@ Even if the source document lists fees per location, you MUST sum them into sing
                 # Get today's date in DD-MM-YYYY format
                 today = datetime.now().strftime("%d-%m-%Y")
 
-                # Create drawing context
+                # Create drawing context on the logo itself (don't extend canvas)
                 draw = ImageDraw.Draw(stamp_img)
 
-                # Calculate font size proportional to stamp width
-                # Aim for date text to be about 15% of stamp width
+                # Get stamp dimensions
                 width, height = stamp_img.size
-                target_font_size = int(width * 0.15)  # Scale font to stamp size
 
                 # Try to use a nice BOLD font, fallback to default
+                # Use EXACT same code as test_stamp.py for consistency
                 try:
                     # Use Helvetica Bold
-                    font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", target_font_size, index=1)
+                    font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 60, index=1)  # index=1 for bold
                 except:
                     try:
-                        font = ImageFont.truetype("/Library/Fonts/Arial Bold.ttf", target_font_size)
+                        font = ImageFont.truetype("/Library/Fonts/Arial Bold.ttf", 48)
                     except:
                         try:
-                            font = ImageFont.truetype("/Library/Fonts/Arial.ttf", target_font_size)
+                            font = ImageFont.truetype("/Library/Fonts/Arial.ttf", 48)
                         except:
                             font = ImageFont.load_default()
 
-                # Position date on the stamp
+                # Position date lower on the stamp
+                # Get text bounding box to center it
                 bbox = draw.textbbox((0, 0), today, font=font)
                 text_width = bbox[2] - bbox[0]
-                text_x = (width - text_width) // 2 + int(width * 0.08)  # Shifted right by 8% of width
-                text_y = int(height * 0.521)
-
-                # Scale outline based on font size
-                outline_size = max(2, int(target_font_size * 0.05))
+                text_x = (width - text_width) // 2 + 40  # Shifted right by 40 pixels
+                text_y = int(height * 0.521)  # Place at 52.1% down from top
 
                 # Draw date in black with white outline for visibility
-                for adj_x in range(-outline_size, outline_size + 1):
-                    for adj_y in range(-outline_size, outline_size + 1):
+                # Draw outline (white)
+                for adj_x in [-2, -1, 0, 1, 2]:
+                    for adj_y in [-2, -1, 0, 1, 2]:
                         if adj_x != 0 or adj_y != 0:
                             draw.text((text_x + adj_x, text_y + adj_y), today, fill=(255, 255, 255, 255), font=font)
                 # Draw main text (black)
