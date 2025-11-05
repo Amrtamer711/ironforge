@@ -1650,8 +1650,8 @@ Even if the source document lists fees per location, you MUST sum them into sing
                 x2, y2 = x + w, y + h
                 return ii[y2, x2] - ii[y, x2] - ii[y2, x] + ii[y, x]
 
-            def build_ink_mask(gray):
-                """Build robust ink mask from grayscale image"""
+            def build_ink_mask(gray, stamp_size_mm):
+                """Build robust ink mask from grayscale image with clearance scaled to stamp size"""
                 try:
                     # Background flattening to handle uneven lighting
                     bg = cv2.GaussianBlur(gray, (0, 0), sigmaX=21, sigmaY=21)
@@ -1676,9 +1676,19 @@ Even if the source document lists fees per location, you MUST sum them into sing
                             keep[labels == i] = 1
                     ink = keep
 
-                    # Add safety buffer around text - moderate clearance for 96mm stamp
-                    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
-                    ink = cv2.dilate(ink, kernel, iterations=8)
+                    # Add safety buffer around text - scale clearance based on stamp size
+                    # Base: 67mm stamp -> 9x9 kernel, 10 iterations (start bigger than before)
+                    # Scales DOWN as stamp gets smaller (smaller stamps need less clearance)
+                    scale_factor = stamp_size_mm / 67.0
+                    kernel_size = max(3, int(9 * scale_factor))
+                    # Ensure odd number for kernel
+                    if kernel_size % 2 == 0:
+                        kernel_size += 1
+                    iterations = max(4, int(10 * scale_factor))
+
+                    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size))
+                    ink = cv2.dilate(ink, kernel, iterations=iterations)
+                    logger.debug(f"[STAMP] Clearance buffer: {kernel_size}x{kernel_size} kernel, {iterations} iterations for {stamp_size_mm}mm stamp")
                     return ink
                 except Exception as e:
                     logger.warning(f"[STAMP] Error building ink mask: {e}, using empty mask")
@@ -1719,11 +1729,10 @@ Even if the source document lists fees per location, you MUST sum them into sing
                                 return (x, y)
                 return None
 
-            def find_spot(ink, dpi, stamp_w_px, stamp_h_px, margin_px, corner_order,
+            def find_spot(ink_masks, stamp_w_px, stamp_h_px, margin_px, corner_order,
                           stride_px, max_ink_ratio, min_scale, scale_step):
-                """Find optimal placement for stamp"""
-                H, W = ink.shape
-                integral = cv2.integral(ink)
+                """Find optimal placement for stamp with scaled clearance"""
+                H, W = ink_masks[1.0].shape
                 found = None
                 used_w = used_h = None
 
@@ -1734,6 +1743,19 @@ Even if the source document lists fees per location, you MUST sum them into sing
                 while found is None and scale >= min_scale and iteration < max_iterations:
                     ww = max(8, int(round(stamp_w_px * scale)))
                     wh = max(8, int(round(stamp_h_px * scale)))
+
+                    # Select appropriate ink mask based on scale
+                    # Use the closest pre-computed mask
+                    if scale >= 0.85:
+                        ink = ink_masks[1.0]  # Large stamp, large clearance
+                    elif scale >= 0.70:
+                        ink = ink_masks[0.85]  # Medium-large stamp
+                    elif scale >= 0.60:
+                        ink = ink_masks[0.70]  # Medium stamp
+                    else:
+                        ink = ink_masks[0.50]  # Small stamp, small clearance
+
+                    integral = cv2.integral(ink)
 
                     for corner in corner_order:
                         pt = scan_corner(integral, W, H, ww, wh, corner, margin_px, stride_px, max_ink_ratio)
@@ -1751,7 +1773,10 @@ Even if the source document lists fees per location, you MUST sum them into sing
                 if found is None:
                     logger.info(f"[STAMP] No corner worked, using distance transform fallback")
                     try:
-                        bg = (ink == 0).astype(np.uint8)
+                        # Use the smallest ink mask (least clearance) for fallback
+                        ink_fallback = ink_masks[0.50]
+                        integral_fallback = cv2.integral(ink_fallback)
+                        bg = (ink_fallback == 0).astype(np.uint8)
                         dist = cv2.distanceTransform(bg, cv2.DIST_L2, 5)
 
                         # Try progressively smaller sizes and higher ink tolerance
@@ -1769,7 +1794,7 @@ Even if the source document lists fees per location, you MUST sum them into sing
                                 x = int(x0 - ww0 // 2)
                                 y = int(y0 - wh0 // 2)
                                 if 0 <= x and 0 <= y and x + ww0 <= W and y + wh0 <= H:
-                                    s = integral_sum(integral, x, y, ww0, wh0)
+                                    s = integral_sum(integral_fallback, x, y, ww0, wh0)
                                     # Accept up to 20% ink for fallback (more lenient)
                                     if s / (ww0 * wh0) <= 0.20:
                                         found = (x, y)
@@ -1794,13 +1819,13 @@ Even if the source document lists fees per location, you MUST sum them into sing
                 return (found, used_w, used_h)
 
             # Configuration
-            stamp_width_mm = 96.0  # 96mm = ~3.78 inches (60% bigger than 60mm)
+            stamp_width_mm = 67.0  # 67mm = ~2.64 inches (start at 70% of original 96mm)
             dpi = 200
             margin_mm = 15.0  # 15mm (~0.6 inches) margin from page edges
             stride_px = 12
             max_ink_ratio = 0.10  # Tolerate 10% ink in region (allows some overlap)
             corner_order = ("BR", "BL", "TR", "TL")
-            min_scale = 0.50  # Try down to 50% of original size (48mm minimum)
+            min_scale = 0.50  # Try down to 50% of original size (33.5mm minimum)
             scale_step = 0.96  # 4% reduction per attempt (smaller steps for more attempts)
 
             # Load stamp image and add date
@@ -1891,9 +1916,14 @@ Even if the source document lists fees per location, you MUST sum them into sing
                     img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
                 gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-                # Build ink mask (detects text and graphics)
-                logger.info(f"[STAMP] Building ink mask for content detection")
-                ink = build_ink_mask(gray)
+                # Build multiple ink masks with different clearance levels
+                # Larger stamps need more clearance, smaller stamps need less
+                logger.info(f"[STAMP] Building ink masks with scaled clearance for content detection")
+                ink_masks = {}
+                for scale_level in [1.0, 0.85, 0.70, 0.50]:
+                    scaled_size = stamp_width_mm * scale_level
+                    ink_masks[scale_level] = build_ink_mask(gray, scaled_size)
+                logger.info(f"[STAMP] Created {len(ink_masks)} ink masks for different stamp sizes")
             except Exception as e:
                 logger.warning(f"[STAMP] Failed to render page: {e}, skipping stamp")
                 doc.close()
@@ -1902,7 +1932,7 @@ Even if the source document lists fees per location, you MUST sum them into sing
             # Find optimal placement
             logger.info(f"[STAMP] Searching for optimal stamp placement")
             (found, ww, wh) = find_spot(
-                ink, dpi, stamp_w_px, stamp_h_px, margin_px, corner_order,
+                ink_masks, stamp_w_px, stamp_h_px, margin_px, corner_order,
                 stride_px, max_ink_ratio, min_scale, scale_step
             )
 
