@@ -4,6 +4,7 @@ import tempfile
 import shutil
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
+from datetime import datetime
 
 from pptx import Presentation
 from pypdf import PdfReader, PdfWriter
@@ -12,6 +13,11 @@ import config
 import db
 from pptx_utils import create_financial_proposal_slide, create_combined_financial_proposal_slide
 from pdf_utils import convert_pptx_to_pdf, merge_pdfs, remove_slides_and_convert_to_pdf
+
+
+def _generate_timestamp_code() -> str:
+    """Generate a compact timestamp code for filenames (YYMMDD-HHMM)"""
+    return datetime.now().strftime("%y%m%d-%H%M")
 
 
 def _template_path_for_key(key: str) -> Path:
@@ -438,13 +444,16 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
         total_amount=total_combined,
     )
 
+    timestamp_code = _generate_timestamp_code()
+    client_prefix = client_name.replace(" ", "_") if client_name else "Client"
+
     return {
         "success": True,
         "is_combined": True,
         "pptx_path": None,
         "pdf_path": merged_pdf,
         "locations": locations_str,
-        "pdf_filename": f"Combined_Package_{len(validated_proposals)}_Locations.pdf",
+        "pdf_filename": f"{client_prefix}_{timestamp_code}.pdf",
     }
 
 
@@ -569,7 +578,9 @@ async def process_proposals(
         if is_single:
             pdf_file = await loop.run_in_executor(None, convert_pptx_to_pdf, pptx_file)
             result["pdf_path"] = pdf_file
-            result["pdf_filename"] = f"{matched_key.title()}_Proposal.pdf"
+            timestamp_code = _generate_timestamp_code()
+            client_prefix = client_name.replace(" ", "_") if client_name else "Client"
+            result["pdf_filename"] = f"{client_prefix}_{timestamp_code}.pdf"
         else:
             # When we have intro/outro slides, remove both first and last from all PPTs
             if intro_outro_info:
@@ -742,11 +753,14 @@ async def process_proposals(
         total_amount=summary_total,
     )
 
+    timestamp_code = _generate_timestamp_code()
+    client_prefix = client_name.replace(" ", "_") if client_name else "Client"
+
     return {
         "success": True,
         "is_single": False,
         "individual_files": individual_files,
         "merged_pdf_path": merged_pdf,
         "locations": ", ".join(locations),
-        "merged_pdf_filename": f"Combined_Proposal_{len(locations)}_Locations.pdf",
+        "merged_pdf_filename": f"{client_prefix}_{timestamp_code}.pdf",
     } 

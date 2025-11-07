@@ -1677,9 +1677,9 @@ Even if the source document lists fees per location, you MUST sum them into sing
                     ink = keep
 
                     # Add safety buffer around text - scale clearance based on stamp size
-                    # Base: 67mm stamp -> 9x9 kernel, 10 iterations (start bigger than before)
+                    # Base: 55mm stamp -> 9x9 kernel, 10 iterations
                     # Scales DOWN as stamp gets smaller (smaller stamps need less clearance)
-                    scale_factor = stamp_size_mm / 67.0
+                    scale_factor = stamp_size_mm / 55.0
                     kernel_size = max(3, int(9 * scale_factor))
                     # Ensure odd number for kernel
                     if kernel_size % 2 == 0:
@@ -1819,14 +1819,14 @@ Even if the source document lists fees per location, you MUST sum them into sing
                 return (found, used_w, used_h)
 
             # Configuration
-            stamp_width_mm = 67.0  # 67mm = ~2.64 inches (start at 70% of original 96mm)
+            stamp_width_mm = 55.0  # 55mm = ~2.17 inches (start smaller for better fit)
             dpi = 200
             margin_mm = 15.0  # 15mm (~0.6 inches) margin from page edges
             stride_px = 12
             max_ink_ratio = 0.10  # Tolerate 10% ink in region (allows some overlap)
             corner_order = ("BR", "BL", "TR", "TL")
-            min_scale = 0.50  # Try down to 50% of original size (33.5mm minimum)
-            scale_step = 0.96  # 4% reduction per attempt (smaller steps for more attempts)
+            min_scale = 0.40  # Try down to 40% of original size (22mm minimum)
+            scale_step = 0.98  # 2% reduction per attempt (more granular steps)
 
             # Load stamp image and add date
             stamp_img = Image.open(stamp_img_path).convert("RGBA")
