@@ -4,7 +4,7 @@ import tempfile
 import shutil
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from pptx import Presentation
 from pypdf import PdfReader, PdfWriter
@@ -16,12 +16,15 @@ from pdf_utils import convert_pptx_to_pdf, merge_pdfs, remove_slides_and_convert
 
 
 def _generate_timestamp_code() -> str:
-    """Generate a compact timestamp code for filenames (HHMMDYYM)
-    Format: HH (hour) MM (minute) D (day) YY (year) M (month)
-    Example: 112571125 = 11:25 AM on Nov 7, 2025
+    """Generate a compact timestamp code for filenames (HHMMDMMYY)
+    Format: HH (hour) MM (minute) D (day) M (month) YY (year)
+    Example: 0729072511 = 07:29 AM on July 25, 2011
+    Uses UAE timezone (UTC+4)
     """
-    now = datetime.now()
-    return f"{now.strftime('%H%M')}{now.day}{now.strftime('%y')}{now.month}"
+    # UAE timezone is UTC+4
+    uae_tz = timezone(timedelta(hours=4))
+    now = datetime.now(uae_tz)
+    return f"{now.strftime('%H%M')}{now.day}{now.month}{now.strftime('%y')}"
 
 
 def _template_path_for_key(key: str) -> Path:
