@@ -16,8 +16,12 @@ from pdf_utils import convert_pptx_to_pdf, merge_pdfs, remove_slides_and_convert
 
 
 def _generate_timestamp_code() -> str:
-    """Generate a compact timestamp code for filenames (YYMMDD-HHMM)"""
-    return datetime.now().strftime("%y%m%d-%H%M")
+    """Generate a compact timestamp code for filenames (HHMMDYYM)
+    Format: HH (hour) MM (minute) D (day) YY (year) M (month)
+    Example: 112571125 = 11:25 AM on Nov 7, 2025
+    """
+    now = datetime.now()
+    return f"{now.strftime('%H%M')}{now.day}{now.strftime('%y')}{now.month}"
 
 
 def _template_path_for_key(key: str) -> Path:
