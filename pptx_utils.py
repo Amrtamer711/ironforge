@@ -127,8 +127,8 @@ def _spots_text(spots: int) -> str:
 
 
 def build_location_text(location_key: str, spots: int) -> str:
-    """Build location description: Series: Location - Size (H x W) - Faces - Spots - Duration - SOV - Loop
-    Format: Series: Location - Size (Height x Width) - Number of faces - Number of spots - Spot Duration x spots - SOV x spots - Loop duration
+    """Build location description: Series: Location - Size (W x H) - Faces - Spots - Duration - SOV - Loop
+    Format: Series: Location - Size (Width x Height) - Number of faces - Number of spots - Spot Duration x spots - SOV x spots - Loop duration
     """
     logger = config.logger
     logger.info(f"[BUILD_LOC_TEXT] Building text for location '{location_key}' with {spots} spots")
@@ -157,7 +157,7 @@ def build_location_text(location_key: str, spots: int) -> str:
     else:
         parts.append(location_name)
     
-    # Size (Height x Width)
+    # Size (Width x Height)
     if height and width:
         # Check for "Multiple Sizes" special case
         if "multiple sizes" in str(height).lower() or "multiple sizes" in str(width).lower():
@@ -166,7 +166,7 @@ def build_location_text(location_key: str, spots: int) -> str:
             # Remove 'm' suffix if present and re-add it
             h = str(height).replace('m', '').strip()
             w = str(width).replace('m', '').strip()
-            parts.append(f"Size ({h}m x {w}m)")
+            parts.append(f"Size ({w}m x {h}m)")
     
     # Number of faces
     parts.append(f"{num_faces} faces")
