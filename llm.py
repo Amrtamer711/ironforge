@@ -2400,7 +2400,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     f"📋 **Summary:**\n"
                     f"• Display Name: {display_name}\n"
                     f"• Display Type: {display_type}\n"
-                    f"• Dimensions: {height} x {width}\n"
+                    f"• Dimensions: {width} x {height}\n"
                     f"• Faces: {number_of_faces}\n"
                     f"• Series: {series}\n"
                 )
@@ -2480,7 +2480,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     f"⚠️ **CONFIRM LOCATION DELETION**\n\n"
                     f"📍 **Location:** {display_name} (`{location_key}`)\n"
                     f"📊 **Type:** {meta.get('display_type', 'Unknown')}\n"
-                    f"📐 **Size:** {meta.get('height')} x {meta.get('width')}\n"
+                    f"📐 **Size:** {meta.get('width')} x {meta.get('height')}\n"
                     f"🎯 **Series:** {meta.get('series', 'Unknown')}\n\n"
                     f"🚨 **WARNING:** This will permanently delete:\n"
                     f"• PowerPoint template file\n"
