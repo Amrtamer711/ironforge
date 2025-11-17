@@ -3181,6 +3181,10 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         # Extensive system prompt for billboard artwork generation
                         enhanced_prompt = f"""Create a professional flat 2D artwork/creative design for outdoor advertising.
 
+⚠️ CRITICAL RULE: Generate CLEAN, FLAT graphics with SOLID elements.
+ABSOLUTELY NO glowing effects, light flares, halos, sparkles, or radiating effects around ANY elements, especially text and logos.
+Keep all graphics simple, solid, and clean.
+
 ═══════════════════════════════════════════════════════════
 🚨 CRITICAL: WHAT YOU ARE CREATING
 ═══════════════════════════════════════════════════════════
@@ -3216,16 +3220,17 @@ DETAILED DESIGN REQUIREMENTS:
 {orientation_text}
 
 🎨 VISUAL DESIGN PRINCIPLES:
-- Bold, high-impact composition that catches attention immediately
+- High-impact composition that catches attention immediately
 - Large hero image or visual focal point (50-70% of design)
-- Strong, bold colors appropriate for outdoor advertising
+- Strong colors appropriate for outdoor advertising
 - Clear separation between design elements for readability
 - Simple, uncluttered layout (viewer has 5-7 seconds max)
 - Professional photo quality or clean vector graphics
 - Modern, contemporary advertising aesthetic
+- FLAT graphics only - no special effects, glows, or embellishments around elements
 
 ✍️ TYPOGRAPHY (if text is needed):
-- LARGE, bold, highly readable fonts
+- LARGE, highly readable fonts with clean edges
 - Sans-serif typefaces work best for outdoor viewing
 - Maximum 7-10 words total (fewer is better)
 - Strong text-to-background distinction for readability
@@ -3233,6 +3238,7 @@ DETAILED DESIGN REQUIREMENTS:
 - Clear hierarchy: one main message, optional supporting text
 - Avoid script fonts, thin fonts, or decorative typefaces
 - Letter spacing optimized for distance reading
+- Text should be solid and clean - NO glows, halos, shadows, or effects around letters
 
 🎯 COMPOSITION STRATEGY:
 - Rule of thirds or strong visual hierarchy
@@ -3243,12 +3249,13 @@ DETAILED DESIGN REQUIREMENTS:
 - Clean, professional layout with breathing room
 
 💡 COLOR THEORY FOR OUTDOOR:
-- Strong, bold colors appropriate to brand (avoid pastels or muted tones)
+- Strong colors appropriate to brand (avoid pastels or muted tones)
 - Clear distinction between foreground and background elements
 - Colors that work well in outdoor conditions
 - Use colors appropriate to the brand and message
 - Background should enhance, not compete with message
 - Avoid repetitive color schemes - vary your palette based on the creative brief
+- Solid, flat color application - NO gradients radiating from text or logos
 
 🔍 QUALITY STANDARDS:
 - Sharp, crisp graphics (no blur, pixelation, or artifacts)
