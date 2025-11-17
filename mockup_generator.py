@@ -450,10 +450,11 @@ def warp_creative_to_billboard(
                 warped_float = mean + (warped_float - mean) * contrast_factor
                 warped_float = np.clip(warped_float, 0, 255)
 
+                # Blue shift disabled - was causing unwanted color shifts (red->blue)
                 # Slight blue shift (atmospheric scattering - up to +8 blue)
-                blue_shift = depth_intensity * 8
-                warped_float[:, :, 0] += blue_shift * mask_float  # Blue channel
-                warped_float = np.clip(warped_float, 0, 255)
+                # blue_shift = depth_intensity * 8
+                # warped_float[:, :, 0] += blue_shift * mask_float  # Blue channel
+                # warped_float = np.clip(warped_float, 0, 255)
 
                 logger.info(f"[MOCKUP] Applied daytime atmospheric depth (intensity: {depth_intensity:.2f})")
         # ========================================================================
