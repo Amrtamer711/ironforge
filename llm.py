@@ -3181,9 +3181,13 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         # Extensive system prompt for billboard artwork generation
                         enhanced_prompt = f"""Create a professional flat 2D artwork/creative design for outdoor advertising.
 
-⚠️ CRITICAL RULE: Generate CLEAN, FLAT graphics with SOLID elements.
-ABSOLUTELY NO glowing effects, light flares, halos, sparkles, or radiating effects around ANY elements, especially text and logos.
-Keep all graphics simple, solid, and clean.
+⚠️ CRITICAL RULES - READ FIRST:
+1. Generate CLEAN, FLAT graphics with SOLID elements
+2. FILL THE ENTIRE CANVAS - create a COMPLETE, full advertisement design
+3. NO blank/empty backgrounds unless explicitly requested
+4. Use modern, contemporary design aesthetic (2024+ style)
+5. ABSOLUTELY NO glowing effects, light flares, halos, sparkles, or radiating effects around ANY elements, especially text and logos
+6. This should look like a PROFESSIONAL AD from a creative agency
 
 ═══════════════════════════════════════════════════════════
 🚨 CRITICAL: WHAT YOU ARE CREATING
@@ -3220,13 +3224,15 @@ DETAILED DESIGN REQUIREMENTS:
 {orientation_text}
 
 🎨 VISUAL DESIGN PRINCIPLES:
+- MODERN 2024+ AESTHETIC: Contemporary, sleek, professional design style
+- FILL THE CANVAS: Edge-to-edge design with rich visual content - NO blank/empty spaces
 - High-impact composition that catches attention immediately
 - Large hero image or visual focal point (50-70% of design)
 - Strong colors appropriate for outdoor advertising
+- Background should be FULLY designed - use colors, images, patterns, or textures (NOT blank white/empty)
 - Clear separation between design elements for readability
-- Simple, uncluttered layout (viewer has 5-7 seconds max)
+- Simple but COMPLETE layout (viewer has 5-7 seconds max)
 - Professional photo quality or clean vector graphics
-- Modern, contemporary advertising aesthetic
 - FLAT graphics only - no special effects, glows, or embellishments around elements
 
 ✍️ TYPOGRAPHY (if text is needed):
@@ -3241,21 +3247,24 @@ DETAILED DESIGN REQUIREMENTS:
 - Text should be solid and clean - NO glows, halos, shadows, or effects around letters
 
 🎯 COMPOSITION STRATEGY:
+- FULL CANVAS UTILIZATION: Every part of the design should be intentional and filled
 - Rule of thirds or strong visual hierarchy
 - One clear focal point (don't scatter attention)
-- Negative space used strategically
+- Strategic use of space - but NO large blank/empty areas
 - Visual flow guides eye to key message/CTA
 - Brand logo prominent but not dominating (10-15% of space)
-- Clean, professional layout with breathing room
+- Clean, professional layout with purposeful design elements throughout
+- Modern advertising style: bold, complete, visually rich compositions
 
 💡 COLOR THEORY FOR OUTDOOR:
 - CRITICAL: Use EXACTLY the colors specified in the creative brief - DO NOT substitute or change colors
 - If user requests red background, use RED background - not blue or any other color
 - If user requests specific brand colors, use those EXACT colors without modification
+- NO BLANK WHITE BACKGROUNDS unless explicitly requested - use rich, designed backgrounds
 - Strong colors appropriate to brand (avoid pastels or muted tones)
 - Clear distinction between foreground and background elements
 - Colors that work well in outdoor conditions
-- Background should enhance, not compete with message
+- Background should be fully designed with color, imagery, or patterns - NOT empty/blank
 - Avoid repetitive color schemes - vary your palette based on the creative brief
 - Solid, flat color application - NO gradients radiating from text or logos
 
@@ -3266,6 +3275,8 @@ DETAILED DESIGN REQUIREMENTS:
 - No watermarks, stock photo markers, or placeholder text
 - Print-ready quality at large scale
 - Polished, agency-level execution
+- COMPLETE DESIGN: No unfinished areas, blank spaces, or missing elements
+- Modern, contemporary look that matches current 2024+ advertising trends
 
 ═══════════════════════════════════════════════════════════
 ⚠️ CRITICAL - FINAL REMINDER - READ CAREFULLY:
@@ -3281,22 +3292,33 @@ DETAILED DESIGN REQUIREMENTS:
 - NO glowing effects, light flares, or dramatic lighting around text/logos
 - NO lens flares, sparkles, or artificial light sources
 - NO halos, glows, or radiating effects from any elements
+- NO blank/empty white backgrounds (unless specifically requested)
+- NO unfinished or incomplete designs
+- NO dated or old-fashioned design styles - keep it modern
 
 ✅ YOU MUST CREATE:
 - The FLAT ARTWORK FILE ONLY - the pure advertisement design
+- A COMPLETE, FILLED, PROFESSIONAL advertisement (edge-to-edge)
+- MODERN 2024+ design style - contemporary, sleek, polished
 - A rectangular graphic that will be PLACED onto a billboard LATER
-- Think: graphic designer working in Photoshop/Illustrator
-- The final output is the CREATIVE CONTENT, not a mockup
+- Think: top-tier creative agency advertisement design
+- The final output is a COMPLETE CREATIVE with NO blank areas
 
 📐 DELIVERABLE:
 Imagine you're delivering a print file to a billboard company.
 They will take YOUR flat design and apply it to their billboard.
-Your job: create the artwork. Their job: put it on the billboard.
+Your job: create a COMPLETE, PROFESSIONAL, MODERN advertisement.
+Their job: put it on the billboard.
 
-Example: If asked for a "Nike shoe ad," create the advertisement graphic (shoe + slogan + logo),
-NOT a photo of a billboard displaying that ad on the street.
+Example: If asked for a "Nike shoe ad," create a COMPLETE advertisement graphic with:
+- Full background design (colored, textured, or image-based - NOT blank)
+- Product imagery (shoe)
+- Brand elements (swoosh logo)
+- Text/slogan if needed
+- Modern, contemporary design style
+- FILLED canvas with intentional design throughout
 
-DELIVER ONLY THE FLAT, RECTANGULAR ADVERTISEMENT ARTWORK - NOTHING ELSE.
+DELIVER A COMPLETE, MODERN, PROFESSIONAL ADVERTISEMENT - FULLY DESIGNED, NO BLANK AREAS.
 
 ═══════════════════════════════════════════════════════════
 🎯 YOUR CREATIVE BRIEF (FOLLOW THIS EXACTLY):
