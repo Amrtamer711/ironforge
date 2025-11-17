@@ -3218,8 +3218,8 @@ DETAILED DESIGN REQUIREMENTS:
 🎨 VISUAL DESIGN PRINCIPLES:
 - Bold, high-impact composition that catches attention immediately
 - Large hero image or visual focal point (50-70% of design)
-- Vibrant, saturated colors that pop in daylight
-- High contrast between elements for maximum visibility
+- Strong, bold colors appropriate for outdoor advertising
+- Clear separation between design elements for readability
 - Simple, uncluttered layout (viewer has 5-7 seconds max)
 - Professional photo quality or clean vector graphics
 - Modern, contemporary advertising aesthetic
@@ -3228,7 +3228,7 @@ DETAILED DESIGN REQUIREMENTS:
 - LARGE, bold, highly readable fonts
 - Sans-serif typefaces work best for outdoor viewing
 - Maximum 7-10 words total (fewer is better)
-- High contrast text-to-background ratio
+- Strong text-to-background distinction for readability
 - Text size: headlines should occupy 15-25% of vertical height
 - Clear hierarchy: one main message, optional supporting text
 - Avoid script fonts, thin fonts, or decorative typefaces
@@ -3243,9 +3243,9 @@ DETAILED DESIGN REQUIREMENTS:
 - Clean, professional layout with breathing room
 
 💡 COLOR THEORY FOR OUTDOOR:
-- Vibrant, saturated colors (avoid pastels or muted tones)
-- High contrast pairings: dark on light or light on dark
-- Colors that work in bright sunlight and shadows
+- Strong, bold colors appropriate to brand (avoid pastels or muted tones)
+- Clear distinction between foreground and background elements
+- Colors that work well in outdoor conditions
 - Use colors appropriate to the brand and message
 - Background should enhance, not compete with message
 - Avoid repetitive color schemes - vary your palette based on the creative brief
@@ -3253,7 +3253,7 @@ DETAILED DESIGN REQUIREMENTS:
 🔍 QUALITY STANDARDS:
 - Sharp, crisp graphics (no blur, pixelation, or artifacts)
 - Professional commercial photography or illustration
-- Consistent lighting across all design elements
+- Even, balanced exposure across all design elements
 - No watermarks, stock photo markers, or placeholder text
 - Print-ready quality at large scale
 - Polished, agency-level execution
@@ -3269,6 +3269,9 @@ DETAILED DESIGN REQUIREMENTS:
 - NO frames, borders, or physical contexts
 - NO 3D perspective or mockup views
 - NO environmental surroundings whatsoever
+- NO glowing effects, light flares, or dramatic lighting around text/logos
+- NO lens flares, sparkles, or artificial light sources
+- NO halos, glows, or radiating effects from any elements
 
 ✅ YOU MUST CREATE:
 - The FLAT ARTWORK FILE ONLY - the pure advertisement design
