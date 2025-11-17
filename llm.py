@@ -3249,10 +3249,12 @@ DETAILED DESIGN REQUIREMENTS:
 - Clean, professional layout with breathing room
 
 💡 COLOR THEORY FOR OUTDOOR:
+- CRITICAL: Use EXACTLY the colors specified in the creative brief - DO NOT substitute or change colors
+- If user requests red background, use RED background - not blue or any other color
+- If user requests specific brand colors, use those EXACT colors without modification
 - Strong colors appropriate to brand (avoid pastels or muted tones)
 - Clear distinction between foreground and background elements
 - Colors that work well in outdoor conditions
-- Use colors appropriate to the brand and message
 - Background should enhance, not compete with message
 - Avoid repetitive color schemes - vary your palette based on the creative brief
 - Solid, flat color application - NO gradients radiating from text or logos

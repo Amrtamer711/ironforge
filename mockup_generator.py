@@ -223,10 +223,9 @@ def warp_creative_to_billboard(
     #
     # Key principles:
     # - No hard black bars or obvious cutouts
-    # - Natural light interaction at edges
-    # - Billboard color influence on creative edges
+    # - Natural edge transitions without halation/bloom
     # - Depth-based edge darkening (ambient occlusion)
-    # - Chromatic aberration simulation for realism
+    # - Clean compositing without color bleeding
     # ========================================================================
 
     # Store original billboard colors at edge for color bleed later
@@ -285,29 +284,31 @@ def warp_creative_to_billboard(
             mask_float = mask_float * (1 - feather_strength) + feather_smooth * feather_strength
 
         # =====================================================================
-        # TECHNIQUE 3: Light Wrap / Edge Color Bleeding
+        # TECHNIQUE 3: Light Wrap / Edge Color Bleeding (DISABLED)
         # =====================================================================
         # Simulates how billboard colors "wrap" around the creative edges
-        # This is critical for realism - edges should pick up surrounding colors
+        # DISABLED: Was causing unwanted halation/bloom effects around text
 
-        if edge_blur >= 8:
-            # Find edge region (transition zone between billboard and creative)
-            edge_detect_kernel = np.ones((5, 5), np.float32)
-            dilated_mask = cv2.dilate(mask_float, edge_detect_kernel, iterations=1)
-            eroded_mask = cv2.erode(mask_float, edge_detect_kernel, iterations=1)
-            edge_region = dilated_mask - eroded_mask
-            edge_region = np.clip(edge_region, 0, 1)
+        light_wrap_contribution = None
 
-            # Extract billboard colors at edges with wide blur for color spill
-            billboard_colors_blur = cv2.GaussianBlur(billboard_edge_colors, (31, 31), sigmaX=10)
-
-            # Create light wrap effect (billboard color bleeds into creative edge)
-            # Intensity scales with edge_blur (more blur = more color spill)
-            light_wrap_strength = min(edge_blur / 20.0, 0.25)  # Max 25% blend
-            edge_region_3ch = np.stack([edge_region] * 3, axis=-1)
-            light_wrap_contribution = billboard_colors_blur * edge_region_3ch * light_wrap_strength
-        else:
-            light_wrap_contribution = None
+        # if edge_blur >= 8:
+        #     # Find edge region (transition zone between billboard and creative)
+        #     edge_detect_kernel = np.ones((5, 5), np.float32)
+        #     dilated_mask = cv2.dilate(mask_float, edge_detect_kernel, iterations=1)
+        #     eroded_mask = cv2.erode(mask_float, edge_detect_kernel, iterations=1)
+        #     edge_region = dilated_mask - eroded_mask
+        #     edge_region = np.clip(edge_region, 0, 1)
+        #
+        #     # Extract billboard colors at edges with wide blur for color spill
+        #     billboard_colors_blur = cv2.GaussianBlur(billboard_edge_colors, (31, 31), sigmaX=10)
+        #
+        #     # Create light wrap effect (billboard color bleeds into creative edge)
+        #     # Intensity scales with edge_blur (more blur = more color spill)
+        #     light_wrap_strength = min(edge_blur / 20.0, 0.25)  # Max 25% blend
+        #     edge_region_3ch = np.stack([edge_region] * 3, axis=-1)
+        #     light_wrap_contribution = billboard_colors_blur * edge_region_3ch * light_wrap_strength
+        # else:
+        #     light_wrap_contribution = None
 
         # =====================================================================
         # TECHNIQUE 4: Contact Shadow / Ambient Occlusion
