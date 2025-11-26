@@ -1022,6 +1022,18 @@ def get_all_active_bo_workflows() -> list[tuple[str, str]]:
         conn.close()
 
 
+def delete_bo_workflow(workflow_id: str) -> None:
+    """Delete a booking order workflow from the database"""
+    conn = _connect()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM bo_workflows WHERE workflow_id = ?", (workflow_id,))
+        conn.commit()
+        logger.info(f"[DB] Deleted BO workflow: {workflow_id}")
+    finally:
+        conn.close()
+
+
 def log_ai_cost(
     call_type: str,
     model: str,
@@ -1326,4 +1338,37 @@ def clear_ai_costs():
 
 
 # Initialize DB on import
-init_db() 
+init_db()
+
+
+# Create a namespace object to expose all functions as db.function_name()
+class _DatabaseNamespace:
+    """Namespace wrapper to expose module functions as db.method() calls"""
+    log_proposal = staticmethod(log_proposal)
+    generate_next_bo_ref = staticmethod(generate_next_bo_ref)
+    save_booking_order = staticmethod(save_booking_order)
+    get_booking_order = staticmethod(get_booking_order)
+    get_booking_order_by_number = staticmethod(get_booking_order_by_number)
+    export_to_excel = staticmethod(export_to_excel)
+    export_booking_orders_to_excel = staticmethod(export_booking_orders_to_excel)
+    get_proposals_summary = staticmethod(get_proposals_summary)
+    save_mockup_frame = staticmethod(save_mockup_frame)
+    get_mockup_frames = staticmethod(get_mockup_frames)
+    get_mockup_config = staticmethod(get_mockup_config)
+    list_mockup_photos = staticmethod(list_mockup_photos)
+    list_mockup_variations = staticmethod(list_mockup_variations)
+    delete_mockup_frame = staticmethod(delete_mockup_frame)
+    log_mockup_usage = staticmethod(log_mockup_usage)
+    get_mockup_usage_stats = staticmethod(get_mockup_usage_stats)
+    export_mockup_usage_to_excel = staticmethod(export_mockup_usage_to_excel)
+    save_bo_workflow = staticmethod(save_bo_workflow)
+    get_bo_workflow = staticmethod(get_bo_workflow)
+    get_all_active_bo_workflows = staticmethod(get_all_active_bo_workflows)
+    delete_bo_workflow = staticmethod(delete_bo_workflow)
+    log_ai_cost = staticmethod(log_ai_cost)
+    get_ai_costs_summary = staticmethod(get_ai_costs_summary)
+    clear_ai_costs = staticmethod(clear_ai_costs)
+    _connect = staticmethod(_connect)
+
+
+db = _DatabaseNamespace()
