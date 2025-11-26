@@ -45,7 +45,7 @@ if [ -d "/data/Sofia-Pro Font" ]; then\n\
     cp "/data/Sofia-Pro Font"/*.otf /usr/share/fonts/truetype/custom/ 2>/dev/null || true\n\
     fc-cache -f -v\n\
 fi\n\
-exec uvicorn server:app --host 0.0.0.0 --port $PORT' > /app/start.sh && \
+exec uvicorn api.server:app --host 0.0.0.0 --port $PORT' > /app/start.sh && \
     chmod +x /app/start.sh
 
 # Run the startup script
