@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 import config
-from data.database import db
+from db.database import db
 from core.llm import main_llm_loop
 from font_utils import install_custom_fonts
 
@@ -54,7 +54,7 @@ async def periodic_cleanup():
         await asyncio.sleep(300)  # Every 5 minutes
         try:
             # Clean up old user histories
-            from data.cache import user_history, pending_location_additions
+            from db.cache import user_history, pending_location_additions
             from datetime import timedelta
             
             # Clean user histories older than 1 hour
@@ -500,7 +500,7 @@ async def metrics():
     pdf_conversions_active = _CONVERT_SEMAPHORE._initial_value - _CONVERT_SEMAPHORE._value
 
     # Get user history size
-    from data.cache import user_history, pending_location_additions
+    from db.cache import user_history, pending_location_additions
     
     return {
         "memory": {
@@ -625,7 +625,7 @@ async def save_mockup_frame(
 ):
     """Save a billboard photo with multiple frame coordinates and optional config"""
     import json
-    from data.database import db
+    from db.database import db
     from generators import mockup as mockup_generator
 
     # Log EXACTLY what was received from the form
@@ -785,7 +785,7 @@ async def test_preview_mockup(
 @app.get("/api/mockup/photos/{location_key}")
 async def list_mockup_photos(location_key: str, time_of_day: str = "all", finish: str = "all"):
     """List all photos for a location with specific time_of_day and finish"""
-    from data.database import db
+    from db.database import db
 
     try:
         # If "all" is specified, we need to aggregate from all variations
@@ -808,7 +808,7 @@ async def list_mockup_photos(location_key: str, time_of_day: str = "all", finish
 @app.get("/api/mockup/templates/{location_key}")
 async def list_mockup_templates(location_key: str, time_of_day: str = "all", finish: str = "all"):
     """List all templates (photos with frame configs) for a location"""
-    from data.database import db
+    from db.database import db
 
     try:
         templates = []
@@ -857,7 +857,7 @@ async def list_mockup_templates(location_key: str, time_of_day: str = "all", fin
 async def get_mockup_photo(location_key: str, photo_filename: str, time_of_day: str = "all", finish: str = "all"):
     """Get a specific photo file"""
     from generators import mockup as mockup_generator
-    from data.database import db
+    from db.database import db
     import os
 
     logger.info(f"[PHOTO GET] Request for photo: {location_key}/{photo_filename} (time_of_day={time_of_day}, finish={finish})")
@@ -919,7 +919,7 @@ async def get_mockup_photo(location_key: str, photo_filename: str, time_of_day: 
 async def delete_mockup_photo(location_key: str, photo_filename: str, time_of_day: str = "all", finish: str = "all"):
     """Delete a photo and its frame"""
     from generators import mockup as mockup_generator
-    from data.database import db
+    from db.database import db
 
     try:
         # If "all" is specified, find and delete the photo from whichever variation it's in
