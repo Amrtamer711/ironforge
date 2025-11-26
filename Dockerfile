@@ -40,6 +40,7 @@ ENV PYTHONPATH=/app
 
 # Create a startup script
 RUN echo '#!/bin/bash\n\
+export PYTHONPATH=/app\n\
 if [ -d "/data/Sofia-Pro Font" ]; then\n\
     echo "Installing custom fonts..."\n\
     cp "/data/Sofia-Pro Font"/*.ttf /usr/share/fonts/truetype/custom/ 2>/dev/null || true\n\
