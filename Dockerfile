@@ -36,6 +36,7 @@ RUN mkdir -p /usr/share/fonts/truetype/custom
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONPATH=/app
 
 # Create a startup script
 RUN echo '#!/bin/bash\n\
