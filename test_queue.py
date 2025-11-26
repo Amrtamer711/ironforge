@@ -4,7 +4,7 @@ Test script to verify mockup task queue behavior.
 
 import asyncio
 import time
-from task_queue import MockupTaskQueue
+from utils.task_queue import MockupTaskQueue
 
 
 async def mock_task(task_id: int, duration: float):

@@ -29,7 +29,7 @@ GPT-image-1-mini:
 
 import logging
 from typing import Optional
-import db
+from data.database import db
 
 logger = logging.getLogger("proposal-bot")
 

@@ -17,8 +17,8 @@ from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 import config
-import db
-from llm import main_llm_loop
+from data.database import db
+from core.llm import main_llm_loop
 from font_utils import install_custom_fonts
 
 # Install custom fonts on startup
@@ -54,7 +54,7 @@ async def periodic_cleanup():
         await asyncio.sleep(300)  # Every 5 minutes
         try:
             # Clean up old user histories
-            from llm import user_history, pending_location_additions
+            from data.cache import user_history, pending_location_additions
             from datetime import timedelta
             
             # Clean user histories older than 1 hour
@@ -124,8 +124,8 @@ async def lifespan(app: FastAPI):
     logger.info("[STARTUP] Started background cleanup task")
 
     # Load active workflows from database to restore state after restart
-    import bo_approval_workflow
-    await bo_approval_workflow.load_workflows_from_db()
+    from workflows import bo_approval
+    await bo_approval.load_workflows_from_db()
 
     yield
 
@@ -204,8 +204,8 @@ async def slack_interactive(request: Request):
     import json
     import time
     from collections import defaultdict
-    import bo_approval_workflow
-    import bo_slack_messaging
+    from workflows import bo_approval as bo_approval_workflow
+    from integrations.slack import bo_messaging as bo_slack_messaging
 
     # Verify signature
     body = await request.body()
@@ -496,11 +496,11 @@ async def metrics():
     cpu_count = psutil.cpu_count()
     
     # Get current PDF conversion semaphore status
-    from pdf_utils import _CONVERT_SEMAPHORE
+    from generators.pdf import _CONVERT_SEMAPHORE
     pdf_conversions_active = _CONVERT_SEMAPHORE._initial_value - _CONVERT_SEMAPHORE._value
-    
+
     # Get user history size
-    from llm import user_history, pending_location_additions
+    from data.cache import user_history, pending_location_additions
     
     return {
         "memory": {
@@ -625,8 +625,8 @@ async def save_mockup_frame(
 ):
     """Save a billboard photo with multiple frame coordinates and optional config"""
     import json
-    import db
-    import mockup_generator
+    from data.database import db
+    from generators import mockup as mockup_generator
 
     # Log EXACTLY what was received from the form
     logger.info(f"[MOCKUP API] ====== SAVE FRAME REQUEST ======")
@@ -709,7 +709,7 @@ async def test_preview_mockup(
     """Generate a test preview of how the creative will look on the billboard with current config"""
     import json
     import tempfile
-    import mockup_generator
+    from generators import mockup as mockup_generator
     import cv2
     import numpy as np
     from pathlib import Path
@@ -785,7 +785,7 @@ async def test_preview_mockup(
 @app.get("/api/mockup/photos/{location_key}")
 async def list_mockup_photos(location_key: str, time_of_day: str = "all", finish: str = "all"):
     """List all photos for a location with specific time_of_day and finish"""
-    import db
+    from data.database import db
 
     try:
         # If "all" is specified, we need to aggregate from all variations
@@ -808,7 +808,7 @@ async def list_mockup_photos(location_key: str, time_of_day: str = "all", finish
 @app.get("/api/mockup/templates/{location_key}")
 async def list_mockup_templates(location_key: str, time_of_day: str = "all", finish: str = "all"):
     """List all templates (photos with frame configs) for a location"""
-    import db
+    from data.database import db
 
     try:
         templates = []
@@ -856,8 +856,8 @@ async def list_mockup_templates(location_key: str, time_of_day: str = "all", fin
 @app.get("/api/mockup/photo/{location_key}/{photo_filename}")
 async def get_mockup_photo(location_key: str, photo_filename: str, time_of_day: str = "all", finish: str = "all"):
     """Get a specific photo file"""
-    import mockup_generator
-    import db
+    from generators import mockup as mockup_generator
+    from data.database import db
     import os
 
     logger.info(f"[PHOTO GET] Request for photo: {location_key}/{photo_filename} (time_of_day={time_of_day}, finish={finish})")
@@ -918,8 +918,8 @@ async def get_mockup_photo(location_key: str, photo_filename: str, time_of_day: 
 @app.delete("/api/mockup/photo/{location_key}/{photo_filename}")
 async def delete_mockup_photo(location_key: str, photo_filename: str, time_of_day: str = "all", finish: str = "all"):
     """Delete a photo and its frame"""
-    import mockup_generator
-    import db
+    from generators import mockup as mockup_generator
+    from data.database import db
 
     try:
         # If "all" is specified, find and delete the photo from whichever variation it's in
@@ -959,7 +959,7 @@ async def generate_mockup_api(
 ):
     """Generate a mockup by warping creative onto billboard (upload or AI-generated)"""
     import tempfile
-    import mockup_generator
+    from generators import mockup as mockup_generator
     from pathlib import Path
     import json
 

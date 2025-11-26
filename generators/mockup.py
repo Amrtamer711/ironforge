@@ -8,7 +8,7 @@ import logging
 import gc
 
 import config
-import db
+from data.database import db
 
 logger = logging.getLogger("proposal-bot")
 
