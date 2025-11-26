@@ -1753,7 +1753,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     workflow = "location_management"
 
         # Track cost
-        import cost_tracking
+        from integrations.openai import cost_tracker as cost_tracking
         from bo_slack_messaging import get_user_real_name
         user_name = await get_user_real_name(user_id) if user_id else None
         cost_tracking.track_openai_call(

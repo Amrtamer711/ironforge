@@ -1261,7 +1261,7 @@ Examples:
         )
 
         # Track cost
-        import cost_tracking
+        from integrations.openai import cost_tracker as cost_tracking
         cost_tracking.track_openai_call(
             response=res,
             call_type="coordinator_thread",

@@ -257,7 +257,7 @@ Analyze the uploaded file and respond with:
             )
 
             # Track cost (user_id should already be converted to user_name by caller)
-            import cost_tracking
+            from integrations.openai import cost_tracker as cost_tracking
             cost_tracking.track_openai_call(
                 response=response,
                 call_type="classification",
@@ -442,7 +442,7 @@ The user provided this message with the file: "{user_message}"
             )
 
             # Track cost (user_id should already be converted to user_name by caller)
-            import cost_tracking
+            from integrations.openai import cost_tracker as cost_tracking
             cost_tracking.track_openai_call(
                 response=response,
                 call_type="parsing",

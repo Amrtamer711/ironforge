@@ -815,7 +815,7 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
     import tempfile
     import base64
     from openai import AsyncOpenAI
-    import cost_tracking
+    from integrations.openai import cost_tracker as cost_tracking
 
     # Auto-detect portrait orientation if location_key provided
     if location_key and is_portrait_location(location_key):
