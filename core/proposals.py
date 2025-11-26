@@ -10,9 +10,9 @@ from pptx import Presentation
 from pypdf import PdfReader, PdfWriter
 
 import config
-import db
-from pptx_utils import create_financial_proposal_slide, create_combined_financial_proposal_slide
-from pdf_utils import convert_pptx_to_pdf, merge_pdfs, remove_slides_and_convert_to_pdf
+from data.database import db
+from generators.pptx import create_financial_proposal_slide, create_combined_financial_proposal_slide
+from generators.pdf import convert_pptx_to_pdf, merge_pdfs, remove_slides_and_convert_to_pdf
 
 
 def _generate_timestamp_code() -> str:

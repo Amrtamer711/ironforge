@@ -5,7 +5,7 @@ import tempfile
 import asyncio
 from typing import Tuple
 
-from pdf_utils import convert_pptx_to_pdf, _CONVERT_SEMAPHORE
+from generators.pdf import convert_pptx_to_pdf, _CONVERT_SEMAPHORE
 from pypdf import PdfReader, PdfWriter
 import config
 

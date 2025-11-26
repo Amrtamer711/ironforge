@@ -26,8 +26,8 @@ from datetime import datetime, timezone, timedelta
 import logging
 
 import config
-import db
-from booking_parser import BookingOrderParser, COMBINED_BOS_DIR
+from data.database import db
+from workflows.bo_parser import BookingOrderParser, COMBINED_BOS_DIR
 
 logger = logging.getLogger("proposal-bot")
 
