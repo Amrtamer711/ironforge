@@ -449,7 +449,6 @@ async def handle_tool_call(
 
         logger.info("[BO_EXPORT] User requested booking orders Excel export")
         try:
-            import db
             excel_path = db.export_booking_orders_to_excel()
             logger.info(f"[BO_EXPORT] Created Excel file at {excel_path}")
 
@@ -501,9 +500,6 @@ async def handle_tool_call(
         logger.info(f"[BO_FETCH] User requested BO by number: '{bo_number}' (type: {type(bo_number)}, len: {len(bo_number) if bo_number else 0})")
 
         try:
-            import db
-            from booking_parser import BookingOrderParser, sanitize_filename
-
             # Fetch BO from database by bo_number (user-facing identifier)
             # Query is case-insensitive and trims whitespace
             bo_data = db.get_booking_order_by_number(bo_number)
@@ -605,8 +601,7 @@ async def handle_tool_call(
         logger.info(f"[BO_REVISE] Admin requested revision for BO: '{bo_number}'")
 
         try:
-            import db
-            import bo_approval_workflow
+            from workflows import bo_approval as bo_approval_workflow
 
             # Fetch existing BO from database
             bo_data = db.get_booking_order_by_number(bo_number)
@@ -733,8 +728,7 @@ async def handle_tool_call(
             return True
 
         # Handle time_of_day and finish selection
-        import mockup_generator
-        import db
+        from generators import mockup as mockup_generator
 
         variation_note = ""
 
@@ -1051,7 +1045,6 @@ async def handle_tool_call(
 
             try:
                 # Detect orientation for this location
-                import mockup_generator
                 is_portrait = mockup_generator.is_portrait_location(location_key)
 
                 if is_portrait:
