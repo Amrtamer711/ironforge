@@ -21,12 +21,13 @@ from generators.effects.config import EffectConfig, DEFAULT_CONFIG
 from generators.effects.edge import EdgeCompositor
 from generators.effects.depth import DepthEffect, VignetteEffect, ShadowEffect
 from generators.effects.color import ColorAdjustment, ImageBlur, Sharpening, OverlayBlending
-from generators.effects.compositor import BillboardCompositor, warp_creative_to_billboard
+from generators.effects.compositor import BillboardCompositor, warp_creative_to_billboard, order_points
 
 __all__ = [
     # Main entry points
     "BillboardCompositor",
     "warp_creative_to_billboard",
+    "order_points",
     # Configuration
     "EffectConfig",
     "DEFAULT_CONFIG",
