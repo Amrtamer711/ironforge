@@ -18,6 +18,8 @@ from integrations.slack import bo_messaging as bo_slack_messaging
 from integrations.slack.file_utils import _download_slack_file, _validate_pdf_file
 from integrations.llm.prompts.bo_editing import get_bo_edit_prompt
 from integrations.llm.prompts.chat import get_main_system_prompt
+from integrations.llm.schemas.bo_editing import get_bo_edit_response_schema
+from core.tools import get_base_tools, get_admin_tools
 from db.cache import (
     user_history,
     pending_location_additions,
@@ -518,6 +520,9 @@ async def _handle_booking_order_parse(
 
 async def handle_booking_order_edit_flow(channel: str, user_id: str, user_input: str) -> str:
     """Handle booking order edit flow with structured LLM response"""
+    from integrations.llm import LLMClient, LLMMessage
+    from integrations.slack.bo_messaging import get_user_real_name
+
     try:
         edit_data = pending_booking_orders.get(user_id, {})
         current_data = edit_data.get("data", {})
@@ -532,50 +537,20 @@ async def handle_booking_order_edit_flow(channel: str, user_id: str, user_input:
             missing_required=missing_required
         )
 
-        res = await config.openai_client.responses.create(
-            model=config.OPENAI_MODEL,
-            input=[{"role": "system", "content": system_prompt}],
-            text={
-                'format': {
-                    'type': 'json_schema',
-                    'name': 'booking_order_edit_response',
-                    'strict': False,
-                    'schema': {
-                        'type': 'object',
-                        'properties': {
-                            'action': {'type': 'string', 'enum': ['approve', 'cancel', 'edit', 'view']},
-                            'fields': {
-                                'type': 'object',
-                                'properties': {
-                                    'client': {'type': 'string'},
-                                    'brand_campaign': {'type': 'string'},
-                                    'bo_number': {'type': 'string'},
-                                    'bo_date': {'type': 'string'},
-                                    'net_pre_vat': {'type': 'number'},
-                                    'vat_calc': {'type': 'number'},
-                                    'gross_calc': {'type': 'number'},
-                                    'agency': {'type': 'string'},
-                                    'sales_person': {'type': 'string'},
-                                    'sla_pct': {'type': 'number'},
-                                    'payment_terms': {'type': 'string'},
-                                    'commission_pct': {'type': 'number'},
-                                    'notes': {'type': 'string'},
-                                    'category': {'type': 'string'},
-                                    'asset': {'type': 'string'}
-                                },
-                                'additionalProperties': True  # Allow locations and other fields
-                            },
-                            'message': {'type': 'string'}
-                        },
-                        'required': ['action'],
-                        'additionalProperties': False
-                    }
-                }
-            },
-            store=False
+        # Use LLMClient for abstracted LLM access
+        llm_client = LLMClient.from_config()
+        user_name = await get_user_real_name(user_id) if user_id else None
+
+        response = await llm_client.complete(
+            messages=[LLMMessage.system(system_prompt)],
+            json_schema=get_bo_edit_response_schema(),
+            call_type="bo_edit",
+            workflow="bo_editing",
+            user_id=user_name,
+            context=f"Channel: {channel}",
         )
 
-        decision = json.loads(res.output_text)
+        decision = json.loads(response.content)
         action = decision.get('action')
         message = decision.get('message', '')
 
@@ -1172,294 +1147,80 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
     history = user_history.get(user_id, [])
     history.append({"role": "user", "content": user_message_content, "timestamp": datetime.now().isoformat()})
     history = history[-10:]
-    # Remove timestamp from messages sent to OpenAI
-    messages_for_openai = [{"role": msg["role"], "content": msg["content"]} for msg in history if "role" in msg and "content" in msg]
-    messages = [{"role": "developer", "content": prompt}] + messages_for_openai
 
-    # Base tools available to all users
-    tools = [
-        {
-            "type": "function",
-            "name": "get_separate_proposals",
-            "description": "Generate SEPARATE proposals - each location gets its own proposal slide with multiple duration/rate options. Use this when user asks to 'make', 'create', or 'generate' proposals for specific locations. Returns individual PPTs and combined PDF.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "proposals": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "location": {"type": "string", "description": "The location name - intelligently match to available locations. If user says 'gateway' or 'the gateway', match to 'dubai_gateway'. If user says 'jawhara', match to 'dubai_jawhara'. Use your best judgment to infer the correct location from the available list even if the name is abbreviated or has 'the' prefix."},
-                                "start_date": {"type": "string", "description": "Start date for the campaign (e.g., 1st December 2025)"},
-                                "end_date": {"type": "string", "description": "End date for the campaign. Either extract from user message if provided, or calculate from start_date + duration (e.g., start: 1st Dec + 4 weeks = end: 29th Dec). Use the first/shortest duration if multiple durations provided."},
-                                "durations": {
-                                    "type": "array",
-                                    "items": {"type": "string"},
-                                    "description": "List of duration options (e.g., ['2 Weeks', '4 Weeks', '6 Weeks'])"
-                                },
-                                "net_rates": {
-                                    "type": "array", 
-                                    "items": {"type": "string"},
-                                    "description": "List of net rates corresponding to each duration (e.g., ['AED 1,250,000', 'AED 2,300,000', 'AED 3,300,000'])"
-                                },
-                                "spots": {"type": "integer", "description": "Number of spots (default: 1)", "default": 1},
-                                "production_fee": {"type": "string", "description": "Production fee for static locations (e.g., 'AED 5,000'). If multiple production fees are mentioned (client changing artwork during campaign), sum them together (e.g., two productions at AED 20,000 each = 'AED 40,000'). Required for static locations."}
-                            },
-                            "required": ["location", "start_date", "end_date", "durations", "net_rates"]
-                        },
-                        "description": "Array of proposal objects. Each location can have multiple duration/rate options."
-                    },
-                    "client_name": {
-                        "type": "string",
-                        "description": "Name of the client (required)"
-                    },
-                    "payment_terms": {
-                        "type": "string",
-                        "description": "Payment terms for the proposal (default: '100% upfront'). ALWAYS validate with user even if not explicitly mentioned. Examples: '100% upfront', '50% upfront, 50% on delivery', '30 days net'",
-                        "default": "100% upfront"
-                    },
-                    "currency": {
-                        "type": "string",
-                        "description": "Currency for displaying amounts (default: 'AED'). Use if user requests amounts in a different currency like 'USD', 'EUR', 'GBP', 'SAR', etc. The proposal will show all amounts converted to this currency with a note about the conversion.",
-                        "default": "AED"
-                    }
-                },
-                "required": ["proposals", "client_name", "payment_terms"]
-            }
-        },
-        {
-            "type": "function",
-            "name": "get_combined_proposal",
-            "description": "Generate COMBINED package proposal - all locations in ONE slide with single net rate. Use this when user asks for a 'package', 'bundle', or 'combined' deal with multiple locations sharing one total rate.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "proposals": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "location": {"type": "string", "description": "The location name - intelligently match to available locations. If user says 'gateway' or 'the gateway', match to 'dubai_gateway'. If user says 'jawhara', match to 'dubai_jawhara'. Use your best judgment to infer the correct location from the available list even if the name is abbreviated or has 'the' prefix."},
-                                "start_date": {"type": "string", "description": "Start date for this location (e.g., 1st January 2026)"},
-                                "end_date": {"type": "string", "description": "End date for this location. Either extract from user message if provided, or calculate from start_date + duration (e.g., start: 1st Jan + 2 weeks = end: 15th Jan)."},
-                                "duration": {"type": "string", "description": "Duration for this location (e.g., '2 Weeks')"},
-                                "spots": {"type": "integer", "description": "Number of spots (default: 1)", "default": 1},
-                                "production_fee": {"type": "string", "description": "Production fee for static locations (e.g., 'AED 5,000'). If multiple production fees are mentioned (client changing artwork during campaign), sum them together (e.g., two productions at AED 20,000 each = 'AED 40,000'). Required for static locations."}
-                            },
-                            "required": ["location", "start_date", "end_date", "duration"]
-                        },
-                        "description": "Array of locations with their individual durations and start dates"
-                    },
-                    "combined_net_rate": {
-                        "type": "string",
-                        "description": "The total net rate for the entire package (e.g., 'AED 2,000,000')"
-                    },
-                    "client_name": {
-                        "type": "string",
-                        "description": "Name of the client (required)"
-                    },
-                    "payment_terms": {
-                        "type": "string",
-                        "description": "Payment terms for the proposal (default: '100% upfront'). ALWAYS validate with user even if not explicitly mentioned. Examples: '100% upfront', '50% upfront, 50% on delivery', '30 days net'",
-                        "default": "100% upfront"
-                    },
-                    "currency": {
-                        "type": "string",
-                        "description": "Currency for displaying amounts (default: 'AED'). Use if user requests amounts in a different currency like 'USD', 'EUR', 'GBP', 'SAR', etc. The proposal will show all amounts converted to this currency with a note about the conversion.",
-                        "default": "AED"
-                    }
-                },
-                "required": ["proposals", "combined_net_rate", "client_name", "payment_terms"]
-            }
-        },
-        {"type": "function", "name": "refresh_templates", "parameters": {"type": "object", "properties": {}}},
-        {"type": "function", "name": "edit_task_flow", "parameters": {"type": "object", "properties": {"task_number": {"type": "integer"}, "task_data": {"type": "object"}}, "required": ["task_number", "task_data"]}},
-        {
-            "type": "function",
-            "name": "add_location",
-            "description": "Add a new location. Admin must provide ALL required metadata upfront. Digital locations require: sov, spot_duration, loop_duration, upload_fee. Static locations don't need these fields. ADMIN ONLY.", 
-            "parameters": {
-                "type": "object", 
-                "properties": {
-                    "location_key": {"type": "string", "description": "Folder/key name (lowercase, underscores for spaces, e.g., 'dubai_gateway')"},
-                    "display_name": {"type": "string", "description": "Display name shown to users (e.g., 'The Dubai Gateway')"},
-                    "display_type": {"type": "string", "enum": ["Digital", "Static"], "description": "Display type - determines which fields are required"},
-                    "height": {"type": "string", "description": "Height with unit (e.g., '6m', '14m')"},
-                    "width": {"type": "string", "description": "Width with unit (e.g., '12m', '7m')"},
-                    "number_of_faces": {"type": "integer", "description": "Number of display faces (e.g., 1, 2, 4, 6)", "default": 1},
-                    "series": {"type": "string", "description": "Series name (e.g., 'The Landmark Series', 'Digital Icons')"},
-                    "sov": {"type": "string", "description": "Share of voice percentage - REQUIRED for Digital only (e.g., '16.6%', '12.5%')"},
-                    "spot_duration": {"type": "integer", "description": "Duration of each spot in seconds - REQUIRED for Digital only (e.g., 10, 12, 16)"},
-                    "loop_duration": {"type": "integer", "description": "Total loop duration in seconds - REQUIRED for Digital only (e.g., 96, 100)"},
-                    "upload_fee": {"type": "integer", "description": "Upload fee in AED - REQUIRED for Digital only (e.g., 1000, 1500, 2000, 3000)"}
-                }, 
-                "required": ["location_key", "display_name", "display_type", "height", "width", "series"]
-            }
-        },
-        {"type": "function", "name": "list_locations", "description": "ONLY call this when user explicitly asks to SEE or LIST available locations (e.g., 'what locations do you have?', 'show me locations', 'list all locations'). DO NOT call this when user mentions specific location names in a proposal request.", "parameters": {"type": "object", "properties": {}}},
-        {
-            "type": "function",
-            "name": "delete_location",
-            "description": "Delete an existing location (admin only, requires confirmation). ADMIN ONLY.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location_key": {"type": "string", "description": "The location key or display name to delete"}
-                },
-                "required": ["location_key"]
-            }
-        },
-        {"type": "function", "name": "export_proposals_to_excel", "description": "Export all proposals from the backend database to Excel and send to user. ADMIN ONLY.", "parameters": {"type": "object", "properties": {}}},
-        {"type": "function", "name": "get_proposals_stats", "description": "Get summary statistics of proposals from the database", "parameters": {"type": "object", "properties": {}}},
-        {"type": "function", "name": "export_booking_orders_to_excel", "description": "Export all booking orders from the backend database to Excel and send to user. Shows BO ref, client, campaign, gross total, status, dates, etc. ADMIN ONLY.", "parameters": {"type": "object", "properties": {}}},
-        {
-            "type": "function",
-            "name": "fetch_booking_order",
-            "description": "Fetch a booking order by its BO number from the original document (e.g., BL-001, VL-042, ABC123, etc). This is the BO number that appears in the client's booking order document. Returns the BO data and combined PDF file. If the BO exists but was created with outdated schema/syntax, it will be automatically regenerated with the latest format. ADMIN ONLY.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "bo_number": {"type": "string", "description": "The booking order number from the original document (e.g., 'BL-001', 'VL-042', 'ABC123')"}
-                },
-                "required": ["bo_number"]
-            }
-        },
-        {
-            "type": "function",
-            "name": "revise_booking_order",
-            "description": "Start a revision workflow for an existing booking order. Sends the BO to Sales Coordinator for edits, then through the full approval flow (Coordinator → HoS → Finance). Use this when admin wants to revise/update an already submitted BO. ADMIN ONLY.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "bo_number": {"type": "string", "description": "The booking order number to revise (e.g., 'DPD-112652', 'VLA-001')"}
-                },
-                "required": ["bo_number"]
-            }
-        },
-        {
-            "type": "function",
-            "name": "generate_mockup",
-            "description": "Generate a billboard mockup. IMPORTANT: If user uploads image file(s) and mentions a location for mockup, call this function IMMEDIATELY - do not ask for clarification. User can upload image(s) OR provide AI prompt(s) for generation OR reuse creatives from recent mockup (within 30 min) by just specifying new location. System stores creative files for 30 minutes enabling follow-up requests on different locations. For AI generation: ALWAYS use 1 prompt (single array entry) unless user EXPLICITLY requests multiple frames (e.g., '3-frame mockup', 'show evolution'). 1 creative = tiled across all frames, N creatives = matched 1:1 to N frames. System validates frame count compatibility automatically. Billboard variations can be specified with time_of_day (day/night/all) and finish (gold/silver/all). Use 'all' or omit to randomly select from all available variations.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "location": {"type": "string", "description": "The location name - intelligently match to available locations. If user says 'gateway' or 'the gateway', match to 'dubai_gateway'. If user says 'jawhara', match to 'dubai_jawhara'. Use your best judgment to infer the correct location from the available list."},
-                    "time_of_day": {"type": "string", "description": "Optional time of day: 'day', 'night', or 'all' (default). Use 'all' for random selection from all time variations.", "enum": ["day", "night", "all"]},
-                    "finish": {"type": "string", "description": "Optional billboard finish: 'gold', 'silver', or 'all' (default). Use 'all' for random selection from all finish variations.", "enum": ["gold", "silver", "all"]},
-                    "ai_prompts": {"type": "array", "items": {"type": "string"}, "description": "Optional array of DETAILED AI prompts to generate billboard-ready ARTWORK. Each prompt generates one creative image. CRITICAL PROMPT QUALITY RULES: Each prompt MUST be comprehensive and detailed (minimum 2-3 sentences), including: specific product/brand name, visual elements, colors, mood/atmosphere, composition details, text/slogans, and any specific details user mentioned. DO NOT use vague 1-2 word descriptions. ALWAYS default to 1 prompt unless user EXPLICITLY requests multiple frames (e.g., '3-frame mockup', 'show evolution'). If 1 prompt: tiled across all frames. If N prompts: matched 1:1 to N frames. GOOD examples: ['Luxury Rolex watch advertisement featuring gold Submariner model on black velvet surface, dramatic spotlight creating reflections, \"Timeless Elegance\" text in elegant serif font, Rolex crown logo prominent'] (single frame - tiled), or ['Mercedes-Benz S-Class sedan front 3/4 view on wet asphalt with city lights bokeh background, sleek silver paint, dramatic evening lighting, \"The Best or Nothing\" slogan', 'Mercedes interior shot showing leather seats and dashboard technology, ambient lighting, sophisticated luxury atmosphere', 'Mercedes driving on mountain road at sunset, dynamic motion blur, aspirational lifestyle imagery'] (3-frame evolution). BAD examples: ['watch ad'], ['car', 'interior', 'driving']. [] means user uploads images."}
-                },
-                "required": ["location"]
-            }
-        },
-        {
-            "type": "code_interpreter",
-            "container": {"type": "auto"}
-        }
-    ]
+    # Build LLM messages from history
+    from integrations.llm import LLMClient, LLMMessage
+    from integrations.slack.bo_messaging import get_user_real_name
 
-    # Booking order parsing - Available to all users
-    tools.append({
-        "type": "function",
-        "name": "parse_booking_order",
-        "description": "Parse a booking order document (Excel, PDF, or image) for Backlite or Viola. Available to ALL users. Extracts client, campaign, locations, pricing, dates, and financial data. Infer the company from document content (e.g., letterhead, branding, or 'BackLite'/'Viola' text) - default to 'backlite' if unclear. Biased toward classifying uploads as ARTWORK unless clearly a booking order.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "company": {
-                    "type": "string",
-                    "enum": ["backlite", "viola"],
-                    "description": "Company name - either 'backlite' or 'viola'. Infer from document branding/letterhead. Default to 'backlite' if unclear."
-                },
-                "user_notes": {
-                    "type": "string",
-                    "description": "Optional notes or instructions from user about the booking order"
-                }
-            },
-            "required": ["company"]
-        }
-    })
+    llm_messages = [LLMMessage.system(prompt)]
+    for msg in history:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if role == "user":
+            llm_messages.append(LLMMessage.user(content))
+        elif role == "assistant":
+            llm_messages.append(LLMMessage.assistant(content))
+
+    # Get tools from centralized tool definitions
+    base_tools = get_base_tools()
+    all_tools = list(base_tools)
 
     # Admin-only tools
     if is_admin:
-        admin_tools = []
-        tools.extend(admin_tools)
+        admin_tools = get_admin_tools()
+        all_tools.extend(admin_tools)
         logger.info(f"[LLM] Admin user {user_id} - added {len(admin_tools)} admin-only tools")
 
     try:
-        res = await config.openai_client.responses.create(model=config.OPENAI_MODEL, input=messages, tools=tools, tool_choice="auto")
-
-        # Determine workflow based on function being called
-        workflow = "general_chat"  # Default
-        if res.output and len(res.output) > 0:
-            function_call = next((item for item in res.output if item.type == "function_call"), None)
-            if function_call and hasattr(function_call, 'name'):
-                func_name = function_call.name
-                if func_name == "generate_mockup":
-                    # Determine if AI or upload based on parameters
-                    workflow = "mockup_upload"  # Default, may be updated to mockup_ai later
-                elif func_name in ["get_separate_proposals", "get_combined_proposal"]:
-                    workflow = "proposal_generation"
-                elif func_name == "add_location":
-                    workflow = "location_management"
-
-        # Track cost
-        from integrations.openai import cost_tracker as cost_tracking
-        from integrations.slack.bo_messaging import get_user_real_name
+        # Use LLMClient for abstracted LLM access
+        llm_client = LLMClient.from_config()
         user_name = await get_user_real_name(user_id) if user_id else None
-        cost_tracking.track_openai_call(
-            response=res,
+
+        # Determine workflow for cost tracking (will be updated based on tool call)
+        workflow = "general_chat"
+
+        response = await llm_client.complete(
+            messages=llm_messages,
+            tools=all_tools,
+            tool_choice="auto",
             call_type="main_llm",
-            user_id=user_name,
             workflow=workflow,
+            user_id=user_name,
             context=f"Channel: {channel}",
             metadata={"has_files": has_files, "message_length": len(user_input)}
         )
 
-        if not res.output or len(res.output) == 0:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("I can help with proposals or add locations. Say 'add location'."))
-            return
+        # Check if there are tool calls
+        if response.tool_calls:
+            tool_call = response.tool_calls[0]  # Get first tool call
+            logger.info(f"[LLM] Tool call: {tool_call.name}")
 
-        logger.info(f"[LLM] Output items: {len(res.output)}, Types: {[item.type for item in res.output]}")
-
-        # Get function_call item (skip reasoning items)
-        msg = next((item for item in res.output if item.type == "function_call"), None)
-
-        # If no function call, get first non-reasoning item for text response
-        if msg is None:
-            msg = next((item for item in res.output if item.type != "reasoning"), res.output[0])
-
-        logger.info(f"[LLM] Selected item type: {msg.type}")
-        if hasattr(msg, 'name'):
-            logger.info(f"[LLM] Function name: {msg.name}")
-        if msg.type == "function_call":
             # Add assistant's tool call to history so model knows what it did
             try:
-                args_dict = json.loads(msg.arguments)
-                if msg.name == "get_separate_proposals":
+                args_dict = tool_call.arguments
+                if tool_call.name == "get_separate_proposals":
                     locations = [p.get("location", "unknown") for p in args_dict.get("proposals", [])]
                     client = args_dict.get("client_name", "unknown")
                     assistant_summary = f"[Generated separate proposals for {client}: {', '.join(locations)}]"
-                elif msg.name == "get_combined_proposal":
+                elif tool_call.name == "get_combined_proposal":
                     locations = [p.get("location", "unknown") for p in args_dict.get("proposals", [])]
                     client = args_dict.get("client_name", "unknown")
                     assistant_summary = f"[Generated combined proposal for {client}: {', '.join(locations)}]"
-                elif msg.name == "generate_mockup":
+                elif tool_call.name == "generate_mockup":
                     location = args_dict.get("location", "unknown")
                     assistant_summary = f"[Generated mockup for {location}]"
-                elif msg.name == "parse_booking_order":
+                elif tool_call.name == "parse_booking_order":
                     assistant_summary = "[Parsed booking order]"
                 else:
-                    assistant_summary = f"[Called {msg.name}]"
+                    assistant_summary = f"[Called {tool_call.name}]"
             except:
-                assistant_summary = f"[Called {msg.name}]"
+                assistant_summary = f"[Called {tool_call.name}]"
             history.append({"role": "assistant", "content": assistant_summary, "timestamp": datetime.now().isoformat()})
 
             # Dispatch to tool router
             from routers.tool_router import handle_tool_call
             handled = await handle_tool_call(
-                msg=msg,
+                tool_call=tool_call,
                 channel=channel,
                 user_id=user_id,
                 status_ts=status_ts,
@@ -1473,8 +1234,9 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             if handled:
                 user_history[user_id] = history[-10:]
                 return
-        else:
-            reply = msg.content[-1].text if hasattr(msg, 'content') and msg.content else "How can I help you today?"
+        elif response.content:
+            # Text response (no tool call)
+            reply = response.content
             # Add assistant's text reply to history
             history.append({"role": "assistant", "content": reply, "timestamp": datetime.now().isoformat()})
             # Format any markdown-style text from the LLM
@@ -1489,6 +1251,11 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             # Delete status message before sending reply
             await config.slack_client.chat_delete(channel=channel, ts=status_ts)
             await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(formatted_reply))
+        else:
+            # No content and no tool calls
+            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("I can help with proposals or add locations. Say 'add location'."))
+            return
 
         user_history[user_id] = history[-10:]
 

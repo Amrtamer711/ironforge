@@ -14,11 +14,21 @@ from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 
 import config
+from integrations.llm import (
+    LLMClient,
+    LLMMessage,
+    ContentPart,
+    ReasoningEffort,
+)
 from integrations.llm.prompts.bo_parsing import (
     get_classification_prompt,
     get_backlite_parsing_prompt,
     get_viola_parsing_prompt,
     get_data_extractor_prompt,
+)
+from integrations.llm.schemas.bo_parsing import (
+    get_classification_schema,
+    get_booking_order_extraction_schema,
 )
 from pypdf import PdfMerger, PdfReader, PdfWriter
 from PIL import Image
@@ -150,15 +160,14 @@ class BookingOrderParser:
                 logger.error(f"[BOOKING PARSER] Failed to convert Excel to PDF: {e}")
                 return {"classification": "UNKNOWN", "confidence": "low", "reasoning": f"Excel conversion failed: {e}"}
 
-        # Upload PDF to OpenAI with purpose="user_data" (VendorAI pattern)
+        # Use LLM client for classification
+        llm_client = LLMClient.from_config()
+        file_ref = None
+
         try:
-            with open(pdf_path, "rb") as f:
-                file_obj = await config.openai_client.files.create(
-                    file=f,
-                    purpose="user_data"
-                )
-            file_id = file_obj.id
-            logger.info(f"[BOOKING PARSER] Uploaded file to OpenAI: {file_id}")
+            # Upload PDF
+            file_ref = await llm_client.upload_file(str(pdf_path))
+            logger.info(f"[BOOKING PARSER] Uploaded file: {file_ref.file_id}")
         except Exception as e:
             logger.error(f"[BOOKING PARSER] Failed to upload file: {e}")
             if cleanup_pdf and pdf_path.exists():
@@ -176,55 +185,17 @@ class BookingOrderParser:
         classification_prompt = get_classification_prompt(user_message)
 
         try:
-            # Use VendorAI syntax with structured JSON output
-            response = await config.openai_client.responses.create(
-                model=config.OPENAI_MODEL,
-                input=[
-                    {"role": "system", "content": "You are a document classifier. Analyze the file and provide classification in JSON format."},
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "input_file", "file_id": file_id},
-                            {"type": "input_text", "text": classification_prompt}
-                        ]
-                    }
+            # Use LLM client with structured JSON output
+            response = await llm_client.complete(
+                messages=[
+                    LLMMessage.system("You are a document classifier. Analyze the file and provide classification in JSON format."),
+                    LLMMessage.user([
+                        ContentPart.file(file_ref.file_id),
+                        ContentPart.text(classification_prompt)
+                    ])
                 ],
-                text={
-                    "format": {
-                        "type": "json_schema",
-                        "name": "classification_response",
-                        "strict": True,
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "classification": {
-                                    "type": "string",
-                                    "enum": ["BOOKING_ORDER", "ARTWORK"]
-                                },
-                                "confidence": {
-                                    "type": "string",
-                                    "enum": ["high", "medium", "low"]
-                                },
-                                "company": {
-                                    "type": ["string", "null"],
-                                    "enum": ["backlite", "viola", None]
-                                },
-                                "reasoning": {
-                                    "type": "string"
-                                }
-                            },
-                            "required": ["classification", "confidence", "company", "reasoning"],
-                            "additionalProperties": False
-                        }
-                    }
-                },
-                store=False
-            )
-
-            # Track cost (user_id should already be converted to user_name by caller)
-            from integrations.openai import cost_tracker as cost_tracking
-            cost_tracking.track_openai_call(
-                response=response,
+                json_schema=get_classification_schema(),
+                # Cost tracking
                 call_type="classification",
                 workflow="bo_parsing",
                 user_id=user_id,
@@ -232,16 +203,15 @@ class BookingOrderParser:
                 metadata={"file_type": suffix, "has_user_message": bool(user_message)}
             )
 
-            if not response.output or len(response.output) == 0:
+            if not response.content:
                 logger.warning("[BOOKING PARSER] Empty classification response")
                 return {"classification": "ARTWORK", "confidence": "low", "reasoning": "No response from model"}
 
             # Parse JSON response from structured output
-            result_text = response.output_text
-            logger.info(f"[BOOKING PARSER] Classification response: {result_text}")
+            logger.info(f"[BOOKING PARSER] Classification response: {response.content}")
 
             # Parse JSON directly (structured output guarantees valid JSON)
-            result = json.loads(result_text)
+            result = json.loads(response.content)
 
             # Ensure company is set for BOOKING_ORDER (fallback to backlite if null)
             if result["classification"] == "BOOKING_ORDER" and not result.get("company"):
@@ -255,14 +225,12 @@ class BookingOrderParser:
             return {"classification": "ARTWORK", "confidence": "low", "reasoning": f"Error: {str(e)}"}
         finally:
             # Cleanup uploaded file
-            try:
-                await config.openai_client.files.delete(file_id)
-            except:
-                pass
+            if file_ref:
+                await llm_client.delete_file(file_ref)
 
     async def parse_file(self, file_path: Path, file_type: str, user_message: str = "", user_id: str = None) -> ParseResult:
         """
-        Parse booking order file using OpenAI Responses API with structured JSON output.
+        Parse booking order file using LLM with structured JSON output.
         No hallucinations - only extract what's clearly present.
 
         Args:
@@ -274,15 +242,13 @@ class BookingOrderParser:
         if user_message:
             logger.info(f"[BOOKING PARSER] User message context: {user_message}")
 
-        # Upload file to OpenAI with purpose="user_data" (VendorAI pattern)
+        # Use LLM client for parsing
+        llm_client = LLMClient.from_config()
+        file_ref = None
+
         try:
-            with open(file_path, "rb") as f:
-                file_obj = await config.openai_client.files.create(
-                    file=f,
-                    purpose="user_data"
-                )
-            file_id = file_obj.id
-            logger.info(f"[BOOKING PARSER] Uploaded file for parsing: {file_id}")
+            file_ref = await llm_client.upload_file(str(file_path))
+            logger.info(f"[BOOKING PARSER] Uploaded file for parsing: {file_ref.file_id}")
         except Exception as e:
             logger.error(f"[BOOKING PARSER] Failed to upload file for parsing: {e}")
             raise
@@ -313,90 +279,19 @@ The user provided this message with the file: "{user_message}"
 """
 
         try:
-            # Use structured outputs with JSON schema + code_interpreter for better table parsing
-            response = await config.openai_client.responses.create(
-                model="gpt-5",
-                reasoning={"effort": "high"},
-                input=[
-                    {"role": "system", "content": get_data_extractor_prompt()},
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "input_file", "file_id": file_id},
-                            {"type": "input_text", "text": parsing_prompt}
-                        ]
-                    }
+            # Use LLM client with structured JSON output and high reasoning
+            response = await llm_client.complete(
+                messages=[
+                    LLMMessage.system(get_data_extractor_prompt()),
+                    LLMMessage.user([
+                        ContentPart.file(file_ref.file_id),
+                        ContentPart.text(parsing_prompt)
+                    ])
                 ],
-                # TODO: Re-enable code_interpreter after investigating timeout issues
-                # tools=[
-                #     {
-                #         "type": "code_interpreter",
-                #         "container": {
-                #             "type": "auto"
-                #         }
-                #     }
-                # ],
-                text={
-                    "format": {
-                        "type": "json_schema",
-                        "name": "booking_order_extraction",
-                        "strict": True,
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "bo_number": {"type": ["string", "null"]},
-                                "bo_date": {"type": ["string", "null"]},
-                                "client": {"type": ["string", "null"]},
-                                "agency": {"type": ["string", "null"]},
-                                "brand_campaign": {"type": ["string", "null"]},
-                                "category": {"type": ["string", "null"]},
-                                "asset": {
-                                    "anyOf": [
-                                        {"type": "string"},
-                                        {"type": "array", "items": {"type": "string"}},
-                                        {"type": "null"}
-                                    ]
-                                },
-                                "payment_terms": {"type": ["string", "null"]},
-                                "sales_person": {"type": ["string", "null"]},
-                                "currency": {"type": ["string", "null"]},
-                                "commission_pct": {"type": ["number", "null"]},
-                                "sla_pct": {"type": ["number", "null"]},
-                                "municipality_fee": {"type": ["number", "null"]},
-                                "production_upload_fee": {"type": ["number", "null"]},
-                                "net_pre_vat": {"type": ["number", "null"]},
-                                "vat_value": {"type": ["number", "null"]},
-                                "gross_amount": {"type": ["number", "null"]},
-                                "notes": {"type": ["string", "null"]},
-                                "locations": {
-                                    "type": "array",
-                                    "items": {
-                                        "type": "object",
-                                        "properties": {
-                                            "name": {"type": "string"},
-                                            "asset": {"type": ["string", "null"]},
-                                            "start_date": {"type": "string"},
-                                            "end_date": {"type": "string"},
-                                            "campaign_duration": {"type": "string"},
-                                            "net_amount": {"type": "number"}
-                                        },
-                                        "required": ["name", "start_date", "end_date", "campaign_duration", "net_amount", "asset"],
-                                        "additionalProperties": False
-                                    }
-                                }
-                            },
-                            "required": ["bo_number", "bo_date", "client", "agency", "brand_campaign", "category", "asset", "payment_terms", "sales_person", "currency", "commission_pct", "sla_pct", "municipality_fee", "production_upload_fee", "net_pre_vat", "vat_value", "gross_amount", "notes", "locations"],
-                            "additionalProperties": False
-                        }
-                    }
-                },
-                store=False
-            )
-
-            # Track cost (user_id should already be converted to user_name by caller)
-            from integrations.openai import cost_tracker as cost_tracking
-            cost_tracking.track_openai_call(
-                response=response,
+                model="gpt-5",
+                reasoning=ReasoningEffort.HIGH,
+                json_schema=get_booking_order_extraction_schema(),
+                # Cost tracking
                 call_type="parsing",
                 workflow="bo_parsing",
                 user_id=user_id,
@@ -404,17 +299,15 @@ The user provided this message with the file: "{user_message}"
                 metadata={"file_type": file_type, "has_user_message": bool(user_message), "company": self.company}
             )
 
-            if not response.output or len(response.output) == 0:
+            if not response.content:
                 raise ValueError("Empty parsing response from model")
 
-            # Extract JSON from structured output using output_text
-            # This gets the final text output after any tool calls
-            result_text = response.output_text
-            logger.info(f"[BOOKING PARSER] Parse response length: {len(result_text)} chars")
-            logger.info(f"[BOOKING PARSER] Parse response text: {result_text[:500]}...")  # Log first 500 chars
+            # Log response
+            logger.info(f"[BOOKING PARSER] Parse response length: {len(response.content)} chars")
+            logger.info(f"[BOOKING PARSER] Parse response text: {response.content[:500]}...")  # Log first 500 chars
 
             # Parse JSON (should be valid JSON from structured outputs)
-            parsed_data = json.loads(result_text)
+            parsed_data = json.loads(response.content)
 
             # Post-process and validate
             processed = self._post_process_data(parsed_data)
@@ -434,10 +327,8 @@ The user provided this message with the file: "{user_message}"
             raise
         finally:
             # Cleanup uploaded file
-            try:
-                await config.openai_client.files.delete(file_id)
-            except:
-                pass
+            if file_ref:
+                await llm_client.delete_file(file_ref)
 
     
     def _extract_json_from_response(self, text: str) -> Dict[str, Any]:

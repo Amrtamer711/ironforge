@@ -29,6 +29,8 @@ import config
 from db.database import db
 from workflows.bo_parser import BookingOrderParser, COMBINED_BOS_DIR
 from integrations.llm.prompts.bo_editing import get_coordinator_thread_prompt
+from integrations.llm.schemas.bo_editing import get_coordinator_response_schema
+from integrations.llm import LLMClient, LLMMessage, ReasoningEffort
 
 logger = logging.getLogger("proposal-bot")
 
@@ -1122,96 +1124,34 @@ async def handle_coordinator_thread_message(
     )
 
     try:
-        # Build input with thread history + current user message
-        input_messages = [{"role": "system", "content": system_prompt}]
+        # Build messages with thread history + current user message
+        messages = [LLMMessage.system(system_prompt)]
 
         # Add thread history (last 20 messages to keep context manageable)
         for msg in thread_history[-20:]:
-            input_messages.append({"role": msg["role"], "content": msg["content"]})
+            if msg["role"] == "user":
+                messages.append(LLMMessage.user(msg["content"]))
+            else:
+                messages.append(LLMMessage.assistant(msg["content"]))
 
         # Add current user message
-        input_messages.append({"role": "user", "content": user_input})
+        messages.append(LLMMessage.user(user_input))
 
-        res = await config.openai_client.responses.create(
-            model=config.OPENAI_MODEL,
-            reasoning={"effort": "low"},
-            input=input_messages,
-            text={
-                'format': {
-                    'type': 'json_schema',
-                    'name': 'coordinator_response',
-                    'strict': False,
-                    'schema': {
-                        'type': 'object',
-                        'properties': {
-                            'action': {'type': 'string', 'enum': ['execute', 'edit', 'view']},
-                            'fields': {
-                                'type': 'object',
-                                'properties': {
-                                    'client': {'type': 'string'},
-                                    'brand_campaign': {'type': 'string'},
-                                    'bo_number': {'type': 'string'},
-                                    'bo_date': {'type': 'string'},
-                                    'net_pre_vat': {'type': 'number'},
-                                    'vat_value': {'type': 'number'},
-                                    'vat_calc': {'type': 'number'},
-                                    'gross_amount': {'type': 'number'},
-                                    'gross_calc': {'type': 'number'},
-                                    'agency': {'type': 'string'},
-                                    'sales_person': {'type': 'string'},
-                                    'sla_pct': {'type': 'number'},
-                                    'payment_terms': {'type': 'string'},
-                                    'commission_pct': {'type': 'number'},
-                                    'notes': {'type': 'string'},
-                                    'category': {'type': 'string'},
-                                    'municipality_fee': {'type': 'number'},
-                                    'production_upload_fee': {'type': 'number'},
-                                    'currency': {'type': 'string'},
-                                    'asset': {
-                                        'anyOf': [
-                                            {'type': 'string'},
-                                            {'type': 'array', 'items': {'type': 'string'}}
-                                        ]
-                                    },
-                                    'locations': {
-                                        'type': 'array',
-                                        'items': {
-                                            'type': 'object',
-                                            'properties': {
-                                                'name': {'type': 'string'},
-                                                'asset': {'type': 'string'},
-                                                'start_date': {'type': 'string'},
-                                                'end_date': {'type': 'string'},
-                                                'campaign_duration': {'type': 'string'},
-                                                'net_amount': {'type': 'number'}
-                                            }
-                                        }
-                                    }
-                                },
-                                'additionalProperties': True
-                            },
-                            'message': {'type': 'string'}
-                        },
-                        'required': ['action'],
-                        'additionalProperties': False
-                    }
-                }
-            },
-            store=False
-        )
+        # Use LLMClient for abstracted LLM access
+        llm_client = LLMClient.from_config()
 
-        # Track cost
-        from integrations.openai import cost_tracker as cost_tracking
-        cost_tracking.track_openai_call(
-            response=res,
+        response = await llm_client.complete(
+            messages=messages,
+            json_schema=get_coordinator_response_schema(),
+            reasoning=ReasoningEffort.LOW,
             call_type="coordinator_thread",
-            user_id=user_id,
             workflow="bo_editing",
+            user_id=user_id,
             context=f"Workflow: {workflow_id}",
             metadata={"workflow_id": workflow_id, "thread_length": len(thread_history)}
         )
 
-        decision = json.loads(res.output_text)
+        decision = json.loads(response.content)
         action = decision.get('action')
         message = decision.get('message', '')
 

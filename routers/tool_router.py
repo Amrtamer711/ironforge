@@ -2,7 +2,6 @@
 Tool Router - Handles dispatching LLM function calls to appropriate handlers.
 """
 
-import json
 import os
 import gc
 from datetime import datetime
@@ -20,12 +19,13 @@ from db.cache import (
     store_mockup_history,
 )
 from integrations.llm.prompts.mockup import get_ai_mockup_prompt
+from integrations.llm import ToolCall
 
 logger = config.logger
 
 
 async def handle_tool_call(
-    msg,
+    tool_call: ToolCall,
     channel: str,
     user_id: str,
     status_ts: str,
@@ -40,7 +40,7 @@ async def handle_tool_call(
     Main tool router - dispatches function calls to appropriate handlers.
 
     Args:
-        msg: The function call message from OpenAI
+        tool_call: The ToolCall object from LLMClient response
         channel: Slack channel ID
         user_id: Slack user ID
         status_ts: Timestamp of status message to update/delete
@@ -54,10 +54,11 @@ async def handle_tool_call(
     Returns:
         True if handled as function call, False otherwise
     """
-    if msg.type != "function_call":
-        return False
+    # Extract tool call info - arguments is already a dict from ToolCall
+    tool_name = tool_call.name
+    args = tool_call.arguments
 
-    if msg.name == "get_separate_proposals":
+    if tool_name == "get_separate_proposals":
         # Update status to Building Proposal
         await config.slack_client.chat_update(
             channel=channel,
@@ -65,7 +66,7 @@ async def handle_tool_call(
             text="⏳ _Building Proposal..._"
         )
         
-        args = json.loads(msg.arguments)
+        args = args
         proposals_data = args.get("proposals", [])
         client_name = args.get("client_name") or "Unknown Client"
         payment_terms = args.get("payment_terms", "100% upfront")
@@ -83,7 +84,7 @@ async def handle_tool_call(
             return True
 
         result = await process_proposals(proposals_data, "separate", None, user_id, client_name, payment_terms, currency)
-    elif msg.name == "get_combined_proposal":
+    elif tool_name == "get_combined_proposal":
         # Update status to Building Proposal
         await config.slack_client.chat_update(
             channel=channel,
@@ -91,7 +92,7 @@ async def handle_tool_call(
             text="⏳ _Building Proposal..._"
         )
         
-        args = json.loads(msg.arguments)
+        args = args
         proposals_data = args.get("proposals", [])
         combined_net_rate = args.get("combined_net_rate", None)
         client_name = args.get("client_name") or "Unknown Client"
@@ -127,7 +128,7 @@ async def handle_tool_call(
         result = await process_proposals(proposals_data, "combined", combined_net_rate, user_id, client_name, payment_terms, currency)
     
     # Handle result for both get_separate_proposals and get_combined_proposal
-    if msg.name in ["get_separate_proposals", "get_combined_proposal"] and 'result' in locals():
+    if tool_name in ["get_separate_proposals", "get_combined_proposal"] and 'result' in locals():
         logger.info(f"[RESULT] Processing result: {result}")
         if result["success"]:
             # Update status to uploading
@@ -165,19 +166,19 @@ async def handle_tool_call(
             await config.slack_client.chat_delete(channel=channel, ts=status_ts)
             await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(f"❌ **Error:** {result['error']}"))
 
-    elif msg.name == "refresh_templates":
+    elif tool_name == "refresh_templates":
         config.refresh_templates()
         await config.slack_client.chat_delete(channel=channel, ts=status_ts)
         await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("✅ Templates refreshed successfully."))
 
-    elif msg.name == "add_location":
+    elif tool_name == "add_location":
         # Admin permission gate
         if not config.is_admin(user_id):
             await config.slack_client.chat_delete(channel=channel, ts=status_ts)
             await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** You need admin privileges to add locations."))
             return True
 
-        args = json.loads(msg.arguments)
+        args = args
         location_key = args.get("location_key", "").strip().lower().replace(" ", "_")
         
         if not location_key:
@@ -324,7 +325,7 @@ async def handle_tool_call(
         )
         return True
 
-    elif msg.name == "list_locations":
+    elif tool_name == "list_locations":
         names = config.available_location_names()
         await config.slack_client.chat_delete(channel=channel, ts=status_ts)
         if not names:
@@ -333,14 +334,14 @@ async def handle_tool_call(
             listing = "\n".join(f"• {n}" for n in names)
             await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(f"📍 **Current locations:**\n{listing}"))
 
-    elif msg.name == "delete_location":
+    elif tool_name == "delete_location":
         # Admin permission gate
         if not config.is_admin(user_id):
             await config.slack_client.chat_delete(channel=channel, ts=status_ts)
             await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** You need admin privileges to delete locations."))
             return True
 
-        args = json.loads(msg.arguments)
+        args = args
         location_input = args.get("location_key", "").strip()
 
         if not location_input:
@@ -398,7 +399,7 @@ async def handle_tool_call(
         )
         return True
     
-    elif msg.name == "export_proposals_to_excel":
+    elif tool_name == "export_proposals_to_excel":
         # Admin permission gate
         logger.info(f"[EXCEL_EXPORT] Checking admin privileges for user: {user_id}")
         is_admin_user = config.is_admin(user_id)
@@ -452,7 +453,7 @@ async def handle_tool_call(
                 text=config.markdown_to_slack("❌ **Error:** Failed to export database to Excel. Please try again.")
             )
     
-    elif msg.name == "export_booking_orders_to_excel":
+    elif tool_name == "export_booking_orders_to_excel":
         # Admin permission gate
         logger.info(f"[BO_EXPORT] Checking admin privileges for user: {user_id}")
         is_admin_user = config.is_admin(user_id)
@@ -506,7 +507,7 @@ async def handle_tool_call(
                 text=config.markdown_to_slack("❌ **Error:** Failed to export booking orders to Excel. Please try again.")
             )
 
-    elif msg.name == "fetch_booking_order":
+    elif tool_name == "fetch_booking_order":
         # Admin permission gate
         logger.info(f"[BO_FETCH] Checking admin privileges for user: {user_id}")
         is_admin_user = config.is_admin(user_id)
@@ -517,7 +518,7 @@ async def handle_tool_call(
             await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** You need admin privileges to fetch booking orders."))
             return True
 
-        args = json.loads(msg.arguments)
+        args = args
         bo_number = args.get("bo_number")
         logger.info(f"[BO_FETCH] User requested BO by number: '{bo_number}' (type: {type(bo_number)}, len: {len(bo_number) if bo_number else 0})")
 
@@ -617,7 +618,7 @@ async def handle_tool_call(
                 text=config.markdown_to_slack(f"❌ **Error:** Failed to fetch booking order `{bo_ref}`. Error: {str(e)}")
             )
 
-    elif msg.name == "revise_booking_order":
+    elif tool_name == "revise_booking_order":
         # Admin permission gate
         logger.info(f"[BO_REVISE] Checking admin privileges for user: {user_id}")
         is_admin_user = config.is_admin(user_id)
@@ -628,7 +629,7 @@ async def handle_tool_call(
             await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** You need admin privileges to revise booking orders."))
             return True
 
-        args = json.loads(msg.arguments)
+        args = args
         bo_number = args.get("bo_number")
         logger.info(f"[BO_REVISE] Admin requested revision for BO: '{bo_number}'")
 
@@ -670,7 +671,7 @@ async def handle_tool_call(
                 text=config.markdown_to_slack(f"❌ **Error:** Failed to start revision workflow. Error: {str(e)}")
             )
 
-    elif msg.name == "get_proposals_stats":
+    elif tool_name == "get_proposals_stats":
         logger.info("[STATS] User requested proposals statistics")
         try:
             stats = db.get_proposals_summary()
@@ -702,9 +703,9 @@ async def handle_tool_call(
         except Exception as e:
             logger.error(f"[STATS] Error: {e}", exc_info=True)
 
-    elif msg.name == "parse_booking_order":
+    elif tool_name == "parse_booking_order":
         # Available to all users (admin check removed per new workflow)
-        args = json.loads(msg.arguments)
+        args = args
         company = args.get("company")
         user_notes = args.get("user_notes", "")
         await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Parsing booking order..._")
@@ -719,12 +720,12 @@ async def handle_tool_call(
         )
         return True
 
-    elif msg.name == "generate_mockup":
+    elif tool_name == "generate_mockup":
         # Handle mockup generation with AI or user upload
         logger.info("[MOCKUP] User requested mockup generation")
 
         # Parse the location from arguments
-        args = json.loads(msg.arguments)
+        args = args
         location_name = args.get("location", "").strip()
         time_of_day = args.get("time_of_day", "").strip().lower() or "all"
         finish = args.get("finish", "").strip().lower() or "all"
