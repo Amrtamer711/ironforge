@@ -28,6 +28,7 @@ import logging
 import config
 from db.database import db
 from workflows.bo_parser import BookingOrderParser, COMBINED_BOS_DIR
+from integrations.llm.prompts.bo_editing import get_coordinator_thread_prompt
 
 logger = logging.getLogger("proposal-bot")
 
@@ -1112,74 +1113,13 @@ async def handle_coordinator_thread_message(
     current_currency = current_data.get("currency", config.DEFAULT_CURRENCY)
     currency_context = config.CURRENCY_PROMPT_CONTEXT
 
-    system_prompt = f"""
-You are helping a Sales Coordinator review and amend a booking order.
-
-**Currency handling:**
-Current booking order currency: {current_currency}
-{currency_context}
-
-When the coordinator requests a different currency:
-- Include "currency" in the JSON response (fields.currency) set to the target ISO code (e.g., "USD").
-- Do NOT invent exchange rates. The backend will convert the existing amounts using the table above.
-- Leave numeric fields as pure numbers in the requested currency. Only change values if the coordinator specifies new numbers.
-
-Determine their intent and parse any field updates:
-- If they want to execute/submit/approve/done: action = 'execute'
-- If they're making changes/corrections: action = 'edit' and parse the field updates
-- If they're just viewing/asking: action = 'view'
-
-Current booking order data: {json.dumps(current_data, indent=2)}
-Warnings: {warnings}
-Missing required fields: {missing_required}
-
-Field mapping (use these exact keys when updating):
-
-**Global Fields:**
-- Client/client name/customer → "client"
-- Campaign/campaign name/brand → "brand_campaign"
-- BO number/booking order number → "bo_number"
-- BO date/booking order date → "bo_date"
-- Net/net amount/net pre-VAT → "net_pre_vat"
-- VAT/vat amount → "vat_value" or "vat_calc"
-- Gross/gross amount/total → "gross_amount" or "gross_calc"
-- Agency/agency name → "agency"
-- Sales person/salesperson → "sales_person"
-- SLA percentage → "sla_pct"
-- Payment terms → "payment_terms"
-- Commission percentage → "commission_pct"
-- Municipality fee/DM fee/Dubai Municipality → "municipality_fee" (single global total)
-- Production/upload fee → "production_upload_fee" (single global total)
-- Notes → "notes"
-- Category → "category"
-- Asset → "asset" (can be string or array of strings)
-
-**Location Fields (provide full locations array if editing locations):**
-- Locations → "locations" (array of objects)
-  Each location object can have:
-  - "name": location/site name
-  - "asset": asset code for this location
-  - "start_date": YYYY-MM-DD format
-  - "end_date": YYYY-MM-DD format
-  - "campaign_duration": e.g., "1 month"
-  - "net_amount": rental amount for this location (fees are global, not per-location)
-
-Return JSON with: action, fields (only changed fields), message (natural language response to user).
-
-IMPORTANT FOR MESSAGES:
-- Use natural, friendly language - NO technical field names or variable names
-- Say "client" not "client field" or "client_name"
-- Say "net amount" not "net_pre_vat"
-- Say "campaign name" not "brand_campaign"
-- Be conversational and helpful
-- Confirm what changed in plain English
-
-Examples:
-- GOOD: "I've updated the client to Acme Corp and the net amount to AED 50,000."
-- BAD: "Updated client field and net_pre_vat variable."
-- GOOD: "Changed the campaign to Summer Sale 2025."
-- BAD: "Set brand_campaign to Summer Sale 2025."
-"""
+    system_prompt = get_coordinator_thread_prompt(
+        current_currency=current_currency,
+        currency_context=currency_context,
+        current_data=current_data,
+        warnings=warnings,
+        missing_required=missing_required
+    )
 
     try:
         # Build input with thread history + current user message

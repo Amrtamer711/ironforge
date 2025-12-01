@@ -15,7 +15,8 @@ from integrations.slack.formatting import SlackResponses
 from workflows.bo_parser import BookingOrderParser, COMBINED_BOS_DIR
 from utils.task_queue import mockup_queue
 from integrations.slack import bo_messaging as bo_slack_messaging
-from integrations.slack.file_utils import _download_slack_file
+from integrations.slack.file_utils import _download_slack_file, _validate_pdf_file
+from integrations.llm.prompts.bo_editing import get_bo_edit_prompt
 from db.cache import (
     user_history,
     pending_location_additions,
@@ -304,7 +305,7 @@ async def _handle_booking_order_parse(
 
     try:
         # Generate combined PDF (Excel + Original BO concatenated)
-        import bo_approval_workflow
+        from workflows import bo_approval as bo_approval_workflow
         combined_pdf_path = await parser.generate_combined_pdf(result.data, f"DRAFT_{company}_REVIEW", Path(tmp_file))
 
         # Create approval workflow
@@ -523,100 +524,12 @@ async def handle_booking_order_edit_flow(channel: str, user_id: str, user_input:
         missing_required = edit_data.get("missing_required", [])
 
         # Build system prompt for LLM to parse user intent
-        system_prompt = f"""
-You are an intelligent assistant helping review and edit a booking order draft for a billboard/outdoor advertising company.
-
-**TAKE YOUR TIME AND BE INTELLIGENT:**
-When the user requests changes, think carefully about ALL fields that need to be updated. Don't just update what they explicitly mention - understand the cascading effects and update ALL related fields automatically.
-
-**USER SAID:** "{user_input}"
-
-**BILLBOARD INDUSTRY CONTEXT (Critical for intelligent edits):**
-
-1. **Multiple Locations Under One Payment:**
-   - Clients buy multiple billboard locations, sometimes bundled under one payment
-   - If user adds a location, you may need to adjust payment splits across locations
-
-2. **Fee Types (Municipality, Upload, Production):**
-   - Municipality fee applies to ALL locations
-   - Upload fee is for DIGITAL locations only
-   - Production fee is for STATIC locations only
-   - These are separate from location rentals
-
-3. **SLA (Service Level Agreement) %:**
-   - This is a DEDUCTION applied to net rental (rental + fees + municipality)
-   - Applied BEFORE VAT
-   - Formula: Net after SLA = Net rental - (Net rental × SLA%)
-   - VAT is then: (Net after SLA) × 0.05
-   - Gross = Net after SLA + VAT
-
-4. **Cascading Calculations:**
-   When user changes certain fields, you MUST automatically update related fields:
-
-   **If they add/remove a location:**
-   - Update "asset" list to include/exclude the location code
-   - Update "locations" array with full location details (name, dates, costs, etc.)
-   - Recalculate "net_pre_vat" (sum of all location rentals + fees)
-   - Recalculate "vat_calc" (net × 0.05 or apply SLA first if present)
-   - Recalculate "gross_calc" (net + VAT)
-
-   **If they change any fee (rental, production, upload, municipality):**
-   - Recalculate "net_pre_vat"
-   - Recalculate SLA deduction if SLA% exists
-   - Recalculate "vat_calc"
-   - Recalculate "gross_calc"
-
-   **If they change SLA%:**
-   - Recalculate SLA deduction
-   - Recalculate "vat_calc"
-   - Recalculate "gross_calc"
-
-**YOUR TASK:**
-Determine their intent and intelligently parse field updates with cascading changes.
-
-**ACTIONS:**
-- If they want to approve/save/confirm/submit: action = 'approve'
-- If they want to cancel/discard/abort: action = 'cancel'
-- If they want to see current values: action = 'view'
-- If they're making changes/corrections: action = 'edit' and parse ALL field updates (including cascading updates)
-
-**CURRENT BOOKING ORDER DATA:**
-{json.dumps(current_data, indent=2)}
-
-**WARNINGS:** {warnings}
-**MISSING REQUIRED FIELDS:** {missing_required}
-
-**FIELD MAPPING (use these exact keys):**
-- Client/client name/customer → "client"
-- Campaign/campaign name/brand → "brand_campaign"
-- BO number/booking order number → "bo_number"
-- BO date/booking order date → "bo_date"
-- Net/net amount/net pre-VAT → "net_pre_vat"
-- VAT/vat amount → "vat_calc"
-- Gross/gross amount/total → "gross_calc"
-- Agency/agency name → "agency"
-- Sales person/salesperson → "sales_person"
-- SLA percentage → "sla_pct"
-- Payment terms → "payment_terms"
-- Commission percentage → "commission_pct"
-- Notes → "notes"
-- Category → "category"
-- Asset → "asset" (list of location codes)
-- Locations → "locations" (array of location objects with name, dates, costs, etc.)
-
-**FOR LOCATION UPDATES:**
-- "Add location X with rental Y" → Append to "locations" AND "asset", recalculate totals
-- "Remove location Y" → Remove from "locations" AND "asset", recalculate totals
-- "Change location 1 start date to X" → Update by index in locations array
-
-**IMPORTANT:**
-- When editing, include ALL fields that need to change (direct changes + cascading updates)
-- Be intelligent about understanding what needs to update together
-- Calculate new values for financial fields when underlying data changes
-- Use natural language in your message. Be friendly and conversational.
-
-Return JSON with: action, fields (ALL changed fields including cascading updates), message (explain what you updated).
-"""
+        system_prompt = get_bo_edit_prompt(
+            user_input=user_input,
+            current_data=current_data,
+            warnings=warnings,
+            missing_required=missing_required
+        )
 
         res = await config.openai_client.responses.create(
             model=config.OPENAI_MODEL,
@@ -668,7 +581,7 @@ Return JSON with: action, fields (ALL changed fields including cascading updates
         if action == 'approve':
             # Start approval workflow - send directly to Sales Coordinator (admin is HoS)
             try:
-                import bo_approval_workflow
+                from workflows import bo_approval as bo_approval_workflow
 
                 # Generate combined PDF for coordinator review
                 parser = BookingOrderParser(company=edit_data.get("company"))
@@ -815,7 +728,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
     thread_ts = slack_event.get("thread_ts") if slack_event else None
     if thread_ts:
         # Check if this thread is an active coordinator thread
-        import bo_approval_workflow
+        from workflows import bo_approval as bo_approval_workflow
 
         # Find workflow with matching coordinator thread
         logger.info(f"[BO APPROVAL] Checking {len(bo_approval_workflow.approval_workflows)} workflows for thread {thread_ts}")
