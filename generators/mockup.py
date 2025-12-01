@@ -204,22 +204,34 @@ def is_portrait_location(location_key: str) -> bool:
     return False  # Default to landscape if can't determine
 
 
-async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_key: Optional[str] = None, user_id: Optional[str] = None) -> Optional[Path]:
-    """Generate a creative using OpenAI gpt-image-1 API.
+async def generate_ai_creative(
+    prompt: str,
+    size: str = "1536x1024",
+    location_key: Optional[str] = None,
+    user_id: Optional[str] = None,
+    provider: Optional[str] = None
+) -> Optional[Path]:
+    """Generate a creative using AI image generation.
+
+    Uses the unified LLMClient which supports multiple providers:
+    - OpenAI: gpt-image-1 (default)
+    - Google: gemini-2.5-flash-image, gemini-3-pro-image-preview
+
+    Provider selection is controlled by config.IMAGE_PROVIDER or the provider arg.
 
     Args:
         prompt: Text description for image generation
         size: Image size (default landscape "1536x1024")
         location_key: Optional location key to auto-detect portrait orientation
         user_id: Optional Slack user ID for cost tracking (None for website mockup)
+        provider: Which provider to use ("openai" or "google").
+                  If None, uses config.IMAGE_PROVIDER or defaults to "openai".
 
     Returns:
         Path to generated image, or None if failed
     """
     import tempfile
-    import base64
-    from openai import AsyncOpenAI
-    from integrations.openai import cost_tracker as cost_tracking
+    from integrations.llm import LLMClient
 
     # Auto-detect portrait orientation if location_key provided
     if location_key and is_portrait_location(location_key):
@@ -228,45 +240,32 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
     else:
         logger.info(f"[AI_CREATIVE] Using landscape orientation, size {size}")
 
-    logger.info(f"[AI_CREATIVE] Generating image from prompt: {prompt[:100]}...")
+    # Get the image provider client (uses config.IMAGE_PROVIDER or falls back to LLM_PROVIDER)
+    client = LLMClient.for_images(provider_name=provider)
+    logger.info(f"[AI_CREATIVE] Generating image with {client.provider_name}: {prompt[:100]}...")
 
-    api_key = config.OPENAI_API_KEY
-    if not api_key:
-        logger.error("[AI_CREATIVE] No OpenAI API key configured")
-        return None
+    # Convert user_id to user_name for cost tracking
+    from integrations.slack.bo_messaging import get_user_real_name
+    user_name = await get_user_real_name(user_id) if user_id and user_id != "website_mockup" else user_id
 
     try:
-        client = AsyncOpenAI(api_key=api_key)
-
-        # Generate image
-        img = await client.images.generate(
-            model="gpt-image-1",
+        # Generate image using unified client
+        response = await client.generate_image(
             prompt=prompt,
-            n=1,
             size=size,
-            quality='high',
-        )
-
-        # Track cost for image generation using response object (includes token usage)
-        # Convert user_id to user_name for cost tracking
-        from integrations.slack.bo_messaging import get_user_real_name
-        user_name = await get_user_real_name(user_id) if user_id and user_id != "website_mockup" else user_id
-
-        cost_tracking.track_image_generation(
-            response=img,
-            model="gpt-image-1",
-            size=size,
-            quality="high",
+            quality="standard",
             n=1,
-            user_id=user_name if user_name else "website_mockup",
+            user_id=user_name,
             workflow="mockup_ai",
-            context=f"AI creative generation: {location_key or 'unknown location'}",
-            metadata={"prompt_length": len(prompt), "size": size, "location_key": location_key}
+            context=f"location:{location_key}" if location_key else None,
         )
 
-        # Extract base64 image data (automatically returned by gpt-image-1)
-        b64_image = img.data[0].b64_json
-        image_data = base64.b64decode(b64_image)
+        if not response.images:
+            logger.error("[AI_CREATIVE] No images returned from generation")
+            return None
+
+        image_data = response.images[0]
+        logger.info(f"[AI_CREATIVE] Generated image: {len(image_data)} bytes")
 
         # Apply sharpening and quality enhancement to AI-generated image
         import io

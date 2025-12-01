@@ -7,6 +7,7 @@ from integrations.llm.client import (
     LLMResponse,
     LLMProvider,
     ContentPart,
+    CostInfo,
     JSONSchema,
     ToolDefinition,
     RawTool,
@@ -17,12 +18,16 @@ from integrations.llm.client import (
     ImageResponse,
 )
 
+# Cost tracking module
+from integrations.llm import cost_tracker
+
 __all__ = [
     "LLMClient",
     "LLMMessage",
     "LLMResponse",
     "LLMProvider",
     "ContentPart",
+    "CostInfo",
     "JSONSchema",
     "ToolDefinition",
     "RawTool",
@@ -31,4 +36,5 @@ __all__ = [
     "ReasoningEffort",
     "FileReference",
     "ImageResponse",
+    "cost_tracker",
 ]

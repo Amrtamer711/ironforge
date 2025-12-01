@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Union
 from openai import AsyncOpenAI
 
 from integrations.llm.base import (
+    CostInfo,
     FileReference,
     ImageResponse,
     JSONSchema,
@@ -30,6 +31,31 @@ from integrations.llm.base import (
 )
 
 logger = logging.getLogger("proposal-bot")
+
+# OpenAI pricing per 1M tokens
+OPENAI_PRICING = {
+    "gpt-5": {
+        "input": 1.25,
+        "input_cached": 0.125,
+        "output": 10.00,
+    },
+    "gpt-image-1": {
+        "text_input": 5.00,
+        "text_input_cached": 1.25,
+        "image_input": 10.00,
+        "image_input_cached": 2.50,
+        "output": 40.00,
+    },
+    "gpt-image-1-mini": {
+        "text_input": 2.00,
+        "text_input_cached": 0.20,
+        "image_input": 2.50,
+        "image_input_cached": 0.25,
+        "output": 8.00,
+    },
+    "gpt-4.1": {"input": 0.30, "input_cached": 0.03, "output": 1.20},
+    "gpt-4": {"input": 0.30, "input_cached": 0.03, "output": 1.20},
+}
 
 
 class OpenAIProvider(LLMProvider):
@@ -154,15 +180,18 @@ class OpenAIProvider(LLMProvider):
             if hasattr(img_data, "b64_json") and img_data.b64_json:
                 images.append(base64.b64decode(img_data.b64_json))
 
-        # Extract usage if available
+        # Extract usage and calculate cost
         usage = None
+        cost = None
         if hasattr(response, "usage") and response.usage:
             usage = self._parse_image_usage(response.usage)
+            cost = self._calculate_image_cost(model, usage, size, n)
 
         return ImageResponse(
             images=images,
             model=model,
             usage=usage,
+            cost=cost,
             raw_response=response,
         )
 
@@ -262,15 +291,19 @@ class OpenAIProvider(LLMProvider):
         if hasattr(response, "output_text") and response.output_text:
             content = response.output_text
 
-        # Parse usage
+        # Parse usage and calculate cost
+        model = getattr(response, "model", self._default_model)
         usage = None
+        cost = None
         if hasattr(response, "usage") and response.usage:
             usage = self._parse_usage(response.usage)
+            cost = self._calculate_completion_cost(model, usage)
 
         return LLMResponse(
             content=content,
-            model=getattr(response, "model", self._default_model),
+            model=model,
             usage=usage,
+            cost=cost,
             tool_calls=tool_calls if tool_calls else None,
             raw_response=response,
         )
@@ -317,4 +350,63 @@ class OpenAIProvider(LLMProvider):
             output_tokens=output_tokens,
             text_input_tokens=text_input_tokens,
             image_input_tokens=image_input_tokens,
+        )
+
+    def _calculate_completion_cost(self, model: str, usage: TokenUsage) -> CostInfo:
+        """Calculate cost for a completion call with separate reasoning costs."""
+        pricing = OPENAI_PRICING.get(model, OPENAI_PRICING.get("gpt-5", {}))
+
+        # Calculate non-cached and cached input costs
+        non_cached = usage.input_tokens - usage.cached_input_tokens
+        input_cost = (non_cached / 1_000_000) * pricing.get("input", 0)
+        input_cost += (usage.cached_input_tokens / 1_000_000) * pricing.get(
+            "input_cached", pricing.get("input", 0) * 0.1
+        )
+
+        # Output tokens (excluding reasoning)
+        output_cost = (usage.output_tokens / 1_000_000) * pricing.get("output", 0)
+
+        # Reasoning tokens priced separately (some models have different reasoning rates)
+        reasoning_cost = 0.0
+        if usage.reasoning_tokens > 0:
+            # Use reasoning-specific pricing if available, otherwise same as output
+            reasoning_rate = pricing.get("reasoning", pricing.get("output", 0))
+            reasoning_cost = (usage.reasoning_tokens / 1_000_000) * reasoning_rate
+
+        total_cost = input_cost + output_cost + reasoning_cost
+
+        return CostInfo(
+            provider=self.name,
+            model=model,
+            total_cost=total_cost,
+            input_cost=input_cost,
+            output_cost=output_cost,
+            reasoning_cost=reasoning_cost,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            cached_tokens=usage.cached_input_tokens,
+            reasoning_tokens=usage.reasoning_tokens,
+        )
+
+    def _calculate_image_cost(self, model: str, usage: TokenUsage, size: str, n: int) -> CostInfo:
+        """Calculate cost for image generation."""
+        pricing = OPENAI_PRICING.get(model, OPENAI_PRICING.get("gpt-image-1", {}))
+
+        # Token-based pricing
+        text_cost = (usage.text_input_tokens / 1_000_000) * pricing.get("text_input", 5.0)
+        image_cost = (usage.image_input_tokens / 1_000_000) * pricing.get("image_input", 10.0)
+        output_cost = (usage.output_tokens / 1_000_000) * pricing.get("output", 40.0)
+
+        total_cost = text_cost + image_cost + output_cost
+
+        return CostInfo(
+            provider=self.name,
+            model=model,
+            total_cost=total_cost,
+            input_cost=text_cost + image_cost,
+            output_cost=output_cost,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            image_size=size,
+            image_count=n,
         )

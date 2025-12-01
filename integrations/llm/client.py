@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from integrations.llm.base import (
     ContentPart,
+    CostInfo,
     FileReference,
     ImageResponse,
     JSONSchema,
@@ -23,6 +24,7 @@ from integrations.llm.base import (
     ToolDefinition,
 )
 from integrations.llm.providers.openai import OpenAIProvider
+from integrations.llm.providers.google import GoogleProvider
 
 logger = logging.getLogger("proposal-bot")
 
@@ -74,20 +76,61 @@ class LLMClient:
         self._provider = provider
 
     @classmethod
-    def from_config(cls) -> "LLMClient":
+    def from_config(cls, provider_name: Optional[str] = None) -> "LLMClient":
         """
         Create an LLMClient using configuration from config.py.
+
+        Args:
+            provider_name: Which provider to use ("openai" or "google").
+                          If None, uses config.LLM_PROVIDER or defaults to "openai".
 
         Returns:
             Configured LLMClient instance
         """
         import config
 
-        provider = OpenAIProvider(
-            api_key=config.OPENAI_API_KEY,
-            default_model=config.OPENAI_MODEL,
-        )
+        # Determine which provider to use
+        provider_name = provider_name or getattr(config, "LLM_PROVIDER", "openai")
+
+        if provider_name == "google":
+            api_key = getattr(config, "GOOGLE_API_KEY", None)
+            if not api_key:
+                raise ValueError("GOOGLE_API_KEY not configured")
+
+            provider = GoogleProvider(
+                api_key=api_key,
+                default_model=getattr(config, "GOOGLE_MODEL", "gemini-2.5-flash"),
+                default_image_model=getattr(config, "GOOGLE_IMAGE_MODEL", "gemini-2.5-flash-image"),
+            )
+        else:
+            # Default to OpenAI
+            provider = OpenAIProvider(
+                api_key=config.OPENAI_API_KEY,
+                default_model=config.OPENAI_MODEL,
+            )
+
         return cls(provider)
+
+    @classmethod
+    def for_images(cls, provider_name: Optional[str] = None) -> "LLMClient":
+        """
+        Create an LLMClient specifically configured for image generation.
+
+        Args:
+            provider_name: Which provider to use ("openai" or "google").
+                          If None, uses config.IMAGE_PROVIDER or defaults to config.LLM_PROVIDER.
+
+        Returns:
+            Configured LLMClient instance for image generation
+        """
+        import config
+
+        # Check for image-specific provider first
+        provider_name = provider_name or getattr(config, "IMAGE_PROVIDER", None)
+        if provider_name is None:
+            provider_name = getattr(config, "LLM_PROVIDER", "openai")
+
+        return cls.from_config(provider_name)
 
     @property
     def provider(self) -> LLMProvider:
@@ -261,13 +304,12 @@ class LLMClient:
     ) -> None:
         """Track cost for a completion call."""
         try:
-            from integrations.openai import cost_tracker
+            from integrations.llm import cost_tracker
 
-            # Build a minimal response object that cost_tracker expects
-            # The raw_response contains the original provider response
-            if response.raw_response:
-                cost_tracker.track_openai_call(
-                    response=response.raw_response,
+            # Use the CostInfo from the response (calculated by provider)
+            if response.cost:
+                cost_tracker.track_cost(
+                    cost=response.cost,
                     call_type=call_type,
                     user_id=user_id,
                     workflow=workflow,
@@ -290,15 +332,13 @@ class LLMClient:
     ) -> None:
         """Track cost for an image generation call."""
         try:
-            from integrations.openai import cost_tracker
+            from integrations.llm import cost_tracker
 
-            if response.raw_response:
-                cost_tracker.track_image_generation(
-                    response=response.raw_response,
-                    model=response.model,
-                    size=size,
-                    quality=quality,
-                    n=n,
+            # Use the CostInfo from the response (calculated by provider)
+            if response.cost:
+                cost_tracker.track_cost(
+                    cost=response.cost,
+                    call_type="image_generation",
                     user_id=user_id,
                     workflow=workflow,
                     context=context,
@@ -315,6 +355,7 @@ __all__ = [
     "LLMResponse",
     "LLMProvider",
     "ContentPart",
+    "CostInfo",
     "JSONSchema",
     "ToolDefinition",
     "RawTool",

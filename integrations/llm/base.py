@@ -72,6 +72,7 @@ class LLMResponse:
     content: str
     model: str
     usage: Optional["TokenUsage"] = None
+    cost: Optional["CostInfo"] = None  # Provider-calculated cost
     tool_calls: Optional[List["ToolCall"]] = None
     raw_response: Any = None  # Original provider response for advanced use
 
@@ -237,9 +238,48 @@ class LLMProvider(ABC):
 
 
 @dataclass
+class CostInfo:
+    """
+    Uniform cost information calculated by the provider.
+
+    Each provider calculates this from its own response format.
+    The cost tracker logs these with full accuracy.
+
+    Cost breakdown:
+    - input_cost: Cost for non-cached input tokens
+    - output_cost: Cost for output tokens (excluding reasoning)
+    - reasoning_cost: Cost for reasoning/thinking tokens (separate from output)
+    - total_cost: Sum of all costs
+
+    Token breakdown:
+    - input_tokens: Total input tokens (including cached)
+    - output_tokens: Output tokens (excluding reasoning)
+    - cached_tokens: Tokens served from cache (subset of input_tokens)
+    - reasoning_tokens: Thinking/reasoning tokens (separate from output)
+    """
+    provider: str  # "openai", "google", etc.
+    model: str
+    total_cost: float
+    input_cost: float = 0.0
+    output_cost: float = 0.0
+    reasoning_cost: float = 0.0  # Separate from output_cost
+
+    # Token breakdown (all preserved for accuracy)
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cached_tokens: int = 0
+    reasoning_tokens: int = 0  # Separate from output_tokens
+
+    # Image-specific
+    image_size: Optional[str] = None  # "1K", "2K", "4K" or "1024x1024"
+    image_count: int = 0
+
+
+@dataclass
 class ImageResponse:
     """Response from image generation."""
     images: List[bytes]  # Raw image data
     model: str
     usage: Optional[TokenUsage] = None
+    cost: Optional[CostInfo] = None  # Provider-calculated cost
     raw_response: Any = None
