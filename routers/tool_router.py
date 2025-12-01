@@ -125,9 +125,9 @@ async def handle_tool_call(
     if msg.name in ["get_separate_proposals", "get_combined_proposal"] and 'result' in locals():
         logger.info(f"[RESULT] Processing result: {result}")
         if result["success"]:
-            # Delete status message before uploading files
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            
+            # Update status to uploading
+            await config.slack_client.chat_update(channel=channel, ts=status_ts, text="📤 Uploading proposals...")
+
             if result.get("is_combined"):
                 logger.info(f"[RESULT] Combined package - PDF: {result.get('pdf_filename')}")
                 await config.slack_client.files_upload_v2(channel=channel, file=result["pdf_path"], filename=result["pdf_filename"], initial_comment=config.markdown_to_slack(f"📦 **Combined Package Proposal**\n📍 Locations: {result['locations']}"))
@@ -150,6 +150,11 @@ async def handle_tool_call(
                     for f in result["individual_files"]: os.unlink(f["path"])  # type: ignore
                     os.unlink(result["merged_pdf_path"])  # type: ignore
                 except: pass
+            # Delete status message after uploads complete
+            try:
+                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+            except:
+                pass
         else:
             logger.error(f"[RESULT] Error: {result.get('error')}")
             await config.slack_client.chat_delete(channel=channel, ts=status_ts)
@@ -403,14 +408,14 @@ async def handle_tool_call(
         try:
             excel_path = db.export_to_excel()
             logger.info(f"[EXCEL_EXPORT] Created Excel file at {excel_path}")
-            
+
             # Get file size for display
             file_size = os.path.getsize(excel_path)
             size_mb = file_size / (1024 * 1024)
-            
-            # Delete status message before uploading file
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            
+
+            # Update status to uploading
+            await config.slack_client.chat_update(channel=channel, ts=status_ts, text="📤 Uploading export...")
+
             await config.slack_client.files_upload_v2(
                 channel=channel,
                 file=excel_path,
@@ -421,7 +426,13 @@ async def handle_tool_call(
                     f"📁 Size: {size_mb:.2f} MB"
                 )
             )
-            
+
+            # Delete status message after upload completes
+            try:
+                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+            except:
+                pass
+
             # Clean up temp file
             try:
                 os.unlink(excel_path)
@@ -456,8 +467,8 @@ async def handle_tool_call(
             file_size = os.path.getsize(excel_path)
             size_mb = file_size / (1024 * 1024)
 
-            # Delete status message before uploading file
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+            # Update status to uploading
+            await config.slack_client.chat_update(channel=channel, ts=status_ts, text="📤 Uploading export...")
 
             await config.slack_client.files_upload_v2(
                 channel=channel,
@@ -469,6 +480,12 @@ async def handle_tool_call(
                     f"📁 Size: {size_mb:.2f} MB"
                 )
             )
+
+            # Delete status message after upload completes
+            try:
+                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+            except:
+                pass
 
             # Clean up temp file
             try:
@@ -530,8 +547,8 @@ async def handle_tool_call(
             combined_pdf_path = bo_data.get("original_file_path") or bo_data.get("parsed_excel_path")
 
             if combined_pdf_path and os.path.exists(combined_pdf_path):
-                # Delete status message before uploading file
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                # Update status to uploading
+                await config.slack_client.chat_update(channel=channel, ts=status_ts, text="📤 Uploading BO...")
 
                 # Send BO details with file (show user-facing bo_number)
                 details = f"📋 **Booking Order Found**\n\n"
@@ -547,9 +564,14 @@ async def handle_tool_call(
                     filename=f"{safe_bo_number}.pdf",
                     initial_comment=config.markdown_to_slack(details)
                 )
+                # Delete status message after upload completes
+                try:
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                except:
+                    pass
             else:
                 # File not found, regenerate from data
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                await config.slack_client.chat_update(channel=channel, ts=status_ts, text="📤 Regenerating and uploading BO...")
 
                 parser = BookingOrderParser(company=bo_data.get("company", "backlite"))
 
@@ -570,6 +592,11 @@ async def handle_tool_call(
                     filename=f"{safe_bo_number}.xlsx",
                     initial_comment=config.markdown_to_slack(details)
                 )
+                # Delete status message after upload completes
+                try:
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                except:
+                    pass
 
                 # Clean up temp file
                 try:
@@ -836,8 +863,12 @@ async def handle_tool_call(
                     if not result_path:
                         raise Exception("Failed to generate mockup")
 
-                    # Upload mockup
-                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    # Update status to uploading, upload file, then delete status
+                    await config.slack_client.chat_update(
+                        channel=channel,
+                        ts=status_ts,
+                        text="📤 Uploading mockup..."
+                    )
                     variation_info = ""
                     if time_of_day != "all" or finish != "all":
                         variation_info = f" ({time_of_day}/{finish})"
@@ -855,6 +886,11 @@ async def handle_tool_call(
                             f"✨ Your creative has been applied to this location."
                         )
                     )
+                    # Delete status message after upload completes
+                    try:
+                        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    except:
+                        pass
 
                     # Update history with new location (but keep same creatives)
                     mockup_user_hist["metadata"]["location_key"] = location_key
@@ -956,8 +992,12 @@ async def handle_tool_call(
                 if not result_path:
                     raise Exception("Failed to generate mockup")
 
-                # Delete status and upload mockup
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                # Update status to uploading, upload file, then delete status
+                await config.slack_client.chat_update(
+                    channel=channel,
+                    ts=status_ts,
+                    text="📤 Uploading mockup..."
+                )
                 variation_info = ""
                 if time_of_day != "all" or finish != "all":
                     variation_info = f" ({time_of_day}/{finish})"
@@ -972,6 +1012,11 @@ async def handle_tool_call(
                         f"✨ Your creative has been applied to a billboard photo.{variation_note}"
                     )
                 )
+                # Delete status message after upload completes
+                try:
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                except:
+                    pass
 
                 # Get frame count for validation in follow-ups
                 location_frame_count = get_location_frame_count(location_key, time_of_day, finish)
@@ -1231,8 +1276,12 @@ DELIVER A COMPLETE, MODERN, PROFESSIONAL ADVERTISEMENT - FULLY DESIGNED, NO BLAN
                 if not result_path:
                     raise Exception("Failed to generate mockup")
 
-                # Delete status and upload mockup
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                # Update status to uploading, upload file, then delete status
+                await config.slack_client.chat_update(
+                    channel=channel,
+                    ts=status_ts,
+                    text="📤 Uploading mockup..."
+                )
                 variation_info = ""
                 if time_of_day != "all" or finish != "all":
                     variation_info = f" ({time_of_day}/{finish})"
@@ -1248,6 +1297,11 @@ DELIVER A COMPLETE, MODERN, PROFESSIONAL ADVERTISEMENT - FULLY DESIGNED, NO BLAN
                         f"📍 Location: {location_name}{variation_info}{frames_info}\n"
                     )
                 )
+                # Delete status message after upload completes
+                try:
+                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                except:
+                    pass
 
                 # Store creative files in 30-minute history for follow-ups on other locations
                 store_mockup_history(user_id, ai_creative_paths, {
