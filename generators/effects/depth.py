@@ -134,13 +134,17 @@ class DepthEffect:
 
         result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR).astype(np.float32)
 
-        # Reduce contrast (up to 12% at max intensity)
+        # Reduce contrast (up to 12% at max intensity) - only within masked region
         masked_pixels = mask > 0.5
         if np.any(masked_pixels):
             mean = np.mean(result[masked_pixels])
             contrast_factor = 1.0 - (self.intensity * 0.12)
-            result = mean + (result - mean) * contrast_factor
-            result = np.clip(result, 0, 255)
+            # Create contrast-adjusted version
+            adjusted = mean + (result - mean) * contrast_factor
+            adjusted = np.clip(adjusted, 0, 255)
+            # Blend using mask: only apply contrast reduction within masked region
+            mask_3ch = np.stack([mask] * 3, axis=-1)
+            result = result * (1 - mask_3ch) + adjusted * mask_3ch
 
         logger.info(f"[DEPTH] Applied daytime atmospheric depth (intensity: {self.intensity:.2f})")
         return result

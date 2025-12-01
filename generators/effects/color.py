@@ -58,9 +58,13 @@ class ColorAdjustment:
         if self.brightness == 1.0 and self.contrast == 1.0:
             return image
 
-        # Apply contrast and brightness
-        result = image * self.contrast + (self.brightness - 1) * 100
-        result = np.clip(result, 0, 255)
+        # Apply contrast and brightness to create adjusted version
+        adjusted = image * self.contrast + (self.brightness - 1) * 100
+        adjusted = np.clip(adjusted, 0, 255)
+
+        # Blend using mask: only apply effect within masked region
+        mask_3ch = np.stack([mask] * 3, axis=-1)
+        result = image * (1 - mask_3ch) + adjusted * mask_3ch
 
         logger.debug(f"[COLOR] Applied brightness={self.brightness:.2f}, contrast={self.contrast:.2f}")
         return result
