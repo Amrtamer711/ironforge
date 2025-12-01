@@ -1783,6 +1783,28 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         if hasattr(msg, 'name'):
             logger.info(f"[LLM] Function name: {msg.name}")
         if msg.type == "function_call":
+            # Add assistant's tool call to history so model knows what it did
+            try:
+                args_dict = json.loads(msg.arguments)
+                if msg.name == "get_separate_proposals":
+                    locations = [p.get("location", "unknown") for p in args_dict.get("proposals", [])]
+                    client = args_dict.get("client_name", "unknown")
+                    assistant_summary = f"[Generated separate proposals for {client}: {', '.join(locations)}]"
+                elif msg.name == "get_combined_proposal":
+                    locations = [p.get("location", "unknown") for p in args_dict.get("proposals", [])]
+                    client = args_dict.get("client_name", "unknown")
+                    assistant_summary = f"[Generated combined proposal for {client}: {', '.join(locations)}]"
+                elif msg.name == "generate_mockup":
+                    location = args_dict.get("location", "unknown")
+                    assistant_summary = f"[Generated mockup for {location}]"
+                elif msg.name == "parse_booking_order":
+                    assistant_summary = "[Parsed booking order]"
+                else:
+                    assistant_summary = f"[Called {msg.name}]"
+            except:
+                assistant_summary = f"[Called {msg.name}]"
+            history.append({"role": "assistant", "content": assistant_summary, "timestamp": datetime.now().isoformat()})
+
             # Dispatch to tool router
             from routers.tool_router import handle_tool_call
             handled = await handle_tool_call(
@@ -1802,6 +1824,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 return
         else:
             reply = msg.content[-1].text if hasattr(msg, 'content') and msg.content else "How can I help you today?"
+            # Add assistant's text reply to history
+            history.append({"role": "assistant", "content": reply, "timestamp": datetime.now().isoformat()})
             # Format any markdown-style text from the LLM
             formatted_reply = reply
             # Ensure bullet points are properly formatted
