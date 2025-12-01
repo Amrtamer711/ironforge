@@ -56,7 +56,7 @@ async def _generate_mockup_queued(
         Tuple of (result_path, metadata)
     """
     from generators import mockup as mockup_generator
-    import gc
+    from utils.memory import cleanup_memory
 
     logger = config.logger
     logger.info(f"[QUEUE] Mockup generation requested for {location_key}")
@@ -74,7 +74,7 @@ async def _generate_mockup_queued(
                 config_override=config_override
             )
             logger.info(f"[QUEUE] Mockup generation completed for {location_key}")
-            gc.collect()
+            cleanup_memory(context="mockup_queue", aggressive=False, log_stats=False)
             return result_path, metadata
         except Exception as e:
             logger.error(f"[QUEUE] Mockup generation failed for {location_key}: {e}")
@@ -109,7 +109,7 @@ async def _generate_ai_mockup_queued(
         Tuple of (result_path, ai_creative_paths)
     """
     from generators import mockup as mockup_generator
-    import gc
+    from utils.memory import cleanup_memory
 
     logger = config.logger
     num_prompts = len(ai_prompts)
@@ -158,7 +158,7 @@ async def _generate_ai_mockup_queued(
                 raise Exception("Failed to generate mockup")
 
             logger.info(f"[QUEUE] AI mockup completed for {location_key}")
-            gc.collect()
+            cleanup_memory(context="ai_mockup_queue", aggressive=False, log_stats=False)
             return result_path, ai_creative_paths
 
         except Exception as e:

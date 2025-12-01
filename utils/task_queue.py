@@ -211,36 +211,14 @@ class MockupTaskQueue:
             # Signal task completion (success or failure)
             task.completed_event.set()
 
-            # Continue with cleanup
+            # Continue with cleanup using centralized memory utility
             # Force aggressive garbage collection before releasing slot
             # This ensures memory from numpy arrays is freed before next task starts
-            import gc
-            ram_before_gc = get_ram_usage_mb()
-            gc.collect()  # Collect generation 0 (recent objects)
-            gc.collect()  # Collect generation 1
-            gc.collect()  # Collect generation 2 (full collection)
-
-            # CRITICAL: Force Python to return freed memory to OS (Linux only)
-            # Without this, Python hoards freed memory causing slow memory leak
-            try:
-                import ctypes
-                libc = ctypes.CDLL("libc.so.6")
-                libc.malloc_trim(0)  # Return all free memory to OS
-                logger.debug(f"[QUEUE] Task {task.task_id} malloc_trim() called")
-            except Exception as e:
-                # Not on Linux or malloc_trim unavailable - that's okay
-                logger.debug(f"[QUEUE] malloc_trim() not available: {e}")
+            from utils.memory import cleanup_memory
+            cleanup_memory(context=f"queue_task_{task.task_id}", aggressive=True, log_stats=True)
 
             # Small delay to let OS reclaim memory (numpy arrays use malloc directly)
             await asyncio.sleep(0.1)
-
-            ram_after_gc = get_ram_usage_mb()
-            ram_freed = ram_before_gc['rss_mb'] - ram_after_gc['rss_mb']
-            logger.info(
-                f"[QUEUE] Task {task.task_id} GC complete "
-                f"(RAM: {ram_before_gc['rss_mb']}MB → {ram_after_gc['rss_mb']}MB, "
-                f"freed: {ram_freed:.2f}MB)"
-            )
 
             # Release slot
             async with self.lock:

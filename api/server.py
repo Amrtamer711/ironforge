@@ -756,8 +756,8 @@ async def test_preview_mockup(
         del billboard_data, billboard_array, billboard_img
         del creative_data, creative_array, creative_img
         del result
-        import gc
-        gc.collect()
+        from utils.memory import cleanup_memory
+        cleanup_memory(context="mockup_preview", aggressive=False, log_stats=False)
 
         if not success:
             raise HTTPException(status_code=500, detail="Failed to encode preview image")
@@ -775,8 +775,8 @@ async def test_preview_mockup(
             del billboard_data, billboard_array, billboard_img
             del creative_data, creative_array, creative_img
             del result
-            import gc
-            gc.collect()
+            from utils.memory import cleanup_memory
+            cleanup_memory(context="mockup_preview_error", aggressive=False, log_stats=False)
         except:
             pass
         raise HTTPException(status_code=500, detail=str(e))

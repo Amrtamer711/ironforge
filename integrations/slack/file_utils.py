@@ -3,7 +3,6 @@ Slack File Utilities - Download, validate, and convert files from Slack.
 """
 
 import os
-import gc
 import tempfile
 import aiohttp
 from pathlib import Path
@@ -13,6 +12,7 @@ from pptx.util import Inches
 from PIL import Image
 
 import config
+from utils.memory import cleanup_memory
 
 logger = config.logger
 
@@ -195,8 +195,7 @@ def _validate_powerpoint_file(file_path: Path) -> bool:
         # CRITICAL: Delete presentation object to free memory
         # python-pptx loads entire PPT into RAM (50-100MB+)
         del pres
-        import gc
-        gc.collect()
+        cleanup_memory(context="pptx_validation", aggressive=False, log_stats=False)
 
         if slide_count < 1:
             config.logger.warning(f"[VALIDATION] PowerPoint file has no slides: {file_path}")
@@ -211,8 +210,7 @@ def _validate_powerpoint_file(file_path: Path) -> bool:
             del pres
         except:
             pass
-        import gc
-        gc.collect()
+        cleanup_memory(context="pptx_validation_error", aggressive=False, log_stats=False)
         return False
 
 

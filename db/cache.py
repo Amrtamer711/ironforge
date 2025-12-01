@@ -3,12 +3,12 @@ Cache - In-memory caches for user sessions and mockup history.
 """
 
 import os
-import gc
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 
 import config
 from db.database import db
+from utils.memory import cleanup_memory
 
 # Global for user conversation history
 user_history: Dict[str, list] = {}
@@ -57,8 +57,7 @@ def cleanup_expired_mockups():
 
     # Force garbage collection if we cleaned up any files
     if expired_users:
-        gc.collect()
-        config.logger.info(f"[MOCKUP HISTORY] Forced garbage collection after cleanup")
+        cleanup_memory(context="mockup_history_cleanup", aggressive=False, log_stats=False)
 
 
 def store_mockup_history(user_id: str, creative_paths: list, metadata: dict):
@@ -84,7 +83,7 @@ def store_mockup_history(user_id: str, creative_paths: list, metadata: dict):
         if deleted_count > 0:
             config.logger.info(f"[MOCKUP HISTORY] Replaced {deleted_count} old creative file(s) for user {user_id}")
             # Force garbage collection when replacing files
-            gc.collect()
+            cleanup_memory(context="mockup_history_replace", aggressive=False, log_stats=False)
 
     # Store new creative files
     mockup_history[user_id] = {
@@ -126,7 +125,7 @@ def get_mockup_history(user_id: str) -> Optional[Dict[str, Any]]:
 
         # Force garbage collection if we deleted files
         if deleted_count > 0:
-            gc.collect()
+            cleanup_memory(context="mockup_history_auto_cleanup", aggressive=False, log_stats=False)
             config.logger.info(f"[MOCKUP HISTORY] Auto-cleaned {deleted_count} expired file(s) for user {user_id}")
 
         return None
