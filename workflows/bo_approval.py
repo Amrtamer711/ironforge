@@ -388,7 +388,7 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
     - Move to HoS stage
     - Send to appropriate Head of Sales with buttons
     """
-    import bo_slack_messaging
+    from integrations.slack import bo_messaging as bo_slack_messaging
     from pathlib import Path
 
     workflow = await get_workflow_with_cache(workflow_id)
@@ -508,7 +508,7 @@ async def handle_coordinator_rejection(workflow_id: str, user_id: str, response_
     - Create thread on the button message for editing
     - Allow coordinator to make natural language edits
     """
-    import bo_slack_messaging
+    from integrations.slack import bo_messaging as bo_slack_messaging
 
     workflow = await get_workflow_with_cache(workflow_id)
     if not workflow:
@@ -580,7 +580,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     - Notify finance (no buttons)
     - Close coordinator thread
     """
-    import bo_slack_messaging
+    from integrations.slack import bo_messaging as bo_slack_messaging
     from pathlib import Path
     import shutil
 
@@ -754,7 +754,7 @@ async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str
     # Prevent duplicate rejection (clicking button multiple times)
     if workflow.get("status") == "coordinator_rejected":
         logger.warning(f"[BO APPROVAL] Workflow {workflow_id} already rejected by HoS - ignoring duplicate")
-        import bo_slack_messaging
+        from integrations.slack import bo_messaging as bo_slack_messaging
         await bo_slack_messaging.post_response_url(response_url, {
             "replace_original": False,
             "text": "⚠️ This booking order has already been rejected and sent back to the coordinator."
@@ -765,7 +765,7 @@ async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str
     logger.info(f"[BO APPROVAL] ❌ Head of Sales {user_id} rejected {workflow_id} - Client: {workflow_data.get('client', 'N/A')} - Reason: {rejection_reason[:100]}")
 
     # Update HoS button message to show rejection
-    import bo_slack_messaging
+    from integrations.slack import bo_messaging as bo_slack_messaging
     hos_msg_ts = workflow.get("hos_msg_ts")
     hos_channel = workflow.get("hos_channel")
     if hos_msg_ts and hos_channel:
@@ -847,7 +847,7 @@ async def start_revision_workflow(
     Returns:
         Dictionary with workflow_id and status
     """
-    import bo_slack_messaging
+    from integrations.slack import bo_messaging as bo_slack_messaging
     from pathlib import Path
 
     logger.info(f"[BO_REVISE] Starting revision workflow for BO: {bo_data.get('bo_ref')} requested by {requester_user_id}")
@@ -1015,7 +1015,7 @@ async def handle_bo_cancellation(
     - Clean up workflow from database
     - Delete workflow state
     """
-    import bo_slack_messaging
+    from integrations.slack import bo_messaging as bo_slack_messaging
 
     workflow = await get_workflow_with_cache(workflow_id)
     if not workflow:

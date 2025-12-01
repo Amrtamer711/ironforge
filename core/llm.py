@@ -228,7 +228,7 @@ async def _handle_booking_order_parse(
         # Continue processing - status update failure shouldn't stop the workflow
 
     # Convert user_id to user_name for cost tracking
-    from bo_slack_messaging import get_user_real_name
+    from integrations.slack.bo_messaging import get_user_real_name
     user_name = await get_user_real_name(user_id) if user_id else None
 
     classification = await parser.classify_document(tmp_file, user_message=user_message, user_id=user_name)
@@ -1455,7 +1455,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
 
                 # Classify using existing classifier (converts to PDF, sends to OpenAI, returns classification)
                 from booking_parser import BookingOrderParser
-                from bo_slack_messaging import get_user_real_name
+                from integrations.slack.bo_messaging import get_user_real_name
                 user_name = await get_user_real_name(user_id) if user_id else None
                 parser = BookingOrderParser(company="backlite")  # Company will be determined by classifier
                 classification = await parser.classify_document(tmp_file, user_message=user_input, user_id=user_name)
@@ -1754,7 +1754,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
 
         # Track cost
         from integrations.openai import cost_tracker as cost_tracking
-        from bo_slack_messaging import get_user_real_name
+        from integrations.slack.bo_messaging import get_user_real_name
         user_name = await get_user_real_name(user_id) if user_id else None
         cost_tracking.track_openai_call(
             response=res,

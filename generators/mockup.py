@@ -845,7 +845,7 @@ async def generate_ai_creative(prompt: str, size: str = "1536x1024", location_ke
 
         # Track cost for image generation using response object (includes token usage)
         # Convert user_id to user_name for cost tracking
-        from bo_slack_messaging import get_user_real_name
+        from integrations.slack.bo_messaging import get_user_real_name
         user_name = await get_user_real_name(user_id) if user_id and user_id != "website_mockup" else user_id
 
         cost_tracking.track_image_generation(

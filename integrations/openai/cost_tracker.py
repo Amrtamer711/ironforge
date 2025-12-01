@@ -133,7 +133,7 @@ def get_user_name_sync(user_id: Optional[str]) -> Optional[str]:
 
     try:
         import asyncio
-        from bo_slack_messaging import get_user_real_name
+        from integrations.slack.bo_messaging import get_user_real_name
 
         # Run async function synchronously
         loop = asyncio.new_event_loop()
