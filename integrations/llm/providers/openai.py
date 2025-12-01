@@ -116,6 +116,8 @@ class OpenAIProvider(LLMProvider):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         store: bool = False,
+        cache_key: Optional[str] = None,
+        cache_retention: Optional[str] = None,
     ) -> LLMResponse:
         """
         Generate completion using OpenAI's responses.create API.
@@ -126,6 +128,12 @@ class OpenAIProvider(LLMProvider):
         - reasoning: {effort: "none"|"minimal"|"low"|"medium"|"high"}
         - max_output_tokens: Max tokens to generate (not max_tokens)
         - text.format: For structured outputs (json_schema)
+
+        Prompt Caching (gpt-5.1, gpt-5, gpt-4.1):
+        - cache_key: Stable identifier for routing (e.g., "proposal-system")
+        - cache_retention: "in_memory" (default, 5-10 min) or "24h" (extended)
+        - Caching is automatic for prompts 1024+ tokens
+        - Up to 90% input cost reduction, 80% latency reduction
         """
         model = model or self._default_model
 
@@ -175,6 +183,12 @@ class OpenAIProvider(LLMProvider):
 
         if max_tokens is not None:
             kwargs["max_output_tokens"] = max_tokens
+
+        # Prompt caching options (gpt-5.1, gpt-5, gpt-4.1 support extended caching)
+        if cache_key:
+            kwargs["prompt_cache_key"] = cache_key
+        if cache_retention:
+            kwargs["prompt_cache_retention"] = cache_retention
 
         response = await self._client.responses.create(**kwargs)
         return self._parse_text_response(response, model)

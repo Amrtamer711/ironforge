@@ -1144,6 +1144,9 @@ async def handle_coordinator_thread_message(
             messages=messages,
             json_schema=get_coordinator_response_schema(),
             reasoning=ReasoningEffort.LOW,
+            # Prompt caching: coordinator thread system prompt is static
+            cache_key="coordinator-thread",
+            cache_retention="24h",
             call_type="coordinator_thread",
             workflow="bo_editing",
             user_id=user_id,

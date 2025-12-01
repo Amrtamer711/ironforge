@@ -153,6 +153,9 @@ class LLMClient:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         store: bool = False,
+        # Prompt caching parameters (OpenAI-specific)
+        cache_key: Optional[str] = None,
+        cache_retention: Optional[str] = None,
         # Cost tracking parameters
         track_cost: bool = True,
         call_type: str = "llm_call",
@@ -174,6 +177,8 @@ class LLMClient:
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
             store: Whether to store the response
+            cache_key: Prompt cache routing key (OpenAI: e.g., "proposal-system")
+            cache_retention: Cache retention policy (OpenAI: "in_memory" or "24h")
             track_cost: Whether to track API costs (default True)
             call_type: Type of call for cost tracking
             user_id: User ID/name for cost tracking
@@ -194,6 +199,8 @@ class LLMClient:
             temperature=temperature,
             max_tokens=max_tokens,
             store=store,
+            cache_key=cache_key,
+            cache_retention=cache_retention,
         )
 
         # Track cost if enabled and we have usage data

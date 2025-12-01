@@ -172,6 +172,8 @@ class LLMProvider(ABC):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         store: bool = False,
+        cache_key: Optional[str] = None,
+        cache_retention: Optional[str] = None,
     ) -> LLMResponse:
         """
         Generate a completion from the LLM.
@@ -186,6 +188,8 @@ class LLMProvider(ABC):
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
             store: Whether to store the response (OpenAI-specific, default False)
+            cache_key: Prompt cache routing key (OpenAI-specific, e.g., "proposal-system")
+            cache_retention: Cache retention policy (OpenAI: "in_memory" or "24h")
 
         Returns:
             LLMResponse with the completion

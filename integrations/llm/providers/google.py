@@ -118,8 +118,14 @@ class GoogleProvider(LLMProvider):
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         store: bool = False,
+        cache_key: Optional[str] = None,
+        cache_retention: Optional[str] = None,
     ) -> LLMResponse:
-        """Generate completion using Gemini's generate_content API."""
+        """Generate completion using Gemini's generate_content API.
+
+        Note: cache_key and cache_retention are OpenAI-specific and ignored here.
+        Gemini has its own caching mechanism via Context Caching API.
+        """
         model = model or self._default_model
 
         # Separate system message from conversation

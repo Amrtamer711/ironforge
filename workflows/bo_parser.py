@@ -195,6 +195,9 @@ class BookingOrderParser:
                     ])
                 ],
                 json_schema=get_classification_schema(),
+                # Prompt caching: classification system prompt is static
+                cache_key="bo-classify",
+                cache_retention="24h",
                 # Cost tracking
                 call_type="classification",
                 workflow="bo_parsing",
@@ -291,6 +294,9 @@ The user provided this message with the file: "{user_message}"
                 model="gpt-5",
                 reasoning=ReasoningEffort.HIGH,
                 json_schema=get_booking_order_extraction_schema(),
+                # Prompt caching: data extractor prompt is static
+                cache_key="bo-parse",
+                cache_retention="24h",
                 # Cost tracking
                 call_type="parsing",
                 workflow="bo_parsing",
