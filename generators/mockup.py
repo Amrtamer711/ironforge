@@ -233,27 +233,24 @@ async def generate_ai_creative(
     import tempfile
     from integrations.llm import LLMClient
 
-    # Auto-detect portrait orientation if location_key provided
-    if location_key and is_portrait_location(location_key):
-        size = "1024x1536"  # Portrait aspect ratio
-        logger.info(f"[AI_CREATIVE] Auto-detected portrait orientation for '{location_key}', using size {size}")
-    else:
-        logger.info(f"[AI_CREATIVE] Using landscape orientation, size {size}")
-
     # Get the image provider client (uses config.IMAGE_PROVIDER or falls back to LLM_PROVIDER)
     client = LLMClient.for_images(provider_name=provider)
-    logger.info(f"[AI_CREATIVE] Generating image with {client.provider_name}: {prompt[:100]}...")
+
+    # Determine orientation from location
+    orientation = "portrait" if (location_key and is_portrait_location(location_key)) else "landscape"
+    logger.info(f"[AI_CREATIVE] Generating {orientation} image with {client.provider_name}: {prompt[:100]}...")
 
     # Convert user_id to user_name for cost tracking
     from integrations.slack.bo_messaging import get_user_real_name
     user_name = await get_user_real_name(user_id) if user_id and user_id != "website_mockup" else user_id
 
     try:
-        # Generate image using unified client
+        # Generate image using unified client with standardized interface
+        # Provider handles quality/orientation internally (Google: 4K, OpenAI: HD)
         response = await client.generate_image(
             prompt=prompt,
-            size=size,
-            quality="standard",
+            quality="high",
+            orientation=orientation,
             n=1,
             user_id=user_name,
             workflow="mockup_ai",

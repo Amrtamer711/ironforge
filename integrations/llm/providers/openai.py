@@ -1,12 +1,22 @@
 """
 OpenAI LLM Provider Implementation.
 
-Handles OpenAI-specific API syntax:
-- responses.create() with input= parameter
-- text= parameter for JSON schema structured outputs
-- reasoning= parameter for reasoning effort
-- files.create() / files.delete() for file handling
-- images.generate() for image generation
+Text completions: responses.create() API
+- instructions: System/developer message
+- input: User/assistant messages array
+- reasoning: {effort: "none"|"minimal"|"low"|"medium"|"high"}
+- max_output_tokens: Max tokens to generate
+- text.format: For structured outputs (json_schema)
+- Response: output[].content[].text or response.output_text
+
+Image generation: gpt-image-1 via images.generate()
+- prompt: max 32000 chars
+- quality: "low", "medium", "high" (passed directly, NOT hd/standard)
+- size: "1024x1024", "1536x1024" (landscape), "1024x1536" (portrait), "auto"
+- n: 1-10 images
+- Always returns b64_json (no response_format param)
+- Response: img.data[0].b64_json
+- Usage: {input_tokens, output_tokens, input_tokens_details: {text_tokens, image_tokens}}
 """
 
 import base64
@@ -32,13 +42,28 @@ from integrations.llm.base import (
 
 logger = logging.getLogger("proposal-bot")
 
-# OpenAI pricing per 1M tokens
+# ============================================================================
+# PRICING (per 1M tokens)
+# ============================================================================
+
 OPENAI_PRICING = {
+    # Text models
+    "gpt-5.1": {
+        "input": 1.25,
+        "input_cached": 0.125,
+        "output": 10.00,
+    },
     "gpt-5": {
         "input": 1.25,
         "input_cached": 0.125,
         "output": 10.00,
     },
+    "gpt-4.1": {
+        "input": 0.30,
+        "input_cached": 0.03,
+        "output": 1.20,
+    },
+    # Image models (token-based pricing)
     "gpt-image-1": {
         "text_input": 5.00,
         "text_input_cached": 1.25,
@@ -46,35 +71,23 @@ OPENAI_PRICING = {
         "image_input_cached": 2.50,
         "output": 40.00,
     },
-    "gpt-image-1-mini": {
-        "text_input": 2.00,
-        "text_input_cached": 0.20,
-        "image_input": 2.50,
-        "image_input_cached": 0.25,
-        "output": 8.00,
-    },
-    "gpt-4.1": {"input": 0.30, "input_cached": 0.03, "output": 1.20},
-    "gpt-4": {"input": 0.30, "input_cached": 0.03, "output": 1.20},
 }
 
 
 class OpenAIProvider(LLMProvider):
-    """OpenAI API implementation."""
+    """
+    OpenAI API implementation.
+
+    Text: responses.create() with input= parameter
+    Images: images.generate() for gpt-image-1
+    """
 
     def __init__(
         self,
         api_key: str,
-        default_model: str = "gpt-5",
+        default_model: str = "gpt-5.1",
         default_image_model: str = "gpt-image-1",
     ):
-        """
-        Initialize OpenAI provider.
-
-        Args:
-            api_key: OpenAI API key
-            default_model: Default model for completions
-            default_image_model: Default model for image generation
-        """
         self._client = AsyncOpenAI(api_key=api_key)
         self._default_model = default_model
         self._default_image_model = default_image_model
@@ -87,6 +100,10 @@ class OpenAIProvider(LLMProvider):
     def client(self) -> AsyncOpenAI:
         """Access to raw client for advanced use cases."""
         return self._client
+
+    # ========================================================================
+    # TEXT COMPLETIONS
+    # ========================================================================
 
     async def complete(
         self,
@@ -101,27 +118,40 @@ class OpenAIProvider(LLMProvider):
         store: bool = False,
     ) -> LLMResponse:
         """
-        Generate a completion using OpenAI's responses.create API.
+        Generate completion using OpenAI's responses.create API.
 
-        OpenAI-specific:
-        - Uses 'input' parameter instead of 'messages'
-        - Uses 'text' parameter for JSON schema
-        - Uses 'reasoning' parameter for effort levels
-        - Uses 'store' parameter to control response storage
+        OpenAI Responses API specifics:
+        - instructions: System/developer message (separate from input)
+        - input: User/assistant messages array
+        - reasoning: {effort: "none"|"minimal"|"low"|"medium"|"high"}
+        - max_output_tokens: Max tokens to generate (not max_tokens)
+        - text.format: For structured outputs (json_schema)
         """
         model = model or self._default_model
 
-        # Convert unified messages to OpenAI format
-        input_messages = self._convert_messages(messages)
+        # Separate system message (-> instructions) from conversation (-> input)
+        instructions = None
+        input_messages = []
 
-        # Build request kwargs
+        for msg in messages:
+            if msg.role == "system":
+                # System messages go to instructions parameter
+                instructions = msg.content if isinstance(msg.content, str) else str(msg.content)
+            else:
+                # User/assistant messages go to input
+                input_messages.append({"role": msg.role, "content": msg.content})
+
+        # Build request
         kwargs: Dict[str, Any] = {
             "model": model,
             "input": input_messages,
             "store": store,
         }
 
-        # Add optional parameters
+        # Add instructions (system message) if present
+        if instructions:
+            kwargs["instructions"] = instructions
+
         if tools:
             kwargs["tools"] = self._convert_tools(tools)
             if tool_choice:
@@ -144,48 +174,67 @@ class OpenAIProvider(LLMProvider):
             kwargs["temperature"] = temperature
 
         if max_tokens is not None:
-            kwargs["max_tokens"] = max_tokens
+            kwargs["max_output_tokens"] = max_tokens
 
-        # Make the API call
         response = await self._client.responses.create(**kwargs)
+        return self._parse_text_response(response, model)
 
-        # Parse the response
-        return self._parse_response(response)
+    # ========================================================================
+    # IMAGE GENERATION (gpt-image-1)
+    # ========================================================================
 
     async def generate_image(
         self,
         prompt: str,
-        model: Optional[str] = None,
-        size: str = "1024x1024",
-        quality: str = "standard",
+        quality: str = "high",
+        orientation: str = "landscape",
         n: int = 1,
     ) -> ImageResponse:
         """
-        Generate an image using OpenAI's images.generate API.
-        """
-        model = model or self._default_image_model
+        Generate image using gpt-image-1.
 
+        Args:
+            prompt: Text description (max 32000 chars for gpt-image-1)
+            quality: "low", "medium", or "high" - passed directly to API
+            orientation: "portrait" or "landscape" - mapped to size
+
+        gpt-image-1 sizes (from docs):
+        - 1024x1024 (square)
+        - 1536x1024 (landscape)
+        - 1024x1536 (portrait)
+        """
+        model = self._default_image_model
+
+        # Map orientation to gpt-image-1 size
+        if orientation == "portrait":
+            size = "1024x1536"
+        else:  # landscape
+            size = "1536x1024"
+
+        logger.info(f"[OPENAI] Generating {n} image(s): model={model}, size={size}, quality={quality}")
+
+        # Call gpt-image-1 API
+        # Note: gpt-image-1 always returns b64_json, no response_format needed
         response = await self._client.images.generate(
             model=model,
             prompt=prompt,
             n=n,
             size=size,
             quality=quality,
-            response_format="b64_json",
         )
 
-        # Extract image data
+        # Extract images from response.data[].b64_json
         images = []
         for img_data in response.data:
-            if hasattr(img_data, "b64_json") and img_data.b64_json:
+            if img_data.b64_json:
                 images.append(base64.b64decode(img_data.b64_json))
 
-        # Extract usage and calculate cost
+        # Parse usage and calculate cost
         usage = None
         cost = None
         if hasattr(response, "usage") and response.usage:
             usage = self._parse_image_usage(response.usage)
-            cost = self._calculate_image_cost(model, usage, size, n)
+            cost = self._calculate_image_cost(model, usage, n)
 
         return ImageResponse(
             images=images,
@@ -195,31 +244,26 @@ class OpenAIProvider(LLMProvider):
             raw_response=response,
         )
 
+    # ========================================================================
+    # FILE OPERATIONS
+    # ========================================================================
+
     async def upload_file(
         self,
         file_path: str,
         purpose: str = "user_data",
     ) -> FileReference:
-        """
-        Upload a file to OpenAI.
-        """
+        """Upload a file to OpenAI."""
         with open(file_path, "rb") as f:
-            file_obj = await self._client.files.create(
-                file=f,
-                purpose=purpose,
-            )
+            file_obj = await self._client.files.create(file=f, purpose=purpose)
 
         logger.info(f"[OPENAI] Uploaded file: {file_obj.id}")
         return FileReference(file_id=file_obj.id, provider=self.name)
 
     async def delete_file(self, file_ref: FileReference) -> bool:
-        """
-        Delete a file from OpenAI.
-        """
+        """Delete a file from OpenAI."""
         if file_ref.provider != self.name:
-            logger.warning(
-                f"[OPENAI] Cannot delete file from provider: {file_ref.provider}"
-            )
+            logger.warning(f"[OPENAI] Cannot delete file from provider: {file_ref.provider}")
             return False
 
         try:
@@ -230,27 +274,19 @@ class OpenAIProvider(LLMProvider):
             logger.warning(f"[OPENAI] Failed to delete file {file_ref.file_id}: {e}")
             return False
 
-    def _convert_messages(self, messages: List[LLMMessage]) -> List[Dict[str, Any]]:
-        """Convert unified messages to OpenAI format."""
-        return [{"role": msg.role, "content": msg.content} for msg in messages]
+    # ========================================================================
+    # INTERNAL: PARSING & COST CALCULATION
+    # ========================================================================
 
     def _convert_tools(
         self, tools: List[Union[ToolDefinition, RawTool]]
     ) -> List[Dict[str, Any]]:
-        """
-        Convert unified tool definitions to OpenAI format.
-
-        Handles both:
-        - ToolDefinition: Converted to OpenAI function format
-        - RawTool: Passed through unchanged (e.g., code_interpreter)
-        """
+        """Convert tool definitions to OpenAI format."""
         result = []
         for tool in tools:
             if isinstance(tool, RawTool):
-                # Raw tools pass through unchanged
                 result.append(tool.raw)
             else:
-                # Function tools get converted
                 result.append({
                     "type": "function",
                     "name": tool.name,
@@ -259,9 +295,8 @@ class OpenAIProvider(LLMProvider):
                 })
         return result
 
-    def _parse_response(self, response: Any) -> LLMResponse:
-        """Parse OpenAI response into unified format."""
-        # Extract text content
+    def _parse_text_response(self, response: Any, model: str) -> LLMResponse:
+        """Parse text completion response."""
         content = ""
         tool_calls = []
 
@@ -269,35 +304,29 @@ class OpenAIProvider(LLMProvider):
             for item in response.output:
                 if hasattr(item, "type"):
                     if item.type == "message" and hasattr(item, "content"):
-                        # Handle message content
                         for content_item in item.content:
                             if hasattr(content_item, "text"):
                                 content = content_item.text
                     elif item.type == "function_call":
-                        # Handle function calls
                         import json
-
                         tool_calls.append(
                             ToolCall(
                                 id=getattr(item, "call_id", ""),
                                 name=getattr(item, "name", ""),
-                                arguments=json.loads(
-                                    getattr(item, "arguments", "{}")
-                                ),
+                                arguments=json.loads(getattr(item, "arguments", "{}")),
                             )
                         )
 
-        # Also check for direct output_text (structured outputs)
+        # Check for direct output_text (structured outputs)
         if hasattr(response, "output_text") and response.output_text:
             content = response.output_text
 
-        # Parse usage and calculate cost
-        model = getattr(response, "model", self._default_model)
+        # Parse usage
         usage = None
         cost = None
         if hasattr(response, "usage") and response.usage:
-            usage = self._parse_usage(response.usage)
-            cost = self._calculate_completion_cost(model, usage)
+            usage = self._parse_text_usage(response.usage)
+            cost = self._calculate_text_cost(model, usage)
 
         return LLMResponse(
             content=content,
@@ -308,22 +337,28 @@ class OpenAIProvider(LLMProvider):
             raw_response=response,
         )
 
-    def _parse_usage(self, usage: Any) -> TokenUsage:
-        """Parse OpenAI usage into unified format."""
+    def _parse_text_usage(self, usage: Any) -> TokenUsage:
+        """
+        Parse text completion usage.
+
+        Structure:
+        {
+            "input_tokens": 328,
+            "input_tokens_details": {"cached_tokens": 0},
+            "output_tokens": 52,
+            "output_tokens_details": {"reasoning_tokens": 0}
+        }
+        """
         input_tokens = getattr(usage, "input_tokens", 0) or 0
         output_tokens = getattr(usage, "output_tokens", 0) or 0
 
-        # Handle cached input tokens
         cached_input_tokens = 0
         if hasattr(usage, "input_tokens_details"):
-            details = usage.input_tokens_details
-            cached_input_tokens = getattr(details, "cached_tokens", 0) or 0
+            cached_input_tokens = getattr(usage.input_tokens_details, "cached_tokens", 0) or 0
 
-        # Handle reasoning tokens
         reasoning_tokens = 0
         if hasattr(usage, "output_tokens_details"):
-            details = usage.output_tokens_details
-            reasoning_tokens = getattr(details, "reasoning_tokens", 0) or 0
+            reasoning_tokens = getattr(usage.output_tokens_details, "reasoning_tokens", 0) or 0
 
         return TokenUsage(
             input_tokens=input_tokens,
@@ -333,52 +368,58 @@ class OpenAIProvider(LLMProvider):
         )
 
     def _parse_image_usage(self, usage: Any) -> TokenUsage:
-        """Parse OpenAI image generation usage."""
-        total_input = getattr(usage, "input_tokens", 0) or 0
+        """
+        Parse gpt-image-1 usage.
+
+        Structure (from docs):
+        {
+            "total_tokens": 100,
+            "input_tokens": 50,
+            "output_tokens": 50,
+            "input_tokens_details": {
+                "text_tokens": 10,
+                "image_tokens": 40
+            }
+        }
+        """
+        input_tokens = getattr(usage, "input_tokens", 0) or 0
         output_tokens = getattr(usage, "output_tokens", 0) or 0
 
         text_input_tokens = 0
         image_input_tokens = 0
-
         if hasattr(usage, "input_tokens_details"):
             details = usage.input_tokens_details
             text_input_tokens = getattr(details, "text_tokens", 0) or 0
             image_input_tokens = getattr(details, "image_tokens", 0) or 0
 
         return TokenUsage(
-            input_tokens=total_input,
+            input_tokens=input_tokens,
             output_tokens=output_tokens,
             text_input_tokens=text_input_tokens,
             image_input_tokens=image_input_tokens,
         )
 
-    def _calculate_completion_cost(self, model: str, usage: TokenUsage) -> CostInfo:
-        """Calculate cost for a completion call with separate reasoning costs."""
+    def _calculate_text_cost(self, model: str, usage: TokenUsage) -> CostInfo:
+        """Calculate cost for text completion."""
         pricing = OPENAI_PRICING.get(model, OPENAI_PRICING.get("gpt-5", {}))
 
-        # Calculate non-cached and cached input costs
         non_cached = usage.input_tokens - usage.cached_input_tokens
         input_cost = (non_cached / 1_000_000) * pricing.get("input", 0)
         input_cost += (usage.cached_input_tokens / 1_000_000) * pricing.get(
             "input_cached", pricing.get("input", 0) * 0.1
         )
 
-        # Output tokens (excluding reasoning)
         output_cost = (usage.output_tokens / 1_000_000) * pricing.get("output", 0)
 
-        # Reasoning tokens priced separately (some models have different reasoning rates)
         reasoning_cost = 0.0
         if usage.reasoning_tokens > 0:
-            # Use reasoning-specific pricing if available, otherwise same as output
             reasoning_rate = pricing.get("reasoning", pricing.get("output", 0))
             reasoning_cost = (usage.reasoning_tokens / 1_000_000) * reasoning_rate
-
-        total_cost = input_cost + output_cost + reasoning_cost
 
         return CostInfo(
             provider=self.name,
             model=model,
-            total_cost=total_cost,
+            total_cost=input_cost + output_cost + reasoning_cost,
             input_cost=input_cost,
             output_cost=output_cost,
             reasoning_cost=reasoning_cost,
@@ -388,25 +429,21 @@ class OpenAIProvider(LLMProvider):
             reasoning_tokens=usage.reasoning_tokens,
         )
 
-    def _calculate_image_cost(self, model: str, usage: TokenUsage, size: str, n: int) -> CostInfo:
-        """Calculate cost for image generation."""
+    def _calculate_image_cost(self, model: str, usage: TokenUsage, n: int) -> CostInfo:
+        """Calculate cost for gpt-image-1 generation."""
         pricing = OPENAI_PRICING.get(model, OPENAI_PRICING.get("gpt-image-1", {}))
 
-        # Token-based pricing
         text_cost = (usage.text_input_tokens / 1_000_000) * pricing.get("text_input", 5.0)
         image_cost = (usage.image_input_tokens / 1_000_000) * pricing.get("image_input", 10.0)
         output_cost = (usage.output_tokens / 1_000_000) * pricing.get("output", 40.0)
 
-        total_cost = text_cost + image_cost + output_cost
-
         return CostInfo(
             provider=self.name,
             model=model,
-            total_cost=total_cost,
+            total_cost=text_cost + image_cost + output_cost,
             input_cost=text_cost + image_cost,
             output_cost=output_cost,
             input_tokens=usage.input_tokens,
             output_tokens=usage.output_tokens,
-            image_size=size,
             image_count=n,
         )

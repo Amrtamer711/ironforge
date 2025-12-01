@@ -10,7 +10,18 @@ from enum import Enum
 
 
 class ReasoningEffort(Enum):
-    """Reasoning effort levels for models that support it."""
+    """
+    Reasoning effort levels for models that support it.
+
+    OpenAI Responses API values:
+    - none: No reasoning (gpt-5.1 default, not supported by older models)
+    - minimal: Minimal reasoning
+    - low: Low reasoning effort
+    - medium: Medium reasoning effort (default for models before gpt-5.1)
+    - high: High reasoning effort (only option for gpt-5-pro)
+    """
+    NONE = "none"
+    MINIMAL = "minimal"
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -185,19 +196,21 @@ class LLMProvider(ABC):
     async def generate_image(
         self,
         prompt: str,
-        model: Optional[str] = None,
-        size: str = "1024x1024",
-        quality: str = "standard",
+        quality: str = "high",
+        orientation: str = "landscape",
         n: int = 1,
     ) -> "ImageResponse":
         """
         Generate an image from a text prompt.
 
+        Unified interface - each provider handles quality/orientation internally:
+        - OpenAI (gpt-image-1): quality=low/medium/high, sizes=1024x1536/1536x1024
+        - Google (gemini-3-pro): quality→resolution (1K/2K/4K), orientation→aspect_ratio
+
         Args:
             prompt: Text description of the image to generate
-            model: Image model to use
-            size: Image dimensions (e.g., "1024x1024", "1792x1024")
-            quality: Quality level ("standard" or "high")
+            quality: "low", "medium", or "high" - provider maps to internal settings
+            orientation: "portrait" or "landscape" - provider maps to size/aspect_ratio
             n: Number of images to generate
 
         Returns:

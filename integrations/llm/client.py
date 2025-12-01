@@ -100,7 +100,7 @@ class LLMClient:
             provider = GoogleProvider(
                 api_key=api_key,
                 default_model=getattr(config, "GOOGLE_MODEL", "gemini-2.5-flash"),
-                default_image_model=getattr(config, "GOOGLE_IMAGE_MODEL", "gemini-2.5-flash-image"),
+                default_image_model=getattr(config, "GOOGLE_IMAGE_MODEL", "gemini-3-pro-image-preview"),
             )
         else:
             # Default to OpenAI
@@ -212,9 +212,8 @@ class LLMClient:
     async def generate_image(
         self,
         prompt: str,
-        model: Optional[str] = None,
-        size: str = "1024x1024",
-        quality: str = "standard",
+        quality: str = "high",
+        orientation: str = "landscape",
         n: int = 1,
         # Cost tracking parameters
         track_cost: bool = True,
@@ -226,11 +225,14 @@ class LLMClient:
         """
         Generate an image from a text prompt.
 
+        Unified interface - providers handle quality/orientation internally:
+        - OpenAI (gpt-image-1): quality=low/medium/high, orientation→size
+        - Google (gemini-3-pro): quality→resolution (1K/2K/4K), orientation→aspect_ratio
+
         Args:
             prompt: Text description of the image
-            model: Image model to use
-            size: Image dimensions (e.g., "1024x1024", "1024x1536")
-            quality: Quality level ("standard" or "high")
+            quality: "low", "medium", or "high"
+            orientation: "portrait" or "landscape"
             n: Number of images to generate
             track_cost: Whether to track API costs
             user_id: User ID/name for cost tracking
@@ -243,9 +245,8 @@ class LLMClient:
         """
         response = await self._provider.generate_image(
             prompt=prompt,
-            model=model,
-            size=size,
             quality=quality,
+            orientation=orientation,
             n=n,
         )
 
@@ -253,8 +254,6 @@ class LLMClient:
         if track_cost:
             self._track_image_cost(
                 response=response,
-                size=size,
-                quality=quality,
                 n=n,
                 user_id=user_id,
                 workflow=workflow,
@@ -322,8 +321,6 @@ class LLMClient:
     def _track_image_cost(
         self,
         response: ImageResponse,
-        size: str,
-        quality: str,
         n: int,
         user_id: Optional[str],
         workflow: Optional[str],
