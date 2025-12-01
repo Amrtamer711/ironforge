@@ -1454,7 +1454,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 logger.info(f"[PRE-ROUTER] Downloaded: {tmp_file}")
 
                 # Classify using existing classifier (converts to PDF, sends to OpenAI, returns classification)
-                from booking_parser import BookingOrderParser
+                from workflows.bo_parser import BookingOrderParser
                 from integrations.slack.bo_messaging import get_user_real_name
                 user_name = await get_user_real_name(user_id) if user_id else None
                 parser = BookingOrderParser(company="backlite")  # Company will be determined by classifier

@@ -355,7 +355,7 @@ async def notify_finance(
 
     Returns: {"message_id": ts, "channel": channel}
     """
-    from booking_parser import sanitize_filename
+    from workflows.bo_parser import sanitize_filename
 
     # Get bo_number for user-facing display
     bo_number = data.get("bo_number", "N/A")

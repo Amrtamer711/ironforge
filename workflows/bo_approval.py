@@ -225,7 +225,7 @@ async def create_approval_workflow(
 
     Returns workflow_id
     """
-    from booking_parser import ORIGINAL_BOS_DIR
+    from workflows.bo_parser import ORIGINAL_BOS_DIR
     import shutil
 
     workflow_id = create_workflow_id(company)

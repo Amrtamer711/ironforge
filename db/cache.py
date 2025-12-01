@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 
 import config
-import db
+from db.database import db
 
 # Global for user conversation history
 user_history: Dict[str, list] = {}
