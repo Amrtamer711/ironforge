@@ -109,21 +109,60 @@ def set_cell_border(cell, edges=("L", "R", "T", "B")) -> None:
         tcPr.append(ln)
 
 
-def _calc_vat_and_total_for_rates(net_rates: List[str], upload_fee: int, municipality_fee: int = 520) -> Tuple[List[str], List[str]]:
+def _calc_vat_and_total_for_rates(
+    net_rates: List[str],
+    upload_fee: int,
+    municipality_fee: int = 520,
+    currency: str = None
+) -> Tuple[List[str], List[str]]:
+    """Calculate VAT and total amounts for given net rates.
+
+    All calculations are done in AED, then converted to target currency for display.
+    """
     vat_amounts = []
     total_amounts = []
     for net_rate_str in net_rates:
+        # Parse AED amount (all rates are stored in AED)
         net_rate = float(net_rate_str.replace("AED", "").replace(",", "").strip())
         subtotal = net_rate + upload_fee + municipality_fee
         vat = subtotal * 0.05
         total = subtotal + vat
-        vat_amounts.append(f"AED {vat:,.0f}")
-        total_amounts.append(f"AED {total:,.0f}")
+
+        # Convert to target currency if specified
+        if currency and currency.upper() != "AED":
+            vat_converted = config.convert_currency_value(vat, "AED", currency)
+            total_converted = config.convert_currency_value(total, "AED", currency)
+            vat_amounts.append(config.format_currency_value(vat_converted, currency))
+            total_amounts.append(config.format_currency_value(total_converted, currency))
+        else:
+            vat_amounts.append(f"AED {vat:,.0f}")
+            total_amounts.append(f"AED {total:,.0f}")
     return vat_amounts, total_amounts
 
 
 def _spots_text(spots: int) -> str:
     return f"{spots} Spot" + ("s" if spots != 1 else "")
+
+
+def _format_rate_in_currency(rate_str: str, currency: str = None) -> str:
+    """Convert an AED rate string to target currency format."""
+    if not currency or currency.upper() == "AED":
+        return rate_str
+
+    # Parse the AED amount
+    amount = float(rate_str.replace("AED", "").replace(",", "").strip())
+    # Convert to target currency
+    converted = config.convert_currency_value(amount, "AED", currency)
+    return config.format_currency_value(converted, currency)
+
+
+def _format_fee_in_currency(fee_value: float, currency: str = None) -> str:
+    """Format a fee value in the target currency."""
+    if not currency or currency.upper() == "AED":
+        return f"AED {fee_value:,.0f}"
+
+    converted = config.convert_currency_value(fee_value, "AED", currency)
+    return config.format_currency_value(converted, currency)
 
 
 def build_location_text(location_key: str, spots: int) -> str:
@@ -195,9 +234,22 @@ def build_location_text(location_key: str, spots: int) -> str:
     return description
 
 
-def create_financial_proposal_slide(slide, financial_data: dict, slide_width, slide_height) -> Tuple[List[str], List[str]]:
+def create_financial_proposal_slide(slide, financial_data: dict, slide_width, slide_height, currency: str = None) -> Tuple[List[str], List[str]]:
+    """Create a financial proposal slide with optional currency conversion.
+
+    Args:
+        slide: The PowerPoint slide to add content to
+        financial_data: Dict containing location, dates, rates, etc.
+        slide_width: Width of the slide
+        slide_height: Height of the slide
+        currency: Target currency code (e.g., 'USD', 'EUR'). If None or 'AED', uses AED.
+
+    Returns:
+        Tuple of (vat_amounts, total_amounts) as formatted strings in target currency
+    """
     logger = config.logger
     logger.info(f"[CREATE_FINANCIAL] Creating financial slide with data: {financial_data}")
+    logger.info(f"[CREATE_FINANCIAL] Target currency: {currency or 'AED'}")
     
     scale_x = slide_width / Inches(20)
     scale_y = slide_height / Inches(12)
@@ -234,30 +286,38 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     
     if is_static and production_fee_str:
         # Use production fee for static locations
-        fee_str = production_fee_str
         fee_label = "Production Fee:"
         # Parse production fee to get numeric value
         production_fee = float(production_fee_str.replace("AED", "").replace(",", "").strip())
         upload_fee = production_fee
+        fee_str = _format_fee_in_currency(upload_fee, currency)
     else:
         # Use upload fee for digital locations
         upload_fee = config.UPLOAD_FEES_MAPPING.get(location_name.lower(), 3000)
-        fee_str = f"AED {upload_fee:,}"
+        fee_str = _format_fee_in_currency(upload_fee, currency)
         fee_label = "Upload Fee:"
-    
+
     municipality_fee = 520
+    municipality_fee_str = _format_fee_in_currency(municipality_fee, currency) + " Per Image/Message"
     logger.info(f"[CREATE_FINANCIAL] Fee for '{location_name}': {fee_str} (static: {is_static})")
 
-    vat_amounts, total_amounts = _calc_vat_and_total_for_rates(net_rates, upload_fee, municipality_fee)
+    # Calculate VAT and totals with currency conversion
+    vat_amounts, total_amounts = _calc_vat_and_total_for_rates(net_rates, upload_fee, municipality_fee, currency)
+
+    # Format net rates in target currency
+    if currency and currency.upper() != "AED":
+        formatted_rates = [_format_rate_in_currency(r, currency) for r in net_rates]
+    else:
+        formatted_rates = net_rates
 
     data = [
         (header_text, None),
         ("Location:", location_text),
         ("Start/End Date:", date_range),
         ("Duration:", durations if len(durations) > 1 else durations[0]),
-        ("Net Rate:", net_rates if len(net_rates) > 1 else net_rates[0]),
+        ("Net Rate:", formatted_rates if len(formatted_rates) > 1 else formatted_rates[0]),
         (fee_label, fee_str),
-        ("Municipality Fee:", "AED 520 Per Image/Message"),
+        ("Municipality Fee:", municipality_fee_str),
         ("VAT 5% :", vat_amounts if len(vat_amounts) > 1 else vat_amounts[0]),
         ("Total:", total_amounts if len(total_amounts) > 1 else total_amounts[0]),
     ]
@@ -416,6 +476,13 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     # Get payment terms (default to 100% upfront) from financial_data
     payment_terms = financial_data.get("payment_terms", "100% upfront")
 
+    # Build currency note if non-AED currency is used
+    currency_note = ""
+    if currency and currency.upper() != "AED":
+        currency_meta = config.get_currency_metadata(currency)
+        currency_name = currency_meta.get("code", currency.upper())
+        currency_note = f"\n• All amounts shown in {currency_name} (converted from AED at current exchange rates)."
+
     bullet_text = f"""• Payment Terms: {payment_terms}
 • A DM fee of AED 520 per image/message applies. The final fee will be confirmed after the final artwork is received.
 • An official booking order is required to secure the location/spot.
@@ -423,7 +490,7 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
 • All artworks are subject to approval by BackLite Media and DM.
 • Location availability is subject to change.
 • The artwork must comply with DM's guidelines.
-• This proposal is valid until the {validity_date_str}."""
+• This proposal is valid until the {validity_date_str}.{currency_note}"""
 
     # Smart T&C positioning: calculate available space and auto-scale font
     min_spacing = int(Inches(0.8) * scale_y)  # Minimum gap between table and T&C (increased to prevent overlap)
@@ -521,12 +588,29 @@ def create_combined_financial_proposal_slide(
     slide_height,
     client_name: str = "",
     payment_terms: str = "100% upfront",
+    currency: str = None,
 ) -> str:
+    """Create a combined financial proposal slide for multiple locations.
+
+    Args:
+        slide: The PowerPoint slide to add content to
+        proposals_data: List of proposal dicts
+        combined_net_rate: Combined net rate string (in AED)
+        slide_width: Width of the slide
+        slide_height: Height of the slide
+        client_name: Client name for header
+        payment_terms: Payment terms text
+        currency: Target currency code (e.g., 'USD', 'EUR'). If None or 'AED', uses AED.
+
+    Returns:
+        Total amount as formatted string in target currency
+    """
     logger = config.logger
     logger.info(f"[CREATE_COMBINED] Creating combined slide for {len(proposals_data)} locations")
     logger.info(f"[CREATE_COMBINED] Proposals data: {proposals_data}")
     logger.info(f"[CREATE_COMBINED] Combined net rate: {combined_net_rate}")
     logger.info(f"[CREATE_COMBINED] Payment terms: {payment_terms}")
+    logger.info(f"[CREATE_COMBINED] Target currency: {currency or 'AED'}")
 
     scale_x = slide_width / Inches(20)
     scale_y = slide_height / Inches(12)
@@ -593,19 +677,18 @@ def create_combined_financial_proposal_slide(
             has_static = True
             if production_fee_str:
                 # Use production fee for static locations
-                upload_fees.append(production_fee_str)
-                # Parse production fee to get numeric value
                 fee_numeric = float(production_fee_str.replace("AED", "").replace(",", "").strip())
+                upload_fees.append(_format_fee_in_currency(fee_numeric, currency))
                 total_fees += fee_numeric
             else:
                 # Fallback to stored fee
                 fee = config.UPLOAD_FEES_MAPPING.get(loc_name.lower(), 3000)
-                upload_fees.append(f"AED {fee:,}")
+                upload_fees.append(_format_fee_in_currency(fee, currency))
                 total_fees += fee
         else:
             has_digital = True
             upload_fee = config.UPLOAD_FEES_MAPPING.get(loc_name.lower(), 3000)
-            upload_fees.append(f"AED {upload_fee:,}")
+            upload_fees.append(_format_fee_in_currency(upload_fee, currency))
             total_fees += upload_fee
         
         logger.info(f"[CREATE_COMBINED] Location {idx + 1} text: '{location_text}'")
@@ -629,16 +712,29 @@ def create_combined_financial_proposal_slide(
 
     header_text = f"{client_name.strip()} Investment Sheet" if client_name.strip() else "Investment Sheet"
 
+    # Format amounts in target currency
+    formatted_net_rate = _format_rate_in_currency(combined_net_rate, currency)
+    municipality_fee_str = _format_fee_in_currency(municipality_fee, currency) + " Per Image/Message"
+
+    if currency and currency.upper() != "AED":
+        vat_converted = config.convert_currency_value(vat, "AED", currency)
+        total_converted = config.convert_currency_value(total, "AED", currency)
+        vat_str = config.format_currency_value(vat_converted, currency)
+        total_str = config.format_currency_value(total_converted, currency)
+    else:
+        vat_str = f"AED {vat:,.0f}"
+        total_str = f"AED {total:,.0f}"
+
     data = [
         (header_text, None),
         ("Location:", locations),
         ("Start/End Date:", start_dates),
         ("Duration:", durations),
-        ("Net Rate:", combined_net_rate),
+        ("Net Rate:", formatted_net_rate),
         (fee_label, upload_fees),
-        ("Municipality Fee:", "AED 520 Per Image/Message"),
-        ("VAT 5% :", f"AED {vat:,.0f}"),
-        ("Total:", f"AED {total:,.0f}"),
+        ("Municipality Fee:", municipality_fee_str),
+        ("VAT 5% :", vat_str),
+        ("Total:", total_str),
     ]
 
     for i, (label, value) in enumerate(data):
@@ -754,6 +850,13 @@ def create_combined_financial_proposal_slide(
     )
 
     # payment_terms is now passed as a parameter to the function
+    # Build currency note if non-AED currency is used
+    currency_note = ""
+    if currency and currency.upper() != "AED":
+        currency_meta = config.get_currency_metadata(currency)
+        currency_name = currency_meta.get("code", currency.upper())
+        currency_note = f"\n• All amounts shown in {currency_name} (converted from AED at current exchange rates)."
+
     bullet_text = f"""• Payment Terms: {payment_terms}
 • A DM fee of AED 520 per image/message applies. The final fee will be confirmed after the final artwork is received.
 • An official booking order is required to secure the location/spot.
@@ -761,7 +864,7 @@ def create_combined_financial_proposal_slide(
 • All artworks are subject to approval by BackLite Media and DM.
 • Location availability is subject to change.
 • The artwork must comply with DM's guidelines.
-• This proposal is valid until the {validity_date_str}."""
+• This proposal is valid until the {validity_date_str}.{currency_note}"""
 
     # Smart T&C positioning: calculate available space and auto-scale font
     # Scale spacing based on number of locations (more locations = taller location row = need more spacing)
@@ -852,4 +955,4 @@ def create_combined_financial_proposal_slide(
     date_p.font.size = Pt(int(9 * scale))
     date_p.font.color.rgb = RGBColor(100, 100, 100)
 
-    return f"AED {total:,.0f}" 
+    return total_str 

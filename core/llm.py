@@ -1365,6 +1365,11 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         f"- Format all rates as 'AED X,XXX,XXX'\n"
         f"- Parse 'mil' or 'million' as 000,000 (e.g., '2 mil' = 'AED 2,000,000')\n"
         f"- Number of spots defaults to 1 if not specified\n"
+        f"CURRENCY CONVERSION:\n"
+        f"- Default currency is AED - all internal calculations use AED\n"
+        f"- If user requests amounts in USD, EUR, GBP, SAR, or other currencies, use the 'currency' parameter\n"
+        f"- Examples: 'show in dollars', 'make it in USD', 'I need this in euros'\n"
+        f"- The proposal will display all amounts in the requested currency with a note about conversion\n"
         f"FEE COLLECTION RULES (CRITICAL):\n"
         f"- DIGITAL locations: NEVER ask for fees - upload fees are automatic\n"
         f"- STATIC locations: ALWAYS ask for production fee - it's mandatory\n"
@@ -1577,6 +1582,11 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         "type": "string",
                         "description": "Payment terms for the proposal (default: '100% upfront'). ALWAYS validate with user even if not explicitly mentioned. Examples: '100% upfront', '50% upfront, 50% on delivery', '30 days net'",
                         "default": "100% upfront"
+                    },
+                    "currency": {
+                        "type": "string",
+                        "description": "Currency for displaying amounts (default: 'AED'). Use if user requests amounts in a different currency like 'USD', 'EUR', 'GBP', 'SAR', etc. The proposal will show all amounts converted to this currency with a note about the conversion.",
+                        "default": "AED"
                     }
                 },
                 "required": ["proposals", "client_name", "payment_terms"]
@@ -1617,6 +1627,11 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         "type": "string",
                         "description": "Payment terms for the proposal (default: '100% upfront'). ALWAYS validate with user even if not explicitly mentioned. Examples: '100% upfront', '50% upfront, 50% on delivery', '30 days net'",
                         "default": "100% upfront"
+                    },
+                    "currency": {
+                        "type": "string",
+                        "description": "Currency for displaying amounts (default: 'AED'). Use if user requests amounts in a different currency like 'USD', 'EUR', 'GBP', 'SAR', etc. The proposal will show all amounts converted to this currency with a note about the conversion.",
+                        "default": "AED"
                     }
                 },
                 "required": ["proposals", "combined_net_rate", "client_name", "payment_terms"]

@@ -147,7 +147,7 @@ def _get_location_info_for_intro_outro(proposals_data: List[Dict[str, Any]]) -> 
     return None
 
 
-def create_proposal_with_template(source_path: str, financial_data: dict) -> Tuple[str, List[str], List[str]]:
+def create_proposal_with_template(source_path: str, financial_data: dict, currency: str = None) -> Tuple[str, List[str], List[str]]:
     import tempfile
 
     pres = Presentation(source_path)
@@ -158,7 +158,7 @@ def create_proposal_with_template(source_path: str, financial_data: dict) -> Tup
     blank_layout = pres.slide_layouts[6] if len(pres.slide_layouts) > 6 else pres.slide_layouts[0]
     financial_slide = pres.slides.add_slide(blank_layout)
 
-    vat_amounts, total_amounts = create_financial_proposal_slide(financial_slide, financial_data, slide_width, slide_height)
+    vat_amounts, total_amounts = create_financial_proposal_slide(financial_slide, financial_data, slide_width, slide_height, currency)
 
     if len(pres.slides) > 1 and insert_position < len(pres.slides) - 1:
         xml_slides = pres.slides._sldIdLst
@@ -171,7 +171,7 @@ def create_proposal_with_template(source_path: str, financial_data: dict) -> Tup
     return tmp.name, vat_amounts, total_amounts
 
 
-def create_combined_proposal_with_template(source_path: str, proposals_data: list, combined_net_rate: str, client_name: str, payment_terms: str = "100% upfront") -> Tuple[str, str]:
+def create_combined_proposal_with_template(source_path: str, proposals_data: list, combined_net_rate: str, client_name: str, payment_terms: str = "100% upfront", currency: str = None) -> Tuple[str, str]:
     import tempfile
 
     pres = Presentation(source_path)
@@ -194,6 +194,7 @@ def create_combined_proposal_with_template(source_path: str, proposals_data: lis
         slide_height,
         client_name,
         payment_terms,
+        currency,
     )
 
     xml_slides = pres.slides._sldIdLst
@@ -207,13 +208,14 @@ def create_combined_proposal_with_template(source_path: str, proposals_data: lis
     return tmp.name, total_combined
 
 
-async def process_combined_package(proposals_data: list, combined_net_rate: str, submitted_by: str, client_name: str, payment_terms: str = "100% upfront") -> Dict[str, Any]:
+async def process_combined_package(proposals_data: list, combined_net_rate: str, submitted_by: str, client_name: str, payment_terms: str = "100% upfront", currency: str = None) -> Dict[str, Any]:
     logger = config.logger
     logger.info(f"[COMBINED] Starting process_combined_package")
     logger.info(f"[COMBINED] Proposals: {proposals_data}")
     logger.info(f"[COMBINED] Combined rate: {combined_net_rate}")
     logger.info(f"[COMBINED] Client: {client_name}, Submitted by: {submitted_by}")
     logger.info(f"[COMBINED] Payment terms received: {payment_terms}")
+    logger.info(f"[COMBINED] Currency: {currency or 'AED'}")
     
     validated_proposals = []
     for idx, proposal in enumerate(proposals_data):
@@ -307,6 +309,7 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
                 combined_net_rate,
                 client_name,
                 payment_terms,
+                currency,
             )
         else:
             pptx_file = str(src)
@@ -471,7 +474,22 @@ async def process_proposals(
     submitted_by: str = "",
     client_name: str = "",
     payment_terms: str = "100% upfront",
+    currency: str = None,
 ) -> Dict[str, Any]:
+    """Process proposal generation with optional currency conversion.
+
+    Args:
+        proposals_data: List of proposal dicts
+        package_type: "separate" or "combined"
+        combined_net_rate: Net rate for combined packages
+        submitted_by: User who submitted
+        client_name: Client name
+        payment_terms: Payment terms text
+        currency: Target currency code (e.g., 'USD', 'EUR'). If None or 'AED', uses AED.
+
+    Returns:
+        Dict with success status and file paths
+    """
     logger = config.logger
     logger.info(f"[PROCESS] Starting process_proposals")
     logger.info(f"[PROCESS] Package type: {package_type}")
@@ -479,7 +497,8 @@ async def process_proposals(
     logger.info(f"[PROCESS] Combined rate: {combined_net_rate}")
     logger.info(f"[PROCESS] Submitted by: {submitted_by}")
     logger.info(f"[PROCESS] Client: {client_name}")
-    
+    logger.info(f"[PROCESS] Currency: {currency or 'AED'}")
+
     if not proposals_data:
         return {"success": False, "error": "No proposals provided"}
 
@@ -488,7 +507,7 @@ async def process_proposals(
 
     if package_type == "combined" and len(proposals_data) > 1:
         logger.info("[PROCESS] Routing to process_combined_package")
-        return await process_combined_package(proposals_data, combined_net_rate, submitted_by, client_name, payment_terms)
+        return await process_combined_package(proposals_data, combined_net_rate, submitted_by, client_name, payment_terms, currency)
 
     individual_files = []
     pdf_files = []
@@ -571,7 +590,7 @@ async def process_proposals(
         if payment_terms:
             financial_data["payment_terms"] = payment_terms
 
-        pptx_file, vat_amounts, total_amounts = await loop.run_in_executor(None, create_proposal_with_template, str(src), financial_data)
+        pptx_file, vat_amounts, total_amounts = await loop.run_in_executor(None, create_proposal_with_template, str(src), financial_data, currency)
 
         result = {
             "path": pptx_file,

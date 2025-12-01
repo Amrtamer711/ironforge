@@ -10,7 +10,7 @@
   - [ ] Migrate image generation from GPT-image-1 to Google Nano Banana 2
 
 ## Phase 2: Features
-- [ ] Add currency conversion to sales proposals
+- [x] Add currency conversion to sales proposals
 
 ## Phase 3: Documentation
 - [ ] Add comprehensive documentation
@@ -27,3 +27,6 @@
 ## Phase 5: Templates
 - [ ] Fix currently broken location templates
 - [ ] Add new location templates
+
+## Phase 6: Booking Order Flow
+- [ ] Finish BO flow (Note: Must align on requirements/demands first before implementation)

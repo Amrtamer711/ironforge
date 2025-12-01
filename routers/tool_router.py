@@ -68,18 +68,20 @@ async def handle_tool_call(
         proposals_data = args.get("proposals", [])
         client_name = args.get("client_name") or "Unknown Client"
         payment_terms = args.get("payment_terms", "100% upfront")
+        currency = args.get("currency")  # Optional currency (e.g., 'USD', 'EUR')
 
         logger.info(f"[SEPARATE] Raw args: {args}")
         logger.info(f"[SEPARATE] Proposals data: {proposals_data}")
         logger.info(f"[SEPARATE] Client: {client_name}, User: {user_id}")
         logger.info(f"[SEPARATE] Payment terms: {payment_terms}")
+        logger.info(f"[SEPARATE] Currency: {currency or 'AED'}")
 
         if not proposals_data:
             await config.slack_client.chat_delete(channel=channel, ts=status_ts)
             await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** No proposals data provided"))
             return True
 
-        result = await process_proposals(proposals_data, "separate", None, user_id, client_name, payment_terms)
+        result = await process_proposals(proposals_data, "separate", None, user_id, client_name, payment_terms, currency)
     elif msg.name == "get_combined_proposal":
         # Update status to Building Proposal
         await config.slack_client.chat_update(
@@ -93,12 +95,14 @@ async def handle_tool_call(
         combined_net_rate = args.get("combined_net_rate", None)
         client_name = args.get("client_name") or "Unknown Client"
         payment_terms = args.get("payment_terms", "100% upfront")
+        currency = args.get("currency")  # Optional currency (e.g., 'USD', 'EUR')
 
         logger.info(f"[COMBINED] Raw args: {args}")
         logger.info(f"[COMBINED] Proposals data: {proposals_data}")
         logger.info(f"[COMBINED] Combined rate: {combined_net_rate}")
         logger.info(f"[COMBINED] Client: {client_name}, User: {user_id}")
         logger.info(f"[COMBINED] Payment terms: {payment_terms}")
+        logger.info(f"[COMBINED] Currency: {currency or 'AED'}")
 
         if not proposals_data:
             await config.slack_client.chat_delete(channel=channel, ts=status_ts)
@@ -112,14 +116,14 @@ async def handle_tool_call(
             await config.slack_client.chat_delete(channel=channel, ts=status_ts)
             await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** Combined package requires at least 2 locations"))
             return True
-        
+
         # Transform proposals data for combined package (add durations as list with single item)
         for proposal in proposals_data:
             if "duration" in proposal:
                 proposal["durations"] = [proposal.pop("duration")]
                 logger.info(f"[COMBINED] Transformed proposal: {proposal}")
-                
-        result = await process_proposals(proposals_data, "combined", combined_net_rate, user_id, client_name, payment_terms)
+
+        result = await process_proposals(proposals_data, "combined", combined_net_rate, user_id, client_name, payment_terms, currency)
     
     # Handle result for both get_separate_proposals and get_combined_proposal
     if msg.name in ["get_separate_proposals", "get_combined_proposal"] and 'result' in locals():
