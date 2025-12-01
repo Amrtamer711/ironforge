@@ -15,7 +15,7 @@ from integrations.slack.formatting import SlackResponses
 from workflows.bo_parser import BookingOrderParser, COMBINED_BOS_DIR
 from utils.task_queue import mockup_queue
 from integrations.slack import bo_messaging as bo_slack_messaging
-from integrations.slack.file_utils import _download_slack_file, _validate_pdf_file
+from integrations.slack.file_utils import _download_slack_file, _validate_pdf_file, _convert_pdf_to_pptx
 from integrations.llm.prompts.bo_editing import get_bo_edit_prompt
 from integrations.llm.prompts.chat import get_main_system_prompt
 from integrations.llm.schemas.bo_editing import get_bo_edit_response_schema

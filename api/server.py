@@ -993,7 +993,7 @@ async def generate_mockup_api(
 
             
             creative_path = await mockup_generator.generate_ai_creative(
-                prompt=enhanced_prompt,
+                prompt=ai_prompt,
                 size="1536x1024"  # Landscape format for billboards
             )
 
