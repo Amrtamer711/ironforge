@@ -29,12 +29,14 @@ def get_ai_mockup_prompt(is_portrait: bool = False) -> str:
     return f"""Create a professional flat 2D artwork/creative design for outdoor advertising.
 
 ⚠️ CRITICAL RULES - READ FIRST:
-1. Generate CLEAN, FLAT graphics with SOLID elements
-2. FILL THE ENTIRE CANVAS - create a COMPLETE, full advertisement design
-3. NO blank/empty backgrounds unless explicitly requested
-4. Use modern, contemporary design aesthetic (2024+ style)
-5. ABSOLUTELY NO glowing effects, light flares, halos, sparkles, or radiating effects around ANY elements, especially text and logos
-6. This should look like a PROFESSIONAL AD from a creative agency
+1. THE AD MUST FILL THE ENTIRE IMAGE - the ad IS the image, not an ad placed inside an image
+2. Generate CLEAN, FLAT graphics with SOLID elements
+3. FILL THE ENTIRE CANVAS - create a COMPLETE, full advertisement design
+4. NO blank/empty backgrounds unless explicitly requested
+5. Use modern, contemporary design aesthetic (2024+ style)
+6. ABSOLUTELY NO glowing effects, light flares, halos, sparkles, or radiating effects around ANY elements, especially text and logos
+7. This should look like a PROFESSIONAL AD from a creative agency
+8. DO NOT place the ad on a billboard, wall, screen, or any surface - just create the raw flat artwork
 
 ═══════════════════════════════════════════════════════════
 🚨 CRITICAL: WHAT YOU ARE CREATING
@@ -60,6 +62,9 @@ YOU ARE CREATING: **ARTWORK/CREATIVE CONTENT ONLY**
 - ❌ DO NOT show street scenes, buildings, sky, roads, or environment
 - ❌ DO NOT create a mockup showing how the billboard looks when installed
 - ❌ DO NOT add vanishing points or dimensional representation
+- ❌ DO NOT place the ad ON a surface, wall, screen, or display
+- ❌ DO NOT show the ad mounted, posted, or displayed on anything
+- ❌ DO NOT render the ad as if it's hanging, projected, or attached to something
 
 **REMEMBER:** You are creating the ARTWORK that will go ON the billboard,
 not a picture OF a billboard. We have a separate template system for that.
@@ -142,6 +147,9 @@ DETAILED DESIGN REQUIREMENTS:
 - NO blank/empty white backgrounds (unless specifically requested)
 - NO unfinished or incomplete designs
 - NO dated or old-fashioned design styles - keep it modern
+- NO surfaces the ad is placed on (walls, screens, displays, boards, panels)
+- NO background showing the ad mounted or installed anywhere
+- NO "ad within an image" - the ad IS the entire image, edge to edge
 
 ✅ YOU MUST CREATE:
 - The FLAT ARTWORK FILE ONLY - the pure advertisement design
@@ -210,6 +218,9 @@ CRITICAL DISTINCTIONS:
 - Photo showing buildings, sky, roads, or environment around billboard
 - Any mockup showing how the billboard looks in real life
 - Perspective view, vanishing points, or dimensional representation
+- The ad placed ON a surface, wall, screen, display, or board
+- The ad mounted, posted, projected, or attached to anything
+- An "ad within an image" - THE AD MUST BE THE ENTIRE IMAGE
 
 ═══════════════════════════════════════════════════════════
 DETAILED DESIGN REQUIREMENTS:
@@ -280,6 +291,10 @@ Imagine you're a graphic designer creating this in Adobe Illustrator or Photosho
 The output should be the flat design that will be PLACED onto a billboard structure later.
 DO NOT show the billboard itself, the street, or any environmental context.
 Just deliver the pure, flat, rectangular advertisement graphic.
+
+🚨 THE AD MUST FILL THE ENTIRE IMAGE FROM EDGE TO EDGE.
+DO NOT show the ad placed on any surface, display, screen, wall, or board.
+The generated image IS the ad itself - not a picture of an ad on something.
 
 Example analogy: If asked to create a "movie poster," you'd create the poster ARTWORK, not a photo of someone holding a poster in a cinema."""
 

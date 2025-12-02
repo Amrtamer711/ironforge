@@ -99,6 +99,7 @@ class TokenUsage:
     # For image models
     text_input_tokens: int = 0
     image_input_tokens: int = 0
+    image_output_tokens: int = 0  # Gemini image generation output tokens
 
 
 @dataclass

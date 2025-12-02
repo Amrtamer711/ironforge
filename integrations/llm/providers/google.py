@@ -55,12 +55,14 @@ GEMINI_TEXT_PRICING = {
     },
 }
 
-# Image models (per image, by resolution)
+# Image models - gemini-3-pro-image-preview (per 1M tokens)
+# Official pricing: Input $2/1M, Text/Thinking output $12/1M, Image output $120/1M
+# Token counts: 1K/2K = 1120 tokens ($0.134/image), 4K = 2000 tokens ($0.24/image)
 GEMINI_IMAGE_PRICING = {
     "gemini-3-pro-image-preview": {
-        "1K": 0.040,
-        "2K": 0.080,
-        "4K": 0.160,
+        "input": 2.00,           # $2/1M tokens for text input
+        "thinking_output": 12.00, # $12/1M tokens for thinking output
+        "image_output": 120.00,   # $120/1M tokens for image output
     },
 }
 
@@ -228,6 +230,7 @@ class GoogleProvider(LLMProvider):
         # Generate images (one at a time for Gemini)
         all_images = []
         raw_responses = []
+        total_usage = TokenUsage()
 
         for _ in range(n):
             response = self._client.models.generate_content(
@@ -250,6 +253,23 @@ class GoogleProvider(LLMProvider):
                 logger.info(f"[GOOGLE] candidates: {response.candidates}")
             logger.info(f"[GOOGLE] === RAW IMAGE RESPONSE END ===")
 
+            # Parse usage from this response and accumulate
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                resp_usage = self._parse_image_usage(response.usage_metadata)
+                total_usage = TokenUsage(
+                    input_tokens=total_usage.input_tokens + resp_usage.input_tokens,
+                    output_tokens=total_usage.output_tokens + resp_usage.output_tokens,
+                    reasoning_tokens=total_usage.reasoning_tokens + resp_usage.reasoning_tokens,
+                    image_output_tokens=total_usage.image_output_tokens + resp_usage.image_output_tokens,
+                )
+                # DEBUG: Log parsed usage
+                logger.info(f"[GOOGLE] === PARSED USAGE ===")
+                logger.info(f"[GOOGLE] input_tokens: {resp_usage.input_tokens}")
+                logger.info(f"[GOOGLE] output_tokens: {resp_usage.output_tokens}")
+                logger.info(f"[GOOGLE] reasoning_tokens: {resp_usage.reasoning_tokens}")
+                logger.info(f"[GOOGLE] image_output_tokens: {resp_usage.image_output_tokens}")
+                logger.info(f"[GOOGLE] === END PARSED USAGE ===")
+
             # Extract images from response.parts
             # Skip thought=true images (interim reasoning, not charged)
             for part in response.parts:
@@ -265,13 +285,21 @@ class GoogleProvider(LLMProvider):
                     else:
                         all_images.append(image_data)
 
-        # Calculate cost
-        cost = self._calculate_image_cost(model, image_size, len(all_images))
+        # Calculate cost from actual token usage
+        cost = self._calculate_image_cost(model, total_usage, len(all_images))
+
+        # DEBUG: Log calculated cost
+        logger.info(f"[GOOGLE] === CALCULATED COST ===")
+        logger.info(f"[GOOGLE] total_cost: ${cost.total_cost:.6f}")
+        logger.info(f"[GOOGLE] input_cost: ${cost.input_cost:.6f}")
+        logger.info(f"[GOOGLE] output_cost: ${cost.output_cost:.6f}")
+        logger.info(f"[GOOGLE] reasoning_cost: ${cost.reasoning_cost:.6f}")
+        logger.info(f"[GOOGLE] === END CALCULATED COST ===")
 
         return ImageResponse(
             images=all_images,
             model=model,
-            usage=None,  # Gemini image gen doesn't return token usage
+            usage=total_usage,
             cost=cost,
             raw_response=raw_responses[0] if len(raw_responses) == 1 else raw_responses,
         )
@@ -426,15 +454,86 @@ class GoogleProvider(LLMProvider):
             reasoning_tokens=usage.reasoning_tokens,
         )
 
-    def _calculate_image_cost(self, model: str, image_size: str, n: int) -> CostInfo:
-        """Calculate cost for image generation."""
+    def _parse_image_usage(self, usage: Any) -> TokenUsage:
+        """
+        Parse Gemini image generation usage.
+
+        Structure from API response:
+        {
+            "prompt_token_count": 1814,
+            "candidates_token_count": 2219,
+            "thoughts_token_count": 184,
+            "total_token_count": 4217,
+            "candidates_tokens_details": [
+                ModalityTokenCount(modality=<MediaModality.IMAGE: 'IMAGE'>, token_count=2000)
+            ]
+        }
+        """
+        input_tokens = getattr(usage, "prompt_token_count", 0) or 0
+        output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+        reasoning_tokens = getattr(usage, "thoughts_token_count", 0) or 0
+
+        # Extract image output tokens from candidates_tokens_details
+        # It's a list of ModalityTokenCount objects with modality and token_count
+        image_output_tokens = 0
+        if hasattr(usage, "candidates_tokens_details") and usage.candidates_tokens_details:
+            for detail in usage.candidates_tokens_details:
+                # Check if this is an IMAGE modality
+                modality = getattr(detail, "modality", None)
+                if modality is not None:
+                    # modality can be an enum (MediaModality.IMAGE) or string
+                    modality_str = str(modality).upper()
+                    if "IMAGE" in modality_str:
+                        image_output_tokens = getattr(detail, "token_count", 0) or 0
+                        break
+
+        return TokenUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            reasoning_tokens=reasoning_tokens,
+            image_output_tokens=image_output_tokens,
+        )
+
+    def _calculate_image_cost(self, model: str, usage: TokenUsage, n: int) -> CostInfo:
+        """
+        Calculate cost for image generation using token-based pricing.
+
+        Official pricing (per 1M tokens):
+        - Input: $2.00
+        - Text/Thinking output: $12.00
+        - Image output: $120.00
+
+        Token counts:
+        - 1K/2K images: 1120 tokens = $0.134/image
+        - 4K images: 2000 tokens = $0.24/image
+        """
         pricing = GEMINI_IMAGE_PRICING.get(model, GEMINI_IMAGE_PRICING.get("gemini-3-pro-image-preview", {}))
-        per_image_cost = pricing.get(image_size, pricing.get("1K", 0.040))
+
+        # Input cost
+        input_cost = (usage.input_tokens / 1_000_000) * pricing.get("input", 2.00)
+
+        # Thinking output cost
+        thinking_cost = (usage.reasoning_tokens / 1_000_000) * pricing.get("thinking_output", 12.00)
+
+        # Image output cost (extracted from candidates_tokens_details)
+        image_output_tokens = getattr(usage, "image_output_tokens", 0) or 0
+        image_cost = (image_output_tokens / 1_000_000) * pricing.get("image_output", 120.00)
+
+        # Text output cost (total output - image tokens)
+        text_output_tokens = max(0, usage.output_tokens - image_output_tokens)
+        text_output_cost = (text_output_tokens / 1_000_000) * pricing.get("thinking_output", 12.00)
+
+        total_cost = input_cost + thinking_cost + image_cost + text_output_cost
 
         return CostInfo(
             provider=self.name,
             model=model,
-            total_cost=per_image_cost * n,
-            image_size=image_size,
+            total_cost=total_cost,
+            input_cost=input_cost,
+            output_cost=image_cost + text_output_cost,
+            reasoning_cost=thinking_cost,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            reasoning_tokens=usage.reasoning_tokens,
             image_count=n,
         )
