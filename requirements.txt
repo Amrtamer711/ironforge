@@ -1,5 +1,5 @@
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
 slack-sdk==3.26.1
 aiohttp==3.9.1
 openai==2.8.1
