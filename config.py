@@ -7,7 +7,6 @@ import json
 from dotenv import load_dotenv
 from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.signature import SignatureVerifier
-from openai import AsyncOpenAI
 
 # Load environment
 load_dotenv()
@@ -37,12 +36,19 @@ logger.info(f"[STARTUP] HOS config file: {HOS_CONFIG_FILE}")
 # Clients and config
 SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
 SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "")
+
+# LLM Provider Configuration
+# Just specify which provider to use - models are fixed per provider internally
+# Options: "openai", "google"
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")  # For text completions
+IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "google")  # For image generation
+
+# API Keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 
 slack_client = AsyncWebClient(token=SLACK_BOT_TOKEN)
 signature_verifier = SignatureVerifier(SLACK_SIGNING_SECRET)
-openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
 
 # Dynamic data populated from templates directory
 UPLOAD_FEES_MAPPING: Dict[str, int] = {}

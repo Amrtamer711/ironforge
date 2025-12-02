@@ -291,7 +291,6 @@ The user provided this message with the file: "{user_message}"
                         ContentPart.text(parsing_prompt)
                     ])
                 ],
-                model="gpt-5",
                 reasoning=ReasoningEffort.HIGH,
                 json_schema=get_booking_order_extraction_schema(),
                 # Prompt caching: data extractor prompt is static

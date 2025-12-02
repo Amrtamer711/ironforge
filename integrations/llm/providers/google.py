@@ -69,16 +69,16 @@ class GoogleProvider(LLMProvider):
     """
     Google Gemini API implementation.
 
-    Text: models.generate_content()
-    Images: models.generate_content() with gemini-3-pro-image-preview
+    Fixed models per task type:
+    - Text: gemini-2.5-flash via models.generate_content()
+    - Images: gemini-3-pro-image-preview via models.generate_content() (4K)
     """
 
-    def __init__(
-        self,
-        api_key: str,
-        default_model: str = "gemini-2.5-flash",
-        default_image_model: str = "gemini-3-pro-image-preview",
-    ):
+    # Fixed models - one per task type
+    TEXT_MODEL = "gemini-2.5-flash"
+    IMAGE_MODEL = "gemini-3-pro-image-preview"
+
+    def __init__(self, api_key: str):
         try:
             from google import genai
             from google.genai import types
@@ -89,10 +89,6 @@ class GoogleProvider(LLMProvider):
             raise ImportError(
                 "Google GenAI SDK not installed. Install with: pip install google-genai"
             )
-
-        self._api_key = api_key
-        self._default_model = default_model
-        self._default_image_model = default_image_model
 
     @property
     def name(self) -> str:
@@ -126,7 +122,7 @@ class GoogleProvider(LLMProvider):
         Note: cache_key and cache_retention are OpenAI-specific and ignored here.
         Gemini has its own caching mechanism via Context Caching API.
         """
-        model = model or self._default_model
+        model = model or self.TEXT_MODEL
 
         # Separate system message from conversation
         system_instruction = None
@@ -203,7 +199,7 @@ class GoogleProvider(LLMProvider):
         - Thinking mode: response may contain thought=true images (skip them)
         - Response: response.parts with inline_data
         """
-        model = self._default_image_model
+        model = self.IMAGE_MODEL
 
         # Map quality to resolution
         quality_to_resolution = {

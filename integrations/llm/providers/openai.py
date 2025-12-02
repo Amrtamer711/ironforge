@@ -78,19 +78,17 @@ class OpenAIProvider(LLMProvider):
     """
     OpenAI API implementation.
 
-    Text: responses.create() with input= parameter
-    Images: images.generate() for gpt-image-1
+    Fixed models per task type:
+    - Text: gpt-5.1 via responses.create()
+    - Images: gpt-image-1 via images.generate()
     """
 
-    def __init__(
-        self,
-        api_key: str,
-        default_model: str = "gpt-5.1",
-        default_image_model: str = "gpt-image-1",
-    ):
+    # Fixed models - one per task type
+    TEXT_MODEL = "gpt-5.1"
+    IMAGE_MODEL = "gpt-image-1"
+
+    def __init__(self, api_key: str):
         self._client = AsyncOpenAI(api_key=api_key)
-        self._default_model = default_model
-        self._default_image_model = default_image_model
 
     @property
     def name(self) -> str:
@@ -135,7 +133,7 @@ class OpenAIProvider(LLMProvider):
         - Caching is automatic for prompts 1024+ tokens
         - Up to 90% input cost reduction, 80% latency reduction
         """
-        model = model or self._default_model
+        model = model or self.TEXT_MODEL
 
         # Separate system message (-> instructions) from conversation (-> input)
         instructions = None
@@ -217,7 +215,7 @@ class OpenAIProvider(LLMProvider):
         - 1536x1024 (landscape)
         - 1024x1536 (portrait)
         """
-        model = self._default_image_model
+        model = self.IMAGE_MODEL
 
         # Map orientation to gpt-image-1 size
         if orientation == "portrait":

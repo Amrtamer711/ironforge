@@ -97,17 +97,11 @@ class LLMClient:
             if not api_key:
                 raise ValueError("GOOGLE_API_KEY not configured")
 
-            provider = GoogleProvider(
-                api_key=api_key,
-                default_model=getattr(config, "GOOGLE_MODEL", "gemini-2.5-flash"),
-                default_image_model=getattr(config, "GOOGLE_IMAGE_MODEL", "gemini-3-pro-image-preview"),
-            )
+            # Google: fixed models per task type
+            provider = GoogleProvider(api_key=api_key)
         else:
-            # Default to OpenAI
-            provider = OpenAIProvider(
-                api_key=config.OPENAI_API_KEY,
-                default_model=config.OPENAI_MODEL,
-            )
+            # OpenAI: fixed models per task type
+            provider = OpenAIProvider(api_key=config.OPENAI_API_KEY)
 
         return cls(provider)
 
