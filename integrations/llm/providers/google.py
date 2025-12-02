@@ -237,6 +237,19 @@ class GoogleProvider(LLMProvider):
             )
             raw_responses.append(response)
 
+            # TEMPORARY: Log full response for debugging
+            logger.info(f"[GOOGLE] === RAW IMAGE RESPONSE START ===")
+            logger.info(f"[GOOGLE] Response type: {type(response)}")
+            logger.info(f"[GOOGLE] Response dir: {[attr for attr in dir(response) if not attr.startswith('_')]}")
+            logger.info(f"[GOOGLE] Response repr: {repr(response)}")
+            if hasattr(response, 'usage_metadata'):
+                logger.info(f"[GOOGLE] usage_metadata: {response.usage_metadata}")
+            if hasattr(response, 'model_version'):
+                logger.info(f"[GOOGLE] model_version: {response.model_version}")
+            if hasattr(response, 'candidates'):
+                logger.info(f"[GOOGLE] candidates: {response.candidates}")
+            logger.info(f"[GOOGLE] === RAW IMAGE RESPONSE END ===")
+
             # Extract images from response.parts
             # Skip thought=true images (interim reasoning, not charged)
             for part in response.parts:
