@@ -1,15 +1,19 @@
 # Mockup prompts - AI image generation for billboard artwork
 
 
-def get_ai_mockup_prompt(is_portrait: bool = False) -> str:
+def get_mockup_prompt(is_portrait: bool = False, user_prompt: str | None = None) -> str:
     """
-    Generate the enhanced system prompt for AI billboard artwork generation.
+    Generate the system prompt for AI billboard artwork generation.
+
+    This unified function supports both Slack bot and Web API use cases.
 
     Args:
         is_portrait: True for portrait/vertical orientation, False for landscape/horizontal
+        user_prompt: Optional user's creative brief. If provided, replaces {USER_PROMPT} placeholder.
+                    If None, returns template with {USER_PROMPT} placeholder for later substitution.
 
     Returns:
-        The complete prompt template with {USER_PROMPT} placeholder
+        The complete prompt, either with placeholder or with user_prompt embedded
     """
     if is_portrait:
         orientation_text = """📐 FORMAT & DIMENSIONS:
@@ -26,7 +30,15 @@ def get_ai_mockup_prompt(is_portrait: bool = False) -> str:
 - Fill entire frame edge-to-edge with design
 - No white borders, frames, or margins around the design"""
 
-    return f"""Create a professional flat 2D artwork/creative design for outdoor advertising.
+    # Use placeholder or actual prompt
+    prompt_section = user_prompt if user_prompt else "{USER_PROMPT}"
+
+    return f"""🚨🚨🚨 MANDATORY OUTPUT FORMAT 🚨🚨🚨
+The generated image must BE the advertisement itself - filling 100% of the canvas from edge to edge.
+NEVER show the ad placed on, mounted on, or displayed on ANY surface (no walls, billboards, screens, displays, posters on surfaces, etc.)
+The ad IS the entire image. Nothing else should be visible - no environment, no mounting surface, no frame.
+
+Create a professional flat 2D artwork/creative design for outdoor advertising.
 
 ⚠️ CRITICAL RULES - READ FIRST:
 1. THE AD MUST FILL THE ENTIRE IMAGE - the ad IS the image, not an ad placed inside an image
@@ -37,6 +49,7 @@ def get_ai_mockup_prompt(is_portrait: bool = False) -> str:
 6. ABSOLUTELY NO glowing effects, light flares, halos, sparkles, or radiating effects around ANY elements, especially text and logos
 7. This should look like a PROFESSIONAL AD from a creative agency
 8. DO NOT place the ad on a billboard, wall, screen, or any surface - just create the raw flat artwork
+9. DO NOT show the ad as a poster/sign hanging or mounted anywhere - the ad fills the entire generated image
 
 ═══════════════════════════════════════════════════════════
 🚨 CRITICAL: WHAT YOU ARE CREATING
@@ -179,122 +192,23 @@ DELIVER A COMPLETE, MODERN, PROFESSIONAL ADVERTISEMENT - FULLY DESIGNED, NO BLAN
 🎯 YOUR CREATIVE BRIEF (FOLLOW THIS EXACTLY):
 ═══════════════════════════════════════════════════════════
 
-{{USER_PROMPT}}"""
+{prompt_section}"""
 
 
+# Backward compatibility aliases
+def get_ai_mockup_prompt(is_portrait: bool = False) -> str:
+    """
+    Backward compatibility wrapper for get_mockup_prompt.
 
+    Deprecated: Use get_mockup_prompt() instead.
+    """
+    return get_mockup_prompt(is_portrait=is_portrait, user_prompt=None)
 
 
 def get_api_mockup_prompt(ai_prompt: str) -> str:
     """
-    Generate the enhanced system prompt for API billboard artwork generation.
+    Backward compatibility wrapper for get_mockup_prompt.
 
-    This is used by the web API endpoint for AI mockup generation.
-
-    Args:
-        ai_prompt: The user's creative brief/prompt describing what they want
-
-    Returns:
-        The complete prompt with the user's brief embedded
+    Deprecated: Use get_mockup_prompt() instead.
     """
-    return f"""Create a professional outdoor advertising billboard creative - IMPORTANT: This is the FLAT 2D ARTWORK FILE that will be printed and placed ON a billboard, NOT a photograph of an existing billboard.
-
-═══════════════════════════════════════════════════════════
-CRITICAL DISTINCTIONS:
-═══════════════════════════════════════════════════════════
-
-✅ CORRECT OUTPUT (what we want):
-- A flat, rectangular advertisement design (like a Photoshop/Illustrator file)
-- The actual graphic design artwork that goes ON the billboard surface
-- Think: magazine ad, poster design, digital banner creative
-- Perfectly rectangular, no perspective, no angle, no depth
-- Edge-to-edge design filling the entire rectangular canvas
-- Like looking at a computer screen showing the ad design
-
-❌ INCORRECT OUTPUT (what we DON'T want):
-- A photograph of a physical billboard in a street scene
-- 3D rendering showing billboard from an angle/perspective
-- Image with billboard frame, poles, or support structure visible
-- Photo showing buildings, sky, roads, or environment around billboard
-- Any mockup showing how the billboard looks in real life
-- Perspective view, vanishing points, or dimensional representation
-- The ad placed ON a surface, wall, screen, display, or board
-- The ad mounted, posted, projected, or attached to anything
-- An "ad within an image" - THE AD MUST BE THE ENTIRE IMAGE
-
-═══════════════════════════════════════════════════════════
-DETAILED DESIGN REQUIREMENTS:
-═══════════════════════════════════════════════════════════
-
-📐 FORMAT & DIMENSIONS:
-- Aspect ratio: Wide landscape (roughly 3:2 ratio)
-- Orientation: Horizontal/landscape ONLY
-- Canvas: Perfectly flat, rectangular, no warping or perspective
-- Fill entire frame edge-to-edge with design
-- No white borders, frames, or margins around the design
-
-🎨 VISUAL DESIGN PRINCIPLES:
-- Bold, high-impact composition that catches attention immediately
-- Large hero image or visual focal point (50-70% of design)
-- Vibrant, saturated colors that pop in daylight
-- High contrast between elements for maximum visibility
-- Simple, uncluttered layout (viewer has 5-7 seconds max)
-- Professional photo quality or clean vector graphics
-- Modern, contemporary advertising aesthetic
-
-✍️ TYPOGRAPHY (if text is needed):
-- LARGE, bold, highly readable fonts
-- Sans-serif typefaces work best for outdoor viewing
-- Maximum 7-10 words total (fewer is better)
-- High contrast text-to-background ratio
-- Text size: headlines should occupy 15-25% of vertical height
-- Clear hierarchy: one main message, optional supporting text
-- Avoid script fonts, thin fonts, or decorative typefaces
-- Letter spacing optimized for distance reading
-
-🎯 COMPOSITION STRATEGY:
-- Rule of thirds or strong visual hierarchy
-- One clear focal point (don't scatter attention)
-- Negative space used strategically
-- Visual flow guides eye to key message/CTA
-- Brand logo prominent but not dominating (10-15% of space)
-- Clean, professional layout with breathing room
-
-💡 COLOR THEORY FOR OUTDOOR:
-- Vibrant, saturated colors (avoid pastels or muted tones)
-- High contrast pairings: dark on light or light on dark
-- Colors that work in bright sunlight and shadows
-- Consistent brand color palette if applicable
-- Background should enhance, not compete with message
-- Consider: bright blues, bold reds, energetic oranges, fresh greens
-
-🔍 QUALITY STANDARDS:
-- Sharp, crisp graphics (no blur, pixelation, or artifacts)
-- Professional commercial photography or illustration
-- Consistent lighting across all design elements
-- No watermarks, stock photo markers, or placeholder text
-- Print-ready quality at large scale
-- Polished, agency-level execution
-
-═══════════════════════════════════════════════════════════
-CREATIVE BRIEF:
-═══════════════════════════════════════════════════════════
-
-{ai_prompt}
-
-═══════════════════════════════════════════════════════════
-FINAL REMINDER:
-═══════════════════════════════════════════════════════════
-
-You are creating the ARTWORK FILE - the actual advertisement design.
-Imagine you're a graphic designer creating this in Adobe Illustrator or Photoshop.
-The output should be the flat design that will be PLACED onto a billboard structure later.
-DO NOT show the billboard itself, the street, or any environmental context.
-Just deliver the pure, flat, rectangular advertisement graphic.
-
-🚨 THE AD MUST FILL THE ENTIRE IMAGE FROM EDGE TO EDGE.
-DO NOT show the ad placed on any surface, display, screen, wall, or board.
-The generated image IS the ad itself - not a picture of an ad on something.
-
-Example analogy: If asked to create a "movie poster," you'd create the poster ARTWORK, not a photo of someone holding a poster in a cinema."""
-
+    return get_mockup_prompt(is_portrait=False, user_prompt=ai_prompt)
