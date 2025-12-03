@@ -16,7 +16,6 @@ from db.cache import (
     get_location_frame_count,
     store_mockup_history,
 )
-from integrations.llm.prompts.mockup import get_ai_mockup_prompt
 from utils.memory import cleanup_memory
 
 logger = config.logger
@@ -518,13 +517,9 @@ async def _handle_ai_mode(
     ai_creative_paths = []
 
     try:
-        # Get orientation-aware prompt template
-        is_portrait = mockup_generator.is_portrait_location(location_key)
-        enhanced_prompt = get_ai_mockup_prompt(is_portrait=is_portrait)
-
+        # generate_ai_creative applies the system prompt internally
         result_path, ai_creative_paths = await generate_ai_mockup_queued_func(
             ai_prompts=ai_prompts,
-            enhanced_prompt_template=enhanced_prompt,
             location_key=location_key,
             time_of_day=time_of_day,
             finish=finish,

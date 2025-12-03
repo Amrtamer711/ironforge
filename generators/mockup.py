@@ -219,8 +219,12 @@ async def generate_ai_creative(
 
     Provider selection is controlled by config.IMAGE_PROVIDER or the provider arg.
 
+    This function always applies the mockup system prompt to ensure the AI
+    generates flat artwork (not billboards/mockups). Callers should pass
+    just the user's creative brief - the system prompt is applied here.
+
     Args:
-        prompt: Text description for image generation
+        prompt: User's creative brief (e.g., "Nike shoe ad with red background")
         size: Image size (default landscape "1536x1024")
         location_key: Optional location key to auto-detect portrait orientation
         user_id: Optional Slack user ID for cost tracking (None for website mockup)
@@ -232,12 +236,19 @@ async def generate_ai_creative(
     """
     import tempfile
     from integrations.llm import LLMClient
+    from integrations.llm.prompts.mockup import get_mockup_prompt
 
     # Get the image provider client (uses config.IMAGE_PROVIDER or falls back to LLM_PROVIDER)
     client = LLMClient.for_images(provider_name=provider)
 
     # Determine orientation from location
-    orientation = "portrait" if (location_key and is_portrait_location(location_key)) else "landscape"
+    is_portrait = location_key and is_portrait_location(location_key)
+    orientation = "portrait" if is_portrait else "landscape"
+
+    # Apply the mockup system prompt with user's creative brief
+    # This ensures AI generates flat artwork, not billboard mockups
+    full_prompt = get_mockup_prompt(is_portrait=is_portrait, user_prompt=prompt)
+
     logger.info(f"[AI_CREATIVE] Generating {orientation} image with {client.provider_name}: {prompt[:100]}...")
 
     # Convert user_id to user_name for cost tracking
@@ -248,7 +259,7 @@ async def generate_ai_creative(
         # Generate image using unified client with standardized interface
         # Provider handles quality/orientation internally (Google: 4K, OpenAI: HD)
         response = await client.generate_image(
-            prompt=prompt,
+            prompt=full_prompt,
             quality="high",
             orientation=orientation,
             n=1,

@@ -86,7 +86,6 @@ async def _generate_mockup_queued(
 
 async def _generate_ai_mockup_queued(
     ai_prompts: List[str],
-    enhanced_prompt_template: str,
     location_key: str,
     time_of_day: str,
     finish: str,
@@ -98,8 +97,7 @@ async def _generate_ai_mockup_queued(
     is treated as ONE queued task to prevent memory spikes.
 
     Args:
-        ai_prompts: List of AI prompts (1 for tiled, N for multi-frame)
-        enhanced_prompt_template: Full enhanced system prompt template with placeholder
+        ai_prompts: List of user creative briefs (1 for tiled, N for multi-frame)
         location_key: Location identifier
         time_of_day: Time of day variation
         finish: Finish type
@@ -119,23 +117,16 @@ async def _generate_ai_mockup_queued(
         try:
             logger.info(f"[QUEUE] Generating {num_prompts} AI creative(s) for {location_key} in parallel")
 
-            # Build all prompts first
-            full_prompts = []
-            for i, user_prompt in enumerate(ai_prompts, 1):
-                # Inject user's prompt into the enhanced template
-                # Note: template uses {USER_PROMPT} (single braces) because f-string converts {{ to {
-                full_prompt = enhanced_prompt_template.replace("{USER_PROMPT}", user_prompt)
-                full_prompts.append(full_prompt)
-
             # Generate all creatives in parallel (asyncio.gather preserves order)
+            # generate_ai_creative applies the system prompt internally
             logger.info(f"[AI QUEUE] Executing {num_prompts} image generation(s) in parallel...")
             creative_tasks = [
                 mockup_generator.generate_ai_creative(
-                    prompt=prompt,
+                    prompt=user_prompt,
                     location_key=location_key,
                     user_id=user_id
                 )
-                for prompt in full_prompts
+                for user_prompt in ai_prompts
             ]
             ai_creative_paths = await asyncio.gather(*creative_tasks)
 
