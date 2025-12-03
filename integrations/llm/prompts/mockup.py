@@ -23,7 +23,7 @@ def get_mockup_prompt(is_portrait: bool = False, user_prompt: str | None = None)
     # Use placeholder or actual prompt
     prompt_section = user_prompt if user_prompt else "{USER_PROMPT}"
 
-    return f"""Create a FLAT 2D advertisement graphic. Output ONLY the raw artwork file itself.
+    return f"""A high-resolution, print-ready billboard advertisement artwork in {aspect} format. Generate ONLY the flat ad print file itself - the artwork that gets sent to the printer. No billboard structure, no mounting frame, no background environment - just the raw ad graphic filling the entire canvas edge-to-edge like a PNG export from Adobe Illustrator.
 
 CRITICAL: The image must BE the advertisement - filling 100% of the canvas edge-to-edge.
 - Do NOT render it on a billboard, wall, screen, or any surface
@@ -31,9 +31,9 @@ CRITICAL: The image must BE the advertisement - filling 100% of the canvas edge-
 - Do NOT include any environment, background scene, or physical context
 - The artwork fills the ENTIRE image with NO borders or frames
 
-Think of it like exporting a design from Photoshop - just the flat artwork file, nothing else.
+Think of it like exporting a design from Photoshop - just the flat artwork file, nothing else. The camera angle is perfectly perpendicular to the design surface, with zero perspective distortion.
 
-FORMAT: {aspect}, flat rectangular canvas, no perspective, no 3D, no depth.
+FORMAT: {aspect}, flat rectangular canvas, studio-lit with even illumination, no perspective, no 3D effects, no depth.
 
 DESIGN REQUIREMENTS:
 - Professional advertisement, modern 2024+ aesthetic
@@ -65,7 +65,7 @@ WHAT NOT TO CREATE:
 CREATIVE BRIEF:
 {prompt_section}
 
-Output the FLAT ARTWORK ONLY - the pure advertisement design filling the entire canvas."""
+Output the FLAT ARTWORK ONLY - the pure advertisement design filling the entire canvas, like a PNG export from a design program."""
 
 
 # Backward compatibility aliases
