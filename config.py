@@ -1,11 +1,22 @@
+"""
+Configuration module for the BackLite Media Sales Operations Bot.
+
+This module handles:
+- Environment configuration
+- Channel abstraction initialization
+- LLM provider configuration
+- Currency management
+- Template discovery
+- User permissions
+"""
+
 import os
 import logging
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Optional
-import json
 
 from dotenv import load_dotenv
-from slack_sdk.web.async_client import AsyncWebClient
 from slack_sdk.signature import SignatureVerifier
 
 # Load environment
@@ -33,11 +44,68 @@ else:
 logger.info(f"[STARTUP] Templates directory: {TEMPLATES_DIR}")
 logger.info(f"[STARTUP] HOS config file: {HOS_CONFIG_FILE}")
 
-# Clients and config
+# ============================================================================
+# CHANNEL CONFIGURATION
+# ============================================================================
+
+# Slack credentials (used by SlackAdapter)
 SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
 SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET", "")
 
-# LLM Provider Configuration
+# Signature verifier for Slack webhooks
+signature_verifier = SignatureVerifier(SLACK_SIGNING_SECRET)
+
+# Channel initialization flag
+_channel_initialized = False
+
+
+def init_channels() -> None:
+    """
+    Initialize the channel abstraction layer.
+
+    Call this once at startup to register all channel adapters.
+    """
+    global _channel_initialized
+    if _channel_initialized:
+        return
+
+    from integrations.channels import register_channel, SlackAdapter
+    from slack_sdk.web.async_client import AsyncWebClient
+
+    # Initialize Slack adapter
+    if SLACK_BOT_TOKEN:
+        slack_client = AsyncWebClient(token=SLACK_BOT_TOKEN)
+        slack_adapter = SlackAdapter(client=slack_client, bot_token=SLACK_BOT_TOKEN)
+        register_channel(slack_adapter)
+        logger.info("[CHANNELS] Registered Slack adapter")
+    else:
+        logger.warning("[CHANNELS] No SLACK_BOT_TOKEN - Slack adapter not registered")
+
+    _channel_initialized = True
+    logger.info("[CHANNELS] Channel abstraction initialized")
+
+
+def get_channel_adapter(channel_type: Optional[str] = None):
+    """
+    Get a channel adapter.
+
+    Args:
+        channel_type: Specific channel type ("slack", "web", etc.) or None for active
+
+    Returns:
+        ChannelAdapter instance
+    """
+    if not _channel_initialized:
+        init_channels()
+
+    from integrations.channels import get_channel
+    return get_channel(channel_type)
+
+
+# ============================================================================
+# LLM PROVIDER CONFIGURATION
+# ============================================================================
+
 # Just specify which provider to use - models are fixed per provider internally
 # Options: "openai", "google"
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")  # For text completions
@@ -47,8 +115,9 @@ IMAGE_PROVIDER = os.getenv("IMAGE_PROVIDER", "google")  # For image generation
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 
-slack_client = AsyncWebClient(token=SLACK_BOT_TOKEN)
-signature_verifier = SignatureVerifier(SLACK_SIGNING_SECRET)
+# ============================================================================
+# LOCATION DATA
+# ============================================================================
 
 # Dynamic data populated from templates directory
 UPLOAD_FEES_MAPPING: Dict[str, int] = {}
@@ -62,8 +131,10 @@ _DISPLAY_CACHE: Optional[List[str]] = None
 # HOS config
 _HOS_CONFIG: Dict[str, Dict[str, Dict[str, object]]] = {}
 
+# ============================================================================
+# CURRENCY CONFIGURATION
+# ============================================================================
 
-# Currency configuration (static for now, but easily swappable to dynamic)
 if os.path.exists("/data/"):
     CURRENCY_CONFIG_FILE = Path("/data/currency_config.json")
 else:
@@ -241,8 +312,12 @@ def format_currency_value(amount: Optional[float], currency: Optional[str] = Non
     return f"{value} {symbol}".strip()
 
 
+# Load currency config on import
 load_currency_config()
 
+# ============================================================================
+# HOS CONFIG & PERMISSIONS
+# ============================================================================
 
 def load_hos_config() -> None:
     global _HOS_CONFIG
@@ -260,7 +335,8 @@ def load_hos_config() -> None:
         _HOS_CONFIG = {}
 
 
-def can_manage_locations(slack_user_id: str) -> bool:
+def can_manage_locations(user_id: str) -> bool:
+    """Check if user can manage locations (user_id is platform-agnostic)."""
     if not _HOS_CONFIG:
         load_hos_config()
     groups = _HOS_CONFIG.get("permissions", {}).get("manage_locations", [])
@@ -268,34 +344,44 @@ def can_manage_locations(slack_user_id: str) -> bool:
     for group in groups:
         members = _HOS_CONFIG.get(group, {})
         for _, info in members.items():
-            if info.get("active") and info.get("slack_user_id"):
-                allowed_ids.add(info["slack_user_id"])
-    return slack_user_id in allowed_ids
+            if info.get("active"):
+                # Check both slack_user_id and generic user_id
+                if info.get("slack_user_id"):
+                    allowed_ids.add(info["slack_user_id"])
+                if info.get("user_id"):
+                    allowed_ids.add(info["user_id"])
+    return user_id in allowed_ids
 
 
-def is_admin(slack_user_id: str) -> bool:
-    """Check if user has admin privileges (can add locations and export database)."""
+def is_admin(user_id: str) -> bool:
+    """Check if user has admin privileges (user_id is platform-agnostic)."""
     if not _HOS_CONFIG:
         logger.info(f"[ADMIN_CHECK] Loading HOS config")
         load_hos_config()
-    
+
     # Admin users are those in the 'admin' group
     admin_members = _HOS_CONFIG.get("admin", {})
-    logger.info(f"[ADMIN_CHECK] Checking if {slack_user_id} is admin")
+    logger.info(f"[ADMIN_CHECK] Checking if {user_id} is admin")
     logger.info(f"[ADMIN_CHECK] Admin members: {list(admin_members.keys())}")
-    
+
     for name, info in admin_members.items():
-        user_id = info.get("slack_user_id")
+        # Check both slack_user_id and generic user_id
+        slack_id = info.get("slack_user_id")
+        generic_id = info.get("user_id")
         is_active = info.get("active")
-        logger.info(f"[ADMIN_CHECK] Checking {name}: user_id={user_id}, active={is_active}")
-        
-        if is_active and user_id == slack_user_id:
-            logger.info(f"[ADMIN_CHECK] User {slack_user_id} is admin!")
+        logger.info(f"[ADMIN_CHECK] Checking {name}: slack_id={slack_id}, user_id={generic_id}, active={is_active}")
+
+        if is_active and (user_id == slack_id or user_id == generic_id):
+            logger.info(f"[ADMIN_CHECK] User {user_id} is admin!")
             return True
-    
-    logger.info(f"[ADMIN_CHECK] User {slack_user_id} is NOT admin")
+
+    logger.info(f"[ADMIN_CHECK] User {user_id} is NOT admin")
     return False
 
+
+# ============================================================================
+# TEMPLATE DISCOVERY
+# ============================================================================
 
 def _normalize_key(name: str) -> str:
     return os.path.splitext(name)[0].strip().lower()
@@ -332,7 +418,7 @@ def _parse_metadata_file(folder: Path) -> Dict[str, object]:
         base_sov = 16.6
 
     display_name = str(meta.get("display_name", meta.get("location_name", ""))).strip()
-    
+
     # Parse new fields
     series = str(meta.get("series", "")).strip()
     height = str(meta.get("height", "")).strip()
@@ -343,7 +429,7 @@ def _parse_metadata_file(folder: Path) -> Dict[str, object]:
             number_of_faces = int(meta.get("number_of_faces"))
         except:
             number_of_faces = 1
-    
+
     display_type = str(meta.get("display_type", "Digital")).strip()
     spot_duration = 16
     if meta.get("spot_duration"):
@@ -351,7 +437,7 @@ def _parse_metadata_file(folder: Path) -> Dict[str, object]:
             spot_duration = int(meta.get("spot_duration"))
         except:
             spot_duration = 16
-    
+
     loop_duration = 96
     if meta.get("loop_duration"):
         try:
@@ -399,7 +485,7 @@ def _discover_templates() -> Tuple[Dict[str, str], List[str]]:
 
         meta = _parse_metadata_file(pptx_path.parent)
         logger.info(f"[DISCOVER] Metadata for '{key}': {meta}")
-        
+
         display_name = meta.get("display_name") or pptx_path.stem
         description = meta.get("description") or f"{pptx_path.stem} - Digital Display - 1 Spot - 16 Seconds - 16.6% SOV - Total Loop is 6 spots"
         upload_fee = meta.get("upload_fee") or 3000
@@ -407,13 +493,13 @@ def _discover_templates() -> Tuple[Dict[str, str], List[str]]:
 
         display_names.append(str(display_name))
         LOCATION_DETAILS[key] = str(description)
-        
+
         # Use upload fee from metadata or default
         if meta.get("upload_fee") is not None:
             UPLOAD_FEES_MAPPING[key] = int(meta.get("upload_fee"))
         else:
             UPLOAD_FEES_MAPPING[key] = 3000
-        
+
         # Store all metadata fields
         LOCATION_METADATA[key] = meta
         LOCATION_METADATA[key]["pptx_rel_path"] = str(rel_path)
@@ -458,151 +544,24 @@ def get_location_key_from_display_name(display_name: str) -> Optional[str]:
     # Ensure metadata is loaded
     if not LOCATION_METADATA:
         refresh_templates()
-    
+
     # Normalize the input
     display_name_lower = display_name.lower().strip()
-    
+
     # First try exact match
     for key, meta in LOCATION_METADATA.items():
         if meta.get('display_name', '').lower() == display_name_lower:
             return key
-    
+
     # Then try partial matches
     for key, meta in LOCATION_METADATA.items():
         meta_display = meta.get('display_name', '').lower()
         if display_name_lower in meta_display or meta_display in display_name_lower:
             return key
-    
+
     # Also check if the display name is actually a key
     for key in LOCATION_METADATA.keys():
         if key == display_name_lower:
             return key
-    
+
     return None
-
-
-def markdown_to_slack(text: str) -> str:
-    """Convert markdown formatting to Slack's mrkdwn format.
-    
-    Handles common markdown patterns and converts them to Slack equivalents:
-    - **bold** -> *bold*
-    - *italic* -> _italic_
-    - ***bold italic*** -> *_bold italic_*
-    - `code` -> `code`
-    - ```code block``` -> ```code block```
-    - [link](url) -> <url|link>
-    - # Header -> *Header*
-    - ## Subheader -> *Subheader*
-    - - bullet -> • bullet
-    - 1. numbered -> 1. numbered
-    - Tables -> Slack-friendly format
-    """
-    import re
-    
-    # Convert markdown tables to Slack-friendly format
-    lines = text.split('\n')
-    result_lines = []
-    i = 0
-    
-    while i < len(lines):
-        line = lines[i]
-        
-        # Check if this is the start of a table
-        if ('|' in line and line.strip().startswith('|') and line.strip().endswith('|') 
-            and not re.match(r'^\s*\|[\s\-:]+\|.*\|[\s\-:]*$', line)):
-            
-            # Start collecting table data
-            table_data = []
-            
-            # Add the header row
-            cells = [cell.strip() for cell in line.split('|')[1:-1]]
-            table_data.append(cells)
-            i += 1
-            
-            # Skip the separator line if present
-            if i < len(lines) and re.match(r'^\s*\|[\s\-:]+\|.*\|[\s\-:]*$', lines[i]):
-                i += 1
-            
-            # Collect all table rows
-            while i < len(lines):
-                line = lines[i]
-                if ('|' in line and line.strip().startswith('|') and line.strip().endswith('|')
-                    and not re.match(r'^\s*\|[\s\-:]+\|.*\|[\s\-:]*$', line)):
-                    cells = [cell.strip() for cell in line.split('|')[1:-1]]
-                    table_data.append(cells)
-                    i += 1
-                else:
-                    break
-            
-            # Format the table
-            if table_data:
-                formatted_table = _format_table_for_slack(table_data)
-                result_lines.append(formatted_table)
-        else:
-            result_lines.append(line)
-            i += 1
-    
-    text = '\n'.join(result_lines)
-    
-    # Convert headers
-    text = re.sub(r'^### (.+)$', r'*\1*', text, flags=re.MULTILINE)
-    text = re.sub(r'^## (.+)$', r'*\1*', text, flags=re.MULTILINE)
-    text = re.sub(r'^# (.+)$', r'*\1*', text, flags=re.MULTILINE)
-    
-    # Convert bold italic (must come before bold/italic)
-    text = re.sub(r'\*\*\*(.+?)\*\*\*', r'*_\1_*', text)
-    
-    # Convert bold
-    text = re.sub(r'\*\*(.+?)\*\*', r'*\1*', text)
-    
-    # Convert italic (but not already converted bold)
-    text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'_\1_', text)
-    
-    # Convert links
-    text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<\2|\1>', text)
-    
-    # Convert bullet points
-    text = re.sub(r'^- ', '• ', text, flags=re.MULTILINE)
-    text = re.sub(r'^\* ', '• ', text, flags=re.MULTILINE)
-    
-    # Ensure proper line breaks for lists
-    text = re.sub(r'\n(?=\d+\.|•)', '\n', text)
-    
-    return text
-
-
-def _format_table_for_slack(table_data: list) -> str:
-    """Format table data for Slack display using monospace blocks."""
-    if not table_data:
-        return ""
-    
-    # Calculate column widths
-    col_widths = []
-    num_cols = len(table_data[0])
-    
-    for col in range(num_cols):
-        max_width = max(len(str(row[col])) for row in table_data if col < len(row))
-        col_widths.append(max_width)
-    
-    # Format as monospace block
-    formatted_lines = ["```"]
-    
-    # Format header
-    if table_data:
-        header = table_data[0]
-        header_line = " | ".join(str(cell).ljust(width) for cell, width in zip(header, col_widths))
-        formatted_lines.append(header_line)
-        
-        # Add separator
-        separator = "-+-".join("-" * width for width in col_widths)
-        formatted_lines.append(separator)
-        
-        # Format data rows
-        for row in table_data[1:]:
-            row_line = " | ".join(str(row[i] if i < len(row) else "").ljust(width) 
-                                 for i, width in enumerate(col_widths))
-            formatted_lines.append(row_line)
-    
-    formatted_lines.append("```")
-    
-    return "\n".join(formatted_lines) 

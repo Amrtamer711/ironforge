@@ -143,8 +143,9 @@ async def get_head_of_sales_channel(company: str) -> Optional[str]:
     user_id = company_hos.get("slack_user_id")
     if user_id:
         try:
-            response = await config.slack_client.conversations_open(users=[user_id])
-            return response["channel"]["id"]
+            channel_adapter = config.get_channel_adapter()
+            dm_channel_id = await channel_adapter.open_dm(user_id)
+            return dm_channel_id
         except Exception as e:
             logger.error(f"[BO APPROVAL] Failed to open DM with user {user_id}: {e}")
             return None
@@ -155,7 +156,7 @@ async def get_head_of_sales_channel(company: str) -> Optional[str]:
 async def get_coordinator_channel(company: str) -> Optional[str]:
     """
     Get Sales Coordinator DM channel ID for specific company.
-    Uses conversations.open to get DM channel ID from user_id.
+    Uses channel adapter to get DM channel ID from user_id.
     """
     stakeholders = load_stakeholders_config()
     coordinators = stakeholders.get("coordinators", {})
@@ -170,8 +171,9 @@ async def get_coordinator_channel(company: str) -> Optional[str]:
     user_id = coordinator.get("slack_user_id")
     if user_id:
         try:
-            response = await config.slack_client.conversations_open(users=[user_id])
-            return response["channel"]["id"]
+            channel_adapter = config.get_channel_adapter()
+            dm_channel_id = await channel_adapter.open_dm(user_id)
+            return dm_channel_id
         except Exception as e:
             logger.error(f"[BO APPROVAL] Failed to open DM with user {user_id}: {e}")
             return None
@@ -182,23 +184,24 @@ async def get_coordinator_channel(company: str) -> Optional[str]:
 async def get_finance_channels() -> list[str]:
     """
     Get Finance DM channel IDs for all finance users.
-    Uses conversations.open to get DM channel ID from user_id.
+    Uses channel adapter to get DM channel ID from user_id.
     Returns list of channel IDs.
     """
     stakeholders = load_stakeholders_config()
     finance_users = stakeholders.get("finance", {})
 
     channel_ids = []
+    channel_adapter = config.get_channel_adapter()
 
     # Iterate through all finance users
     for finance_name, finance_info in finance_users.items():
         user_id = finance_info.get("slack_user_id")
         if user_id:
             try:
-                response = await config.slack_client.conversations_open(users=[user_id])
-                channel_id = response["channel"]["id"]
-                channel_ids.append(channel_id)
-                logger.info(f"[BO APPROVAL] Got finance channel for {finance_name}: {channel_id}")
+                dm_channel_id = await channel_adapter.open_dm(user_id)
+                if dm_channel_id:
+                    channel_ids.append(dm_channel_id)
+                    logger.info(f"[BO APPROVAL] Got finance channel for {finance_name}: {dm_channel_id}")
             except Exception as e:
                 logger.error(f"[BO APPROVAL] Failed to open DM with finance user {finance_name} ({user_id}): {e}")
 
@@ -443,9 +446,10 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
     # Notify sales person who submitted (in their main DM, not thread)
     sales_user_id = workflow.get("sales_user_id")
     if sales_user_id:
-        await config.slack_client.chat_postMessage(
-            channel=sales_user_id,
-            text=config.markdown_to_slack(
+        channel_adapter = config.get_channel_adapter()
+        await channel_adapter.send_message(
+            channel_id=sales_user_id,
+            content=(
                 f"✅ *Approved by {approver_name}*\n\n"
                 f"Your booking order for **{workflow_data.get('client', 'N/A')}** has been approved by the Sales Coordinator "
                 f"and is now moving to Head of Sales for review."
@@ -551,10 +555,11 @@ async def handle_coordinator_rejection(workflow_id: str, user_id: str, response_
     )
 
     # Post rejection message in thread with edit instructions
-    await config.slack_client.chat_postMessage(
-        channel=channel,
-        thread_ts=message_ts,
-        text=config.markdown_to_slack(
+    channel_adapter = config.get_channel_adapter()
+    await channel_adapter.send_message(
+        channel_id=channel,
+        thread_id=message_ts,
+        content=(
             f"❌ **Booking Order Rejected**\n\n"
             f"**Reason:** {rejection_reason}\n\n"
             f"**Current Details:**\n"
@@ -711,9 +716,10 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
             )
 
     # Notify sales person who submitted
-    await config.slack_client.chat_postMessage(
-        channel=workflow["sales_user_id"],
-        text=config.markdown_to_slack(
+    channel_adapter = config.get_channel_adapter()
+    await channel_adapter.send_message(
+        channel_id=workflow["sales_user_id"],
+        content=(
             f"✅ **Booking Order Approved & Finalized**\n\n"
             f"**BO Number:** {bo_number}\n"
             f"**Client:** {workflow_data.get('client', 'N/A')}\n"
@@ -727,10 +733,10 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     coordinator_channel = workflow.get("coordinator_thread_channel")
 
     if coordinator_thread and coordinator_channel:
-        await config.slack_client.chat_postMessage(
-            channel=coordinator_channel,
-            thread_ts=coordinator_thread,
-            text=config.markdown_to_slack(
+        await channel_adapter.send_message(
+            channel_id=coordinator_channel,
+            thread_id=coordinator_thread,
+            content=(
                 f"✅ *APPROVED BY HEAD OF SALES*\n\n"
                 f"**BO Number:** {bo_number}\n"
                 f"This booking order has been finalized and sent to Finance."
@@ -796,10 +802,11 @@ async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str
     coordinator_channel = workflow.get("coordinator_thread_channel")
 
     if coordinator_thread and coordinator_channel:
-        await config.slack_client.chat_postMessage(
-            channel=coordinator_channel,
-            thread_ts=coordinator_thread,
-            text=config.markdown_to_slack(
+        channel_adapter = config.get_channel_adapter()
+        await channel_adapter.send_message(
+            channel_id=coordinator_channel,
+            thread_id=coordinator_thread,
+            content=(
                 f"❌ **REJECTED BY HEAD OF SALES**\n\n"
                 f"**Reason:** {rejection_reason}\n\n"
                 f"**Current Details:**\n"
@@ -814,9 +821,10 @@ async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str
         logger.error(f"[BO APPROVAL] No coordinator thread found to revive for {workflow_id}")
 
     # Notify sales person
-    await config.slack_client.chat_postMessage(
-        channel=workflow["sales_user_id"],
-        text=config.markdown_to_slack(
+    channel_adapter = config.get_channel_adapter()
+    await channel_adapter.send_message(
+        channel_id=workflow["sales_user_id"],
+        content=(
             f"❌ **Booking Order Rejected by Head of Sales**\n\n"
             f"**Reason:** {rejection_reason}\n\n"
             f"The Sales Coordinator will make the necessary amendments and resubmit."
@@ -981,9 +989,10 @@ async def start_revision_workflow(
         })
 
         # Notify admin that revision workflow started
-        await config.slack_client.chat_postMessage(
-            channel=requester_channel,
-            text=config.markdown_to_slack(
+        channel_adapter = config.get_channel_adapter()
+        await channel_adapter.send_message(
+            channel_id=requester_channel,
+            content=(
                 f"✅ **Revision Workflow Started**\n\n"
                 f"**Original BO:** {bo_data.get('bo_ref')}\n"
                 f"**Client:** {bo_data.get('client')}\n"
@@ -1055,9 +1064,10 @@ async def handle_bo_cancellation(
     # Notify original sales person who submitted the BO
     sales_user_id = workflow.get("sales_user_id")
     if sales_user_id:
-        await config.slack_client.chat_postMessage(
-            channel=sales_user_id,
-            text=config.markdown_to_slack(
+        channel_adapter = config.get_channel_adapter()
+        await channel_adapter.send_message(
+            channel_id=sales_user_id,
+            content=(
                 f"🚫 **Booking Order Cancelled**\n\n"
                 f"**Client:** {workflow['data'].get('client', 'N/A')}\n"
                 f"**Campaign:** {workflow['data'].get('brand_campaign', 'N/A')}\n"
@@ -1202,11 +1212,12 @@ async def handle_coordinator_thread_message(
             logger.info(f"[BO APPROVAL] Successfully generated combined PDF: {temp_combined_pdf}")
 
             # Upload combined PDF to thread
-            await config.slack_client.files_upload_v2(
-                channel=channel,
-                thread_ts=thread_ts,
-                file=str(temp_combined_pdf),
-                title=f"BO Draft - {current_data.get('client', 'Unknown')} (Updated)"
+            channel_adapter = config.get_channel_adapter()
+            await channel_adapter.upload_file(
+                channel_id=channel,
+                file_path=str(temp_combined_pdf),
+                title=f"BO Draft - {current_data.get('client', 'Unknown')} (Updated)",
+                thread_id=thread_ts
             )
 
             # Wait for file to render before sending buttons (same as original BO flow)
@@ -1214,53 +1225,42 @@ async def handle_coordinator_thread_message(
             await asyncio.sleep(10)
 
             # Send approval buttons IN THREAD
-            text = f"✅ *Ready for Approval*\n\n"
-            text += f"*Client:* {current_data.get('client', 'N/A')}\n"
-            text += f"*Campaign:* {current_data.get('brand_campaign', 'N/A')}\n"
-            text += f"*Gross Total:* {_format_amount(current_data, current_data.get('gross_calc'))}\n\n"
-            text += "Please review the combined PDF above and approve or reject:"
+            text = (
+                f"✅ **Ready for Approval**\n\n"
+                f"**Client:** {current_data.get('client', 'N/A')}\n"
+                f"**Campaign:** {current_data.get('brand_campaign', 'N/A')}\n"
+                f"**Gross Total:** {_format_amount(current_data, current_data.get('gross_calc'))}\n\n"
+                f"Please review the combined PDF above and approve or reject:"
+            )
 
-            blocks = [
-                {
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": text
-                    }
-                },
-                {
-                    "type": "actions",
-                    "elements": [
-                        {
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "✅ Approve"},
-                            "style": "primary",
-                            "value": workflow_id,
-                            "action_id": "approve_bo_coordinator"
-                        },
-                        {
-                            "type": "button",
-                            "text": {"type": "plain_text", "text": "❌ Reject"},
-                            "style": "danger",
-                            "value": workflow_id,
-                            "action_id": "reject_bo_coordinator"
-                        }
-                    ]
-                }
+            from integrations.channels import Button, ButtonStyle
+            buttons = [
+                Button(
+                    text="✅ Approve",
+                    action_id="approve_bo_coordinator",
+                    value=workflow_id,
+                    style=ButtonStyle.PRIMARY
+                ),
+                Button(
+                    text="❌ Reject",
+                    action_id="reject_bo_coordinator",
+                    value=workflow_id,
+                    style=ButtonStyle.DANGER
+                )
             ]
 
             # Post new buttons in thread with markdown formatting
-            new_button_msg = await config.slack_client.chat_postMessage(
-                channel=channel,
-                thread_ts=thread_ts,
-                text=config.markdown_to_slack(text),
-                blocks=blocks
+            new_button_msg = await channel_adapter.send_message(
+                channel_id=channel,
+                content=text,
+                buttons=buttons,
+                thread_id=thread_ts
             )
 
             # Update workflow with new button message timestamp and close thread for editing
             # Note: Old buttons were already replaced during rejection, no need to supersede
             await update_workflow(workflow_id, {
-                "coordinator_msg_ts": new_button_msg["ts"],
+                "coordinator_msg_ts": new_button_msg.id,
                 "status": "pending"  # Close thread - user must click reject again to make more edits
             })
 

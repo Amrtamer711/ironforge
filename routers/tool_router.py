@@ -50,14 +50,16 @@ async def handle_tool_call(
     tool_name = tool_call.name
     args = tool_call.arguments
 
+    channel_adapter = config.get_channel_adapter()
+
     if tool_name == "get_separate_proposals":
         # Update status to Building Proposal
-        await config.slack_client.chat_update(
-            channel=channel,
-            ts=status_ts,
-            text="⏳ _Building Proposal..._"
+        await channel_adapter.update_message(
+            channel_id=channel,
+            message_id=status_ts,
+            content="⏳ _Building Proposal..._"
         )
-        
+
         args = args
         proposals_data = args.get("proposals", [])
         client_name = args.get("client_name") or "Unknown Client"
@@ -71,19 +73,19 @@ async def handle_tool_call(
         logger.info(f"[SEPARATE] Currency: {currency or 'AED'}")
 
         if not proposals_data:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** No proposals data provided"))
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** No proposals data provided")
             return True
 
         result = await process_proposals(proposals_data, "separate", None, user_id, client_name, payment_terms, currency)
     elif tool_name == "get_combined_proposal":
         # Update status to Building Proposal
-        await config.slack_client.chat_update(
-            channel=channel,
-            ts=status_ts,
-            text="⏳ _Building Proposal..._"
+        await channel_adapter.update_message(
+            channel_id=channel,
+            message_id=status_ts,
+            content="⏳ _Building Proposal..._"
         )
-        
+
         args = args
         proposals_data = args.get("proposals", [])
         combined_net_rate = args.get("combined_net_rate", None)
@@ -99,16 +101,16 @@ async def handle_tool_call(
         logger.info(f"[COMBINED] Currency: {currency or 'AED'}")
 
         if not proposals_data:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** No proposals data provided"))
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** No proposals data provided")
             return True
         elif not combined_net_rate:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** Combined package requires a combined net rate"))
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** Combined package requires a combined net rate")
             return True
         elif len(proposals_data) < 2:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** Combined package requires at least 2 locations"))
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** Combined package requires at least 2 locations")
             return True
 
         # Transform proposals data for combined package (add durations as list with single item)
@@ -124,17 +126,17 @@ async def handle_tool_call(
         logger.info(f"[RESULT] Processing result: {result}")
         if result["success"]:
             # Update status to uploading
-            await config.slack_client.chat_update(channel=channel, ts=status_ts, text="📤 Uploading proposals...")
+            await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="📤 Uploading proposals...")
 
             if result.get("is_combined"):
                 logger.info(f"[RESULT] Combined package - PDF: {result.get('pdf_filename')}")
-                await config.slack_client.files_upload_v2(channel=channel, file=result["pdf_path"], filename=result["pdf_filename"], initial_comment=config.markdown_to_slack(f"📦 **Combined Package Proposal**\n📍 Locations: {result['locations']}"))
+                await channel_adapter.upload_file(channel_id=channel, file_path=result["pdf_path"], title=result["pdf_filename"], comment=f"📦 **Combined Package Proposal**\n📍 Locations: {result['locations']}")
                 try: os.unlink(result["pdf_path"])  # type: ignore
                 except: pass
             elif result.get("is_single"):
                 logger.info(f"[RESULT] Single proposal - Location: {result.get('location')}")
-                await config.slack_client.files_upload_v2(channel=channel, file=result["pptx_path"], filename=result["pptx_filename"], initial_comment=config.markdown_to_slack(f"📊 **PowerPoint Proposal**\n📍 Location: {result['location']}"))
-                await config.slack_client.files_upload_v2(channel=channel, file=result["pdf_path"], filename=result["pdf_filename"], initial_comment=config.markdown_to_slack(f"📄 **PDF Proposal**\n📍 Location: {result['location']}"))
+                await channel_adapter.upload_file(channel_id=channel, file_path=result["pptx_path"], title=result["pptx_filename"], comment=f"📊 **PowerPoint Proposal**\n📍 Location: {result['location']}")
+                await channel_adapter.upload_file(channel_id=channel, file_path=result["pdf_path"], title=result["pdf_filename"], comment=f"📄 **PDF Proposal**\n📍 Location: {result['location']}")
                 try:
                     os.unlink(result["pptx_path"])  # type: ignore
                     os.unlink(result["pdf_path"])  # type: ignore
@@ -142,40 +144,40 @@ async def handle_tool_call(
             else:
                 logger.info(f"[RESULT] Multiple separate proposals - Count: {len(result.get('individual_files', []))}")
                 for f in result["individual_files"]:
-                    await config.slack_client.files_upload_v2(channel=channel, file=f["path"], filename=f["filename"], initial_comment=config.markdown_to_slack(f"📊 **PowerPoint Proposal**\n📍 Location: {f['location']}"))
-                await config.slack_client.files_upload_v2(channel=channel, file=result["merged_pdf_path"], filename=result["merged_pdf_filename"], initial_comment=config.markdown_to_slack(f"📄 **Combined PDF**\n📍 All Locations: {result['locations']}"))
+                    await channel_adapter.upload_file(channel_id=channel, file_path=f["path"], title=f["filename"], comment=f"📊 **PowerPoint Proposal**\n📍 Location: {f['location']}")
+                await channel_adapter.upload_file(channel_id=channel, file_path=result["merged_pdf_path"], title=result["merged_pdf_filename"], comment=f"📄 **Combined PDF**\n📍 All Locations: {result['locations']}")
                 try:
                     for f in result["individual_files"]: os.unlink(f["path"])  # type: ignore
                     os.unlink(result["merged_pdf_path"])  # type: ignore
                 except: pass
             # Delete status message after uploads complete
             try:
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
             except:
                 pass
         else:
             logger.error(f"[RESULT] Error: {result.get('error')}")
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(f"❌ **Error:** {result['error']}"))
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content=f"❌ **Error:** {result['error']}")
 
     elif tool_name == "refresh_templates":
         config.refresh_templates()
-        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-        await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("✅ Templates refreshed successfully."))
+        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+        await channel_adapter.send_message(channel_id=channel, content="✅ Templates refreshed successfully.")
 
     elif tool_name == "add_location":
         # Admin permission gate
         if not config.is_admin(user_id):
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** You need admin privileges to add locations."))
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to add locations.")
             return True
 
         args = args
         location_key = args.get("location_key", "").strip().lower().replace(" ", "_")
-        
+
         if not location_key:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** Location key is required."))
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** Location key is required.")
             return True
 
         # Check if location already exists (filesystem + cache check for security)
@@ -186,12 +188,12 @@ async def handle_tool_call(
 
         # Dual check: filesystem (primary) + cache (secondary) to prevent bypass
         if location_dir.exists() or location_key in mapping:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
             if location_dir.exists():
                 logger.warning(f"[SECURITY] Duplicate location attempt blocked - filesystem check: {location_key}")
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(f"⚠️ Location `{location_key}` already exists. Please use a different key."))
+            await channel_adapter.send_message(channel_id=channel, content=f"⚠️ Location `{location_key}` already exists. Please use a different key.")
             return True
-        
+
         # All metadata must be provided upfront
         display_name = args.get("display_name")
         display_type = args.get("display_type")
@@ -203,7 +205,7 @@ async def handle_tool_call(
         spot_duration = args.get("spot_duration")
         loop_duration = args.get("loop_duration")
         upload_fee = args.get("upload_fee")
-        
+
         # Clean duration values - remove any non-numeric suffixes
         if spot_duration is not None:
             # Convert to string first to handle the cleaning
@@ -213,14 +215,14 @@ async def handle_tool_call(
             try:
                 spot_duration = int(spot_str)
                 if spot_duration <= 0:
-                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                    await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(f"❌ **Error:** Spot duration must be greater than 0 seconds. Got: {spot_duration}"))
+                    await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                    await channel_adapter.send_message(channel_id=channel, content=f"❌ **Error:** Spot duration must be greater than 0 seconds. Got: {spot_duration}")
                     return True
             except ValueError:
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(f"❌ **Error:** Invalid spot duration '{spot_duration}'. Please provide a number in seconds (e.g., 10, 12, 16)."))
+                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                await channel_adapter.send_message(channel_id=channel, content=f"❌ **Error:** Invalid spot duration '{spot_duration}'. Please provide a number in seconds (e.g., 10, 12, 16).")
                 return True
-        
+
         if loop_duration is not None:
             # Convert to string first to handle the cleaning
             loop_str = str(loop_duration).strip()
@@ -229,12 +231,12 @@ async def handle_tool_call(
             try:
                 loop_duration = int(loop_str)
                 if loop_duration <= 0:
-                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                    await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(f"❌ **Error:** Loop duration must be greater than 0 seconds. Got: {loop_duration}"))
+                    await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                    await channel_adapter.send_message(channel_id=channel, content=f"❌ **Error:** Loop duration must be greater than 0 seconds. Got: {loop_duration}")
                     return True
             except ValueError:
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(f"❌ **Error:** Invalid loop duration '{loop_duration}'. Please provide a number in seconds (e.g., 96, 100)."))
+                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                await channel_adapter.send_message(channel_id=channel, content=f"❌ **Error:** Invalid loop duration '{loop_duration}'. Please provide a number in seconds (e.g., 96, 100).")
                 return True
         
         # Validate required fields
@@ -262,13 +264,13 @@ async def handle_tool_call(
                 missing.append("upload_fee")
         
         if missing:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(
-                channel=channel,
-                text=config.markdown_to_slack(f"❌ **Error:** Missing required fields: {', '.join(missing)}")
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(
+                channel_id=channel,
+                content=f"❌ **Error:** Missing required fields: {', '.join(missing)}"
             )
             return True
-        
+
         # Store the pending location data
         pending_location_additions[user_id] = {
             "location_key": location_key,
@@ -284,10 +286,10 @@ async def handle_tool_call(
             "upload_fee": upload_fee,
             "timestamp": datetime.now()
         }
-        
+
         logger.info(f"[LOCATION_ADD] Stored pending location for user {user_id}: {location_key}")
         logger.info(f"[LOCATION_ADD] Current pending additions: {list(pending_location_additions.keys())}")
-        
+
         # Ask for PPT file
         summary_text = (
             f"✅ **Location metadata validated for `{location_key}`**\n\n"
@@ -298,7 +300,7 @@ async def handle_tool_call(
             f"• Faces: {number_of_faces}\n"
             f"• Series: {series}\n"
         )
-        
+
         # Add digital-specific fields only for digital locations
         if display_type == "Digital":
             summary_text += (
@@ -307,38 +309,38 @@ async def handle_tool_call(
                 f"• Loop Duration: {loop_duration}s\n"
                 f"• Upload Fee: AED {upload_fee}\n"
             )
-        
+
         summary_text += "\n📎 **Please upload the PDF template file now.** (Will be converted to PowerPoint at maximum quality)\n\n⏱️ _You have 10 minutes to upload the file._"
-        
-        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-        await config.slack_client.chat_postMessage(
-            channel=channel,
-            text=config.markdown_to_slack(summary_text)
+
+        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+        await channel_adapter.send_message(
+            channel_id=channel,
+            content=summary_text
         )
         return True
 
     elif tool_name == "list_locations":
         names = config.available_location_names()
-        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
         if not names:
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("📍 No locations available. Use **'add location'** to add one."))
+            await channel_adapter.send_message(channel_id=channel, content="📍 No locations available. Use **'add location'** to add one.")
         else:
             listing = "\n".join(f"• {n}" for n in names)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(f"📍 **Current locations:**\n{listing}"))
+            await channel_adapter.send_message(channel_id=channel, content=f"📍 **Current locations:**\n{listing}")
 
     elif tool_name == "delete_location":
         # Admin permission gate
         if not config.is_admin(user_id):
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** You need admin privileges to delete locations."))
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to delete locations.")
             return True
 
         args = args
         location_input = args.get("location_key", "").strip()
 
         if not location_input:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** Please specify which location to delete."))
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** Please specify which location to delete.")
             return True
 
         # Find the actual location key - check if it's a display name or direct key
@@ -358,11 +360,11 @@ async def handle_tool_call(
                     break
 
         if not location_key:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
             available = ", ".join(config.available_location_names())
-            await config.slack_client.chat_postMessage(
-                channel=channel,
-                text=config.markdown_to_slack(f"❌ **Error:** Location '{location_input}' not found.\n\n**Available locations:** {available}")
+            await channel_adapter.send_message(
+                channel_id=channel,
+                content=f"❌ **Error:** Location '{location_input}' not found.\n\n**Available locations:** {available}"
             )
             return True
 
@@ -384,24 +386,24 @@ async def handle_tool_call(
             f"❓ **To cancel, reply with:** `cancel` or ignore this message"
         )
 
-        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-        await config.slack_client.chat_postMessage(
-            channel=channel,
-            text=config.markdown_to_slack(confirmation_text)
+        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+        await channel_adapter.send_message(
+            channel_id=channel,
+            content=confirmation_text
         )
         return True
-    
+
     elif tool_name == "export_proposals_to_excel":
         # Admin permission gate
         logger.info(f"[EXCEL_EXPORT] Checking admin privileges for user: {user_id}")
         is_admin_user = config.is_admin(user_id)
         logger.info(f"[EXCEL_EXPORT] User {user_id} admin status: {is_admin_user}")
-        
+
         if not is_admin_user:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** You need admin privileges to export the database."))
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to export the database.")
             return True
-            
+
         logger.info("[EXCEL_EXPORT] User requested Excel export")
         try:
             excel_path = db.export_to_excel()
@@ -412,13 +414,13 @@ async def handle_tool_call(
             size_mb = file_size / (1024 * 1024)
 
             # Update status to uploading
-            await config.slack_client.chat_update(channel=channel, ts=status_ts, text="📤 Uploading export...")
+            await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="📤 Uploading export...")
 
-            await config.slack_client.files_upload_v2(
-                channel=channel,
-                file=excel_path,
-                filename=f"proposals_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                initial_comment=config.markdown_to_slack(
+            await channel_adapter.upload_file(
+                channel_id=channel,
+                file_path=excel_path,
+                title=f"proposals_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                comment=(
                     f"📊 **Proposals Database Export**\n"
                     f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
                     f"📁 Size: {size_mb:.2f} MB"
@@ -427,7 +429,7 @@ async def handle_tool_call(
 
             # Delete status message after upload completes
             try:
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
             except:
                 pass
 
@@ -439,12 +441,12 @@ async def handle_tool_call(
                 
         except Exception as e:
             logger.error(f"[EXCEL_EXPORT] Error: {e}", exc_info=True)
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(
-                channel=channel,
-                text=config.markdown_to_slack("❌ **Error:** Failed to export database to Excel. Please try again.")
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(
+                channel_id=channel,
+                content="❌ **Error:** Failed to export database to Excel. Please try again."
             )
-    
+
     elif tool_name == "export_booking_orders_to_excel":
         # Admin permission gate
         logger.info(f"[BO_EXPORT] Checking admin privileges for user: {user_id}")
@@ -452,8 +454,8 @@ async def handle_tool_call(
         logger.info(f"[BO_EXPORT] User {user_id} admin status: {is_admin_user}")
 
         if not is_admin_user:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** You need admin privileges to export booking orders."))
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to export booking orders.")
             return True
 
         logger.info("[BO_EXPORT] User requested booking orders Excel export")
@@ -466,13 +468,13 @@ async def handle_tool_call(
             size_mb = file_size / (1024 * 1024)
 
             # Update status to uploading
-            await config.slack_client.chat_update(channel=channel, ts=status_ts, text="📤 Uploading export...")
+            await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="📤 Uploading export...")
 
-            await config.slack_client.files_upload_v2(
-                channel=channel,
-                file=excel_path,
-                filename=f"booking_orders_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                initial_comment=config.markdown_to_slack(
+            await channel_adapter.upload_file(
+                channel_id=channel,
+                file_path=excel_path,
+                title=f"booking_orders_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                comment=(
                     f"📋 **Booking Orders Database Export**\n"
                     f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
                     f"📁 Size: {size_mb:.2f} MB"
@@ -481,7 +483,7 @@ async def handle_tool_call(
 
             # Delete status message after upload completes
             try:
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
             except:
                 pass
 
@@ -493,10 +495,10 @@ async def handle_tool_call(
 
         except Exception as e:
             logger.error(f"[BO_EXPORT] Error: {e}", exc_info=True)
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(
-                channel=channel,
-                text=config.markdown_to_slack("❌ **Error:** Failed to export booking orders to Excel. Please try again.")
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(
+                channel_id=channel,
+                content="❌ **Error:** Failed to export booking orders to Excel. Please try again."
             )
 
     elif tool_name == "fetch_booking_order":
@@ -506,8 +508,8 @@ async def handle_tool_call(
         logger.info(f"[BO_FETCH] User {user_id} admin status: {is_admin_user}")
 
         if not is_admin_user:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** You need admin privileges to fetch booking orders."))
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to fetch booking orders.")
             return True
 
         args = args
@@ -527,10 +529,10 @@ async def handle_tool_call(
                 conn.close()
                 logger.info(f"[BO_FETCH] Sample BOs in database: {[bo[0] for bo in sample_bos if bo[0]]}")
 
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                await config.slack_client.chat_postMessage(
-                    channel=channel,
-                    text=config.markdown_to_slack(f"❌ **Booking Order Not Found**\n\nBO Number: `{bo_number}` does not exist in the database.")
+                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                await channel_adapter.send_message(
+                    channel_id=channel,
+                    content=f"❌ **Booking Order Not Found**\n\nBO Number: `{bo_number}` does not exist in the database."
                 )
                 return True
 
@@ -546,7 +548,7 @@ async def handle_tool_call(
 
             if combined_pdf_path and os.path.exists(combined_pdf_path):
                 # Update status to uploading
-                await config.slack_client.chat_update(channel=channel, ts=status_ts, text="📤 Uploading BO...")
+                await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="📤 Uploading BO...")
 
                 # Send BO details with file (show user-facing bo_number)
                 details = f"📋 **Booking Order Found**\n\n"
@@ -556,20 +558,20 @@ async def handle_tool_call(
                 details += f"**Gross Total:** AED {bo_data.get('gross_amount', 0):,.2f}\n"
                 details += f"**Created:** {bo_data.get('created_at', 'N/A')}\n"
 
-                await config.slack_client.files_upload_v2(
-                    channel=channel,
-                    file=combined_pdf_path,
-                    filename=f"{safe_bo_number}.pdf",
-                    initial_comment=config.markdown_to_slack(details)
+                await channel_adapter.upload_file(
+                    channel_id=channel,
+                    file_path=combined_pdf_path,
+                    title=f"{safe_bo_number}.pdf",
+                    comment=details
                 )
                 # Delete status message after upload completes
                 try:
-                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
                 except:
                     pass
             else:
                 # File not found, regenerate from data
-                await config.slack_client.chat_update(channel=channel, ts=status_ts, text="📤 Regenerating and uploading BO...")
+                await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="📤 Regenerating and uploading BO...")
 
                 parser = BookingOrderParser(company=bo_data.get("company", "backlite"))
 
@@ -584,15 +586,15 @@ async def handle_tool_call(
                 details += f"**Created:** {bo_data.get('created_at', 'N/A')}\n"
                 details += f"\n⚠️ _Original file not found - regenerated from database_"
 
-                await config.slack_client.files_upload_v2(
-                    channel=channel,
-                    file=str(excel_path),
-                    filename=f"{safe_bo_number}.xlsx",
-                    initial_comment=config.markdown_to_slack(details)
+                await channel_adapter.upload_file(
+                    channel_id=channel,
+                    file_path=str(excel_path),
+                    title=f"{safe_bo_number}.xlsx",
+                    comment=details
                 )
                 # Delete status message after upload completes
                 try:
-                    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+                    await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
                 except:
                     pass
 
@@ -604,10 +606,10 @@ async def handle_tool_call(
 
         except Exception as e:
             logger.error(f"[BO_FETCH] Error: {e}", exc_info=True)
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(
-                channel=channel,
-                text=config.markdown_to_slack(f"❌ **Error:** Failed to fetch booking order `{bo_ref}`. Error: {str(e)}")
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(
+                channel_id=channel,
+                content=f"❌ **Error:** Failed to fetch booking order `{bo_ref}`. Error: {str(e)}"
             )
 
     elif tool_name == "revise_booking_order":
@@ -617,8 +619,8 @@ async def handle_tool_call(
         logger.info(f"[BO_REVISE] User {user_id} admin status: {is_admin_user}")
 
         if not is_admin_user:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** You need admin privileges to revise booking orders."))
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to revise booking orders.")
             return True
 
         args = args
@@ -633,15 +635,15 @@ async def handle_tool_call(
             logger.info(f"[BO_REVISE] Database query result: {'Found' if bo_data else 'Not found'}")
 
             if not bo_data:
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                await config.slack_client.chat_postMessage(
-                    channel=channel,
-                    text=config.markdown_to_slack(f"❌ **Booking Order Not Found**\n\nBO Number: `{bo_number}` does not exist in the database.")
+                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                await channel_adapter.send_message(
+                    channel_id=channel,
+                    content=f"❌ **Booking Order Not Found**\n\nBO Number: `{bo_number}` does not exist in the database."
                 )
                 return True
 
             # Start revision workflow (sends to coordinator with new thread)
-            await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Starting revision workflow..._")
+            await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="⏳ _Starting revision workflow..._")
 
             result = await bo_approval_workflow.start_revision_workflow(
                 bo_data=bo_data,
@@ -649,18 +651,18 @@ async def handle_tool_call(
                 requester_channel=channel
             )
 
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(
-                channel=channel,
-                text=config.markdown_to_slack(f"✅ **Revision workflow started for BO {bo_number}**\n\nThe booking order has been sent to the Sales Coordinator for edits.")
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(
+                channel_id=channel,
+                content=f"✅ **Revision workflow started for BO {bo_number}**\n\nThe booking order has been sent to the Sales Coordinator for edits."
             )
 
         except Exception as e:
             logger.error(f"[BO_REVISE] Error: {e}", exc_info=True)
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(
-                channel=channel,
-                text=config.markdown_to_slack(f"❌ **Error:** Failed to start revision workflow. Error: {str(e)}")
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(
+                channel_id=channel,
+                content=f"❌ **Error:** Failed to start revision workflow. Error: {str(e)}"
             )
 
     elif tool_name == "get_proposals_stats":
@@ -686,10 +688,10 @@ async def handle_tool_call(
             else:
                 message += "_No proposals generated yet._"
 
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(
-                channel=channel,
-                text=config.markdown_to_slack(message)
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(
+                channel_id=channel,
+                content=message
             )
 
         except Exception as e:
@@ -700,7 +702,7 @@ async def handle_tool_call(
         args = args
         company = args.get("company")
         user_notes = args.get("user_notes", "")
-        await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Parsing booking order..._")
+        await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="⏳ _Parsing booking order..._")
         await handle_booking_order_parse_func(
             company=company,
             slack_event=slack_event,

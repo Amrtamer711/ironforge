@@ -82,25 +82,25 @@ async def handle_mockup_generation(
     if not location_key:
         location_key = location_name.lower().replace(" ", "_")
 
+    channel_adapter = config.get_channel_adapter()
+
     # Validate location exists
     if location_key not in config.LOCATION_METADATA:
-        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-        await config.slack_client.chat_postMessage(
-            channel=channel,
-            text=config.markdown_to_slack(
-                f"❌ **Error:** Location '{location_name}' not found. Please choose from available locations."
-            )
+        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+        await channel_adapter.send_message(
+            channel_id=channel,
+            content=f"❌ **Error:** Location '{location_name}' not found. Please choose from available locations."
         )
         return True
 
     # Check if location has any mockup photos configured
     variations = db.list_mockup_variations(location_key)
     if not variations:
-        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
         mockup_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:3000") + "/mockup"
-        await config.slack_client.chat_postMessage(
-            channel=channel,
-            text=config.markdown_to_slack(
+        await channel_adapter.send_message(
+            channel_id=channel,
+            content=(
                 f"❌ **Error:** No billboard photos configured for *{location_name}* (location key: `{location_key}`).\n\n"
                 f"Ask an admin to set up mockup frames at {mockup_url}"
             )
@@ -169,10 +169,10 @@ async def handle_mockup_generation(
         )
 
     # NO INPUT PROVIDED: Show help message
-    await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-    await config.slack_client.chat_postMessage(
-        channel=channel,
-        text=config.markdown_to_slack(
+    await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+    await channel_adapter.send_message(
+        channel_id=channel,
+        content=(
             f"❌ **Sorry!** You need to provide a creative for the mockup.\n\n"
             f"**Three ways to generate mockups:**\n\n"
             f"1️⃣ **Upload Your Image:** Attach your creative when you send the request\n"
@@ -245,15 +245,17 @@ async def _handle_followup_mode(
     stored_creative_paths = mockup_user_hist.get("creative_paths", [])
     stored_location = mockup_user_hist.get("metadata", {}).get("location_name", "unknown")
 
+    channel_adapter = config.get_channel_adapter()
+
     # Verify all creative files still exist
     missing_files = [str(p) for p in stored_creative_paths if not p.exists()]
 
     if missing_files:
         logger.error(f"[MOCKUP] Creative files missing from history: {missing_files}")
-        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-        await config.slack_client.chat_postMessage(
-            channel=channel,
-            text=config.markdown_to_slack(
+        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+        await channel_adapter.send_message(
+            channel_id=channel,
+            content=(
                 f"❌ **Error:** Your previous creative files are no longer available.\n\n"
                 f"Please upload new images or use AI generation."
             )
@@ -267,10 +269,10 @@ async def _handle_followup_mode(
     is_valid_count = (num_stored_creatives == 1) or (num_stored_creatives == new_location_frame_count)
 
     if not is_valid_count:
-        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-        await config.slack_client.chat_postMessage(
-            channel=channel,
-            text=config.markdown_to_slack(
+        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+        await channel_adapter.send_message(
+            channel_id=channel,
+            content=(
                 f"⚠️ **Creative Count Mismatch**\n\n"
                 f"I have **{num_stored_creatives} creative(s)** from your previous mockup (**{stored_location}**), "
                 f"but **{location_name}** requires **{new_location_frame_count} frame(s)**.\n\n"
@@ -284,10 +286,10 @@ async def _handle_followup_mode(
 
     logger.info(f"[MOCKUP] Follow-up request - reusing {len(stored_creative_paths)} creative(s)")
 
-    await config.slack_client.chat_update(
-        channel=channel,
-        ts=status_ts,
-        text=f"⏳ _Applying your previous creative(s) to {location_name}..._"
+    await channel_adapter.update_message(
+        channel_id=channel,
+        message_id=status_ts,
+        content=f"⏳ _Applying your previous creative(s) to {location_name}..._"
     )
 
     result_path = None
@@ -302,10 +304,10 @@ async def _handle_followup_mode(
         if not result_path:
             raise Exception("Failed to generate mockup")
 
-        await config.slack_client.chat_update(
-            channel=channel,
-            ts=status_ts,
-            text="📤 Uploading mockup..."
+        await channel_adapter.update_message(
+            channel_id=channel,
+            message_id=status_ts,
+            content="📤 Uploading mockup..."
         )
 
         variation_info = ""
@@ -314,11 +316,11 @@ async def _handle_followup_mode(
 
         frames_info = f" ({stored_frames} frame(s))" if stored_frames > 1 else ""
 
-        await config.slack_client.files_upload_v2(
-            channel=channel,
-            file=str(result_path),
-            filename=f"mockup_{location_key}_{time_of_day}_{finish}.jpg",
-            initial_comment=config.markdown_to_slack(
+        await channel_adapter.upload_file(
+            channel_id=channel,
+            file_path=str(result_path),
+            title=f"mockup_{location_key}_{time_of_day}_{finish}.jpg",
+            comment=(
                 f"🎨 **Billboard Mockup Generated** (Follow-up)\n\n"
                 f"📍 New Location: {location_name}{variation_info}\n"
                 f"🔄 Using creative(s) from: {stored_location}{frames_info}\n"
@@ -327,7 +329,7 @@ async def _handle_followup_mode(
         )
 
         try:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
         except:
             pass
 
@@ -341,10 +343,10 @@ async def _handle_followup_mode(
 
     except Exception as e:
         logger.error(f"[MOCKUP] Error generating follow-up mockup: {e}", exc_info=True)
-        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-        await config.slack_client.chat_postMessage(
-            channel=channel,
-            text=config.markdown_to_slack(f"❌ **Error:** Failed to generate follow-up mockup. {str(e)}")
+        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+        await channel_adapter.send_message(
+            channel_id=channel,
+            content=f"❌ **Error:** Failed to generate follow-up mockup. {str(e)}"
         )
     finally:
         # Cleanup and memory management
@@ -373,15 +375,17 @@ async def _handle_upload_mode(
     """Handle mockup generation from uploaded images."""
     logger.info(f"[MOCKUP] Processing {len(uploaded_creatives)} uploaded image(s)")
 
+    channel_adapter = config.get_channel_adapter()
+
     # Validate creative count
     num_uploaded = len(uploaded_creatives)
     is_valid_count = (num_uploaded == 1) or (num_uploaded == new_location_frame_count)
 
     if not is_valid_count:
-        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-        await config.slack_client.chat_postMessage(
-            channel=channel,
-            text=config.markdown_to_slack(
+        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+        await channel_adapter.send_message(
+            channel_id=channel,
+            content=(
                 f"⚠️ **Creative Count Mismatch**\n\n"
                 f"You uploaded **{num_uploaded} image(s)**, but **{location_name}** requires **{new_location_frame_count} frame(s)**.\n\n"
                 f"**Valid options:**\n"
@@ -391,10 +395,10 @@ async def _handle_upload_mode(
         )
         return True
 
-    await config.slack_client.chat_update(
-        channel=channel,
-        ts=status_ts,
-        text="⏳ _Generating mockup from uploaded image(s)..._"
+    await channel_adapter.update_message(
+        channel_id=channel,
+        message_id=status_ts,
+        content="⏳ _Generating mockup from uploaded image(s)..._"
     )
 
     result_path = None
@@ -409,21 +413,21 @@ async def _handle_upload_mode(
         if not result_path:
             raise Exception("Failed to generate mockup")
 
-        await config.slack_client.chat_update(
-            channel=channel,
-            ts=status_ts,
-            text="📤 Uploading mockup..."
+        await channel_adapter.update_message(
+            channel_id=channel,
+            message_id=status_ts,
+            content="📤 Uploading mockup..."
         )
 
         variation_info = ""
         if time_of_day != "all" or finish != "all":
             variation_info = f" ({time_of_day}/{finish})"
 
-        await config.slack_client.files_upload_v2(
-            channel=channel,
-            file=str(result_path),
-            filename=f"mockup_{location_key}_{time_of_day}_{finish}.jpg",
-            initial_comment=config.markdown_to_slack(
+        await channel_adapter.upload_file(
+            channel_id=channel,
+            file_path=str(result_path),
+            title=f"mockup_{location_key}_{time_of_day}_{finish}.jpg",
+            comment=(
                 f"🎨 **Billboard Mockup Generated**\n\n"
                 f"📍 Location: {location_name}{variation_info}\n"
                 f"🖼️ Creative(s): {len(uploaded_creatives)} image(s)\n"
@@ -432,7 +436,7 @@ async def _handle_upload_mode(
         )
 
         try:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
         except:
             pass
 
@@ -450,10 +454,10 @@ async def _handle_upload_mode(
 
     except Exception as e:
         logger.error(f"[MOCKUP] Error generating mockup from upload: {e}", exc_info=True)
-        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-        await config.slack_client.chat_postMessage(
-            channel=channel,
-            text=config.markdown_to_slack(f"❌ **Error:** Failed to generate mockup. {str(e)}")
+        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+        await channel_adapter.send_message(
+            channel_id=channel,
+            content=f"❌ **Error:** Failed to generate mockup. {str(e)}"
         )
         # Cleanup uploaded files on error
         for creative_file in uploaded_creatives:
@@ -489,14 +493,16 @@ async def _handle_ai_mode(
     """Handle mockup generation with AI-generated creative."""
     from generators import mockup as mockup_generator
 
+    channel_adapter = config.get_channel_adapter()
+
     # Validate frame count
     is_valid_count = (num_ai_frames == 1) or (num_ai_frames == new_location_frame_count)
 
     if not is_valid_count:
-        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-        await config.slack_client.chat_postMessage(
-            channel=channel,
-            text=config.markdown_to_slack(
+        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+        await channel_adapter.send_message(
+            channel_id=channel,
+            content=(
                 f"⚠️ **Frame Count Mismatch**\n\n"
                 f"You provided **{num_ai_frames} AI prompt(s)**, but **{location_name}** has **{new_location_frame_count} frame(s)**.\n\n"
                 f"**Valid options:**\n"
@@ -507,10 +513,10 @@ async def _handle_ai_mode(
         return True
 
     frames_text = f"{num_ai_frames} artworks and mockup" if num_ai_frames > 1 else "AI artwork and mockup"
-    await config.slack_client.chat_update(
-        channel=channel,
-        ts=status_ts,
-        text=f"⏳ _Generating {frames_text}..._"
+    await channel_adapter.update_message(
+        channel_id=channel,
+        message_id=status_ts,
+        content=f"⏳ _Generating {frames_text}..._"
     )
 
     result_path = None
@@ -529,10 +535,10 @@ async def _handle_ai_mode(
         if not result_path:
             raise Exception("Failed to generate mockup")
 
-        await config.slack_client.chat_update(
-            channel=channel,
-            ts=status_ts,
-            text="📤 Uploading mockup..."
+        await channel_adapter.update_message(
+            channel_id=channel,
+            message_id=status_ts,
+            content="📤 Uploading mockup..."
         )
 
         variation_info = ""
@@ -541,18 +547,18 @@ async def _handle_ai_mode(
 
         frames_info = f" ({num_ai_frames} frames)" if num_ai_frames > 1 else ""
 
-        await config.slack_client.files_upload_v2(
-            channel=channel,
-            file=str(result_path),
-            filename=f"ai_mockup_{location_key}_{time_of_day}_{finish}.jpg",
-            initial_comment=config.markdown_to_slack(
+        await channel_adapter.upload_file(
+            channel_id=channel,
+            file_path=str(result_path),
+            title=f"ai_mockup_{location_key}_{time_of_day}_{finish}.jpg",
+            comment=(
                 f"🎨 **AI-Generated Billboard Mockup**\n\n"
                 f"📍 Location: {location_name}{variation_info}{frames_info}\n"
             )
         )
 
         try:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
         except:
             pass
 
@@ -569,10 +575,10 @@ async def _handle_ai_mode(
 
     except Exception as e:
         logger.error(f"[MOCKUP] Error generating AI mockup: {e}", exc_info=True)
-        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-        await config.slack_client.chat_postMessage(
-            channel=channel,
-            text=config.markdown_to_slack(f"❌ **Error:** Failed to generate AI mockup. {str(e)}")
+        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+        await channel_adapter.send_message(
+            channel_id=channel,
+            content=f"❌ **Error:** Failed to generate AI mockup. {str(e)}"
         )
         # Cleanup AI creatives on error
         for creative_path in ai_creative_paths:

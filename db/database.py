@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS ai_costs (
     reasoning_cost REAL DEFAULT 0,
     total_cost REAL,
     metadata_json TEXT,
-    CONSTRAINT call_type_check CHECK (call_type IN ('classification', 'parsing', 'coordinator_thread', 'main_llm', 'mockup_analysis', 'image_generation', 'other')),
+    CONSTRAINT call_type_check CHECK (call_type IN ('classification', 'parsing', 'coordinator_thread', 'main_llm', 'mockup_analysis', 'image_generation', 'bo_edit', 'other')),
     CONSTRAINT workflow_check CHECK (workflow IN ('mockup_upload', 'mockup_ai', 'bo_parsing', 'bo_editing', 'bo_revision', 'proposal_generation', 'general_chat', 'location_management', NULL))
 );
 
@@ -259,7 +259,7 @@ def _run_migrations(conn):
                     reasoning_cost REAL DEFAULT 0,
                     total_cost REAL,
                     metadata_json TEXT,
-                    CONSTRAINT call_type_check CHECK (call_type IN ('classification', 'parsing', 'coordinator_thread', 'main_llm', 'mockup_analysis', 'image_generation', 'other')),
+                    CONSTRAINT call_type_check CHECK (call_type IN ('classification', 'parsing', 'coordinator_thread', 'main_llm', 'mockup_analysis', 'image_generation', 'bo_edit', 'other')),
                     CONSTRAINT workflow_check CHECK (workflow IN ('mockup_upload', 'mockup_ai', 'bo_parsing', 'bo_editing', 'bo_revision', 'proposal_generation', 'general_chat', 'location_management', NULL))
                 )
             """)
@@ -289,6 +289,62 @@ def _run_migrations(conn):
             logger.debug("[DB MIGRATION] ai_costs table already has updated constraints")
     except Exception as e:
         logger.error(f"[DB MIGRATION] Failed to update ai_costs constraints: {e}")
+        pass
+
+    # Migration 4: Add bo_edit to call_type constraint
+    try:
+        cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='ai_costs'")
+        schema_row = cursor.fetchone()
+
+        if schema_row and 'bo_edit' not in schema_row[0]:
+            logger.info("[DB MIGRATION] Recreating ai_costs table with bo_edit call_type")
+
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ai_costs_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    call_type TEXT NOT NULL,
+                    workflow TEXT,
+                    model TEXT NOT NULL,
+                    user_id TEXT,
+                    context TEXT,
+                    input_tokens INTEGER,
+                    cached_input_tokens INTEGER DEFAULT 0,
+                    output_tokens INTEGER,
+                    reasoning_tokens INTEGER DEFAULT 0,
+                    total_tokens INTEGER,
+                    input_cost REAL,
+                    output_cost REAL,
+                    reasoning_cost REAL DEFAULT 0,
+                    total_cost REAL,
+                    metadata_json TEXT,
+                    CONSTRAINT call_type_check CHECK (call_type IN ('classification', 'parsing', 'coordinator_thread', 'main_llm', 'mockup_analysis', 'image_generation', 'bo_edit', 'other')),
+                    CONSTRAINT workflow_check CHECK (workflow IN ('mockup_upload', 'mockup_ai', 'bo_parsing', 'bo_editing', 'bo_revision', 'proposal_generation', 'general_chat', 'location_management', NULL))
+                )
+            """)
+
+            cursor.execute("""
+                INSERT INTO ai_costs_new
+                SELECT id, timestamp, call_type, workflow, model, user_id, context,
+                       input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, total_tokens,
+                       input_cost, output_cost, reasoning_cost, total_cost, metadata_json
+                FROM ai_costs
+            """)
+
+            cursor.execute("DROP TABLE ai_costs")
+            cursor.execute("ALTER TABLE ai_costs_new RENAME TO ai_costs")
+
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_costs_timestamp ON ai_costs(timestamp)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_costs_call_type ON ai_costs(call_type)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_costs_user ON ai_costs(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_costs_workflow ON ai_costs(workflow)")
+
+            conn.commit()
+            logger.info("[DB MIGRATION] Successfully added bo_edit to ai_costs call_type constraint")
+        else:
+            logger.debug("[DB MIGRATION] ai_costs table already has bo_edit constraint")
+    except Exception as e:
+        logger.error(f"[DB MIGRATION] Failed to add bo_edit constraint: {e}")
         pass
 
 

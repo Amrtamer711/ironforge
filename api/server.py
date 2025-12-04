@@ -13,8 +13,11 @@ def get_uae_time():
     return datetime.now(UAE_TZ)
 
 from fastapi import FastAPI, Request, HTTPException, UploadFile, File, Form
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List
 
 import config
 from db.database import db
@@ -139,6 +142,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Proposal Bot API", lifespan=lifespan)
 
+# Add CORS middleware for unified UI
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3005", "http://localhost:3000", "http://127.0.0.1:3005"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.post("/slack/events")
 async def slack_events(request: Request):
@@ -177,10 +189,10 @@ async def slack_events(request: Request):
                 logger.warning(f"[SLACK_EVENT] file_shared without file_id: {event}")
             else:
                 # Fetch full file info so downstream can detect PPT
-                info = await config.slack_client.files_info(file=file_id)
-                file_obj = info.get("file", {}) if isinstance(info, dict) else getattr(info, "data", {}).get("file", {})
+                channel_adapter = config.get_channel_adapter()
+                file_obj = await channel_adapter.get_file_info(file_id) if channel_adapter else None
                 # Fallback channel from file channels list if missing
-                if not channel:
+                if not channel and file_obj:
                     channels = file_obj.get("channels") or []
                     if isinstance(channels, list) and channels:
                         channel = channels[0]
@@ -299,29 +311,24 @@ async def slack_interactive(request: Request):
         elif action_id == "cancel_bo_coordinator":
             logger.info(f"[BO APPROVAL] Coordinator {user_id} clicked CANCEL for workflow {workflow_id}, opening modal")
             # Open modal for cancellation reason
-            await config.slack_client.views_open(
-                trigger_id=payload.get("trigger_id"),
-                view={
-                    "type": "modal",
-                    "callback_id": f"cancel_bo_coordinator_modal:{workflow_id}",
-                    "title": {"type": "plain_text", "text": "Cancel BO"},
-                    "submit": {"type": "plain_text", "text": "Confirm Cancel"},
-                    "close": {"type": "plain_text", "text": "Go Back"},
-                    "blocks": [
-                        {
-                            "type": "input",
-                            "block_id": "cancellation_reason",
-                            "label": {"type": "plain_text", "text": "Cancellation Reason"},
-                            "element": {
-                                "type": "plain_text_input",
-                                "action_id": "reason_input",
-                                "multiline": True,
-                                "placeholder": {"type": "plain_text", "text": "Explain why you're cancelling this booking order..."}
-                            }
-                        }
-                    ]
-                }
+            from integrations.channels import Modal, ModalField, FieldType
+            channel_adapter = config.get_channel_adapter()
+            modal = Modal(
+                modal_id=f"cancel_bo_coordinator_modal:{workflow_id}",
+                title="Cancel BO",
+                submit_text="Confirm Cancel",
+                cancel_text="Go Back",
+                fields=[
+                    ModalField(
+                        field_id="reason_input",
+                        label="Cancellation Reason",
+                        field_type=FieldType.TEXTAREA,
+                        placeholder="Explain why you're cancelling this booking order...",
+                        block_id="cancellation_reason"
+                    )
+                ]
             )
+            await channel_adapter.open_modal(trigger_id=payload.get("trigger_id"), modal=modal)
 
         elif action_id == "approve_bo_hos":
             logger.info(f"[BO APPROVAL] Head of Sales {user_id} clicked APPROVE for workflow {workflow_id}")
@@ -336,56 +343,46 @@ async def slack_interactive(request: Request):
         elif action_id == "reject_bo_hos":
             logger.info(f"[BO APPROVAL] Head of Sales {user_id} clicked REJECT for workflow {workflow_id}, opening modal")
             # Open modal for rejection reason
-            await config.slack_client.views_open(
-                trigger_id=payload.get("trigger_id"),
-                view={
-                    "type": "modal",
-                    "callback_id": f"reject_bo_hos_modal:{workflow_id}",
-                    "title": {"type": "plain_text", "text": "Reject BO"},
-                    "submit": {"type": "plain_text", "text": "Submit"},
-                    "close": {"type": "plain_text", "text": "Cancel"},
-                    "blocks": [
-                        {
-                            "type": "input",
-                            "block_id": "rejection_reason",
-                            "label": {"type": "plain_text", "text": "Rejection Reason"},
-                            "element": {
-                                "type": "plain_text_input",
-                                "action_id": "reason_input",
-                                "multiline": True,
-                                "placeholder": {"type": "plain_text", "text": "Explain why you're rejecting this booking order..."}
-                            }
-                        }
-                    ]
-                }
+            from integrations.channels import Modal, ModalField, FieldType
+            channel_adapter = config.get_channel_adapter()
+            modal = Modal(
+                modal_id=f"reject_bo_hos_modal:{workflow_id}",
+                title="Reject BO",
+                submit_text="Submit",
+                cancel_text="Cancel",
+                fields=[
+                    ModalField(
+                        field_id="reason_input",
+                        label="Rejection Reason",
+                        field_type=FieldType.TEXTAREA,
+                        placeholder="Explain why you're rejecting this booking order...",
+                        block_id="rejection_reason"
+                    )
+                ]
             )
+            await channel_adapter.open_modal(trigger_id=payload.get("trigger_id"), modal=modal)
 
         elif action_id == "cancel_bo_hos":
             logger.info(f"[BO APPROVAL] Head of Sales {user_id} clicked CANCEL for workflow {workflow_id}, opening modal")
             # Open modal for cancellation reason
-            await config.slack_client.views_open(
-                trigger_id=payload.get("trigger_id"),
-                view={
-                    "type": "modal",
-                    "callback_id": f"cancel_bo_hos_modal:{workflow_id}",
-                    "title": {"type": "plain_text", "text": "Cancel BO"},
-                    "submit": {"type": "plain_text", "text": "Confirm Cancel"},
-                    "close": {"type": "plain_text", "text": "Go Back"},
-                    "blocks": [
-                        {
-                            "type": "input",
-                            "block_id": "cancellation_reason",
-                            "label": {"type": "plain_text", "text": "Cancellation Reason"},
-                            "element": {
-                                "type": "plain_text_input",
-                                "action_id": "reason_input",
-                                "multiline": True,
-                                "placeholder": {"type": "plain_text", "text": "Explain why you're cancelling this booking order..."}
-                            }
-                        }
-                    ]
-                }
+            from integrations.channels import Modal, ModalField, FieldType
+            channel_adapter = config.get_channel_adapter()
+            modal = Modal(
+                modal_id=f"cancel_bo_hos_modal:{workflow_id}",
+                title="Cancel BO",
+                submit_text="Confirm Cancel",
+                cancel_text="Go Back",
+                fields=[
+                    ModalField(
+                        field_id="reason_input",
+                        label="Cancellation Reason",
+                        field_type=FieldType.TEXTAREA,
+                        placeholder="Explain why you're cancelling this booking order...",
+                        block_id="cancellation_reason"
+                    )
+                ]
             )
+            await channel_adapter.open_modal(trigger_id=payload.get("trigger_id"), modal=modal)
 
     elif interaction_type == "view_submission":
         # Modal submission
@@ -1134,4 +1131,265 @@ async def generate_mockup_api(
         except Exception as log_error:
             logger.error(f"[MOCKUP API] Error logging usage: {log_error}")
 
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================
+# UNIFIED UI CHAT ENDPOINTS
+# ============================================
+
+class ChatMessageRequest(BaseModel):
+    """Request model for chat messages."""
+    message: str
+    conversation_id: Optional[str] = None
+    user_id: Optional[str] = None
+    user_name: Optional[str] = None
+    roles: Optional[List[str]] = None
+
+
+class ChatMessageResponse(BaseModel):
+    """Response model for chat messages."""
+    content: Optional[str] = None
+    tool_call: Optional[dict] = None
+    files: Optional[List[dict]] = None
+    error: Optional[str] = None
+    conversation_id: Optional[str] = None
+
+
+@app.post("/api/chat/message", response_model=ChatMessageResponse)
+async def chat_message(request: ChatMessageRequest):
+    """
+    Send a chat message and receive a response.
+
+    This endpoint connects the Unified UI to the same LLM infrastructure
+    used by the Slack bot.
+    """
+    from core.chat_api import process_chat_message
+
+    try:
+        # Use provided user info or defaults for local dev
+        user_id = request.user_id or "web-user-default"
+        user_name = request.user_name or "Web User"
+        roles = request.roles or ["sales_person"]
+
+        result = await process_chat_message(
+            user_id=user_id,
+            user_name=user_name,
+            message=request.message,
+            roles=roles
+        )
+
+        return ChatMessageResponse(
+            content=result.get("content"),
+            tool_call=result.get("tool_call"),
+            files=result.get("files"),
+            error=result.get("error"),
+            conversation_id=request.conversation_id
+        )
+
+    except Exception as e:
+        logger.error(f"[CHAT API] Error processing message: {e}", exc_info=True)
+        return ChatMessageResponse(
+            error=str(e),
+            conversation_id=request.conversation_id
+        )
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(request: ChatMessageRequest):
+    """
+    Stream a chat response using Server-Sent Events.
+
+    Returns real-time chunks as the LLM generates the response.
+    """
+    from core.chat_api import stream_chat_message
+
+    user_id = request.user_id or "web-user-default"
+    user_name = request.user_name or "Web User"
+    roles = request.roles or ["sales_person"]
+
+    async def event_generator():
+        async for chunk in stream_chat_message(
+            user_id=user_id,
+            user_name=user_name,
+            message=request.message,
+            roles=roles
+        ):
+            yield chunk
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+
+@app.get("/api/chat/conversations")
+async def get_conversations(user_id: Optional[str] = None):
+    """Get conversation history for a user."""
+    from core.chat_api import get_conversation_history
+
+    user_id = user_id or "web-user-default"
+    history = get_conversation_history(user_id)
+
+    return {"conversations": [{"id": user_id, "messages": history}]}
+
+
+@app.post("/api/chat/conversation")
+async def create_conversation(user_id: Optional[str] = None, user_name: Optional[str] = None):
+    """Create a new conversation (clears existing history)."""
+    from core.chat_api import clear_conversation, get_web_adapter
+    import uuid
+
+    user_id = user_id or "web-user-default"
+    user_name = user_name or "Web User"
+
+    # Clear existing conversation
+    clear_conversation(user_id)
+
+    # Create new session
+    web_adapter = get_web_adapter()
+    session = web_adapter.create_session(user_id, user_name)
+
+    return {
+        "conversation_id": session.conversation_id,
+        "user_id": user_id
+    }
+
+
+@app.delete("/api/chat/conversation/{conversation_id}")
+async def delete_conversation(conversation_id: str, user_id: Optional[str] = None):
+    """Delete a conversation."""
+    from core.chat_api import clear_conversation
+
+    user_id = user_id or "web-user-default"
+    clear_conversation(user_id)
+
+    return {"success": True, "conversation_id": conversation_id}
+
+
+# ============================================
+# UNIFIED UI AUTH ENDPOINTS (Local Dev)
+# ============================================
+
+class LoginRequest(BaseModel):
+    """Login request model."""
+    email: str
+    password: str
+
+
+# Dev users for local testing (mirrors auth.js)
+DEV_USERS = {
+    'admin@mmg.com': {
+        'password': 'admin123',
+        'id': 'dev-admin-1',
+        'name': 'Sales Admin',
+        'email': 'admin@mmg.com',
+        'roles': ['admin', 'hos', 'sales_person']
+    },
+    'hos@mmg.com': {
+        'password': 'hos123',
+        'id': 'dev-hos-1',
+        'name': 'Head of Sales',
+        'email': 'hos@mmg.com',
+        'roles': ['hos', 'sales_person']
+    },
+    'sales@mmg.com': {
+        'password': 'sales123',
+        'id': 'dev-sales-1',
+        'name': 'Sales Person',
+        'email': 'sales@mmg.com',
+        'roles': ['sales_person']
+    }
+}
+
+
+@app.post("/api/auth/login")
+async def auth_login(request: LoginRequest):
+    """
+    Authenticate a user (local dev mode).
+
+    In production, this would validate against Supabase.
+    """
+    email = request.email.lower()
+    user = DEV_USERS.get(email)
+
+    if not user or user['password'] != request.password:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    # Generate a simple token for local dev
+    import hashlib
+    import time
+    token = hashlib.sha256(f"{email}-{time.time()}".encode()).hexdigest()[:32]
+
+    return {
+        "token": f"dev-{token}",
+        "user": {
+            "id": user['id'],
+            "name": user['name'],
+            "email": user['email'],
+            "roles": user['roles']
+        }
+    }
+
+
+@app.post("/api/auth/logout")
+async def auth_logout():
+    """Logout endpoint (no-op for local dev)."""
+    return {"success": True}
+
+
+@app.get("/api/auth/me")
+async def auth_me(request: Request):
+    """Get current user info from token."""
+    auth_header = request.headers.get("Authorization", "")
+
+    if not auth_header.startswith("Bearer dev-"):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # For local dev, just return a default user
+    # In production, validate the token
+    return {
+        "id": "dev-admin-1",
+        "name": "Sales Admin",
+        "email": "admin@mmg.com",
+        "roles": ["admin", "hos", "sales_person"]
+    }
+
+
+# ============================================
+# UNIFIED UI PROPOSALS ENDPOINTS
+# ============================================
+
+@app.get("/api/proposals/history")
+async def get_proposals_history(user_id: Optional[str] = None):
+    """Get proposal generation history."""
+    try:
+        # Get recent proposals from database
+        proposals = db.get_recent_proposals(limit=20, user_id=user_id)
+        return proposals
+    except Exception as e:
+        logger.error(f"[PROPOSALS API] Error getting history: {e}")
+        return []
+
+
+# ============================================
+# STATIC FILE SERVING FOR UNIFIED UI
+# ============================================
+
+@app.get("/api/files/{file_id}/{filename}")
+async def serve_uploaded_file(file_id: str, filename: str):
+    """Serve files uploaded through the chat interface."""
+    from core.chat_api import get_web_adapter
+
+    web_adapter = get_web_adapter()
+    file_path = web_adapter.get_file_path(file_id)
+
+    if not file_path or not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    return FileResponse(file_path, filename=filename)

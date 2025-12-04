@@ -1,6 +1,62 @@
-// Mockup Studio - Main Application
-// Full-featured billboard mockup setup with all backend integrations
+// Unified UI - Main Application
+// MMG Platform - Sales Department Module
 
+// ========================================
+// TOAST NOTIFICATIONS (Global Utility)
+// ========================================
+const Toast = {
+  container: null,
+
+  init() {
+    this.container = document.getElementById('toastContainer');
+    if (!this.container) {
+      this.container = document.createElement('div');
+      this.container.id = 'toastContainer';
+      this.container.className = 'toast-container';
+      document.body.appendChild(this.container);
+    }
+  },
+
+  show(message, type = 'success') {
+    if (!this.container) this.init();
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+
+    const icons = {
+      success: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>',
+      error: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/></svg>',
+      warning: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>',
+      info: '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>'
+    };
+
+    toast.innerHTML = `
+      <div class="toast-icon">${icons[type] || icons.info}</div>
+      <div class="toast-message">${message}</div>
+    `;
+
+    this.container.appendChild(toast);
+
+    // Auto remove after 3 seconds
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(100%)';
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  },
+
+  success(message) { this.show(message, 'success'); },
+  error(message) { this.show(message, 'error'); },
+  warning(message) { this.show(message, 'warning'); },
+  info(message) { this.show(message, 'info'); }
+};
+
+// Make Toast globally available
+window.Toast = Toast;
+
+// ========================================
+// MOCKUP STUDIO CLASS (Tool within Unified UI)
+// ========================================
 class MockupStudio {
   constructor() {
     // Authentication
@@ -1987,8 +2043,21 @@ class MockupStudio {
   }
 }
 
-// Initialize app when DOM is ready
+// Make MockupStudio globally available
+window.MockupStudio = MockupStudio;
+
+// ========================================
+// APP INITIALIZATION
+// ========================================
 let app;
+
 document.addEventListener('DOMContentLoaded', () => {
-  app = new MockupStudio();
+  // Initialize Toast first
+  Toast.init();
+
+  // Initialize Auth (handles landing/login/app state)
+  // Auth.init() is called from auth.js
+
+  // MockupStudio will be initialized when the mockup tool is selected
+  // via Sidebar.initMockup()
 });

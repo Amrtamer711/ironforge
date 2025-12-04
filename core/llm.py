@@ -3,7 +3,6 @@ import asyncio
 from typing import Dict, Any, Optional, List
 import os
 from pathlib import Path
-import aiohttp
 from datetime import datetime, timedelta
 from pptx import Presentation
 import shutil
@@ -189,10 +188,11 @@ async def _handle_booking_order_parse(
         files = [slack_event["file"]]
 
     if not files:
-        await config.slack_client.chat_update(
-            channel=channel,
-            ts=status_ts,
-            text=config.markdown_to_slack("❌ No file detected. Please upload a booking order document (Excel, PDF, or image).")
+        channel_adapter = config.get_channel_adapter()
+        await channel_adapter.update_message(
+            channel_id=channel,
+            message_id=status_ts,
+            content="**Error:** No file detected. Please upload a booking order document (Excel, PDF, or image)."
         )
         return
 
@@ -204,10 +204,11 @@ async def _handle_booking_order_parse(
         tmp_file = await _download_slack_file(file_info)
     except Exception as e:
         logger.error(f"[BOOKING] Download failed: {e}")
-        await config.slack_client.chat_update(
-            channel=channel,
-            ts=status_ts,
-            text=config.markdown_to_slack(f"❌ Failed to download file: {e}")
+        channel_adapter = config.get_channel_adapter()
+        await channel_adapter.update_message(
+            channel_id=channel,
+            message_id=status_ts,
+            content=f"**Error:** Failed to download file: {e}"
         )
         return
 
@@ -217,9 +218,10 @@ async def _handle_booking_order_parse(
 
     # Classify document
     try:
-        await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Classifying document..._")
+        channel_adapter = config.get_channel_adapter()
+        await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="_Classifying document..._")
     except Exception as e:
-        logger.error(f"[SLACK] Failed to update status message while classifying: {e}", exc_info=True)
+        logger.error(f"[CHANNEL] Failed to update status message while classifying: {e}", exc_info=True)
         # Continue processing - status update failure shouldn't stop the workflow
 
     # Convert user_id to user_name for cost tracking
@@ -232,17 +234,18 @@ async def _handle_booking_order_parse(
     # Check if it's actually a booking order
     if classification.get("classification") != "BOOKING_ORDER" or classification.get("confidence") in {"low", None}:
         try:
-            await config.slack_client.chat_update(
-                channel=channel,
-                ts=status_ts,
-                text=config.markdown_to_slack(
-                    f"⚠️ This doesn't look like a booking order (confidence: {classification.get('confidence', 'unknown')}).\n\n"
+            channel_adapter = config.get_channel_adapter()
+            await channel_adapter.update_message(
+                channel_id=channel,
+                message_id=status_ts,
+                content=(
+                    f"This doesn't look like a booking order (confidence: {classification.get('confidence', 'unknown')}).\n\n"
                     f"Reasoning: {classification.get('reasoning', 'N/A')}\n\n"
                     f"If this is artwork for a mockup, please request a mockup instead."
                 )
             )
         except Exception as e:
-            logger.error(f"[SLACK] Failed to send classification result to user: {e}", exc_info=True)
+            logger.error(f"[CHANNEL] Failed to send classification result to user: {e}", exc_info=True)
         tmp_file.unlink(missing_ok=True)
         return
 
@@ -250,9 +253,10 @@ async def _handle_booking_order_parse(
     # TODO: Re-enable timeout protection once we optimize parsing speed
     # Current issue: High reasoning effort can take 10-15+ minutes on complex BOs
     try:
-        await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Extracting booking order data..._")
+        channel_adapter = config.get_channel_adapter()
+        await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="_Extracting booking order data..._")
     except Exception as e:
-        logger.error(f"[SLACK] Failed to update status message while parsing: {e}", exc_info=True)
+        logger.error(f"[CHANNEL] Failed to update status message while parsing: {e}", exc_info=True)
     try:
         # Timeout temporarily disabled to allow high reasoning effort to complete
         # result = await asyncio.wait_for(
@@ -278,24 +282,26 @@ async def _handle_booking_order_parse(
     except Exception as e:
         logger.error(f"[BOOKING] Parsing failed: {e}", exc_info=True)
         try:
-            await config.slack_client.chat_update(
-                channel=channel,
-                ts=status_ts,
-                text=config.markdown_to_slack(
-                    f"❌ **Error:** Failed to extract data from the booking order.\n\n"
+            channel_adapter = config.get_channel_adapter()
+            await channel_adapter.update_message(
+                channel_id=channel,
+                message_id=status_ts,
+                content=(
+                    f"**Error:** Failed to extract data from the booking order.\n\n"
                     f"If you believe this is a bug, please contact the AI team with the timestamp: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}`"
                 )
             )
-        except Exception as slack_error:
-            logger.error(f"[SLACK] Failed to send parsing error to user: {slack_error}", exc_info=True)
+        except Exception as channel_error:
+            logger.error(f"[CHANNEL] Failed to send parsing error to user: {channel_error}", exc_info=True)
         tmp_file.unlink(missing_ok=True)
         return
 
     # NEW FLOW: Generate Excel immediately and send with Approve/Reject buttons
     try:
-        await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Generating Excel file..._")
+        channel_adapter = config.get_channel_adapter()
+        await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="_Generating Excel file..._")
     except Exception as e:
-        logger.error(f"[SLACK] Failed to update status message while generating Excel: {e}", exc_info=True)
+        logger.error(f"[CHANNEL] Failed to update status message while generating Excel: {e}", exc_info=True)
 
     try:
         # Generate combined PDF (Excel + Original BO concatenated)
@@ -320,13 +326,14 @@ async def _handle_booking_order_parse(
         logger.info(f"[BO APPROVAL] Coordinator channel for {company}: {coordinator_channel}")
         if not coordinator_channel:
             try:
-                await config.slack_client.chat_update(
-                    channel=channel,
-                    ts=status_ts,
-                    text=config.markdown_to_slack(f"❌ **Error:** Sales Coordinator for {company} not configured. Please contact the AI team to set this up.")
+                channel_adapter = config.get_channel_adapter()
+                await channel_adapter.update_message(
+                    channel_id=channel,
+                    message_id=status_ts,
+                    content=f"**Error:** Sales Coordinator for {company} not configured. Please contact the AI team to set this up."
                 )
             except Exception as e:
-                logger.error(f"[SLACK] Failed to send config error to user: {e}", exc_info=True)
+                logger.error(f"[CHANNEL] Failed to send config error to user: {e}", exc_info=True)
             return
 
         # Send Excel + summary + Approve/Reject buttons to coordinator
@@ -376,9 +383,10 @@ async def _handle_booking_order_parse(
 
         # NEW FLOW: Post notification in main channel, then file + buttons in thread
         try:
-            await config.slack_client.chat_update(channel=channel, ts=status_ts, text="⏳ _Sending to coordinator..._")
+            channel_adapter = config.get_channel_adapter()
+            await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="_Sending to coordinator..._")
         except Exception as e:
-            logger.error(f"[SLACK] Failed to update status message: {e}", exc_info=True)
+            logger.error(f"[CHANNEL] Failed to update status message: {e}", exc_info=True)
 
         logger.info(f"[BO APPROVAL] Posting notification to coordinator channel: {coordinator_channel}")
 
@@ -387,7 +395,7 @@ async def _handle_booking_order_parse(
 
         # Step 1: Post notification message in main channel
         notification_text = (
-            f"📋 **New Booking Order Submitted**\n\n"
+            f"**New Booking Order Submitted**\n\n"
             f"**Client:** {result.data.get('client', 'N/A')}\n"
             f"**Campaign:** {result.data.get('brand_campaign', 'N/A')}\n"
             f"**Gross Total:** AED {result.data.get('gross_calc', 0):,.2f}\n\n"
@@ -395,22 +403,23 @@ async def _handle_booking_order_parse(
             f"_Please review the details in the thread below..._"
         )
 
-        notification_msg = await config.slack_client.chat_postMessage(
-            channel=coordinator_channel,
-            text=config.markdown_to_slack(notification_text)
+        channel_adapter = config.get_channel_adapter()
+        notification_msg = await channel_adapter.send_message(
+            channel_id=coordinator_channel,
+            content=notification_text
         )
-        notification_ts = notification_msg["ts"]
+        notification_ts = notification_msg.platform_message_id or notification_msg.id
         logger.info(f"[BO APPROVAL] Posted notification with ts: {notification_ts}")
 
         # Step 2: Upload combined PDF file as threaded reply
         logger.info(f"[BO APPROVAL] Uploading combined PDF in thread...")
         try:
-            file_upload = await config.slack_client.files_upload_v2(
-                channel=coordinator_channel,
-                file=str(combined_pdf_path),
+            file_upload = await channel_adapter.upload_file(
+                channel_id=coordinator_channel,
+                file_path=str(combined_pdf_path),
                 title=f"BO Draft - {result.data.get('client', 'Unknown')}",
-                initial_comment=config.markdown_to_slack(preview_text),
-                thread_ts=notification_ts  # Post in thread
+                comment=preview_text,
+                thread_id=notification_ts  # Post in thread
             )
             logger.info(f"[BO APPROVAL] Combined PDF uploaded in thread successfully")
         except Exception as upload_error:
@@ -423,48 +432,36 @@ async def _handle_booking_order_parse(
 
         # Step 3: Post buttons in the same thread
         logger.info(f"[BO APPROVAL] Posting approval buttons in thread...")
-        button_blocks = [
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "📎 *Please review the PDF above (Excel + Original BO), then:*"
-                }
-            },
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "✅ Approve"},
-                        "style": "primary",
-                        "value": workflow_id,
-                        "action_id": "approve_bo_coordinator"
-                    },
-                    {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "❌ Reject"},
-                        "style": "danger",
-                        "value": workflow_id,
-                        "action_id": "reject_bo_coordinator"
-                    },
-                    {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "🚫 Cancel"},
-                        "value": workflow_id,
-                        "action_id": "cancel_bo_coordinator"
-                    }
-                ]
-            }
+        from integrations.channels import Button, ButtonStyle
+
+        buttons = [
+            Button(
+                action_id="approve_bo_coordinator",
+                text="Approve",
+                value=workflow_id,
+                style=ButtonStyle.PRIMARY
+            ),
+            Button(
+                action_id="reject_bo_coordinator",
+                text="Reject",
+                value=workflow_id,
+                style=ButtonStyle.DANGER
+            ),
+            Button(
+                action_id="cancel_bo_coordinator",
+                text="Cancel",
+                value=workflow_id,
+                style=ButtonStyle.SECONDARY
+            )
         ]
 
-        button_msg = await config.slack_client.chat_postMessage(
-            channel=coordinator_channel,
-            thread_ts=notification_ts,  # Post in same thread
-            text="Please review and approve or reject:",
-            blocks=button_blocks
+        button_msg = await channel_adapter.send_message(
+            channel_id=coordinator_channel,
+            content="**Please review the PDF above (Excel + Original BO), then:**",
+            buttons=buttons,
+            thread_id=notification_ts  # Post in same thread
         )
-        coordinator_msg_ts = button_msg["ts"]
+        coordinator_msg_ts = button_msg.platform_message_id or button_msg.id
         logger.info(f"[BO APPROVAL] Posted buttons in thread with ts: {coordinator_msg_ts}")
 
         # Update workflow with coordinator message info
@@ -477,11 +474,11 @@ async def _handle_booking_order_parse(
 
         # Notify sales person
         try:
-            await config.slack_client.chat_update(
-                channel=channel,
-                ts=status_ts,
-                text=config.markdown_to_slack(
-                    f"✅ **Booking Order Submitted**\n\n"
+            await channel_adapter.update_message(
+                channel_id=channel,
+                message_id=status_ts,
+                content=(
+                    f"**Booking Order Submitted**\n\n"
                     f"**Client:** {result.data.get('client', 'N/A')}\n"
                     f"**Campaign:** {result.data.get('brand_campaign', 'N/A')}\n"
                     f"**Gross Total:** AED {result.data.get('gross_calc', 0):,.2f}\n\n"
@@ -490,23 +487,24 @@ async def _handle_booking_order_parse(
                 )
             )
         except Exception as e:
-            logger.error(f"[SLACK] Failed to send success message to user: {e}", exc_info=True)
+            logger.error(f"[CHANNEL] Failed to send success message to user: {e}", exc_info=True)
 
         logger.info(f"[BO APPROVAL] Sent {workflow_id} to coordinator with combined PDF and approval buttons")
 
     except Exception as e:
         logger.error(f"[BO APPROVAL] Error creating workflow: {e}", exc_info=True)
         try:
-            await config.slack_client.chat_update(
-                channel=channel,
-                ts=status_ts,
-                text=config.markdown_to_slack(
-                    f"❌ **Error:** Failed to start the approval workflow.\n\n"
+            channel_adapter = config.get_channel_adapter()
+            await channel_adapter.update_message(
+                channel_id=channel,
+                message_id=status_ts,
+                content=(
+                    f"**Error:** Failed to start the approval workflow.\n\n"
                     f"If you believe this is a bug, please contact the AI team with the timestamp: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}`"
                 )
             )
-        except Exception as slack_error:
-            logger.error(f"[SLACK] Failed to send workflow error to user: {slack_error}", exc_info=True)
+        except Exception as channel_error:
+            logger.error(f"[CHANNEL] Failed to send workflow error to user: {channel_error}", exc_info=True)
 
 
 async def handle_booking_order_edit_flow(channel: str, user_id: str, user_input: str) -> str:
@@ -721,40 +719,44 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         )
                         # Only send message if there's an answer (execute action returns None)
                         if answer is not None:
-                            await config.slack_client.chat_postMessage(
-                                channel=channel,
-                                thread_ts=thread_ts,
-                                text=config.markdown_to_slack(answer)
+                            channel_adapter = config.get_channel_adapter()
+                            await channel_adapter.send_message(
+                                channel_id=channel,
+                                content=answer,
+                                thread_id=thread_ts
                             )
                     except Exception as e:
                         logger.error(f"[BO APPROVAL] Error in coordinator thread handler: {e}", exc_info=True)
-                        await config.slack_client.chat_postMessage(
-                            channel=channel,
-                            thread_ts=thread_ts,
-                            text=config.markdown_to_slack(f"❌ **Error:** {str(e)}")
+                        channel_adapter = config.get_channel_adapter()
+                        await channel_adapter.send_message(
+                            channel_id=channel,
+                            content=f"**Error:** {str(e)}",
+                            thread_id=thread_ts
                         )
                     return  # Exit early, don't process as normal message
                 else:
                     # Thread exists but not active yet (user hasn't rejected)
                     logger.info(f"[BO APPROVAL] Message in coordinator thread for {workflow_id} but thread not active - reminding user to use buttons")
-                    await config.slack_client.chat_postMessage(
-                        channel=channel,
-                        thread_ts=thread_ts,
-                        text=config.markdown_to_slack(
-                            "⚠️ **Please use the Approve or Reject buttons first**\n\n"
-                            "To make edits to this booking order, click the **❌ Reject** button above. "
+                    channel_adapter = config.get_channel_adapter()
+                    await channel_adapter.send_message(
+                        channel_id=channel,
+                        content=(
+                            "**Please use the Approve or Reject buttons first**\n\n"
+                            "To make edits to this booking order, click the **Reject** button above. "
                             "This will open the thread for editing.\n\n"
-                            "If the BO looks good, click **✅ Approve** to send it to the next stage."
-                        )
+                            "If the BO looks good, click **Approve** to send it to the next stage."
+                        ),
+                        thread_id=thread_ts
                     )
                     return  # Exit early, don't process as normal message
 
     # Send initial status message
-    status_message = await config.slack_client.chat_postMessage(
-        channel=channel,
-        text="⏳ _Please wait..._"
+    channel_adapter = config.get_channel_adapter()
+    status_message = await channel_adapter.send_message(
+        channel_id=channel,
+        content="_Please wait..._"
     )
-    status_ts = status_message.get("ts")
+    status_ts = status_message.platform_message_id or status_message.id
 
     # OLD EDIT FLOW REMOVED - Now coordinators edit directly in threads
 
@@ -773,9 +775,9 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         if timestamp and (datetime.now() - timestamp) > timedelta(minutes=10):
             del pending_location_additions[user_id]
             logger.warning(f"[LOCATION_ADD] Pending location expired for user {user_id}")
-            await config.slack_client.chat_postMessage(
-                channel=channel,
-                text=config.markdown_to_slack("❌ **Error:** Location upload session expired (10 minute limit). Please restart the location addition process.")
+            await channel_adapter.send_message(
+                channel_id=channel,
+                content="**Error:** Location upload session expired (10 minute limit). Please restart the location addition process."
             )
             return
 
@@ -800,9 +802,9 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     pdf_file = await _download_slack_file(f)
                 except Exception as e:
                     logger.error(f"Failed to download PDF file: {e}")
-                    await config.slack_client.chat_postMessage(
-                        channel=channel,
-                        text=config.markdown_to_slack("❌ **Error:** Failed to download the PDF file. Please try again.")
+                    await channel_adapter.send_message(
+                        channel_id=channel,
+                        content="**Error:** Failed to download the PDF file. Please try again."
                     )
                     return
 
@@ -813,17 +815,18 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                         os.unlink(pdf_file)
                     except:
                         pass
-                    await config.slack_client.chat_postMessage(
-                        channel=channel,
-                        text=config.markdown_to_slack("❌ **Error:** The uploaded file is not a valid PDF. Please upload a .pdf file.")
+                    await channel_adapter.send_message(
+                        channel_id=channel,
+                        content="**Error:** The uploaded file is not a valid PDF. Please upload a .pdf file."
                     )
                     return
 
                 # Post status message about conversion
-                conversion_status = await config.slack_client.chat_postMessage(
-                    channel=channel,
-                    text="⏳ _Converting PDF to PowerPoint with maximum quality (300 DPI)..._"
+                conversion_status = await channel_adapter.send_message(
+                    channel_id=channel,
+                    content="_Converting PDF to PowerPoint with maximum quality (300 DPI)..._"
                 )
+                conversion_status_ts = conversion_status.platform_message_id or conversion_status.id
 
                 # Convert PDF to PPTX
                 logger.info(f"[LOCATION_ADD] Converting PDF to PPTX...")
@@ -836,12 +839,12 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     pass
 
                 # Delete conversion status message
-                await config.slack_client.chat_delete(channel=channel, ts=conversion_status["ts"])
+                await channel_adapter.delete_message(channel_id=channel, message_id=conversion_status_ts)
 
                 if not pptx_file:
-                    await config.slack_client.chat_postMessage(
-                        channel=channel,
-                        text=config.markdown_to_slack("❌ **Error:** Failed to convert PDF to PowerPoint. Please try again or contact support.")
+                    await channel_adapter.send_message(
+                        channel_id=channel,
+                        content="**Error:** Failed to convert PDF to PowerPoint. Please try again or contact support."
                     )
                     return
 
@@ -882,22 +885,22 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 config.refresh_templates()
                 
                 # Delete status message
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                
-                await config.slack_client.chat_postMessage(
-                    channel=channel,
-                    text=config.markdown_to_slack(
-                        f"✅ **Successfully added location `{pending_data['location_key']}`**\n\n"
+                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+
+                await channel_adapter.send_message(
+                    channel_id=channel,
+                    content=(
+                        f"**Successfully added location `{pending_data['location_key']}`**\n\n"
                         f"The location is now available for use in proposals."
                     )
                 )
                 return
             except Exception as e:
                 logger.error(f"Failed to save location: {e}")
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                await config.slack_client.chat_postMessage(
-                    channel=channel,
-                    text=config.markdown_to_slack("❌ **Error:** Failed to save the location. Please try again.")
+                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                await channel_adapter.send_message(
+                    channel_id=channel,
+                    content="**Error:** Failed to save the location. Please try again."
                 )
                 # Clean up the temporary file
                 try:
@@ -908,11 +911,11 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         else:
             # No PPT file found, cancel the addition
             del pending_location_additions[user_id]
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(
-                channel=channel,
-                text=config.markdown_to_slack(
-                    "❌ **Location addition cancelled.**\n\n"
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(
+                channel_id=channel,
+                content=(
+                    "**Location addition cancelled.**\n\n"
                     "No PowerPoint file was found in your message. Please start over with 'add location' if you want to try again."
                 )
             )
@@ -956,10 +959,10 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 # Refresh templates to remove from cache
                 config.refresh_templates()
 
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                await config.slack_client.chat_postMessage(
-                    channel=channel,
-                    text=config.markdown_to_slack(
+                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                await channel_adapter.send_message(
+                    channel_id=channel,
+                    content=(
                         f"✅ **Location `{location_key}` successfully deleted**\n\n"
                         f"📍 **Removed:** {display_name}\n"
                         f"🗑️ **Files deleted:** PowerPoint template, metadata, and {deleted_count} mockup frames\n"
@@ -969,26 +972,26 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 return
             except Exception as e:
                 logger.error(f"[LOCATION_DELETE] Failed to delete location {location_key}: {e}")
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-                await config.slack_client.chat_postMessage(
-                    channel=channel,
-                    text=config.markdown_to_slack(f"❌ **Error:** Failed to delete location `{location_key}`. Please try again or check server logs.")
+                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                await channel_adapter.send_message(
+                    channel_id=channel,
+                    content=f"❌ **Error:** Failed to delete location `{location_key}`. Please try again or check server logs."
                 )
                 return
         else:
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(
-                channel=channel,
-                text=config.markdown_to_slack(f"❌ **Error:** Location `{location_key}` not found. Deletion cancelled.")
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(
+                channel_id=channel,
+                content=f"❌ **Error:** Location `{location_key}` not found. Deletion cancelled."
             )
             return
 
     # Handle cancellation
     if user_input.strip().lower() == "cancel" and config.is_admin(user_id):
-        await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-        await config.slack_client.chat_postMessage(
-            channel=channel,
-            text=config.markdown_to_slack("✅ **Operation cancelled.**")
+        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+        await channel_adapter.send_message(
+            channel_id=channel,
+            content="✅ **Operation cancelled.**"
         )
         return
 
@@ -1246,12 +1249,12 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             formatted_reply = re.sub(r'^(For .+:)$', r'**\1**', formatted_reply, flags=re.MULTILINE)
             formatted_reply = re.sub(r'^([A-Z][A-Z\s]+:)$', r'**\1**', formatted_reply, flags=re.MULTILINE)
             # Delete status message before sending reply
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack(formatted_reply))
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content=formatted_reply)
         else:
             # No content and no tool calls
-            await config.slack_client.chat_delete(channel=channel, ts=status_ts)
-            await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("I can help with proposals or add locations. Say 'add location'."))
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content="I can help with proposals or add locations. Say 'add location'.")
             return
 
         user_history[user_id] = history[-10:]
@@ -1260,8 +1263,10 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         config.logger.error(f"LLM loop error: {e}", exc_info=True)
         # Try to delete status message if it exists
         try:
-            if 'status_ts' in locals() and status_ts:
-                await config.slack_client.chat_delete(channel=channel, ts=status_ts)
+            if 'status_ts' in locals() and status_ts and channel_adapter:
+                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
         except:
             pass
-        await config.slack_client.chat_postMessage(channel=channel, text=config.markdown_to_slack("❌ **Error:** Something went wrong. Please try again.")) 
+        channel_adapter = config.get_channel_adapter()
+        if channel_adapter:
+            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** Something went wrong. Please try again.") 

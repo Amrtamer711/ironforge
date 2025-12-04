@@ -1,10 +1,9 @@
 """
-Slack File Utilities - Download, validate, and convert files from Slack.
+File Utilities - Download, validate, and convert files from messaging channels.
+
+Uses the unified channel abstraction layer for file downloads.
 """
 
-import os
-import tempfile
-import aiohttp
 from pathlib import Path
 from typing import Dict, Any, Optional
 from pptx import Presentation
@@ -215,32 +214,21 @@ def _validate_powerpoint_file(file_path: Path) -> bool:
 
 
 async def _download_slack_file(file_info: Dict[str, Any]) -> Path:
-    url = file_info.get("url_private_download") or file_info.get("url_private")
-    if not url:
-        raise ValueError("Missing file download URL")
-    headers = {"Authorization": f"Bearer {config.SLACK_BOT_TOKEN}"}
-    suffix = Path(file_info.get("name", "upload.bin")).suffix or ".bin"
-    import tempfile
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-    tmp.close()
+    """
+    Download a file from the messaging channel.
 
-    config.logger.info(f"[DOWNLOAD] Downloading file to: {tmp.name}")
+    Uses the unified channel abstraction layer for file downloads.
+    """
+    channel = config.get_channel_adapter()
+    if not channel:
+        raise RuntimeError("No channel adapter available")
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url, headers=headers) as resp:
-            resp.raise_for_status()
-            content_type = resp.headers.get('Content-Type', '')
-            config.logger.info(f"[DOWNLOAD] HTTP {resp.status}, Content-Type: {content_type}")
-            content = await resp.read()
-            config.logger.info(f"[DOWNLOAD] Downloaded {len(content)} bytes")
-            with open(tmp.name, "wb") as f:
-                f.write(content)
+    config.logger.info(f"[DOWNLOAD] Downloading file: {file_info.get('name', 'unknown')}")
 
-            # Immediately delete content bytes to free memory
-            del content
+    # Use channel adapter to download file
+    file_path = await channel.download_file(file_info)
 
     # Verify file was written
-    file_path = Path(tmp.name)
     if file_path.exists():
         config.logger.info(f"[DOWNLOAD] File successfully written: {file_path} (size: {file_path.stat().st_size} bytes)")
     else:
