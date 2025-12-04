@@ -4,21 +4,37 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mockup Studio - Professional Frame Setup</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
   <!-- Login Modal -->
   <div class="modal active" id="loginModal">
-    <div class="modal-content" style="max-width: 400px;">
-      <div class="modal-header">
-        <h2>🔐 Authentication Required</h2>
+    <div class="modal-content" style="max-width: 420px;">
+      <div class="modal-header" style="justify-content: center; border-bottom: none; padding-bottom: 0;">
+        <div style="text-align: center;">
+          <svg width="56" height="56" viewBox="0 0 40 40" fill="none" style="margin-bottom: 1rem;">
+            <defs>
+              <linearGradient id="loginLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#0090ff"/>
+                <stop offset="50%" stop-color="#00d4ff"/>
+                <stop offset="100%" stop-color="#8b5cf6"/>
+              </linearGradient>
+            </defs>
+            <rect width="40" height="40" rx="12" fill="url(#loginLogoGrad)"/>
+            <path d="M12 14L20 10L28 14L20 18L12 14Z" fill="white" fill-opacity="0.95"/>
+            <path d="M12 18L20 22L28 18" stroke="white" stroke-width="2" stroke-linecap="round" stroke-opacity="0.8"/>
+            <path d="M12 22L20 26L28 22" stroke="white" stroke-width="2" stroke-linecap="round" stroke-opacity="0.6"/>
+          </svg>
+          <h2 style="margin-bottom: 0.5rem;">Welcome Back</h2>
+          <p style="color: var(--text-secondary); font-size: 0.95rem;">Enter your password to continue</p>
+        </div>
       </div>
-      <div class="modal-body">
-        <p style="margin-bottom: 1.5rem; color: var(--gray-600);">
-          Enter the setup password to access Mockup Studio.
-        </p>
+      <div class="modal-body" style="padding-top: 1.5rem;">
         <form id="loginForm">
-          <div class="form-group">
+          <div class="form-group" style="margin-top: 0;">
             <label for="passwordInput">Password</label>
             <input
               type="password"
@@ -29,34 +45,43 @@
               required
             >
           </div>
-          <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">
-            Login
+          <button type="submit" class="btn btn-primary btn-lg" style="width: 100%; margin-top: 1.5rem;">
+            Sign In
           </button>
         </form>
-        <p style="margin-top: 1rem; font-size: 0.875rem; color: var(--gray-500);">
-          Default password: <code>admin123</code>
+        <p style="margin-top: 1.5rem; font-size: 0.85rem; color: var(--text-dim); text-align: center;">
+          Default password: <code style="background: var(--elevated); padding: 0.25rem 0.5rem; border-radius: 6px; color: var(--electric-500);">admin123</code>
         </p>
       </div>
     </div>
   </div>
 
   <!-- Main App Container -->
-  <div id="app" style="display: none;">
+  <div id="app" class="app-container" style="display: none;">
     <!-- Header -->
     <header class="header">
       <div class="header-content">
         <div class="logo">
-          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-            <rect width="32" height="32" rx="8" fill="url(#gradient)"/>
-            <path d="M8 12 L16 8 L24 12 L16 16 L8 12Z" fill="white" opacity="0.9"/>
-            <path d="M8 16 L16 20 L24 16" stroke="white" stroke-width="2" opacity="0.7"/>
-            <path d="M8 20 L16 24 L24 20" stroke="white" stroke-width="2" opacity="0.5"/>
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
             <defs>
-              <linearGradient id="gradient" x1="0" y1="0" x2="32" y2="32">
-                <stop offset="0%" stop-color="#667eea"/>
-                <stop offset="100%" stop-color="#764ba2"/>
+              <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#0090ff"/>
+                <stop offset="50%" stop-color="#00d4ff"/>
+                <stop offset="100%" stop-color="#8b5cf6"/>
               </linearGradient>
+              <filter id="glow">
+                <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+                <feMerge>
+                  <feMergeNode in="coloredBlur"/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
             </defs>
+            <rect width="40" height="40" rx="12" fill="url(#logoGrad)" filter="url(#glow)"/>
+            <path d="M12 14L20 10L28 14L20 18L12 14Z" fill="white" fill-opacity="0.95"/>
+            <path d="M12 18L20 22L28 18" stroke="white" stroke-width="2" stroke-linecap="round" stroke-opacity="0.8"/>
+            <path d="M12 22L20 26L28 22" stroke="white" stroke-width="2" stroke-linecap="round" stroke-opacity="0.6"/>
+            <circle cx="20" cy="18" r="2" fill="white" fill-opacity="0.9"/>
           </svg>
           <h1>Mockup Studio</h1>
         </div>
@@ -73,22 +98,22 @@
 
     <!-- Mode Selector -->
     <div class="mode-selector">
-      <button class="mode-btn active" data-mode="create">
+      <button class="mode-btn active" data-mode="setup">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
           <path d="M12 4L12 20M4 12L20 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </svg>
-        Create New
+        Setup Mode
       </button>
-      <button class="mode-btn" data-mode="edit">
+      <button class="mode-btn" data-mode="generate">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+          <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 14l-5-5 1.41-1.41L12 14.17l5.59-5.59L19 10l-7 7z"/>
         </svg>
-        Edit Template
+        Generate Mode
       </button>
     </div>
 
-    <!-- Create Mode -->
-    <div id="createMode" class="mode-content active">
+    <!-- Setup Mode -->
+    <div id="setupMode" class="mode-content active">
       <div class="container">
         <div class="setup-section">
           <div class="card">
@@ -97,6 +122,7 @@
               <p>Start by uploading a photo of your billboard</p>
             </div>
             <div class="card-body">
+              <!-- Upload Zone (replaced by canvas when image is loaded) -->
               <div class="upload-zone" id="uploadZone">
                 <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
                   <circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="2" stroke-dasharray="4 4"/>
@@ -107,19 +133,9 @@
                 <input type="file" id="imageUpload" accept="image/*" hidden>
               </div>
 
-              <div class="form-group" id="locationSelectGroup" style="display: none;">
-                <label for="locationSelect">Select Location</label>
-                <select id="locationSelect" class="form-control">
-                  <option value="">Choose a location...</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Canvas Editor (Hidden initially) -->
-        <div id="editorSection" class="editor-section" style="display: none;">
-          <div class="editor-container">
+              <!-- Canvas Editor (replaces upload zone) -->
+              <div id="editorSection" class="editor-section-inline" style="display: none;">
+                <div class="editor-container">
             <!-- Zoom Controls -->
             <div class="zoom-controls">
               <button class="zoom-btn" id="zoomOut" title="Zoom Out">
@@ -138,7 +154,7 @@
                   <rect x="3" y="3" width="14" height="14" rx="2" stroke="currentColor" stroke-width="2" fill="none"/>
                 </svg>
               </button>
-              <label class="toggle-label">
+              <label class="toggle-label-inline">
                 <input type="checkbox" id="pixelUpscale">
                 <span>Pixel Upscale</span>
               </label>
@@ -147,69 +163,401 @@
             <!-- Canvas Wrapper -->
             <div class="canvas-wrapper" id="canvasWrapper">
               <canvas id="canvas"></canvas>
-              <div class="frame-overlay" id="frameOverlay"></div>
+            </div>
+
+            <!-- Hint -->
+            <div class="hint-box" id="setupHint">
+              Click and drag to draw a box around the billboard screen
             </div>
 
             <!-- Frame Progress -->
             <div class="frame-progress" id="frameProgress">
               <div class="progress-header">
-                <span>Frame <span id="currentFrame">1</span> of <span id="totalFrames">?</span></span>
-                <span class="frame-name" id="frameName">Defining frame area...</span>
+                <span>Frame <span id="currentFrame">0</span> of <span id="totalFrames">?</span></span>
+                <span class="frame-name" id="frameName">Draw frames on the image...</span>
               </div>
               <div class="progress-bar">
                 <div class="progress-fill" id="progressFill"></div>
               </div>
             </div>
 
-            <!-- Control Panel -->
-            <div class="control-panel">
-              <div class="control-group">
-                <h3>Frame Settings</h3>
+            <!-- Frame Settings Panel -->
+            <div class="frame-settings-panel" id="frameSettingsPanel" style="display: none;">
+              <h3>Current Frame Settings</h3>
+              <div class="settings-grid">
                 <div class="slider-group">
-                  <label>Edge Blur: <span id="blurValue">8</span>px</label>
-                  <input type="range" id="edgeBlur" min="0" max="30" value="8" class="slider">
+                  <label>Brightness: <span id="brightnessValue">100</span>%</label>
+                  <input type="range" id="frameBrightness" min="50" max="200" value="100" class="slider">
+                </div>
+                <div class="slider-group">
+                  <label>Contrast: <span id="contrastValue">100</span>%</label>
+                  <input type="range" id="frameContrast" min="50" max="200" value="100" class="slider">
+                </div>
+                <div class="slider-group">
+                  <label>Saturation: <span id="saturationValue">100</span>%</label>
+                  <input type="range" id="frameSaturation" min="0" max="200" value="100" class="slider">
+                </div>
+                <div class="slider-group">
+                  <label>Image Blur: <span id="imageBlurValue">0</span></label>
+                  <input type="range" id="frameImageBlur" min="0" max="20" value="0" class="slider">
+                  <small>Blur entire creative (0 = off)</small>
+                </div>
+                <div class="slider-group">
+                  <label>Edge Blur: <span id="edgeBlurValue">1</span>px</label>
+                  <input type="range" id="frameEdgeBlur" min="1" max="20" value="1" class="slider">
+                  <small>Edge blur amount (1 = off)</small>
+                </div>
+                <div class="slider-group">
+                  <label>Overlay Opacity: <span id="overlayValue">0</span>%</label>
+                  <input type="range" id="frameOverlayOpacity" min="0" max="50" value="0" class="slider">
+                  <small>Billboard overlay</small>
+                </div>
+                <div class="slider-group">
+                  <label>Shadow Intensity: <span id="shadowValue">0</span>%</label>
+                  <input type="range" id="frameShadowIntensity" min="0" max="100" value="0" class="slider">
+                  <small>Edge darkening</small>
+                </div>
+                <div class="slider-group">
+                  <label>Lighting Match: <span id="lightingValue">0</span>%</label>
+                  <input type="range" id="frameLightingAdjustment" min="-50" max="50" value="0" class="slider">
+                  <small>Brightness matching</small>
+                </div>
+                <div class="slider-group">
+                  <label>Color Temperature: <span id="temperatureValue">0</span></label>
+                  <input type="range" id="frameColorTemperature" min="-50" max="50" value="0" class="slider">
+                  <small>Warm/cool shift</small>
+                </div>
+                <div class="slider-group">
+                  <label>Vignette: <span id="vignetteValue">0</span>%</label>
+                  <input type="range" id="frameVignette" min="0" max="100" value="0" class="slider">
+                  <small>Corner darkening</small>
+                </div>
+                <div class="slider-group">
+                  <label>Edge Smoother: <span id="edgeSmootherValue">3</span>x</label>
+                  <input type="range" id="frameEdgeSmoother" min="1" max="20" value="3" class="slider">
+                  <small>Anti-aliasing smoothness</small>
+                </div>
+                <div class="slider-group">
+                  <label>Sharpening: <span id="sharpeningValue">0</span>%</label>
+                  <input type="range" id="frameSharpening" min="0" max="100" value="0" class="slider">
+                  <small>Unsharp mask strength (0 = off)</small>
+                </div>
+                <div class="slider-group">
+                  <label>Depth Perception: <span id="depthValue">15</span>x</label>
+                  <input type="range" id="frameDepthMultiplier" min="5" max="30" value="15" class="slider">
+                  <small>Perspective compensation</small>
+                </div>
+                <div class="slider-group full-width">
+                  <label>Light Direction: <span id="lightDirectionLabel">Top</span></label>
+                  <div class="light-direction-picker">
+                    <button class="light-dir-btn" data-direction="top-left" title="Top Left">&#8598;</button>
+                    <button class="light-dir-btn active" data-direction="top" title="Top">&#8593;</button>
+                    <button class="light-dir-btn" data-direction="top-right" title="Top Right">&#8599;</button>
+                    <button class="light-dir-btn" data-direction="left" title="Left">&#8592;</button>
+                    <button class="light-dir-btn" data-direction="center" title="Center">&#9679;</button>
+                    <button class="light-dir-btn" data-direction="right" title="Right">&#8594;</button>
+                    <button class="light-dir-btn" data-direction="bottom-left" title="Bottom Left">&#8601;</button>
+                    <button class="light-dir-btn" data-direction="bottom" title="Bottom">&#8595;</button>
+                    <button class="light-dir-btn" data-direction="bottom-right" title="Bottom Right">&#8600;</button>
+                  </div>
+                  <input type="hidden" id="frameLightDirection" value="top">
+                  <small>Light source direction for day mode depth effects</small>
                 </div>
               </div>
+              <small class="settings-note">These settings apply to this frame only. Each frame can have different values.</small>
+            </div>
 
+            <!-- Test Preview Section -->
+            <div class="test-preview-section" id="testPreviewSection" style="display: none;">
+              <div class="toggle-row">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="testPreviewToggle">
+                  <span class="toggle-slider"></span>
+                </label>
+                <div class="toggle-label">
+                  <strong>Test Preview Mode</strong>
+                  <small>Preview creative on current frame before adding it</small>
+                </div>
+              </div>
+              <div id="testPreviewUpload" style="display: none;">
+                <label>Upload Test Creative:</label>
+                <input type="file" id="testCreativeUpload" accept="image/*" class="form-control">
+                <button class="btn btn-primary" id="generatePreviewBtn" disabled style="width: 100%; margin-top: 0.5rem;">
+                  <span id="previewBtnText">Generate Test Preview</span>
+                  <span id="previewLoading" style="display: none;">Generating...</span>
+                </button>
+                <small>Adjust sliders above - preview updates automatically when you release</small>
+                <!-- Live Preview Indicator -->
+                <div id="livePreviewIndicator" class="live-preview-indicator" style="display: none;">
+                  <div class="spinner-small"></div>
+                  <span>Updating preview...</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Control Panel -->
+            <div class="control-panel">
               <div class="button-group">
-                <button class="btn btn-secondary" id="undoBtn" disabled>
-                  <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
-                    <path d="M5.5 7.5L1.5 11.5L5.5 15.5"/>
-                    <path d="M1.5 11.5H13.5C15.1569 11.5 16.5 10.1569 16.5 8.5V5.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
-                  </svg>
-                  Undo
+                <button class="btn btn-primary" id="addFrameBtn" disabled>
+                  Add Frame
                 </button>
-                <button class="btn btn-primary" id="nextFrameBtn" disabled>
-                  Next Frame
-                  <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
-                    <path d="M7 4L13 9L7 14V4Z"/>
-                  </svg>
+                <button class="btn btn-secondary" id="resetFrameBtn">
+                  Reset Current Frame
                 </button>
-                <button class="btn btn-success" id="finishBtn" style="display: none;">
+                <button class="btn btn-success" id="saveAllBtn" disabled>
                   <svg width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
                     <path d="M15 5L7 13L3 9"/>
                   </svg>
-                  Finish & Save
+                  Save All Frames
+                </button>
+                <button class="btn btn-danger" id="clearAllBtn">
+                  Clear All
                 </button>
               </div>
             </div>
+
+                  <!-- Frames Info -->
+                  <div class="frames-info" id="framesInfo" style="display: none;">
+                    <strong>Frames configured: <span id="frameCount">0</span></strong>
+                  </div>
+                </div>
+              </div>
+              <!-- End of editorSection -->
+
+              <!-- Location & Settings Row (shown after image upload) -->
+              <div class="settings-row" id="settingsRow" style="display: none;">
+                <div class="form-group">
+                  <label for="locationSelect">Select Location <span class="required">*</span></label>
+                  <select id="locationSelect" class="form-control" required>
+                    <option value="">Choose a location...</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="timeOfDaySelect">Time of Day <span class="required">*</span></label>
+                  <select id="timeOfDaySelect" class="form-control" required>
+                    <option value="">Select...</option>
+                    <option value="day">Day</option>
+                    <option value="night">Night</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="finishSelect">Billboard Finish <span class="required">*</span></label>
+                  <select id="finishSelect" class="form-control" required>
+                    <option value="">Select...</option>
+                    <option value="gold">Gold</option>
+                    <option value="silver">Silver</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Green Screen Detection -->
+              <div class="greenscreen-section" id="greenscreenSection" style="display: none;">
+                <div class="toggle-row">
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="greenscreenToggle">
+                    <span class="toggle-slider"></span>
+                  </label>
+                  <div class="toggle-label">
+                    <strong>Auto-detect Green Screen</strong>
+                    <small>Automatically detect billboard frame using green screen chroma key</small>
+                  </div>
+                </div>
+                <div id="colorPickerSection" class="color-picker-section" style="display: none;">
+                  <div class="color-row">
+                    <label>Green Screen Color:</label>
+                    <input type="color" id="greenscreenColor" value="#1CFF1C">
+                    <input type="text" id="greenscreenColorHex" value="#1CFF1C" class="form-control" style="width: 100px;">
+                  </div>
+                  <small class="hint-text">Hold Shift and click on the green screen in the preview to auto-detect the exact color</small>
+                  <div class="slider-row">
+                    <label>Color Tolerance: <span id="toleranceValue">40</span></label>
+                    <input type="range" id="colorTolerance" min="10" max="100" value="40" class="slider">
+                  </div>
+                  <button class="btn btn-primary" id="detectGreenscreenBtn" disabled style="width: 100%;">
+                    Detect Green Screen Now
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Existing Photos Section -->
+        <div class="existing-photos-section" id="existingPhotosSection" style="display: none;">
+          <h3>Existing Photos for this Location</h3>
+          <div class="photo-grid" id="photoGrid">
+            <p class="no-photos">Select a location to view existing photos.</p>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Edit Mode -->
-    <div id="editMode" class="mode-content">
+    <!-- Generate Mode -->
+    <div id="generateMode" class="mode-content">
       <div class="container">
         <div class="card">
           <div class="card-header">
-            <h2>Edit Existing Template</h2>
-            <p>Select a template to edit its frames</p>
+            <h2>Generate Mockup</h2>
+            <p>Select a location and upload your creative to generate a mockup</p>
           </div>
           <div class="card-body">
-            <div class="template-list" id="templateList">
-              <div class="loading">Loading templates...</div>
+            <!-- Generate Settings Row -->
+            <div class="settings-row">
+              <div class="form-group">
+                <label for="generateLocationSelect">Select Location</label>
+                <select id="generateLocationSelect" class="form-control">
+                  <option value="">Choose a location...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="generateTimeOfDay">Time of Day</label>
+                <select id="generateTimeOfDay" class="form-control">
+                  <option value="all">All (Default)</option>
+                  <option value="day">Day</option>
+                  <option value="night">Night</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="generateFinish">Billboard Finish</label>
+                <select id="generateFinish" class="form-control">
+                  <option value="all">All (Default)</option>
+                  <option value="gold">Gold</option>
+                  <option value="silver">Silver</option>
+                </select>
+              </div>
             </div>
+
+            <!-- Template Selection -->
+            <div class="form-group" id="templateSelectionGroup" style="display: none;">
+              <label for="generateTemplate">Select Template</label>
+              <select id="generateTemplate" class="form-control">
+                <option value="">-- Select a template --</option>
+              </select>
+              <small>Choose a specific billboard photo template</small>
+            </div>
+
+            <!-- Creative Upload -->
+            <div class="creative-section">
+              <div class="form-group">
+                <label for="creativeUpload">Upload Creative/Ad Image</label>
+                <input type="file" id="creativeUpload" accept="image/*" class="form-control">
+                <small>Upload your own creative image</small>
+              </div>
+
+              <div class="divider">
+                <span>OR</span>
+              </div>
+
+              <div class="form-group">
+                <label for="aiCreativePrompt">AI-Generated Creative</label>
+                <textarea
+                  id="aiCreativePrompt"
+                  class="form-control"
+                  rows="3"
+                  placeholder="e.g., luxury watch ad with gold typography on dark background, professional and elegant"
+                ></textarea>
+                <small>The AI will generate a billboard creative based on your description (no upload needed)</small>
+              </div>
+            </div>
+
+            <!-- Config Customization Toggle -->
+            <div class="form-group" id="generateConfigToggleSection" style="display: none;">
+              <label class="checkbox-label">
+                <input type="checkbox" id="generateConfigToggle">
+                <span><strong>Customize Frame Configuration</strong> (optional)</span>
+              </label>
+              <small>Enable to adjust settings like brightness, contrast, edge smoothing, etc.</small>
+            </div>
+
+            <!-- Generate Mode Config Sliders -->
+            <div class="generate-config-section" id="generateConfigSection" style="display: none;">
+              <h3>Frame Configuration</h3>
+              <div class="settings-grid">
+                <!-- Same sliders as setup mode but with gen- prefix -->
+                <div class="slider-group">
+                  <label>Brightness: <span id="genBrightnessValue">100</span>%</label>
+                  <input type="range" id="genFrameBrightness" min="50" max="200" value="100" class="slider">
+                </div>
+                <div class="slider-group">
+                  <label>Contrast: <span id="genContrastValue">100</span>%</label>
+                  <input type="range" id="genFrameContrast" min="50" max="200" value="100" class="slider">
+                </div>
+                <div class="slider-group">
+                  <label>Saturation: <span id="genSaturationValue">100</span>%</label>
+                  <input type="range" id="genFrameSaturation" min="0" max="200" value="100" class="slider">
+                </div>
+                <div class="slider-group">
+                  <label>Image Blur: <span id="genImageBlurValue">0</span></label>
+                  <input type="range" id="genFrameImageBlur" min="0" max="20" value="0" class="slider">
+                </div>
+                <div class="slider-group">
+                  <label>Edge Blur: <span id="genEdgeBlurValue">1</span>px</label>
+                  <input type="range" id="genFrameEdgeBlur" min="1" max="20" value="1" class="slider">
+                </div>
+                <div class="slider-group">
+                  <label>Overlay Opacity: <span id="genOverlayValue">0</span>%</label>
+                  <input type="range" id="genFrameOverlayOpacity" min="0" max="50" value="0" class="slider">
+                </div>
+                <div class="slider-group">
+                  <label>Shadow Intensity: <span id="genShadowValue">0</span>%</label>
+                  <input type="range" id="genFrameShadowIntensity" min="0" max="100" value="0" class="slider">
+                </div>
+                <div class="slider-group">
+                  <label>Lighting Match: <span id="genLightingValue">0</span>%</label>
+                  <input type="range" id="genFrameLightingAdjustment" min="-50" max="50" value="0" class="slider">
+                </div>
+                <div class="slider-group">
+                  <label>Color Temperature: <span id="genTemperatureValue">0</span></label>
+                  <input type="range" id="genFrameColorTemperature" min="-50" max="50" value="0" class="slider">
+                </div>
+                <div class="slider-group">
+                  <label>Vignette: <span id="genVignetteValue">0</span>%</label>
+                  <input type="range" id="genFrameVignette" min="0" max="100" value="0" class="slider">
+                </div>
+                <div class="slider-group">
+                  <label>Edge Smoother: <span id="genEdgeSmootherValue">3</span>x</label>
+                  <input type="range" id="genFrameEdgeSmoother" min="1" max="20" value="3" class="slider">
+                </div>
+                <div class="slider-group">
+                  <label>Sharpening: <span id="genSharpeningValue">0</span>%</label>
+                  <input type="range" id="genFrameSharpening" min="0" max="100" value="0" class="slider">
+                </div>
+                <div class="slider-group">
+                  <label>Depth Perception: <span id="genDepthValue">15</span>x</label>
+                  <input type="range" id="genFrameDepthMultiplier" min="5" max="30" value="15" class="slider">
+                </div>
+                <div class="slider-group full-width">
+                  <label>Light Direction: <span id="genLightDirectionLabel">Top</span></label>
+                  <div class="light-direction-picker">
+                    <button class="gen-light-dir-btn" data-direction="top-left" title="Top Left">&#8598;</button>
+                    <button class="gen-light-dir-btn active" data-direction="top" title="Top">&#8593;</button>
+                    <button class="gen-light-dir-btn" data-direction="top-right" title="Top Right">&#8599;</button>
+                    <button class="gen-light-dir-btn" data-direction="left" title="Left">&#8592;</button>
+                    <button class="gen-light-dir-btn" data-direction="center" title="Center">&#9679;</button>
+                    <button class="gen-light-dir-btn" data-direction="right" title="Right">&#8594;</button>
+                    <button class="gen-light-dir-btn" data-direction="bottom-left" title="Bottom Left">&#8601;</button>
+                    <button class="gen-light-dir-btn" data-direction="bottom" title="Bottom">&#8595;</button>
+                    <button class="gen-light-dir-btn" data-direction="bottom-right" title="Bottom Right">&#8600;</button>
+                  </div>
+                  <input type="hidden" id="genFrameLightDirection" value="top">
+                </div>
+              </div>
+            </div>
+
+            <div class="button-group" style="margin-top: 1.5rem;">
+              <button class="btn btn-primary btn-lg" id="generateBtn" disabled>
+                Generate Mockup
+              </button>
+            </div>
+
+            <!-- Loading -->
+            <div class="loading-section" id="generateLoading" style="display: none;">
+              <div class="spinner"></div>
+              <p>Generating mockup...</p>
+            </div>
+
+            <!-- Result -->
+            <div class="mockup-result" id="mockupResult"></div>
           </div>
         </div>
       </div>
