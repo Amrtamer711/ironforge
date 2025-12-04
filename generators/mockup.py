@@ -252,7 +252,7 @@ async def generate_ai_creative(
     logger.info(f"[AI_CREATIVE] Generating {orientation} image with {client.provider_name}: {prompt[:100]}...")
 
     # Convert user_id to user_name for cost tracking
-    from integrations.slack.bo_messaging import get_user_real_name
+    from core.bo_messaging import get_user_real_name
     user_name = await get_user_real_name(user_id) if user_id and user_id != "website_mockup" else user_id
 
     try:

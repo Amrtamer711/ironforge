@@ -135,12 +135,12 @@ async def get_head_of_sales_channel(company: str) -> Optional[str]:
     company_hos = hos.get(company, {})
 
     # Try channel_id first (if already stored), otherwise get from user_id
-    channel_id = company_hos.get("slack_channel_id")
+    channel_id = company_hos.get("channel_id")
     if channel_id:
         return channel_id
 
     # Get user_id and open DM conversation to get channel ID
-    user_id = company_hos.get("slack_user_id")
+    user_id = company_hos.get("user_id")
     if user_id:
         try:
             channel_adapter = config.get_channel_adapter()
@@ -163,12 +163,12 @@ async def get_coordinator_channel(company: str) -> Optional[str]:
     coordinator = coordinators.get(company, {})
 
     # Try channel_id first (if already stored), otherwise get from user_id
-    channel_id = coordinator.get("slack_channel_id")
+    channel_id = coordinator.get("channel_id")
     if channel_id:
         return channel_id
 
     # Get user_id and open DM conversation to get channel ID
-    user_id = coordinator.get("slack_user_id")
+    user_id = coordinator.get("user_id")
     if user_id:
         try:
             channel_adapter = config.get_channel_adapter()
@@ -195,7 +195,7 @@ async def get_finance_channels() -> list[str]:
 
     # Iterate through all finance users
     for finance_name, finance_info in finance_users.items():
-        user_id = finance_info.get("slack_user_id")
+        user_id = finance_info.get("user_id")
         if user_id:
             try:
                 dm_channel_id = await channel_adapter.open_dm(user_id)
@@ -394,7 +394,7 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
     - Move to HoS stage
     - Send to appropriate Head of Sales with buttons
     """
-    from integrations.slack import bo_messaging as bo_slack_messaging
+    from core import bo_messaging
     from pathlib import Path
 
     workflow = await get_workflow_with_cache(workflow_id)
@@ -405,7 +405,7 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
     # Prevent double-approval (e.g., clicking old button after new one was generated)
     if workflow.get("coordinator_approved"):
         logger.warning(f"[BO APPROVAL] Workflow {workflow_id} already approved by coordinator - ignoring duplicate approval")
-        await bo_slack_messaging.post_response_url(response_url, {
+        await bo_messaging.post_response_url(response_url, {
             "replace_original": False,
             "text": "⚠️ This booking order has already been approved and sent to Head of Sales."
         })
@@ -431,8 +431,8 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
     coordinator_channel = workflow.get("coordinator_thread_channel")
 
     if coordinator_msg_ts and coordinator_channel:
-        approver_name = await bo_slack_messaging.get_user_real_name(user_id)
-        await bo_slack_messaging.update_button_message(
+        approver_name = await bo_messaging.get_user_real_name(user_id)
+        await bo_messaging.update_button_message(
             channel=coordinator_channel,
             message_ts=coordinator_msg_ts,
             new_text=f"✅ *APPROVED* by {approver_name}\n\n⏳ Waiting for file upload to complete...",
@@ -481,7 +481,7 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
         return
 
     # Send to Head of Sales
-    result = await bo_slack_messaging.send_to_head_of_sales(
+    result = await bo_messaging.send_to_head_of_sales(
         channel=hos_channel,
         workflow_id=workflow_id,
         company=workflow["company"],
@@ -499,7 +499,7 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
 
     # Update coordinator button message to show it was successfully sent to HoS
     if coordinator_msg_ts and coordinator_channel:
-        await bo_slack_messaging.update_button_message(
+        await bo_messaging.update_button_message(
             channel=coordinator_channel,
             message_ts=coordinator_msg_ts,
             new_text=f"✅ *APPROVED* by {approver_name}\n\n✅ Successfully sent to Head of Sales for review",
@@ -515,7 +515,7 @@ async def handle_coordinator_rejection(workflow_id: str, user_id: str, response_
     - Create thread on the button message for editing
     - Allow coordinator to make natural language edits
     """
-    from integrations.slack import bo_messaging as bo_slack_messaging
+    from core import bo_messaging
 
     workflow = await get_workflow_with_cache(workflow_id)
     if not workflow:
@@ -526,7 +526,7 @@ async def handle_coordinator_rejection(workflow_id: str, user_id: str, response_
     # Prevent duplicate rejection (clicking button multiple times)
     if workflow.get("status") == "coordinator_rejected":
         logger.warning(f"[BO APPROVAL] Workflow {workflow_id} already rejected by coordinator - ignoring duplicate")
-        await bo_slack_messaging.post_response_url(response_url, {
+        await bo_messaging.post_response_url(response_url, {
             "replace_original": False,
             "text": "⚠️ This booking order has already been rejected. Please use the thread to make edits."
         })
@@ -546,8 +546,8 @@ async def handle_coordinator_rejection(workflow_id: str, user_id: str, response_
     })
 
     # Update the button message to show rejection
-    rejecter_name = await bo_slack_messaging.get_user_real_name(user_id)
-    await bo_slack_messaging.update_button_message(
+    rejecter_name = await bo_messaging.get_user_real_name(user_id)
+    await bo_messaging.update_button_message(
         channel=channel,
         message_ts=message_ts,
         new_text=f"❌ *REJECTED* by {rejecter_name}",
@@ -588,7 +588,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     - Notify finance (no buttons)
     - Close coordinator thread
     """
-    from integrations.slack import bo_messaging as bo_slack_messaging
+    from core import bo_messaging
     from pathlib import Path
     import shutil
 
@@ -599,7 +599,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     # Prevent double-approval
     if workflow.get("hos_approved"):
         logger.warning(f"[BO APPROVAL] Workflow {workflow_id} already approved by HoS - ignoring duplicate approval")
-        await bo_slack_messaging.post_response_url(response_url, {
+        await bo_messaging.post_response_url(response_url, {
             "replace_original": False,
             "text": "⚠️ This booking order has already been approved and saved to the database."
         })
@@ -679,7 +679,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
 
     # Update HoS button message (use bo_number for user-facing display)
     if workflow.get("hos_msg_ts") and workflow.get("hos_channel"):
-        await bo_slack_messaging.update_button_message(
+        await bo_messaging.update_button_message(
             channel=workflow.get("hos_channel"),
             message_ts=workflow.get("hos_msg_ts"),
             new_text=f"✅ *APPROVED BY HEAD OF SALES*\nBO Number: {bo_number}\nNotifying Finance...",
@@ -691,7 +691,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     if finance_channels:
         # Send to all finance users
         for finance_channel in finance_channels:
-            result = await bo_slack_messaging.notify_finance(
+            result = await bo_messaging.notify_finance(
                 channel=finance_channel,
                 bo_ref=bo_ref,
                 company=workflow["company"],
@@ -708,7 +708,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
 
         # Update HoS button message to show finance was notified
         if workflow.get("hos_msg_ts") and workflow.get("hos_channel"):
-            await bo_slack_messaging.update_button_message(
+            await bo_messaging.update_button_message(
                 channel=workflow.get("hos_channel"),
                 message_ts=workflow.get("hos_msg_ts"),
                 new_text=f"✅ *APPROVED BY HEAD OF SALES*\nBO Number: {bo_number}\n✅ Finance notified successfully ({len(finance_channels)} recipients)",
@@ -763,8 +763,8 @@ async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str
     # Prevent duplicate rejection (clicking button multiple times)
     if workflow.get("status") == "coordinator_rejected":
         logger.warning(f"[BO APPROVAL] Workflow {workflow_id} already rejected by HoS - ignoring duplicate")
-        from integrations.slack import bo_messaging as bo_slack_messaging
-        await bo_slack_messaging.post_response_url(response_url, {
+        from core import bo_messaging
+        await bo_messaging.post_response_url(response_url, {
             "replace_original": False,
             "text": "⚠️ This booking order has already been rejected and sent back to the coordinator."
         })
@@ -774,12 +774,12 @@ async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str
     logger.info(f"[BO APPROVAL] ❌ Head of Sales {user_id} rejected {workflow_id} - Client: {workflow_data.get('client', 'N/A')} - Reason: {rejection_reason[:100]}")
 
     # Update HoS button message to show rejection
-    from integrations.slack import bo_messaging as bo_slack_messaging
+    from core import bo_messaging
     hos_msg_ts = workflow.get("hos_msg_ts")
     hos_channel = workflow.get("hos_channel")
     if hos_msg_ts and hos_channel:
-        rejecter_name = await bo_slack_messaging.get_user_real_name(user_id)
-        await bo_slack_messaging.update_button_message(
+        rejecter_name = await bo_messaging.get_user_real_name(user_id)
+        await bo_messaging.update_button_message(
             channel=hos_channel,
             message_ts=hos_msg_ts,
             new_text=f"Rejected by {rejecter_name}\n\n**Reason:** {rejection_reason}\n\nReturned to Sales Coordinator for amendments.",
@@ -858,7 +858,7 @@ async def start_revision_workflow(
     Returns:
         Dictionary with workflow_id and status
     """
-    from integrations.slack import bo_messaging as bo_slack_messaging
+    from core import bo_messaging
     from pathlib import Path
 
     logger.info(f"[BO_REVISE] Starting revision workflow for BO: {bo_data.get('bo_ref')} requested by {requester_user_id}")
@@ -968,7 +968,7 @@ async def start_revision_workflow(
             )
 
         # Send to coordinator
-        result = await bo_slack_messaging.send_to_coordinator(
+        result = await bo_messaging.send_to_coordinator(
             channel=coordinator_channel,
             workflow_id=workflow_id,
             company=company,
@@ -1027,7 +1027,7 @@ async def handle_bo_cancellation(
     - Clean up workflow from database
     - Delete workflow state
     """
-    from integrations.slack import bo_messaging as bo_slack_messaging
+    from core import bo_messaging
 
     workflow = await get_workflow_with_cache(workflow_id)
     if not workflow:
@@ -1037,14 +1037,14 @@ async def handle_bo_cancellation(
     logger.info(f"[BO CANCEL] Cancelling workflow {workflow_id} at {stage} stage by {cancelled_by_user_id}")
 
     # Get canceller name
-    canceller_name = await bo_slack_messaging.get_user_real_name(cancelled_by_user_id)
+    canceller_name = await bo_messaging.get_user_real_name(cancelled_by_user_id)
 
     # Update the button message to show cancellation
     if stage == "coordinator":
         msg_ts = workflow.get("coordinator_msg_ts")
         channel = workflow.get("coordinator_thread_channel")
         if msg_ts and channel:
-            await bo_slack_messaging.update_button_message(
+            await bo_messaging.update_button_message(
                 channel=channel,
                 message_ts=msg_ts,
                 new_text=f"🚫 *CANCELLED* by {canceller_name}\n\n**Reason:** {cancellation_reason}",
@@ -1054,7 +1054,7 @@ async def handle_bo_cancellation(
         msg_ts = workflow.get("hos_msg_ts")
         channel = workflow.get("hos_channel")
         if msg_ts and channel:
-            await bo_slack_messaging.update_button_message(
+            await bo_messaging.update_button_message(
                 channel=channel,
                 message_ts=msg_ts,
                 new_text=f"�� *CANCELLED* by {canceller_name}\n\n**Reason:** {cancellation_reason}",

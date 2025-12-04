@@ -5,7 +5,7 @@ Classifies uploads as BOOKING_ORDER or ARTWORK with high confidence routing.
 
 import config
 from workflows.bo_parser import BookingOrderParser
-from integrations.slack.bo_messaging import get_user_real_name
+from core.bo_messaging import get_user_real_name
 
 logger = config.logger
 

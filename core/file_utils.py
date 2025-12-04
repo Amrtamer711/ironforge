@@ -213,11 +213,12 @@ def _validate_powerpoint_file(file_path: Path) -> bool:
         return False
 
 
-async def _download_slack_file(file_info: Dict[str, Any]) -> Path:
+async def download_file(file_info: Dict[str, Any]) -> Path:
     """
     Download a file from the messaging channel.
 
     Uses the unified channel abstraction layer for file downloads.
+    Platform-agnostic: works with any channel adapter (Slack, Web, etc.)
     """
     channel = config.get_channel_adapter()
     if not channel:

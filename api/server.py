@@ -217,7 +217,8 @@ async def slack_interactive(request: Request):
     import time
     from collections import defaultdict
     from workflows import bo_approval as bo_approval_workflow
-    from integrations.slack import bo_messaging as bo_slack_messaging
+    from core import bo_messaging
+    from integrations.channels import to_slack
 
     # Verify signature
     body = await request.body()
@@ -270,7 +271,7 @@ async def slack_interactive(request: Request):
         if action_id == "approve_bo_coordinator":
             logger.info(f"[BO APPROVAL] Coordinator {user_id} clicked APPROVE for workflow {workflow_id}")
             # Send wait message
-            await bo_slack_messaging.post_response_url(response_url, {
+            await bo_messaging.post_response_url(response_url, {
                 "replace_original": True,
                 "text": "⏳ Please wait... Processing coordinator approval..."
             })
@@ -286,10 +287,10 @@ async def slack_interactive(request: Request):
 
             # Edit the button message to ask what needs to be changed
             # This replaces the buttons with the rejection prompt
-            rejecter_name = await bo_slack_messaging.get_user_real_name(user_id)
-            await bo_slack_messaging.post_response_url(response_url, {
+            rejecter_name = await bo_messaging.get_user_real_name(user_id)
+            await bo_messaging.post_response_url(response_url, {
                 "replace_original": True,
-                "text": config.markdown_to_slack(
+                "text": to_slack(
                     f"❌ *Rejected by {rejecter_name}*\n\n"
                     "What would you like to change? You can:\n"
                     "• Describe changes in natural language\n"
@@ -333,7 +334,7 @@ async def slack_interactive(request: Request):
         elif action_id == "approve_bo_hos":
             logger.info(f"[BO APPROVAL] Head of Sales {user_id} clicked APPROVE for workflow {workflow_id}")
             # Send wait message
-            await bo_slack_messaging.post_response_url(response_url, {
+            await bo_messaging.post_response_url(response_url, {
                 "replace_original": True,
                 "text": "⏳ Please wait... Processing HoS approval and saving to database..."
             })

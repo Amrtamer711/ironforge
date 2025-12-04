@@ -10,11 +10,10 @@ import shutil
 import config
 from db.database import db
 from core.proposals import process_proposals
-from integrations.slack.formatting import SlackResponses
 from workflows.bo_parser import BookingOrderParser, COMBINED_BOS_DIR
 from utils.task_queue import mockup_queue
-from integrations.slack import bo_messaging as bo_slack_messaging
-from integrations.slack.file_utils import _download_slack_file, _validate_pdf_file, _convert_pdf_to_pptx
+from core import bo_messaging
+from core.file_utils import download_file, _validate_pdf_file, _convert_pdf_to_pptx
 from integrations.llm.prompts.bo_editing import get_bo_edit_prompt
 from integrations.llm.prompts.chat import get_main_system_prompt
 from integrations.llm.schemas.bo_editing import get_bo_edit_response_schema
@@ -201,7 +200,7 @@ async def _handle_booking_order_parse(
 
     # Download file
     try:
-        tmp_file = await _download_slack_file(file_info)
+        tmp_file = await download_file(file_info)
     except Exception as e:
         logger.error(f"[BOOKING] Download failed: {e}")
         channel_adapter = config.get_channel_adapter()
@@ -225,7 +224,7 @@ async def _handle_booking_order_parse(
         # Continue processing - status update failure shouldn't stop the workflow
 
     # Convert user_id to user_name for cost tracking
-    from integrations.slack.bo_messaging import get_user_real_name
+    from core.bo_messaging import get_user_real_name
     user_name = await get_user_real_name(user_id) if user_id else None
 
     classification = await parser.classify_document(tmp_file, user_message=user_message, user_id=user_name)
@@ -337,7 +336,7 @@ async def _handle_booking_order_parse(
             return
 
         # Send Excel + summary + Approve/Reject buttons to coordinator
-        submitter_name = await bo_slack_messaging.get_user_real_name(user_id)
+        submitter_name = await bo_messaging.get_user_real_name(user_id)
         preview_text = f"📋 **New Booking Order - Ready for Approval**\n\n"
         preview_text += f"**Company:** {company.upper()}\n"
         preview_text += f"**Submitted by:** {submitter_name}\n\n"
@@ -391,7 +390,7 @@ async def _handle_booking_order_parse(
         logger.info(f"[BO APPROVAL] Posting notification to coordinator channel: {coordinator_channel}")
 
         # Get submitter's real name
-        submitter_name = await bo_slack_messaging.get_user_real_name(user_id)
+        submitter_name = await bo_messaging.get_user_real_name(user_id)
 
         # Step 1: Post notification message in main channel
         notification_text = (
@@ -510,7 +509,7 @@ async def _handle_booking_order_parse(
 async def handle_booking_order_edit_flow(channel: str, user_id: str, user_input: str) -> str:
     """Handle booking order edit flow with structured LLM response"""
     from integrations.llm import LLMClient, LLMMessage
-    from integrations.slack.bo_messaging import get_user_real_name
+    from core.bo_messaging import get_user_real_name
 
     try:
         edit_data = pending_booking_orders.get(user_id, {})
@@ -578,7 +577,7 @@ async def handle_booking_order_edit_flow(channel: str, user_id: str, user_input:
                     return f"❌ **Error:** Sales Coordinator for {edit_data.get('company')} not configured. Please update hos_config.json"
 
                 # Send to Sales Coordinator with buttons
-                result = await bo_slack_messaging.send_to_coordinator(
+                result = await bo_messaging.send_to_coordinator(
                     channel=coordinator_channel,
                     workflow_id=workflow_id,
                     company=edit_data.get("company"),
@@ -799,7 +798,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             # Accept PDF files (new) - will be converted to PPTX
             if f.get("filetype") == "pdf" or f.get("mimetype") == "application/pdf" or f.get("name", "").lower().endswith(".pdf"):
                 try:
-                    pdf_file = await _download_slack_file(f)
+                    pdf_file = await download_file(f)
                 except Exception as e:
                     logger.error(f"Failed to download PDF file: {e}")
                     await channel_adapter.send_message(
@@ -1063,12 +1062,12 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 file_info = files[0]
 
                 # Download file
-                tmp_file = await _download_slack_file(file_info)
+                tmp_file = await download_file(file_info)
                 logger.info(f"[PRE-ROUTER] Downloaded: {tmp_file}")
 
                 # Classify using existing classifier (converts to PDF, sends to OpenAI, returns classification)
                 from workflows.bo_parser import BookingOrderParser
-                from integrations.slack.bo_messaging import get_user_real_name
+                from core.bo_messaging import get_user_real_name
                 user_name = await get_user_real_name(user_id) if user_id else None
                 parser = BookingOrderParser(company="backlite")  # Company will be determined by classifier
                 classification = await parser.classify_document(tmp_file, user_message=user_input, user_id=user_name)
@@ -1147,7 +1146,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
 
     # Build LLM messages from history
     from integrations.llm import LLMClient, LLMMessage
-    from integrations.slack.bo_messaging import get_user_real_name
+    from core.bo_messaging import get_user_real_name
 
     llm_messages = [LLMMessage.system(prompt)]
     for msg in history:
@@ -1226,7 +1225,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 status_ts=status_ts,
                 slack_event=slack_event,
                 user_input=user_input,
-                download_slack_file_func=_download_slack_file,
+                download_slack_file_func=download_file,
                 handle_booking_order_parse_func=_handle_booking_order_parse,
                 generate_mockup_queued_func=_generate_mockup_queued,
                 generate_ai_mockup_queued_func=_generate_ai_mockup_queued,
