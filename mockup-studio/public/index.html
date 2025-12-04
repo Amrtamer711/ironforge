@@ -10,47 +10,50 @@
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
+  <!-- Floating Particles -->
+  <div class="particle particle-1"></div>
+  <div class="particle particle-2"></div>
+  <div class="particle particle-3"></div>
+  <div class="particle particle-4"></div>
+  <div class="particle particle-5"></div>
+  <div class="particle particle-6"></div>
+  <div class="particle particle-7"></div>
+
+  <!-- Cursor Glow Effect -->
+  <div class="cursor-glow" id="cursorGlow"></div>
+
   <!-- Login Modal -->
   <div class="modal active" id="loginModal">
-    <div class="modal-content" style="max-width: 420px;">
-      <div class="modal-header" style="justify-content: center; border-bottom: none; padding-bottom: 0;">
-        <div style="text-align: center;">
-          <svg width="56" height="56" viewBox="0 0 40 40" fill="none" style="margin-bottom: 1rem;">
-            <defs>
-              <linearGradient id="loginLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#0090ff"/>
-                <stop offset="50%" stop-color="#00d4ff"/>
-                <stop offset="100%" stop-color="#8b5cf6"/>
-              </linearGradient>
-            </defs>
-            <rect width="40" height="40" rx="12" fill="url(#loginLogoGrad)"/>
-            <path d="M12 14L20 10L28 14L20 18L12 14Z" fill="white" fill-opacity="0.95"/>
-            <path d="M12 18L20 22L28 18" stroke="white" stroke-width="2" stroke-linecap="round" stroke-opacity="0.8"/>
-            <path d="M12 22L20 26L28 22" stroke="white" stroke-width="2" stroke-linecap="round" stroke-opacity="0.6"/>
-          </svg>
-          <h2 style="margin-bottom: 0.5rem;">Welcome Back</h2>
-          <p style="color: var(--text-secondary); font-size: 0.95rem;">Enter your password to continue</p>
-        </div>
+    <div class="modal-content" style="max-width: 400px;">
+      <div class="modal-header" style="flex-direction: column; align-items: center; text-align: center; border-bottom: none; padding: 3rem 2rem 1rem;">
+        <svg width="64" height="64" viewBox="0 0 48 48" fill="none" style="margin-bottom: 1.5rem; filter: drop-shadow(0 0 30px rgba(51, 129, 255, 0.5));">
+          <defs>
+            <linearGradient id="loginGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#3381ff"/>
+              <stop offset="50%" stop-color="#06b6d4"/>
+              <stop offset="100%" stop-color="#a855f7"/>
+            </linearGradient>
+          </defs>
+          <rect width="48" height="48" rx="14" fill="url(#loginGrad)"/>
+          <path d="M14 17L24 12L34 17L24 22L14 17Z" fill="white" fill-opacity="0.95"/>
+          <path d="M14 22L24 27L34 22" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-opacity="0.8"/>
+          <path d="M14 27L24 32L34 27" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-opacity="0.6"/>
+        </svg>
+        <h2 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem;">Welcome back</h2>
+        <p style="color: var(--neural-500); font-size: 0.9rem;">Enter your password to continue</p>
       </div>
-      <div class="modal-body" style="padding-top: 1.5rem;">
+      <div class="modal-body" style="padding: 1.5rem 2rem 2rem;">
         <form id="loginForm">
           <div class="form-group" style="margin-top: 0;">
             <label for="passwordInput">Password</label>
-            <input
-              type="password"
-              id="passwordInput"
-              class="form-control"
-              placeholder="Enter password"
-              autocomplete="current-password"
-              required
-            >
+            <input type="password" id="passwordInput" class="form-control" placeholder="••••••••" autocomplete="current-password" required>
           </div>
           <button type="submit" class="btn btn-primary btn-lg" style="width: 100%; margin-top: 1.5rem;">
-            Sign In
+            Continue
           </button>
         </form>
-        <p style="margin-top: 1.5rem; font-size: 0.85rem; color: var(--text-dim); text-align: center;">
-          Default password: <code style="background: var(--elevated); padding: 0.25rem 0.5rem; border-radius: 6px; color: var(--electric-500);">admin123</code>
+        <p style="margin-top: 1.5rem; font-size: 0.8rem; color: var(--neural-700); text-align: center;">
+          Default: <code style="background: var(--void-hover); padding: 0.2rem 0.5rem; border-radius: 6px; color: var(--quantum-400); font-family: 'JetBrains Mono', monospace; font-size: 0.75rem;">admin123</code>
         </p>
       </div>
     </div>
@@ -62,35 +65,57 @@
     <header class="header">
       <div class="header-content">
         <div class="logo">
-          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" class="logo-icon">
             <defs>
               <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#0090ff"/>
-                <stop offset="50%" stop-color="#00d4ff"/>
-                <stop offset="100%" stop-color="#8b5cf6"/>
+                <stop offset="0%" stop-color="#3381ff"/>
+                <stop offset="50%" stop-color="#06b6d4"/>
+                <stop offset="100%" stop-color="#a855f7"/>
               </linearGradient>
-              <filter id="glow">
-                <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-                <feMerge>
-                  <feMergeNode in="coloredBlur"/>
-                  <feMergeNode in="SourceGraphic"/>
-                </feMerge>
+              <linearGradient id="logoGradInner" x1="0%" y1="100%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#3381ff" stop-opacity="0.5"/>
+                <stop offset="100%" stop-color="#a855f7" stop-opacity="0.5"/>
+              </linearGradient>
+              <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="3" result="blur"/>
+                <feComposite in="SourceGraphic" in2="blur" operator="over"/>
               </filter>
             </defs>
-            <rect width="40" height="40" rx="12" fill="url(#logoGrad)" filter="url(#glow)"/>
-            <path d="M12 14L20 10L28 14L20 18L12 14Z" fill="white" fill-opacity="0.95"/>
-            <path d="M12 18L20 22L28 18" stroke="white" stroke-width="2" stroke-linecap="round" stroke-opacity="0.8"/>
-            <path d="M12 22L20 26L28 22" stroke="white" stroke-width="2" stroke-linecap="round" stroke-opacity="0.6"/>
-            <circle cx="20" cy="18" r="2" fill="white" fill-opacity="0.9"/>
+            <!-- Outer ring -->
+            <circle cx="24" cy="24" r="22" stroke="url(#logoGrad)" stroke-width="2" fill="none" opacity="0.6"/>
+            <!-- Inner gradient fill -->
+            <circle cx="24" cy="24" r="18" fill="url(#logoGradInner)"/>
+            <!-- 3D Layers -->
+            <path d="M12 18L24 12L36 18L24 24L12 18Z" fill="white" fill-opacity="0.95" filter="url(#glow)"/>
+            <path d="M12 22L24 28L36 22" stroke="white" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.7"/>
+            <path d="M12 26L24 32L36 26" stroke="white" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.4"/>
+            <!-- Center node -->
+            <circle cx="24" cy="18" r="3" fill="white" opacity="0.9"/>
+            <!-- Orbital dots -->
+            <circle cx="12" cy="18" r="1.5" fill="#3381ff" class="orbital-dot"/>
+            <circle cx="36" cy="18" r="1.5" fill="#a855f7" class="orbital-dot"/>
           </svg>
-          <h1>Mockup Studio</h1>
+          <div class="logo-text">
+            <h1>Mockup Studio</h1>
+            <span class="logo-tagline">Next Generation</span>
+          </div>
         </div>
         <div class="header-actions">
           <button class="btn btn-secondary" id="viewTemplatesBtn">
-            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M3 4H17V6H3V4ZM3 9H17V11H3V9ZM3 14H17V16H3V14Z"/>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1"/>
+              <rect x="14" y="3" width="7" height="7" rx="1"/>
+              <rect x="3" y="14" width="7" height="7" rx="1"/>
+              <rect x="14" y="14" width="7" height="7" rx="1"/>
             </svg>
-            View Templates
+            Templates
+          </button>
+          <button class="btn btn-ghost" id="logoutBtn" title="Logout">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
           </button>
         </div>
       </div>
@@ -583,5 +608,55 @@
   </div>
 
   <script src="/js/app.js"></script>
+  <script>
+    // Cursor glow effect
+    const cursorGlow = document.getElementById('cursorGlow');
+    let mouseX = 0, mouseY = 0;
+    let glowX = 0, glowY = 0;
+
+    document.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      cursorGlow.classList.add('active');
+    });
+
+    document.addEventListener('mouseleave', () => {
+      cursorGlow.classList.remove('active');
+    });
+
+    // Smooth cursor glow following
+    function animateGlow() {
+      glowX += (mouseX - glowX) * 0.1;
+      glowY += (mouseY - glowY) * 0.1;
+      cursorGlow.style.left = glowX + 'px';
+      cursorGlow.style.top = glowY + 'px';
+      requestAnimationFrame(animateGlow);
+    }
+    animateGlow();
+
+    // Add ripple class to buttons
+    document.querySelectorAll('.btn').forEach(btn => {
+      btn.classList.add('ripple');
+    });
+
+    // Logout button handler
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', async () => {
+        const sessionId = localStorage.getItem('sessionId');
+        if (sessionId) {
+          try {
+            await fetch('/api/logout', {
+              method: 'POST',
+              headers: { 'X-Session-ID': sessionId }
+            });
+          } catch (e) {}
+        }
+        localStorage.removeItem('sessionId');
+        document.getElementById('app').style.display = 'none';
+        document.getElementById('loginModal').classList.add('active');
+      });
+    }
+  </script>
 </body>
 </html>
