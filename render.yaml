@@ -19,11 +19,13 @@ envVarGroups:
         value: "1"
 
 services:
+  # Sales Bot API (Python/FastAPI)
   - type: web
     name: proposal-bot
     runtime: docker
     region: singapore
     dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
     envVars:
       - fromGroup: proposal-bot-shared
     disk:
@@ -31,16 +33,15 @@ services:
       mountPath: /data
       sizeGB: 5
 
+  # AI Costs Dashboard (Node.js)
   - type: web
     name: ai-costs-dashboard
-    runtime: node
+    runtime: docker
     region: singapore
     rootDir: dashboard
-    buildCommand: npm install
-    startCommand: npm start
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
     envVars:
-      - key: NODE_VERSION
-        value: "18"
       - key: BACKEND_URL
         fromService:
           type: web
@@ -52,3 +53,24 @@ services:
         sync: false
       - key: DASHBOARD_PASSWORD
         sync: false
+
+  # Unified UI (Node.js)
+  - type: web
+    name: unified-ui
+    runtime: docker
+    region: singapore
+    rootDir: unified-ui
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: SALES_BOT_URL
+        fromService:
+          type: web
+          name: proposal-bot
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: SETUP_PASSWORD
+        sync: false
+    disk:
+      name: unified-ui-data
+      mountPath: /app/data
+      sizeGB: 1

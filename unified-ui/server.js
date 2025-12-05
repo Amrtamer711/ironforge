@@ -4,9 +4,20 @@ const path = require('path');
 const fs = require('fs').promises;
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 
 const app = express();
 const PORT = process.env.PORT || 3005;
+
+// =============================================================================
+// SERVICE REGISTRY
+// Routes: /api/base/* → local, /api/sales/* → Sales Bot, etc.
+// =============================================================================
+const SERVICES = {
+  sales: process.env.SALES_BOT_URL || 'http://localhost:8000',
+  // inventory: process.env.INVENTORY_URL || 'http://localhost:8001',
+  // analytics: process.env.ANALYTICS_URL || 'http://localhost:8002',
+};
 
 // Setup password (change this in production)
 const SETUP_PASSWORD = process.env.SETUP_PASSWORD || 'admin123';
@@ -31,6 +42,25 @@ function requireAuth(req, res, next) {
 }
 
 app.use(express.static('public'));
+
+// =============================================================================
+// SERVICE PROXY - Forward /api/{service}/* to the appropriate backend
+// =============================================================================
+
+// Proxy /api/sales/* to Sales Bot
+app.use('/api/sales', createProxyMiddleware({
+  target: SERVICES.sales,
+  changeOrigin: true,
+  pathRewrite: {
+    '^/api/sales': '/api', // /api/sales/chat -> /api/chat
+  },
+  on: {
+    error: (err, req, res) => {
+      console.error(`Proxy error to ${SERVICES.sales}:`, err.message);
+      res.status(502).json({ error: 'Service unavailable', service: SERVICES.sales });
+    },
+  },
+}));
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -106,10 +136,12 @@ async function writeTemplates(templates) {
   }
 }
 
-// Routes
+// =============================================================================
+// LOCAL ROUTES - /api/base/* handled by this server
+// =============================================================================
 
 // Login endpoint
-app.post('/api/login', (req, res) => {
+app.post('/api/base/login', (req, res) => {
   const { password } = req.body;
 
   if (password === SETUP_PASSWORD) {
@@ -129,12 +161,17 @@ app.post('/api/login', (req, res) => {
 });
 
 // Logout endpoint
-app.post('/api/logout', (req, res) => {
+app.post('/api/base/logout', (req, res) => {
   const sessionId = req.headers['x-session-id'];
   if (sessionId) {
     authenticatedSessions.delete(sessionId);
   }
   res.json({ success: true });
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', service: 'unified-ui' });
 });
 
 // Serve main page
@@ -143,7 +180,7 @@ app.get('/', (req, res) => {
 });
 
 // Get all templates (public for viewing)
-app.get('/api/templates', async (req, res) => {
+app.get('/api/base/templates', async (req, res) => {
   try {
     const templates = await readTemplates();
     res.json(templates);
@@ -153,7 +190,7 @@ app.get('/api/templates', async (req, res) => {
 });
 
 // Get single template by location key
-app.get('/api/templates/:locationKey', async (req, res) => {
+app.get('/api/base/templates/:locationKey', async (req, res) => {
   try {
     const templates = await readTemplates();
     const template = templates.find(t => t.locationKey === req.params.locationKey);
@@ -169,7 +206,7 @@ app.get('/api/templates/:locationKey', async (req, res) => {
 });
 
 // Upload billboard image (protected)
-app.post('/api/upload', requireAuth, upload.single('image'), async (req, res) => {
+app.post('/api/base/upload', requireAuth, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -188,7 +225,7 @@ app.post('/api/upload', requireAuth, upload.single('image'), async (req, res) =>
 });
 
 // Save template (protected)
-app.post('/api/templates', requireAuth, async (req, res) => {
+app.post('/api/base/templates', requireAuth, async (req, res) => {
   try {
     const { locationKey, frames, imageUrl, metadata } = req.body;
 
@@ -229,7 +266,7 @@ app.post('/api/templates', requireAuth, async (req, res) => {
 });
 
 // Delete template (protected)
-app.delete('/api/templates/:locationKey', requireAuth, async (req, res) => {
+app.delete('/api/base/templates/:locationKey', requireAuth, async (req, res) => {
   try {
     const templates = await readTemplates();
     const filteredTemplates = templates.filter(t => t.locationKey !== req.params.locationKey);
