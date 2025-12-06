@@ -28,6 +28,14 @@ services:
     healthCheckPath: /health
     envVars:
       - fromGroup: proposal-bot-shared
+      # Database backend selection (sqlite or supabase)
+      - key: DB_BACKEND
+        value: "sqlite"
+      # Supabase credentials (required if DB_BACKEND=supabase)
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
     disk:
       name: proposal-bot-data
       mountPath: /data
@@ -68,9 +76,9 @@ services:
           type: web
           name: proposal-bot
           envVarKey: RENDER_EXTERNAL_URL
-      - key: SETUP_PASSWORD
+      - key: SUPABASE_URL
         sync: false
-    disk:
-      name: unified-ui-data
-      mountPath: /app/data
-      sizeGB: 1
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false

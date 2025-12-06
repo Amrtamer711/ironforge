@@ -22,7 +22,7 @@ import asyncio
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 import logging
 
 import config
@@ -31,11 +31,9 @@ from workflows.bo_parser import BookingOrderParser, COMBINED_BOS_DIR
 from integrations.llm.prompts.bo_editing import get_coordinator_thread_prompt
 from integrations.llm.schemas.bo_editing import get_coordinator_response_schema
 from integrations.llm import LLMClient, LLMMessage, ReasoningEffort
+from utils.time import UAE_TZ, get_uae_time
 
 logger = logging.getLogger("proposal-bot")
-
-# UAE timezone (GMT+4)
-UAE_TZ = timezone(timedelta(hours=4))
 
 
 def _convert_booking_order_currency(data: Dict[str, Any], from_currency: str, to_currency: str) -> None:

@@ -1,53 +1,79 @@
 const express = require('express');
-const multer = require('multer');
 const path = require('path');
-const fs = require('fs').promises;
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const { createProxyMiddleware } = require('http-proxy-middleware');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const PORT = process.env.PORT || 3005;
 
 // =============================================================================
+// SUPABASE CONFIGURATION (Auth only - data lives in Sales Bot)
+// =============================================================================
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.warn('Warning: Supabase credentials not configured. Set SUPABASE_URL and SUPABASE_SERVICE_KEY');
+}
+
+// Service role client for server-side auth validation
+const supabase = supabaseUrl && supabaseServiceKey
+  ? createClient(supabaseUrl, supabaseServiceKey)
+  : null;
+
+// =============================================================================
 // SERVICE REGISTRY
-// Routes: /api/base/* → local, /api/sales/* → Sales Bot, etc.
+// All business data routes go to Sales Bot
 // =============================================================================
 const SERVICES = {
   sales: process.env.SALES_BOT_URL || 'http://localhost:8000',
-  // inventory: process.env.INVENTORY_URL || 'http://localhost:8001',
-  // analytics: process.env.ANALYTICS_URL || 'http://localhost:8002',
 };
-
-// Setup password (change this in production)
-const SETUP_PASSWORD = process.env.SETUP_PASSWORD || 'admin123';
 
 // Middleware
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
-// Session tracking for authenticated users
-const authenticatedSessions = new Set();
+// =============================================================================
+// SUPABASE AUTH MIDDLEWARE
+// Verifies JWT tokens from Supabase Auth
+// =============================================================================
+async function requireAuth(req, res, next) {
+  if (!supabase) {
+    return res.status(500).json({ error: 'Supabase not configured' });
+  }
 
-// Authentication middleware
-function requireAuth(req, res, next) {
-  const sessionId = req.headers['x-session-id'];
-
-  if (!sessionId || !authenticatedSessions.has(sessionId)) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Unauthorized', requiresAuth: true });
   }
 
-  next();
+  const token = authHeader.substring(7);
+
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+
+    if (error || !user) {
+      return res.status(401).json({ error: 'Invalid token', requiresAuth: true });
+    }
+
+    req.user = user;
+    next();
+  } catch (err) {
+    console.error('Auth error:', err);
+    return res.status(401).json({ error: 'Authentication failed', requiresAuth: true });
+  }
 }
 
 app.use(express.static('public'));
 
 // =============================================================================
-// SERVICE PROXY - Forward /api/{service}/* to the appropriate backend
+// SERVICE PROXY - Forward ALL /api/sales/* to Sales Bot
+// This includes: chat, mockup, templates, proposals, bo, etc.
+// IMPORTANT: Forwards Authorization header for backend auth validation
 // =============================================================================
-
-// Proxy /api/sales/* to Sales Bot
 app.use('/api/sales', createProxyMiddleware({
   target: SERVICES.sales,
   changeOrigin: true,
@@ -55,6 +81,35 @@ app.use('/api/sales', createProxyMiddleware({
     '^/api/sales': '/api', // /api/sales/chat -> /api/chat
   },
   on: {
+    proxyReq: async (proxyReq, req, res) => {
+      // Forward Authorization header to backend
+      const authHeader = req.headers.authorization;
+      if (authHeader) {
+        proxyReq.setHeader('Authorization', authHeader);
+
+        // Add X-Request-User-ID for tracing (extract from token if possible)
+        if (supabase && authHeader.startsWith('Bearer ')) {
+          try {
+            const token = authHeader.substring(7);
+            const { data: { user } } = await supabase.auth.getUser(token);
+            if (user) {
+              proxyReq.setHeader('X-Request-User-ID', user.id);
+              proxyReq.setHeader('X-Request-User-Email', user.email || '');
+            }
+          } catch (err) {
+            // Token validation failed, still forward to let backend handle
+            console.warn('Could not extract user from token:', err.message);
+          }
+        }
+      }
+
+      // Forward other useful headers
+      if (req.headers['x-forwarded-for']) {
+        proxyReq.setHeader('X-Forwarded-For', req.headers['x-forwarded-for']);
+      } else if (req.socket.remoteAddress) {
+        proxyReq.setHeader('X-Forwarded-For', req.socket.remoteAddress);
+      }
+    },
     error: (err, req, res) => {
       console.error(`Proxy error to ${SERVICES.sales}:`, err.message);
       res.status(502).json({ error: 'Service unavailable', service: SERVICES.sales });
@@ -62,116 +117,28 @@ app.use('/api/sales', createProxyMiddleware({
   },
 }));
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: async (req, file, cb) => {
-    const uploadDir = path.join(__dirname, 'uploads');
-    try {
-      await fs.mkdir(uploadDir, { recursive: true });
-      cb(null, uploadDir);
-    } catch (err) {
-      cb(err);
-    }
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
-const upload = multer({
-  storage: storage,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif|webp/;
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = allowedTypes.test(file.mimetype);
-
-    if (mimetype && extname) {
-      return cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed!'));
-    }
-  }
-});
-
-// Data storage paths
-const DATA_DIR = path.join(__dirname, 'data');
-const TEMPLATES_FILE = path.join(DATA_DIR, 'templates.json');
-const LOCATIONS_FILE = path.join(__dirname, '../db.py'); // Reference to existing db
-
-// Initialize data directory and templates file
-async function initializeData() {
-  try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-
-    try {
-      await fs.access(TEMPLATES_FILE);
-    } catch {
-      await fs.writeFile(TEMPLATES_FILE, JSON.stringify([], null, 2));
-    }
-  } catch (err) {
-    console.error('Error initializing data:', err);
-  }
-}
-
-// Read templates from file
-async function readTemplates() {
-  try {
-    const data = await fs.readFile(TEMPLATES_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (err) {
-    console.error('Error reading templates:', err);
-    return [];
-  }
-}
-
-// Write templates to file
-async function writeTemplates(templates) {
-  try {
-    await fs.writeFile(TEMPLATES_FILE, JSON.stringify(templates, null, 2));
-  } catch (err) {
-    console.error('Error writing templates:', err);
-    throw err;
-  }
-}
-
 // =============================================================================
-// LOCAL ROUTES - /api/base/* handled by this server
+// LOCAL ROUTES - /api/base/* handled by this server (Auth only)
 // =============================================================================
-
-// Login endpoint
-app.post('/api/base/login', (req, res) => {
-  const { password } = req.body;
-
-  if (password === SETUP_PASSWORD) {
-    const sessionId = Math.random().toString(36).substring(2) + Date.now().toString(36);
-    authenticatedSessions.add(sessionId);
-
-    res.json({
-      success: true,
-      sessionId: sessionId
-    });
-  } else {
-    res.status(401).json({
-      success: false,
-      error: 'Invalid password'
-    });
-  }
-});
-
-// Logout endpoint
-app.post('/api/base/logout', (req, res) => {
-  const sessionId = req.headers['x-session-id'];
-  if (sessionId) {
-    authenticatedSessions.delete(sessionId);
-  }
-  res.json({ success: true });
-});
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'unified-ui' });
+  res.json({ status: 'ok', service: 'unified-ui', supabase: !!supabase });
+});
+
+// Supabase config endpoint - serves public credentials to frontend as JavaScript
+// IMPORTANT: Only expose SUPABASE_URL and SUPABASE_ANON_KEY (public), never SERVICE_KEY
+app.get('/api/base/config.js', (req, res) => {
+  const config = {
+    SUPABASE_URL: process.env.SUPABASE_URL || '',
+    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || ''
+  };
+
+  res.type('application/javascript');
+  res.send(`// Supabase configuration (auto-generated)
+window.SUPABASE_URL = ${JSON.stringify(config.SUPABASE_URL)};
+window.SUPABASE_ANON_KEY = ${JSON.stringify(config.SUPABASE_ANON_KEY)};
+`);
 });
 
 // Serve main page
@@ -179,113 +146,44 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Get all templates (public for viewing)
-app.get('/api/base/templates', async (req, res) => {
-  try {
-    const templates = await readTemplates();
-    res.json(templates);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to load templates' });
+// =============================================================================
+// AUTH ENDPOINTS - Using Supabase Auth
+// Note: Most auth is handled client-side with Supabase JS SDK
+// These endpoints are for server-side validation
+// =============================================================================
+
+// Verify session endpoint (for checking if user is authenticated)
+app.get('/api/base/auth/session', async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ error: 'Supabase not configured' });
   }
-});
 
-// Get single template by location key
-app.get('/api/base/templates/:locationKey', async (req, res) => {
-  try {
-    const templates = await readTemplates();
-    const template = templates.find(t => t.locationKey === req.params.locationKey);
-
-    if (!template) {
-      return res.status(404).json({ error: 'Template not found' });
-    }
-
-    res.json(template);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to load template' });
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.json({ authenticated: false });
   }
-});
 
-// Upload billboard image (protected)
-app.post('/api/base/upload', requireAuth, upload.single('image'), async (req, res) => {
+  const token = authHeader.substring(7);
+
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+
+    if (error || !user) {
+      return res.json({ authenticated: false });
     }
-
-    const imageUrl = `/uploads/${req.file.filename}`;
-    res.json({
-      success: true,
-      imageUrl: imageUrl,
-      filename: req.file.filename
-    });
-  } catch (err) {
-    console.error('Upload error:', err);
-    res.status(500).json({ error: 'Failed to upload image' });
-  }
-});
-
-// Save template (protected)
-app.post('/api/base/templates', requireAuth, async (req, res) => {
-  try {
-    const { locationKey, frames, imageUrl, metadata } = req.body;
-
-    if (!locationKey || !frames || !imageUrl) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    const templates = await readTemplates();
-
-    // Check if template exists
-    const existingIndex = templates.findIndex(t => t.locationKey === locationKey);
-
-    const template = {
-      locationKey,
-      frames,
-      imageUrl,
-      metadata: metadata || {},
-      updatedAt: new Date().toISOString()
-    };
-
-    if (existingIndex >= 0) {
-      templates[existingIndex] = template;
-    } else {
-      template.createdAt = new Date().toISOString();
-      templates.push(template);
-    }
-
-    await writeTemplates(templates);
 
     res.json({
-      success: true,
-      template: template
+      authenticated: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role
+      }
     });
   } catch (err) {
-    console.error('Save error:', err);
-    res.status(500).json({ error: 'Failed to save template' });
+    res.json({ authenticated: false });
   }
 });
-
-// Delete template (protected)
-app.delete('/api/base/templates/:locationKey', requireAuth, async (req, res) => {
-  try {
-    const templates = await readTemplates();
-    const filteredTemplates = templates.filter(t => t.locationKey !== req.params.locationKey);
-
-    if (templates.length === filteredTemplates.length) {
-      return res.status(404).json({ error: 'Template not found' });
-    }
-
-    await writeTemplates(filteredTemplates);
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error('Delete error:', err);
-    res.status(500).json({ error: 'Failed to delete template' });
-  }
-});
-
-// Serve uploaded files
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -295,10 +193,9 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Initialize and start server
-initializeData().then(() => {
-  app.listen(PORT, () => {
-    console.log(`🎨 Mockup Studio running on http://localhost:${PORT}`);
-    console.log(`📁 Data directory: ${DATA_DIR}`);
-  });
+// Start server
+app.listen(PORT, () => {
+  console.log(`Unified UI running on http://localhost:${PORT}`);
+  console.log(`Supabase: ${supabase ? 'Connected' : 'Not configured'}`);
+  console.log(`Sales Bot: ${SERVICES.sales}`);
 });

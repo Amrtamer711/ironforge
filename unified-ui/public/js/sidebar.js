@@ -66,6 +66,9 @@ const Sidebar = {
       case 'proposals':
         this.initProposals();
         break;
+      case 'admin':
+        this.initAdmin();
+        break;
     }
   },
 
@@ -163,6 +166,42 @@ const Sidebar = {
     } catch (e) {
       proposalsList.innerHTML = '<p class="empty-state">No proposals yet. Create your first one!</p>';
     }
+  },
+
+  async initAdmin() {
+    const adminPanel = document.getElementById('adminPanel');
+    if (!adminPanel) return;
+
+    // Check if already initialized
+    if (adminPanel.dataset.initialized) {
+      // Just re-render if already initialized
+      if (window.AdminUI) {
+        AdminUI.render();
+      }
+      return;
+    }
+
+    // Initialize admin module
+    if (window.AdminUI) {
+      const success = await AdminUI.init();
+      if (success) {
+        adminPanel.dataset.initialized = 'true';
+        AdminUI.render();
+      } else {
+        adminPanel.innerHTML = '<p class="empty-state">Admin panel not available.</p>';
+      }
+    }
+  },
+
+  /**
+   * Show/hide admin nav item based on user roles
+   */
+  updateAdminVisibility(user) {
+    const adminNavItem = document.getElementById('adminNavItem');
+    if (!adminNavItem) return;
+
+    const isAdmin = user && user.roles && user.roles.includes('admin');
+    adminNavItem.style.display = isAdmin ? 'flex' : 'none';
   },
 
   setupSettings() {

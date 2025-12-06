@@ -6,16 +6,44 @@
  * - /api/sales/* → Sales Bot service (chat, mockup, proposals, bo)
  * - /api/inventory/* → Future inventory service
  * - /api/analytics/* → Future analytics service
+ *
+ * Authentication:
+ * - Uses Supabase Auth for authentication
+ * - Supabase client handles tokens automatically
+ * - Backend validates tokens via Supabase Admin SDK
  */
+
+// =============================================================================
+// SUPABASE CONFIGURATION
+// These will be set from environment or config
+// =============================================================================
+const SUPABASE_URL = window.SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || '';
+
+// Initialize Supabase client (if available)
+let supabaseClient = null;
+
+// Check if Supabase JS library is loaded
+if (typeof supabase !== 'undefined' && SUPABASE_URL && SUPABASE_ANON_KEY) {
+  supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
 
 const API = {
   // Always use same origin - the unified-ui server proxies to services
   baseUrl: '',
 
+  // Get current auth token from Supabase
+  async getAuthToken() {
+    if (!supabaseClient) return null;
+
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    return session?.access_token || null;
+  },
+
   // Helper for making requests
   async request(endpoint, options = {}) {
     const url = `${this.baseUrl}${endpoint}`;
-    const token = localStorage.getItem('authToken');
+    const token = await this.getAuthToken();
 
     const headers = {
       'Content-Type': 'application/json',
@@ -26,12 +54,6 @@ const API = {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    // Add session ID for base API auth
-    const sessionId = localStorage.getItem('sessionId');
-    if (sessionId) {
-      headers['x-session-id'] = sessionId;
-    }
-
     try {
       const response = await fetch(url, {
         ...options,
@@ -39,8 +61,11 @@ const API = {
       });
 
       if (response.status === 401) {
-        // Token expired or invalid
-        Auth.logout();
+        // Token expired or invalid - trigger logout
+        if (supabaseClient) {
+          await supabaseClient.auth.signOut();
+        }
+        window.dispatchEvent(new CustomEvent('auth:logout'));
         return null;
       }
 
@@ -57,55 +82,113 @@ const API = {
   },
 
   // ============================================
-  // BASE ENDPOINTS (Unified UI's own backend)
+  // SUPABASE AUTH (Client-side)
+  // ============================================
+  supabase: {
+    getClient() {
+      return supabaseClient;
+    },
+
+    async signUp(email, password) {
+      if (!supabaseClient) throw new Error('Supabase not configured');
+
+      const { data, error } = await supabaseClient.auth.signUp({
+        email,
+        password
+      });
+
+      if (error) throw error;
+      return data;
+    },
+
+    async signIn(email, password) {
+      if (!supabaseClient) throw new Error('Supabase not configured');
+
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) throw error;
+      window.dispatchEvent(new CustomEvent('auth:login', { detail: data.user }));
+      return data;
+    },
+
+    async signOut() {
+      if (!supabaseClient) throw new Error('Supabase not configured');
+
+      const { error } = await supabaseClient.auth.signOut();
+      if (error) throw error;
+
+      window.dispatchEvent(new CustomEvent('auth:logout'));
+      return true;
+    },
+
+    async getSession() {
+      if (!supabaseClient) return null;
+
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      return session;
+    },
+
+    async getUser() {
+      if (!supabaseClient) return null;
+
+      const { data: { user } } = await supabaseClient.auth.getUser();
+      return user;
+    },
+
+    // Listen for auth state changes
+    onAuthStateChange(callback) {
+      if (!supabaseClient) return null;
+
+      return supabaseClient.auth.onAuthStateChange((event, session) => {
+        callback(event, session);
+      });
+    }
+  },
+
+  // ============================================
+  // BASE ENDPOINTS (Unified UI - Auth only)
   // ============================================
   base: {
-    async login(password) {
-      const result = await API.request('/api/base/login', {
-        method: 'POST',
-        body: JSON.stringify({ password })
-      });
-      if (result && result.sessionId) {
-        localStorage.setItem('sessionId', result.sessionId);
-      }
-      return result;
+    // Check session with backend
+    async checkSession() {
+      return API.request('/api/base/auth/session');
+    }
+  },
+
+  // ============================================
+  // TEMPLATES (Sales Bot service)
+  // ============================================
+  templates: {
+    async getAll() {
+      return API.request('/api/sales/templates');
     },
 
-    async logout() {
-      const result = await API.request('/api/base/logout', {
-        method: 'POST'
-      });
-      localStorage.removeItem('sessionId');
-      return result;
+    async get(locationKey) {
+      return API.request(`/api/sales/templates/${locationKey}`);
     },
 
-    async getTemplates() {
-      return API.request('/api/base/templates');
-    },
-
-    async getTemplate(locationKey) {
-      return API.request(`/api/base/templates/${locationKey}`);
-    },
-
-    async saveTemplate(data) {
-      return API.request('/api/base/templates', {
+    async save(data) {
+      return API.request('/api/sales/templates', {
         method: 'POST',
         body: JSON.stringify(data)
       });
     },
 
-    async deleteTemplate(locationKey) {
-      return API.request(`/api/base/templates/${locationKey}`, {
+    async delete(locationKey) {
+      return API.request(`/api/sales/templates/${locationKey}`, {
         method: 'DELETE'
       });
     },
 
     async uploadImage(formData) {
-      const sessionId = localStorage.getItem('sessionId');
-      const response = await fetch(`${API.baseUrl}/api/base/upload`, {
+      const token = await API.getAuthToken();
+      const response = await fetch(`${API.baseUrl}/api/sales/templates/upload`, {
         method: 'POST',
         headers: {
-          'x-session-id': sessionId
+          'Authorization': `Bearer ${token}`
         },
         body: formData
       });
@@ -164,8 +247,8 @@ const API = {
     },
 
     // SSE for streaming responses
-    streamMessage(conversationId, message, onChunk, onDone, onError) {
-      const token = localStorage.getItem('authToken');
+    async streamMessage(conversationId, message, onChunk, onDone, onError) {
+      const token = await API.getAuthToken();
       const url = `${API.baseUrl}/api/sales/chat/stream`;
 
       fetch(url, {
@@ -228,7 +311,7 @@ const API = {
     },
 
     async generate(formData) {
-      const token = localStorage.getItem('authToken');
+      const token = await API.getAuthToken();
       const response = await fetch(`${API.baseUrl}/api/sales/mockup/generate`, {
         method: 'POST',
         headers: {

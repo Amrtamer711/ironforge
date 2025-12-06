@@ -11,7 +11,6 @@ This module handles:
 """
 
 import os
-import logging
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Optional
@@ -25,9 +24,27 @@ load_dotenv()
 # Base paths
 BASE_DIR = Path(__file__).parent
 
-# Logger (set up early so we can use it)
-logger = logging.getLogger("proposal-bot")
-logging.basicConfig(level=logging.INFO)
+# Set up structured logging
+from utils.logging import setup_logging, get_logger
+
+# Determine if we should use JSON format (production) or console format (development)
+_is_production = os.path.exists("/data/") or os.getenv("ENVIRONMENT") == "production"
+_log_level = os.getenv("LOG_LEVEL", "INFO")
+
+setup_logging(
+    level=_log_level,
+    json_format=_is_production,
+    module_levels={
+        "httpx": "WARNING",
+        "httpcore": "WARNING",
+        "urllib3": "WARNING",
+        "asyncio": "WARNING",
+        "uvicorn.access": "WARNING",
+    }
+)
+
+# Get the main application logger
+logger = get_logger("proposal-bot")
 
 # Use /data/ in production, local paths in development
 if os.path.exists("/data/"):
