@@ -1,0 +1,51 @@
+-- ============================================================================
+-- UI Supabase Schema
+-- ============================================================================
+-- This schema is for the UI's Supabase project (separate from Sales Bot).
+-- Currently, the UI only uses Supabase Auth (built-in, no tables needed).
+-- This file is for FUTURE UI-specific data storage.
+--
+-- Run this SQL in the UI Supabase project's SQL Editor when needed.
+-- ============================================================================
+
+-- ============================================================================
+-- FUTURE: User Preferences (when UI needs its own storage)
+-- ============================================================================
+-- Uncomment when ready to implement:
+
+-- CREATE TABLE IF NOT EXISTS user_preferences (
+--     id BIGSERIAL PRIMARY KEY,
+--     user_id TEXT NOT NULL UNIQUE,
+--     theme TEXT DEFAULT 'dark',
+--     sidebar_collapsed BIGINT DEFAULT 0,
+--     default_location TEXT,
+--     notifications_enabled BIGINT DEFAULT 1,
+--     created_at TEXT NOT NULL,
+--     updated_at TEXT NOT NULL
+-- );
+-- CREATE INDEX IF NOT EXISTS idx_user_prefs_user ON user_preferences(user_id);
+
+-- ============================================================================
+-- FUTURE: UI Session Storage (for multi-tab state sync)
+-- ============================================================================
+-- CREATE TABLE IF NOT EXISTS ui_sessions (
+--     id BIGSERIAL PRIMARY KEY,
+--     user_id TEXT NOT NULL,
+--     session_key TEXT NOT NULL UNIQUE,
+--     session_data TEXT NOT NULL,
+--     expires_at TEXT NOT NULL,
+--     created_at TEXT NOT NULL
+-- );
+-- CREATE INDEX IF NOT EXISTS idx_ui_sessions_user ON ui_sessions(user_id);
+-- CREATE INDEX IF NOT EXISTS idx_ui_sessions_expires ON ui_sessions(expires_at);
+
+-- ============================================================================
+-- CURRENT: No tables needed
+-- ============================================================================
+-- The UI currently uses:
+--   1. Supabase Auth (built-in) - for user authentication
+--   2. localStorage - for client-side state
+--   3. Sales Bot API - for all business data
+--
+-- This file exists as a placeholder for when the UI needs its own data storage.
+-- ============================================================================

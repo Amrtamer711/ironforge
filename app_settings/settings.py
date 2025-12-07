@@ -75,18 +75,59 @@ class Settings(BaseSettings):
         description="Database connection URL (for direct DB access)",
     )
 
-    # Supabase
+    # =========================================================================
+    # SALES BOT SUPABASE (Data storage - separate from UI)
+    # =========================================================================
+
+    # Development
+    salesbot_dev_supabase_url: Optional[str] = Field(
+        default=None,
+        description="Sales Bot DEV Supabase project URL",
+    )
+    salesbot_dev_supabase_anon_key: Optional[str] = Field(
+        default=None,
+        description="Sales Bot DEV Supabase anon key",
+    )
+    salesbot_dev_supabase_service_role_key: Optional[str] = Field(
+        default=None,
+        description="Sales Bot DEV Supabase service role key",
+    )
+
+    # Production
+    salesbot_prod_supabase_url: Optional[str] = Field(
+        default=None,
+        description="Sales Bot PROD Supabase project URL",
+    )
+    salesbot_prod_supabase_anon_key: Optional[str] = Field(
+        default=None,
+        description="Sales Bot PROD Supabase anon key",
+    )
+    salesbot_prod_supabase_service_role_key: Optional[str] = Field(
+        default=None,
+        description="Sales Bot PROD Supabase service role key",
+    )
+
+    # Legacy single-project config (backwards compatibility)
     supabase_url: Optional[str] = Field(
         default=None,
-        description="Supabase project URL",
+        description="Supabase project URL (legacy, use SALESBOT_*_SUPABASE_URL instead)",
     )
     supabase_service_key: Optional[str] = Field(
         default=None,
-        description="Supabase service role key",
+        description="Supabase service role key (legacy)",
     )
     supabase_jwt_secret: Optional[str] = Field(
         default=None,
         description="Supabase JWT secret for token validation",
+    )
+
+    # =========================================================================
+    # UI AUTH JWT SECRET (for validating tokens from UI's Supabase)
+    # =========================================================================
+
+    ui_jwt_secret: Optional[str] = Field(
+        default=None,
+        description="JWT secret from UI's Supabase project (for cross-service auth)",
     )
 
     # =========================================================================
@@ -349,8 +390,30 @@ class Settings(BaseSettings):
 
     @property
     def effective_jwt_secret(self) -> Optional[str]:
-        """Get the JWT secret, falling back to Supabase JWT secret."""
-        return self.jwt_secret or self.supabase_jwt_secret
+        """Get the JWT secret for validating UI tokens."""
+        # Prefer UI JWT secret (for cross-service auth), fall back to legacy
+        return self.ui_jwt_secret or self.jwt_secret or self.supabase_jwt_secret
+
+    @property
+    def active_supabase_url(self) -> Optional[str]:
+        """Get the active Supabase URL based on environment."""
+        if self.is_production:
+            return self.salesbot_prod_supabase_url or self.supabase_url
+        return self.salesbot_dev_supabase_url or self.supabase_url
+
+    @property
+    def active_supabase_anon_key(self) -> Optional[str]:
+        """Get the active Supabase anon key based on environment."""
+        if self.is_production:
+            return self.salesbot_prod_supabase_anon_key
+        return self.salesbot_dev_supabase_anon_key
+
+    @property
+    def active_supabase_service_key(self) -> Optional[str]:
+        """Get the active Supabase service role key based on environment."""
+        if self.is_production:
+            return self.salesbot_prod_supabase_service_role_key or self.supabase_service_key
+        return self.salesbot_dev_supabase_service_role_key or self.supabase_service_key
 
     # =========================================================================
     # VALIDATION

@@ -32,13 +32,25 @@ class SupabaseBackend(DatabaseBackend):
     """
 
     def __init__(self):
-        """Initialize Supabase backend."""
+        """Initialize Supabase backend using environment-aware settings."""
         self._client = None
-        self._url = os.getenv("SUPABASE_URL", "")
-        self._key = os.getenv("SUPABASE_SERVICE_KEY", "")
+
+        # Use the new settings-based config with dev/prod switching
+        try:
+            from app_settings import settings
+            self._url = settings.active_supabase_url or ""
+            self._key = settings.active_supabase_service_key or ""
+
+            if self._url and self._key:
+                env_name = "PROD" if settings.is_production else "DEV"
+                logger.info(f"[SUPABASE] Using {env_name} credentials")
+        except ImportError:
+            # Fallback to direct env vars (legacy)
+            self._url = os.getenv("SUPABASE_URL", "")
+            self._key = os.getenv("SUPABASE_SERVICE_KEY", "")
 
         if not self._url or not self._key:
-            logger.warning("[SUPABASE] Credentials not configured. Set SUPABASE_URL and SUPABASE_SERVICE_KEY")
+            logger.warning("[SUPABASE] Credentials not configured. Set SALESBOT_DEV_SUPABASE_URL and SALESBOT_DEV_SUPABASE_SERVICE_ROLE_KEY (or PROD variants)")
 
     @property
     def name(self) -> str:

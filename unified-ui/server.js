@@ -9,13 +9,34 @@ const app = express();
 const PORT = process.env.PORT || 3005;
 
 // =============================================================================
-// SUPABASE CONFIGURATION (Auth only - data lives in Sales Bot)
+// ENVIRONMENT DETECTION
 // =============================================================================
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+const ENVIRONMENT = process.env.ENVIRONMENT || 'development';
+const IS_PRODUCTION = ENVIRONMENT === 'production' || process.env.NODE_ENV === 'production';
+
+console.log(`[UI] Environment: ${ENVIRONMENT} (production: ${IS_PRODUCTION})`);
+
+// =============================================================================
+// UI SUPABASE CONFIGURATION (Auth only - completely separate from Sales Bot)
+// UI has its own Supabase project for authentication
+// =============================================================================
+
+// Get credentials based on environment (UI's own Supabase project)
+const supabaseUrl = IS_PRODUCTION
+  ? (process.env.UI_PROD_SUPABASE_URL || process.env.SUPABASE_URL)
+  : (process.env.UI_DEV_SUPABASE_URL || process.env.SUPABASE_URL);
+
+const supabaseServiceKey = IS_PRODUCTION
+  ? (process.env.UI_PROD_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY)
+  : (process.env.UI_DEV_SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY);
+
+const supabaseAnonKey = IS_PRODUCTION
+  ? (process.env.UI_PROD_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY)
+  : (process.env.UI_DEV_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY);
 
 if (!supabaseUrl || !supabaseServiceKey) {
-  console.warn('Warning: Supabase credentials not configured. Set SUPABASE_URL and SUPABASE_SERVICE_KEY');
+  console.warn('Warning: UI Supabase credentials not configured.');
+  console.warn('Set UI_DEV_SUPABASE_URL and UI_DEV_SUPABASE_SERVICE_ROLE_KEY (or UI_PROD_* for production)');
 }
 
 // Service role client for server-side auth validation
@@ -128,16 +149,13 @@ app.get('/health', (req, res) => {
 
 // Supabase config endpoint - serves public credentials to frontend as JavaScript
 // IMPORTANT: Only expose SUPABASE_URL and SUPABASE_ANON_KEY (public), never SERVICE_KEY
-app.get('/api/base/config.js', (req, res) => {
-  const config = {
-    SUPABASE_URL: process.env.SUPABASE_URL || '',
-    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || ''
-  };
-
+app.get('/api/base/config.js', (_req, res) => {
+  // Use environment-specific anon key (already resolved above)
   res.type('application/javascript');
   res.send(`// Supabase configuration (auto-generated)
-window.SUPABASE_URL = ${JSON.stringify(config.SUPABASE_URL)};
-window.SUPABASE_ANON_KEY = ${JSON.stringify(config.SUPABASE_ANON_KEY)};
+// Environment: ${ENVIRONMENT}
+window.SUPABASE_URL = ${JSON.stringify(supabaseUrl || '')};
+window.SUPABASE_ANON_KEY = ${JSON.stringify(supabaseAnonKey || '')};
 `);
 });
 
