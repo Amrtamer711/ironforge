@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3005;
 // ENVIRONMENT DETECTION
 // =============================================================================
 const ENVIRONMENT = process.env.ENVIRONMENT || 'development';
-const IS_PRODUCTION = ENVIRONMENT === 'production' || process.env.NODE_ENV === 'production';
+const IS_PRODUCTION = ENVIRONMENT === 'production';
 
 console.log(`[UI] Environment: ${ENVIRONMENT} (production: ${IS_PRODUCTION})`);
 
