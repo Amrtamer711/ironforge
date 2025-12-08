@@ -1061,3 +1061,416 @@ class SupabaseBackend(DatabaseBackend):
         except Exception as e:
             logger.error(f"[SUPABASE] Error revoking user role: {e}")
             return False
+
+    # =========================================================================
+    # API KEYS
+    # =========================================================================
+
+    def create_api_key(
+        self,
+        key_hash: str,
+        key_prefix: str,
+        name: str,
+        scopes: List[str],
+        description: Optional[str] = None,
+        rate_limit: Optional[int] = None,
+        expires_at: Optional[str] = None,
+        created_by: Optional[str] = None,
+        metadata: Optional[Dict] = None,
+    ) -> Optional[int]:
+        """Create a new API key."""
+        created_at = datetime.now().isoformat()
+        scopes_json = json.dumps(scopes)
+        metadata_json = json.dumps(metadata) if metadata else None
+
+        try:
+            client = self._get_client()
+            response = client.table("api_keys").insert({
+                "key_hash": key_hash,
+                "key_prefix": key_prefix,
+                "name": name,
+                "description": description,
+                "scopes_json": scopes_json,
+                "rate_limit": rate_limit,
+                "is_active": True,
+                "created_at": created_at,
+                "created_by": created_by,
+                "expires_at": expires_at,
+                "metadata_json": metadata_json,
+            }).execute()
+
+            if response.data:
+                key_id = response.data[0].get("id")
+                logger.info(f"[SUPABASE] Created API key: {name} (id={key_id})")
+                return key_id
+            return None
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error creating API key: {e}")
+            return None
+
+    def get_api_key_by_hash(self, key_hash: str) -> Optional[Dict[str, Any]]:
+        """Get API key info by hash."""
+        try:
+            client = self._get_client()
+            response = client.table("api_keys").select("*").eq(
+                "key_hash", key_hash
+            ).eq("is_active", True).single().execute()
+
+            if not response.data:
+                return None
+
+            record = response.data
+            # Parse JSON fields
+            if record.get("scopes_json"):
+                record["scopes"] = json.loads(record["scopes_json"])
+            if record.get("metadata_json"):
+                record["metadata"] = json.loads(record["metadata_json"])
+            return record
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error getting API key by hash: {e}")
+            return None
+
+    def get_api_key_by_id(self, key_id: int) -> Optional[Dict[str, Any]]:
+        """Get API key info by ID."""
+        try:
+            client = self._get_client()
+            response = client.table("api_keys").select("*").eq(
+                "id", key_id
+            ).single().execute()
+
+            if not response.data:
+                return None
+
+            record = response.data
+            if record.get("scopes_json"):
+                record["scopes"] = json.loads(record["scopes_json"])
+            if record.get("metadata_json"):
+                record["metadata"] = json.loads(record["metadata_json"])
+            return record
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error getting API key by ID: {e}")
+            return None
+
+    def list_api_keys(
+        self,
+        created_by: Optional[str] = None,
+        include_inactive: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """List all API keys, optionally filtered."""
+        try:
+            client = self._get_client()
+            query = client.table("api_keys").select("*")
+
+            if not include_inactive:
+                query = query.eq("is_active", True)
+            if created_by:
+                query = query.eq("created_by", created_by)
+
+            query = query.order("created_at", desc=True)
+            response = query.execute()
+
+            results = []
+            for record in (response.data or []):
+                if record.get("scopes_json"):
+                    record["scopes"] = json.loads(record["scopes_json"])
+                if record.get("metadata_json"):
+                    record["metadata"] = json.loads(record["metadata_json"])
+                results.append(record)
+            return results
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error listing API keys: {e}")
+            return []
+
+    def update_api_key(
+        self,
+        key_id: int,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        scopes: Optional[List[str]] = None,
+        rate_limit: Optional[int] = None,
+        is_active: Optional[bool] = None,
+        expires_at: Optional[str] = None,
+    ) -> bool:
+        """Update an API key."""
+        updates = {}
+
+        if name is not None:
+            updates["name"] = name
+        if description is not None:
+            updates["description"] = description
+        if scopes is not None:
+            updates["scopes_json"] = json.dumps(scopes)
+        if rate_limit is not None:
+            updates["rate_limit"] = rate_limit
+        if is_active is not None:
+            updates["is_active"] = is_active
+        if expires_at is not None:
+            updates["expires_at"] = expires_at
+
+        if not updates:
+            return True  # Nothing to update
+
+        try:
+            client = self._get_client()
+            client.table("api_keys").update(updates).eq("id", key_id).execute()
+            logger.info(f"[SUPABASE] Updated API key: {key_id}")
+            return True
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error updating API key: {e}")
+            return False
+
+    def update_api_key_last_used(self, key_id: int, timestamp: str) -> bool:
+        """Update the last_used_at timestamp for an API key."""
+        try:
+            client = self._get_client()
+            client.table("api_keys").update({
+                "last_used_at": timestamp
+            }).eq("id", key_id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error updating API key last_used: {e}")
+            return False
+
+    def rotate_api_key(
+        self,
+        key_id: int,
+        new_key_hash: str,
+        new_key_prefix: str,
+        rotated_at: str,
+    ) -> bool:
+        """Rotate an API key (replace hash)."""
+        try:
+            client = self._get_client()
+            client.table("api_keys").update({
+                "key_hash": new_key_hash,
+                "key_prefix": new_key_prefix,
+                "last_rotated_at": rotated_at,
+            }).eq("id", key_id).execute()
+            logger.info(f"[SUPABASE] Rotated API key: {key_id}")
+            return True
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error rotating API key: {e}")
+            return False
+
+    def delete_api_key(self, key_id: int) -> bool:
+        """Delete an API key (hard delete)."""
+        try:
+            client = self._get_client()
+            # Delete usage logs first
+            client.table("api_key_usage").delete().eq("api_key_id", key_id).execute()
+            # Delete the key
+            client.table("api_keys").delete().eq("id", key_id).execute()
+            logger.info(f"[SUPABASE] Deleted API key: {key_id}")
+            return True
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error deleting API key: {e}")
+            return False
+
+    def deactivate_api_key(self, key_id: int) -> bool:
+        """Deactivate an API key (soft delete)."""
+        return self.update_api_key(key_id, is_active=False)
+
+    # =========================================================================
+    # API KEY USAGE LOGGING
+    # =========================================================================
+
+    def log_api_key_usage(
+        self,
+        api_key_id: int,
+        endpoint: str,
+        method: str,
+        status_code: Optional[int] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        response_time_ms: Optional[int] = None,
+        request_size: Optional[int] = None,
+        response_size: Optional[int] = None,
+        timestamp: Optional[str] = None,
+    ) -> None:
+        """Log API key usage for auditing."""
+        if not timestamp:
+            timestamp = datetime.now().isoformat()
+
+        try:
+            client = self._get_client()
+            client.table("api_key_usage").insert({
+                "api_key_id": api_key_id,
+                "timestamp": timestamp,
+                "endpoint": endpoint,
+                "method": method,
+                "status_code": status_code,
+                "ip_address": ip_address,
+                "user_agent": user_agent,
+                "response_time_ms": response_time_ms,
+                "request_size": request_size,
+                "response_size": response_size,
+            }).execute()
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error logging API key usage: {e}")
+
+    def get_api_key_usage_stats(
+        self,
+        api_key_id: Optional[int] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get API key usage statistics."""
+        try:
+            client = self._get_client()
+
+            # Build query for total count and recent requests
+            query = client.table("api_key_usage").select("*")
+
+            if api_key_id:
+                query = query.eq("api_key_id", api_key_id)
+            if start_date:
+                query = query.gte("timestamp", start_date)
+            if end_date:
+                end_date_full = f"{end_date}T23:59:59" if 'T' not in end_date else end_date
+                query = query.lte("timestamp", end_date_full)
+
+            query = query.order("timestamp", desc=True).limit(1000)
+            response = query.execute()
+
+            records = response.data or []
+            total_requests = len(records)
+
+            # Aggregate by status code
+            by_status = {}
+            by_endpoint = {}
+            total_response_time = 0
+            response_time_count = 0
+
+            for r in records:
+                # By status
+                status = str(r.get("status_code", "unknown"))
+                by_status[status] = by_status.get(status, 0) + 1
+
+                # By endpoint
+                endpoint = r.get("endpoint", "unknown")
+                by_endpoint[endpoint] = by_endpoint.get(endpoint, 0) + 1
+
+                # Response time
+                if r.get("response_time_ms") is not None:
+                    total_response_time += r["response_time_ms"]
+                    response_time_count += 1
+
+            avg_response_time = (
+                total_response_time / response_time_count
+                if response_time_count > 0 else None
+            )
+
+            # Get recent 50
+            recent = [
+                {
+                    "api_key_id": r.get("api_key_id"),
+                    "timestamp": r.get("timestamp"),
+                    "endpoint": r.get("endpoint"),
+                    "method": r.get("method"),
+                    "status_code": r.get("status_code"),
+                    "response_time_ms": r.get("response_time_ms"),
+                }
+                for r in records[:50]
+            ]
+
+            return {
+                "total_requests": total_requests,
+                "by_status_code": by_status,
+                "by_endpoint": dict(sorted(by_endpoint.items(), key=lambda x: -x[1])[:20]),
+                "avg_response_time_ms": avg_response_time,
+                "recent_requests": recent,
+            }
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error getting API key usage stats: {e}")
+            return {
+                "total_requests": 0,
+                "by_status_code": {},
+                "by_endpoint": {},
+                "avg_response_time_ms": None,
+                "recent_requests": [],
+            }
+
+    # =========================================================================
+    # AUDIT LOGGING
+    # =========================================================================
+
+    def log_audit_event(
+        self,
+        timestamp: str,
+        action: str,
+        user_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        details_json: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        """Log an audit event to the audit_log table."""
+        try:
+            client = self._get_client()
+            client.table("audit_log").insert({
+                "timestamp": timestamp,
+                "user_id": user_id,
+                "action": action,
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+                "details_json": details_json,
+                "ip_address": ip_address,
+                "user_agent": user_agent,
+            }).execute()
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error logging audit event: {e}")
+
+    def query_audit_log(
+        self,
+        user_id: Optional[str] = None,
+        action: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """Query audit log entries with optional filters."""
+        try:
+            client = self._get_client()
+            query = client.table("audit_log").select("*")
+
+            if user_id:
+                query = query.eq("user_id", user_id)
+            if action:
+                # Support prefix matching (e.g., "user.*" matches "user.login", "user.logout")
+                if action.endswith("*"):
+                    query = query.like("action", action[:-1] + "%")
+                else:
+                    query = query.eq("action", action)
+            if resource_type:
+                query = query.eq("resource_type", resource_type)
+            if resource_id:
+                query = query.eq("resource_id", resource_id)
+            if start_date:
+                query = query.gte("timestamp", start_date)
+            if end_date:
+                end_date_full = f"{end_date}T23:59:59" if 'T' not in end_date else end_date
+                query = query.lte("timestamp", end_date_full)
+
+            query = query.order("timestamp", desc=True).range(offset, offset + limit - 1)
+            response = query.execute()
+
+            results = []
+            for row in (response.data or []):
+                # Parse JSON details
+                if row.get("details_json"):
+                    try:
+                        row["details"] = json.loads(row["details_json"])
+                    except (json.JSONDecodeError, TypeError):
+                        row["details"] = {}
+                else:
+                    row["details"] = {}
+                results.append(row)
+
+            return results
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error querying audit log: {e}")
+            return []

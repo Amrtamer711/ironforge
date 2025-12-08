@@ -8,7 +8,7 @@ Follows the same pattern as integrations/llm/base.py and integrations/auth/base.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING
 
 
 class PermissionAction(str, Enum):
@@ -25,10 +25,10 @@ class Permission:
     """
     Permission definition.
 
-    Format: "{resource}:{action}" e.g., "proposals:create", "users:manage"
+    Format: "{module}:{resource}:{action}" e.g., "sales:proposals:create", "core:users:manage"
     """
     id: Optional[int] = None
-    name: str = ""  # Full permission name (e.g., "proposals:create")
+    name: str = ""  # Full permission name (e.g., "sales:proposals:create")
     resource: str = ""  # Resource type (e.g., "proposals")
     action: str = ""  # Action (e.g., "create")
     description: Optional[str] = None
@@ -117,98 +117,48 @@ class RBACContext:
 
 
 # =============================================================================
-# DEFAULT ROLES AND PERMISSIONS
+# MODULE REGISTRY INTEGRATION
 # =============================================================================
 
-DEFAULT_PERMISSIONS = [
-    # Proposals
-    Permission.from_name("proposals:create", "Create new proposals"),
-    Permission.from_name("proposals:read", "View proposals"),
-    Permission.from_name("proposals:update", "Edit proposals"),
-    Permission.from_name("proposals:delete", "Delete proposals"),
-    Permission.from_name("proposals:manage", "Full control over proposals"),
+def get_default_permissions() -> List[Permission]:
+    """
+    Get all permissions from registered modules.
 
-    # Booking Orders
-    Permission.from_name("booking_orders:create", "Create booking orders"),
-    Permission.from_name("booking_orders:read", "View booking orders"),
-    Permission.from_name("booking_orders:update", "Edit booking orders"),
-    Permission.from_name("booking_orders:delete", "Delete booking orders"),
-    Permission.from_name("booking_orders:manage", "Full control over booking orders"),
+    Returns:
+        Combined list of all permissions from all registered modules.
+    """
+    from integrations.rbac.modules import get_all_permissions
+    return get_all_permissions()
 
-    # Mockups
-    Permission.from_name("mockups:create", "Create mockups"),
-    Permission.from_name("mockups:read", "View mockups"),
-    Permission.from_name("mockups:update", "Edit mockups"),
-    Permission.from_name("mockups:delete", "Delete mockups"),
-    Permission.from_name("mockups:manage", "Full control over mockups"),
 
-    # Users
-    Permission.from_name("users:read", "View users"),
-    Permission.from_name("users:create", "Create users"),
-    Permission.from_name("users:update", "Edit users"),
-    Permission.from_name("users:delete", "Delete users"),
-    Permission.from_name("users:manage", "Full control over users"),
+def get_default_roles() -> Dict[str, Role]:
+    """
+    Get all roles from registered modules as a dict.
 
-    # AI Costs
-    Permission.from_name("ai_costs:read", "View AI cost reports"),
-    Permission.from_name("ai_costs:manage", "Manage AI cost tracking"),
+    Returns:
+        Dict mapping role name to Role object.
+    """
+    from integrations.rbac.modules import get_all_roles
+    roles = get_all_roles()
+    return {role.name: role for role in roles}
 
-    # System
-    Permission.from_name("system:admin", "System administration"),
-]
 
-DEFAULT_ROLES = {
-    "admin": Role(
-        name="admin",
-        description="Full system access",
-        permissions=[Permission.from_name("*:manage", "All permissions")],
-        is_system=True,
-    ),
-    "hos": Role(
-        name="hos",
-        description="Head of Sales - Team oversight",
-        permissions=[
-            Permission.from_name("proposals:manage"),
-            Permission.from_name("booking_orders:manage"),
-            Permission.from_name("mockups:manage"),
-            Permission.from_name("users:read"),
-            Permission.from_name("ai_costs:read"),
-        ],
-        is_system=True,
-    ),
-    "sales_person": Role(
-        name="sales_person",
-        description="Sales team member",
-        permissions=[
-            Permission.from_name("proposals:create"),
-            Permission.from_name("proposals:read"),
-            Permission.from_name("booking_orders:create"),
-            Permission.from_name("booking_orders:read"),
-            Permission.from_name("mockups:create"),
-            Permission.from_name("mockups:read"),
-        ],
-        is_system=True,
-    ),
-    "coordinator": Role(
-        name="coordinator",
-        description="Operations coordinator",
-        permissions=[
-            Permission.from_name("booking_orders:create"),
-            Permission.from_name("booking_orders:read"),
-            Permission.from_name("booking_orders:update"),
-        ],
-        is_system=True,
-    ),
-    "finance": Role(
-        name="finance",
-        description="Finance team member",
-        permissions=[
-            Permission.from_name("booking_orders:read"),
-            Permission.from_name("ai_costs:read"),
-        ],
-        is_system=True,
-    ),
-}
+# Backwards compatibility aliases (will be populated from modules)
+# These are dynamically computed now, not hardcoded
+DEFAULT_PERMISSIONS: List[Permission] = []
+DEFAULT_ROLES: Dict[str, Role] = {}
+
+
+def initialize_default_rbac() -> None:
+    """
+    Initialize default permissions and roles from registered modules.
+
+    This should be called after modules are registered to populate
+    the DEFAULT_PERMISSIONS and DEFAULT_ROLES for backwards compat.
+    """
+    global DEFAULT_PERMISSIONS, DEFAULT_ROLES
+    DEFAULT_PERMISSIONS = get_default_permissions()
+    DEFAULT_ROLES = get_default_roles()
 
 
 class RBACProvider(ABC):

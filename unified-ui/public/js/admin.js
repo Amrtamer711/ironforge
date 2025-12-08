@@ -11,7 +11,9 @@ const AdminState = {
   roles: [],
   permissions: [],
   permissionsGrouped: {},
+  users: [],
   selectedRole: null,
+  selectedUser: null,
   isLoading: false,
 };
 
@@ -91,6 +93,39 @@ const AdminAPI = {
     });
     return response;
   },
+
+  // User Management
+  async getUsers(limit = 100, offset = 0) {
+    const response = await API.fetch(`/api/sales/admin/users?limit=${limit}&offset=${offset}`);
+    return response;
+  },
+
+  async getUser(userId) {
+    const response = await API.fetch(`/api/sales/admin/users/${userId}`);
+    return response;
+  },
+
+  async createUser(userData) {
+    const response = await API.fetch('/api/sales/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
+    return response;
+  },
+
+  async updateUser(userId, userData) {
+    const response = await API.fetch(`/api/sales/admin/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(userData),
+    });
+    return response;
+  },
+
+  async deleteUser(userId) {
+    await API.fetch(`/api/sales/admin/users/${userId}`, {
+      method: 'DELETE',
+    });
+  },
 };
 
 // =============================================================================
@@ -104,9 +139,12 @@ const AdminUI = {
   async init() {
     console.log('[Admin] Initializing admin panel');
 
-    // Only show admin panel for users with admin role
+    // Only show admin panel for users with admin role (admin or sales:admin)
     const user = Auth.getUser();
-    if (!user || !user.roles?.includes('admin')) {
+    const hasAdminRole = user?.roles?.some(role =>
+      role === 'admin' || role === 'sales:admin'
+    );
+    if (!user || !hasAdminRole) {
       console.log('[Admin] User does not have admin role');
       return false;
     }
@@ -115,16 +153,19 @@ const AdminUI = {
       AdminState.isLoading = true;
 
       // Load initial data
-      const [roles, permissionsGrouped] = await Promise.all([
+      const [roles, permissionsGrouped, users] = await Promise.all([
         AdminAPI.getRoles(),
         AdminAPI.getPermissionsGrouped(),
+        AdminAPI.getUsers(),
       ]);
 
       AdminState.roles = roles;
       AdminState.permissionsGrouped = permissionsGrouped;
+      AdminState.users = users;
 
       console.log('[Admin] Loaded roles:', roles.length);
       console.log('[Admin] Loaded permissions:', Object.keys(permissionsGrouped).length, 'groups');
+      console.log('[Admin] Loaded users:', users.length);
 
       return true;
     } catch (error) {
@@ -151,7 +192,16 @@ const AdminUI = {
         </div>
 
         <div class="admin-tabs">
-          <button class="admin-tab active" data-tab="roles">
+          <button class="admin-tab active" data-tab="users">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            Users
+          </button>
+          <button class="admin-tab" data-tab="roles">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
             </svg>
@@ -167,7 +217,10 @@ const AdminUI = {
         </div>
 
         <div class="admin-content">
-          <div class="admin-tab-content active" id="rolesTab">
+          <div class="admin-tab-content active" id="usersTab">
+            ${this.renderUsersTab()}
+          </div>
+          <div class="admin-tab-content" id="rolesTab">
             ${this.renderRolesTab()}
           </div>
           <div class="admin-tab-content" id="permissionsTab">
@@ -178,6 +231,94 @@ const AdminUI = {
     `;
 
     this.attachEventListeners();
+  },
+
+  /**
+   * Render the users tab
+   */
+  renderUsersTab() {
+    return `
+      <div class="admin-section">
+        <div class="admin-section-header">
+          <h3>User Management</h3>
+          <span class="admin-badge">${AdminState.users.length}</span>
+          <button class="btn btn-primary btn-sm" id="createUserBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            New User
+          </button>
+        </div>
+        <div class="users-table-container">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Email</th>
+                <th>Roles</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${AdminState.users.length > 0
+                ? AdminState.users.map(user => this.renderUserRow(user)).join('')
+                : '<tr><td colspan="5" class="empty-state">No users found. Create one to get started.</td></tr>'
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  },
+
+  /**
+   * Render a single user row
+   */
+  renderUserRow(user) {
+    const statusClass = user.is_active ? 'status-active' : 'status-inactive';
+    const statusText = user.is_active ? 'Active' : 'Inactive';
+
+    return `
+      <tr class="user-row" data-user-id="${user.id}">
+        <td class="user-cell">
+          <div class="user-avatar">
+            ${user.name ? user.name.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
+          </div>
+          <span class="user-name">${user.name || 'No name'}</span>
+        </td>
+        <td class="user-email">${user.email}</td>
+        <td class="user-roles">
+          ${user.roles.length > 0
+            ? user.roles.map(role => `<span class="role-tag">${role}</span>`).join('')
+            : '<span class="no-roles">No roles</span>'
+          }
+        </td>
+        <td>
+          <span class="status-badge ${statusClass}">${statusText}</span>
+        </td>
+        <td class="user-actions">
+          <button class="btn-icon edit-user-btn" title="Edit user" data-user-id="${user.id}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
+          <button class="btn-icon manage-roles-btn" title="Manage roles" data-user-id="${user.id}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </button>
+          <button class="btn-icon delete-user-btn" title="Delete user" data-user-id="${user.id}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </button>
+        </td>
+      </tr>
+    `;
   },
 
   /**
@@ -448,6 +589,238 @@ const AdminUI = {
   },
 
   /**
+   * Show the user editor modal (create or edit)
+   */
+  showUserEditor(user = null) {
+    const isEdit = user !== null;
+    const title = isEdit ? `Edit User: ${user.email}` : 'Create New User';
+
+    const modalHtml = `
+      <div class="modal active" id="userEditorModal">
+        <div class="modal-content" style="max-width: 500px;">
+          <div class="modal-header">
+            <h3>${title}</h3>
+            <button class="modal-close" id="closeUserEditorBtn">&times;</button>
+          </div>
+          <div class="modal-body">
+            <form id="userEditorForm">
+              <div class="form-group">
+                <label for="userEmail">Email</label>
+                <input
+                  type="email"
+                  id="userEmail"
+                  class="form-control"
+                  placeholder="user@example.com"
+                  value="${isEdit ? user.email : ''}"
+                  ${isEdit ? 'readonly' : ''}
+                  required
+                >
+              </div>
+              <div class="form-group">
+                <label for="userName">Name</label>
+                <input
+                  type="text"
+                  id="userName"
+                  class="form-control"
+                  placeholder="Full name"
+                  value="${isEdit ? (user.name || '') : ''}"
+                  maxlength="100"
+                >
+              </div>
+              ${!isEdit ? `
+                <div class="form-group">
+                  <label for="userPassword">Password</label>
+                  <input
+                    type="password"
+                    id="userPassword"
+                    class="form-control"
+                    placeholder="Minimum 6 characters"
+                    minlength="6"
+                    required
+                  >
+                </div>
+                <div class="form-group">
+                  <label>Initial Roles</label>
+                  <div class="roles-checkboxes">
+                    ${AdminState.roles.map(role => `
+                      <label class="role-checkbox">
+                        <input
+                          type="checkbox"
+                          name="roles"
+                          value="${role.name}"
+                          ${role.name === 'sales:sales_person' ? 'checked' : ''}
+                        >
+                        ${role.name}
+                      </label>
+                    `).join('')}
+                  </div>
+                </div>
+              ` : `
+                <div class="form-group">
+                  <label for="userActive">Status</label>
+                  <select id="userActive" class="form-control">
+                    <option value="true" ${user.is_active ? 'selected' : ''}>Active</option>
+                    <option value="false" ${!user.is_active ? 'selected' : ''}>Inactive</option>
+                  </select>
+                </div>
+              `}
+              <div class="form-actions">
+                <button type="button" class="btn btn-secondary" id="cancelUserEditorBtn">Cancel</button>
+                <button type="submit" class="btn btn-primary">
+                  ${isEdit ? 'Update User' : 'Create User'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    this.attachUserEditorListeners(isEdit, user?.id);
+  },
+
+  /**
+   * Attach event listeners to the user editor modal
+   */
+  attachUserEditorListeners(isEdit, userId) {
+    const modal = document.getElementById('userEditorModal');
+    const form = document.getElementById('userEditorForm');
+    const closeBtn = document.getElementById('closeUserEditorBtn');
+    const cancelBtn = document.getElementById('cancelUserEditorBtn');
+
+    const closeModal = () => modal.remove();
+
+    closeBtn.onclick = closeModal;
+    cancelBtn.onclick = closeModal;
+    modal.onclick = (e) => {
+      if (e.target === modal) closeModal();
+    };
+
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+
+      const email = document.getElementById('userEmail').value.trim();
+      const name = document.getElementById('userName').value.trim();
+
+      try {
+        if (isEdit) {
+          const isActive = document.getElementById('userActive').value === 'true';
+          const updatedUser = await AdminAPI.updateUser(userId, {
+            name: name || null,
+            is_active: isActive,
+          });
+          const idx = AdminState.users.findIndex(u => u.id === userId);
+          if (idx !== -1) {
+            AdminState.users[idx] = updatedUser;
+          }
+          showToast(`User "${email}" updated`, 'success');
+        } else {
+          const password = document.getElementById('userPassword').value;
+          const roles = Array.from(
+            document.querySelectorAll('input[name="roles"]:checked')
+          ).map(cb => cb.value);
+
+          const newUser = await AdminAPI.createUser({
+            email,
+            name: name || null,
+            password,
+            roles,
+          });
+          AdminState.users.push(newUser);
+          showToast(`User "${email}" created`, 'success');
+        }
+
+        closeModal();
+        this.render();
+      } catch (error) {
+        showToast(error.message || 'Failed to save user', 'error');
+      }
+    };
+  },
+
+  /**
+   * Show the role management modal for a user
+   */
+  showUserRolesManager(userId) {
+    const user = AdminState.users.find(u => u.id === userId);
+    if (!user) return;
+
+    const modalHtml = `
+      <div class="modal active" id="userRolesModal">
+        <div class="modal-content" style="max-width: 500px;">
+          <div class="modal-header">
+            <h3>Manage Roles: ${user.email}</h3>
+            <button class="modal-close" id="closeUserRolesBtn">&times;</button>
+          </div>
+          <div class="modal-body">
+            <p class="modal-description">Select roles to assign to this user:</p>
+            <div class="roles-manager">
+              ${AdminState.roles.map(role => `
+                <label class="role-manager-item">
+                  <input
+                    type="checkbox"
+                    class="role-toggle"
+                    data-role="${role.name}"
+                    ${user.roles.includes(role.name) ? 'checked' : ''}
+                  >
+                  <div class="role-manager-info">
+                    <span class="role-manager-name">${role.name}</span>
+                    <span class="role-manager-desc">${role.description || ''}</span>
+                  </div>
+                </label>
+              `).join('')}
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn btn-secondary" id="closeUserRolesModalBtn">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    const modal = document.getElementById('userRolesModal');
+    const closeBtn = document.getElementById('closeUserRolesBtn');
+    const closeModalBtn = document.getElementById('closeUserRolesModalBtn');
+
+    const closeModal = () => modal.remove();
+
+    closeBtn.onclick = closeModal;
+    closeModalBtn.onclick = closeModal;
+    modal.onclick = (e) => {
+      if (e.target === modal) closeModal();
+    };
+
+    // Handle role toggle
+    document.querySelectorAll('.role-toggle').forEach(checkbox => {
+      checkbox.onchange = async () => {
+        const roleName = checkbox.dataset.role;
+        const isChecked = checkbox.checked;
+
+        try {
+          if (isChecked) {
+            await AdminAPI.assignUserRole(userId, roleName);
+            user.roles.push(roleName);
+            showToast(`Role "${roleName}" assigned`, 'success');
+          } else {
+            await AdminAPI.revokeUserRole(userId, roleName);
+            user.roles = user.roles.filter(r => r !== roleName);
+            showToast(`Role "${roleName}" revoked`, 'success');
+          }
+          // Update the main users table
+          this.render();
+        } catch (error) {
+          // Revert checkbox state
+          checkbox.checked = !isChecked;
+          showToast(error.message || 'Failed to update role', 'error');
+        }
+      };
+    });
+  },
+
+  /**
    * Attach event listeners to the admin panel
    */
   attachEventListeners() {
@@ -458,6 +831,52 @@ const AdminUI = {
         document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
         tab.classList.add('active');
         document.getElementById(tab.dataset.tab + 'Tab').classList.add('active');
+      };
+    });
+
+    // Create user button
+    const createUserBtn = document.getElementById('createUserBtn');
+    if (createUserBtn) {
+      createUserBtn.onclick = () => this.showUserEditor();
+    }
+
+    // Edit user buttons
+    document.querySelectorAll('.edit-user-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const userId = btn.dataset.userId;
+        const user = AdminState.users.find(u => u.id === userId);
+        if (user) {
+          this.showUserEditor(user);
+        }
+      };
+    });
+
+    // Manage user roles buttons
+    document.querySelectorAll('.manage-roles-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const userId = btn.dataset.userId;
+        this.showUserRolesManager(userId);
+      };
+    });
+
+    // Delete user buttons
+    document.querySelectorAll('.delete-user-btn').forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const userId = btn.dataset.userId;
+        const user = AdminState.users.find(u => u.id === userId);
+        if (user && confirm(`Are you sure you want to delete user "${user.email}"?`)) {
+          try {
+            await AdminAPI.deleteUser(userId);
+            showToast(`User "${user.email}" deleted`, 'success');
+            AdminState.users = AdminState.users.filter(u => u.id !== userId);
+            this.render();
+          } catch (error) {
+            showToast(error.message || 'Failed to delete user', 'error');
+          }
+        }
       };
     });
 

@@ -307,6 +307,42 @@ class _DatabaseNamespace:
             f"Direct connection not supported by {self._backend.name} backend"
         )
 
+    # =========================================================================
+    # AUDIT LOGGING
+    # =========================================================================
+
+    def log_audit_event(
+        self,
+        timestamp: str,
+        action: str,
+        user_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        details_json: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        return self._backend.log_audit_event(
+            timestamp, action, user_id, resource_type, resource_id,
+            details_json, ip_address, user_agent
+        )
+
+    def query_audit_log(
+        self,
+        user_id: Optional[str] = None,
+        action: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        return self._backend.query_audit_log(
+            user_id, action, resource_type, resource_id,
+            start_date, end_date, limit, offset
+        )
+
 
 # Create the singleton database interface
 db = _DatabaseNamespace(_backend)

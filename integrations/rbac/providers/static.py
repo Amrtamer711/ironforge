@@ -13,8 +13,8 @@ from integrations.rbac.base import (
     Role,
     Permission,
     RBACContext,
-    DEFAULT_ROLES,
-    DEFAULT_PERMISSIONS,
+    get_default_roles,
+    get_default_permissions,
 )
 
 logger = logging.getLogger("proposal-bot")
@@ -47,12 +47,12 @@ class StaticRBACProvider(RBACProvider):
         Initialize static RBAC provider.
 
         Args:
-            roles: Custom role definitions (defaults to DEFAULT_ROLES)
-            permissions: Custom permission list (defaults to DEFAULT_PERMISSIONS)
+            roles: Custom role definitions (defaults to module-defined roles)
+            permissions: Custom permission list (defaults to module-defined permissions)
             user_roles: Initial user-role mappings {user_id: [role_names]}
         """
-        self._roles = roles or dict(DEFAULT_ROLES)
-        self._permissions = permissions or list(DEFAULT_PERMISSIONS)
+        self._roles = roles or dict(get_default_roles())
+        self._permissions = permissions or list(get_default_permissions())
         self._user_roles: Dict[str, List[str]] = user_roles or {}
 
         logger.info(f"[RBAC:STATIC] Provider initialized with {len(self._roles)} roles")
@@ -99,9 +99,9 @@ class StaticRBACProvider(RBACProvider):
         except Exception:
             pass  # Auth integration may not be available
 
-        # Default to sales_person if no roles assigned
+        # Default to sales:sales_person if no roles assigned
         if not role_names:
-            role_names = ["sales_person"]
+            role_names = ["sales:sales_person"]
 
         roles = []
         for name in role_names:

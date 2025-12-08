@@ -1786,3 +1786,119 @@ class SQLiteBackend(DatabaseBackend):
             }
         finally:
             conn.close()
+
+    # =========================================================================
+    # AUDIT LOGGING
+    # =========================================================================
+
+    def log_audit_event(
+        self,
+        timestamp: str,
+        action: str,
+        user_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        details_json: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        """Log an audit event to the audit_log table."""
+        conn = self._connect()
+        try:
+            conn.execute(
+                """
+                INSERT INTO audit_log (
+                    timestamp, user_id, action, resource_type, resource_id,
+                    details_json, ip_address, user_agent
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    timestamp, user_id, action, resource_type, resource_id,
+                    details_json, ip_address, user_agent
+                ),
+            )
+            conn.commit()
+        except Exception as e:
+            logger.error(f"[DB] Error logging audit event: {e}")
+        finally:
+            conn.close()
+
+    def query_audit_log(
+        self,
+        user_id: Optional[str] = None,
+        action: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """Query audit log entries with optional filters."""
+        conn = self._connect()
+        try:
+            where_parts = []
+            params = []
+
+            if user_id:
+                where_parts.append("user_id = ?")
+                params.append(user_id)
+            if action:
+                # Support prefix matching (e.g., "user.*" matches "user.login", "user.logout")
+                if action.endswith("*"):
+                    where_parts.append("action LIKE ?")
+                    params.append(action[:-1] + "%")
+                else:
+                    where_parts.append("action = ?")
+                    params.append(action)
+            if resource_type:
+                where_parts.append("resource_type = ?")
+                params.append(resource_type)
+            if resource_id:
+                where_parts.append("resource_id = ?")
+                params.append(resource_id)
+            if start_date:
+                where_parts.append("timestamp >= ?")
+                params.append(start_date)
+            if end_date:
+                end_date_full = f"{end_date}T23:59:59" if 'T' not in end_date else end_date
+                where_parts.append("timestamp <= ?")
+                params.append(end_date_full)
+
+            where_clause = " AND ".join(where_parts) if where_parts else "1=1"
+
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                SELECT id, timestamp, user_id, action, resource_type, resource_id,
+                       details_json, ip_address, user_agent
+                FROM audit_log
+                WHERE {where_clause}
+                ORDER BY timestamp DESC
+                LIMIT ? OFFSET ?
+                """,
+                params + [limit, offset]
+            )
+
+            rows = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+
+            results = []
+            for row in rows:
+                record = dict(zip(columns, row))
+                # Parse JSON details
+                if record.get("details_json"):
+                    try:
+                        record["details"] = json.loads(record["details_json"])
+                    except json.JSONDecodeError:
+                        record["details"] = {}
+                else:
+                    record["details"] = {}
+                results.append(record)
+
+            return results
+        except Exception as e:
+            logger.error(f"[DB] Error querying audit log: {e}")
+            return []
+        finally:
+            conn.close()

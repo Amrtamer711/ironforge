@@ -36,8 +36,8 @@ class RBACClient:
         # Get the configured client
         rbac = get_rbac_client()
 
-        # Check permissions
-        if await rbac.has_permission(user_id, "proposals:create"):
+        # Check permissions (format: module:resource:action)
+        if await rbac.has_permission(user_id, "sales:proposals:create"):
             # User can create proposals
 
         # Get user roles

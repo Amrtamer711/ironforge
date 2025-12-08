@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from api.auth import require_auth, require_permission, require_any_role
-from integrations.auth import AuthUser
+from integrations.auth import AuthUser, get_auth_client
 from integrations.rbac import (
     get_rbac_client,
     Role,
@@ -75,6 +75,31 @@ class UserRoleInfo(BaseModel):
     user_id: str
     roles: List[str]
     permissions: List[str]
+
+
+class UserResponse(BaseModel):
+    """Response model for a user."""
+    id: str
+    email: str
+    name: Optional[str]
+    is_active: bool
+    created_at: str
+    last_login_at: Optional[str]
+    roles: List[str] = []
+
+
+class UserCreate(BaseModel):
+    """Request model for creating a user."""
+    email: str = Field(..., min_length=5)
+    name: Optional[str] = Field(None, max_length=100)
+    password: str = Field(..., min_length=6)
+    roles: List[str] = Field(default_factory=lambda: ["sales_person"])
+
+
+class UserUpdate(BaseModel):
+    """Request model for updating a user."""
+    name: Optional[str] = Field(None, max_length=100)
+    is_active: Optional[bool] = None
 
 
 class AdminDashboard(BaseModel):
@@ -362,12 +387,12 @@ async def list_permissions_grouped(
 @router.get("/users/{user_id}/roles", response_model=UserRoleInfo)
 async def get_user_roles(
     user_id: str,
-    user: AuthUser = Depends(require_permission("users:read")),
+    user: AuthUser = Depends(require_permission("core:users:read")),
 ):
     """
     Get roles and permissions for a specific user.
 
-    Requires: users:read permission
+    Requires: core:users:read permission
     """
     rbac = get_rbac_client()
 
@@ -385,12 +410,12 @@ async def get_user_roles(
 async def assign_user_role(
     user_id: str,
     role_name: str,
-    user: AuthUser = Depends(require_permission("users:manage")),
+    user: AuthUser = Depends(require_permission("core:users:manage")),
 ):
     """
     Assign a role to a user.
 
-    Requires: users:manage permission
+    Requires: core:users:manage permission
     """
     rbac = get_rbac_client()
 
@@ -430,12 +455,12 @@ async def assign_user_role(
 async def revoke_user_role(
     user_id: str,
     role_name: str,
-    user: AuthUser = Depends(require_permission("users:manage")),
+    user: AuthUser = Depends(require_permission("core:users:manage")),
 ):
     """
     Revoke a role from a user.
 
-    Requires: users:manage permission
+    Requires: core:users:manage permission
     """
     rbac = get_rbac_client()
 
@@ -920,3 +945,238 @@ async def get_api_key_usage(
         "api_key_name": existing["name"],
         **stats,
     }
+
+
+# =============================================================================
+# USER MANAGEMENT ENDPOINTS
+# =============================================================================
+
+
+@router.get("/users", response_model=List[UserResponse])
+async def list_users(
+    limit: int = 100,
+    offset: int = 0,
+    is_active: Optional[bool] = None,
+    user: AuthUser = Depends(require_permission("core:users:read")),
+):
+    """
+    List all users with pagination.
+
+    Requires: core:users:read permission
+    """
+    auth = get_auth_client()
+    rbac = get_rbac_client()
+
+    users = await auth.list_users(limit=limit, offset=offset, is_active=is_active)
+
+    result = []
+    for u in users:
+        # Get roles for each user using RBAC client
+        roles = await rbac.get_user_roles(u.id)
+        result.append(
+            UserResponse(
+                id=u.id,
+                email=u.email,
+                name=u.name,
+                is_active=u.is_active,
+                created_at=u.metadata.get("created_at", ""),
+                last_login_at=u.metadata.get("last_login_at"),
+                roles=[r.name for r in roles],
+            )
+        )
+
+    return result
+
+
+@router.get("/users/{user_id}", response_model=UserResponse)
+async def get_user(
+    user_id: str,
+    user: AuthUser = Depends(require_permission("core:users:read")),
+):
+    """
+    Get a specific user by ID.
+
+    Requires: core:users:read permission
+    """
+    auth = get_auth_client()
+    rbac = get_rbac_client()
+
+    target_user = await auth.get_user_by_id(user_id)
+
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User '{user_id}' not found",
+        )
+
+    roles = await rbac.get_user_roles(user_id)
+
+    return UserResponse(
+        id=target_user.id,
+        email=target_user.email,
+        name=target_user.name,
+        is_active=target_user.is_active,
+        created_at=target_user.metadata.get("created_at", ""),
+        last_login_at=target_user.metadata.get("last_login_at"),
+        roles=[r.name for r in roles],
+    )
+
+
+@router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def create_user(
+    user_data: UserCreate,
+    user: AuthUser = Depends(require_permission("core:users:create")),
+):
+    """
+    Create a new user.
+
+    Requires: core:users:create permission
+
+    Creates user in auth system and assigns initial roles.
+    """
+    auth = get_auth_client()
+    rbac = get_rbac_client()
+
+    # Check if email already exists
+    existing = await auth.get_user_by_email(user_data.email)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"User with email '{user_data.email}' already exists",
+        )
+
+    # Validate roles exist
+    for role_name in user_data.roles:
+        role = await rbac.get_role(role_name)
+        if not role:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid role: {role_name}",
+            )
+
+    # Create user via auth provider
+    # Note: password handling depends on the auth provider
+    # For Supabase: Creates user in auth.users with password
+    # For Local: Creates user in local database
+    new_user = await auth.create_user(
+        email=user_data.email,
+        name=user_data.name,
+        metadata={"password": user_data.password},  # Provider handles hashing
+    )
+
+    if not new_user:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create user",
+        )
+
+    # Assign roles via RBAC provider
+    for role_name in user_data.roles:
+        await rbac.assign_role(
+            user_id=new_user.id,
+            role_name=role_name,
+            granted_by=user.id,
+        )
+
+    logger.info(f"[ADMIN] User created: {new_user.email} (id={new_user.id}) by {user.email}")
+
+    return UserResponse(
+        id=new_user.id,
+        email=new_user.email,
+        name=new_user.name,
+        is_active=new_user.is_active,
+        created_at=new_user.metadata.get("created_at", ""),
+        last_login_at=None,
+        roles=user_data.roles,
+    )
+
+
+@router.put("/users/{user_id}", response_model=UserResponse)
+async def update_user(
+    user_id: str,
+    user_data: UserUpdate,
+    user: AuthUser = Depends(require_permission("core:users:update")),
+):
+    """
+    Update a user's profile.
+
+    Requires: core:users:update permission
+    """
+    auth = get_auth_client()
+    rbac = get_rbac_client()
+
+    # Check user exists
+    target_user = await auth.get_user_by_id(user_id)
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User '{user_id}' not found",
+        )
+
+    # Update via auth provider
+    updated_user = await auth.update_user(
+        user_id=user_id,
+        name=user_data.name,
+        is_active=user_data.is_active,
+    )
+
+    if not updated_user:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update user",
+        )
+
+    roles = await rbac.get_user_roles(user_id)
+
+    logger.info(f"[ADMIN] User updated: {user_id} by {user.email}")
+
+    return UserResponse(
+        id=updated_user.id,
+        email=updated_user.email,
+        name=updated_user.name,
+        is_active=updated_user.is_active,
+        created_at=updated_user.metadata.get("created_at", ""),
+        last_login_at=updated_user.metadata.get("last_login_at"),
+        roles=[r.name for r in roles],
+    )
+
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_id: str,
+    user: AuthUser = Depends(require_permission("core:users:delete")),
+):
+    """
+    Delete a user.
+
+    Requires: core:users:delete permission
+
+    Note: This permanently removes the user from the auth system.
+    """
+    auth = get_auth_client()
+
+    # Check user exists
+    target_user = await auth.get_user_by_id(user_id)
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User '{user_id}' not found",
+        )
+
+    # Prevent self-deletion
+    if user_id == user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot delete your own account",
+        )
+
+    # Delete via auth provider
+    success = await auth.delete_user(user_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete user",
+        )
+
+    logger.info(f"[ADMIN] User deleted: {user_id} by {user.email}")

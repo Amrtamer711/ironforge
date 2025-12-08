@@ -12,14 +12,14 @@ Usage:
     async def protected_route(user: AuthUser = Depends(require_auth)):
         return {"user_id": user.id}
 
-    # Require specific permission
+    # Require specific permission (format: module:resource:action)
     @app.get("/api/admin")
-    async def admin_route(user: AuthUser = Depends(require_permission("users:manage"))):
+    async def admin_route(user: AuthUser = Depends(require_permission("core:users:manage"))):
         return {"user_id": user.id}
 
     # Require specific role
     @app.get("/api/hos-only")
-    async def hos_route(user: AuthUser = Depends(require_role("hos"))):
+    async def hos_route(user: AuthUser = Depends(require_role("sales:hos"))):
         return {"user_id": user.id}
 
     # Optional auth (user may be None)
@@ -137,9 +137,12 @@ def require_permission(permission: str) -> Callable:
     """
     Factory for requiring a specific permission.
 
+    Permission format: {module}:{resource}:{action}
+    e.g., "core:users:manage", "sales:proposals:create"
+
     Usage:
         @app.get("/api/admin")
-        async def admin(user: AuthUser = Depends(require_permission("users:manage"))):
+        async def admin(user: AuthUser = Depends(require_permission("core:users:manage"))):
             return {"user": user.email}
     """
     async def _require_permission(

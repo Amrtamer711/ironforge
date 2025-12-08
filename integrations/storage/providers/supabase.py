@@ -1,0 +1,539 @@
+"""
+Supabase Storage provider.
+
+Implements StorageProvider using Supabase Storage (S3-compatible).
+Recommended for production deployments already using Supabase.
+"""
+
+import logging
+from datetime import datetime
+from pathlib import Path
+from typing import Any, BinaryIO, Dict, List, Optional, Union
+
+from integrations.storage.base import (
+    StorageProvider,
+    StorageFile,
+    UploadResult,
+    DownloadResult,
+    ListResult,
+)
+
+logger = logging.getLogger("proposal-bot")
+
+
+class SupabaseStorageProvider(StorageProvider):
+    """
+    Supabase Storage provider.
+
+    Uses Supabase Storage API for file storage. Supabase Storage is S3-compatible
+    and provides built-in support for presigned URLs, public buckets, and RLS policies.
+
+    Usage:
+        provider = SupabaseStorageProvider(
+            supabase_url="https://xxx.supabase.co",
+            supabase_key="service_role_key",
+        )
+
+        # Upload a file
+        result = await provider.upload("proposals", "2024/proposal.pdf", pdf_bytes)
+
+        # Get signed URL
+        url = await provider.get_signed_url("proposals", "2024/proposal.pdf", expires_in=3600)
+
+    Requirements:
+        - pip install supabase
+        - Buckets created in Supabase dashboard
+    """
+
+    def __init__(
+        self,
+        supabase_url: Optional[str] = None,
+        supabase_key: Optional[str] = None,
+    ):
+        """
+        Initialize Supabase storage provider.
+
+        Args:
+            supabase_url: Supabase project URL
+            supabase_key: Supabase service role key (recommended) or anon key
+        """
+        self._url = supabase_url
+        self._key = supabase_key
+        self._client = None
+
+        # Load from settings if not provided
+        if not self._url or not self._key:
+            self._load_from_settings()
+
+        if not self._url or not self._key:
+            raise ValueError("Supabase URL and key are required for SupabaseStorageProvider")
+
+        logger.info(f"[STORAGE:SUPABASE] Provider initialized for {self._url}")
+
+    def _load_from_settings(self):
+        """Load configuration from app settings."""
+        try:
+            from app_settings import settings
+
+            # Try environment-specific config first
+            if settings.environment == "production":
+                self._url = self._url or settings.salesbot_prod_supabase_url
+                self._key = self._key or settings.salesbot_prod_supabase_service_role_key
+            else:
+                self._url = self._url or settings.salesbot_dev_supabase_url
+                self._key = self._key or settings.salesbot_dev_supabase_service_role_key
+
+            # Fall back to legacy config
+            self._url = self._url or settings.supabase_url
+            self._key = self._key or settings.supabase_service_key
+
+        except Exception as e:
+            logger.warning(f"[STORAGE:SUPABASE] Failed to load settings: {e}")
+
+    def _get_client(self):
+        """Get or create Supabase client."""
+        if self._client is None:
+            try:
+                from supabase import create_client
+                self._client = create_client(self._url, self._key)
+            except ImportError:
+                raise ImportError(
+                    "supabase package is required for SupabaseStorageProvider. "
+                    "Install with: pip install supabase"
+                )
+        return self._client
+
+    @property
+    def name(self) -> str:
+        return "supabase"
+
+    def _storage_file_from_response(
+        self,
+        bucket: str,
+        key: str,
+        data: Optional[Dict[str, Any]] = None,
+    ) -> StorageFile:
+        """Create StorageFile from Supabase response."""
+        name = Path(key).name
+
+        # Parse metadata from response if available
+        size = data.get("metadata", {}).get("size", 0) if data else 0
+        content_type = data.get("metadata", {}).get("mimetype", self.get_content_type(name)) if data else self.get_content_type(name)
+        created_at = None
+        updated_at = None
+
+        if data:
+            if "created_at" in data:
+                try:
+                    created_at = datetime.fromisoformat(data["created_at"].replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    pass
+            if "updated_at" in data:
+                try:
+                    updated_at = datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00"))
+                except (ValueError, TypeError):
+                    pass
+
+        # Build public URL
+        public_url = f"{self._url}/storage/v1/object/public/{bucket}/{key}"
+
+        return StorageFile(
+            key=key,
+            bucket=bucket,
+            name=name,
+            size=size,
+            content_type=content_type,
+            created_at=created_at,
+            updated_at=updated_at,
+            url=public_url,
+            metadata=data.get("metadata", {}) if data else {},
+        )
+
+    # =========================================================================
+    # UPLOAD OPERATIONS
+    # =========================================================================
+
+    async def upload(
+        self,
+        bucket: str,
+        key: str,
+        data: Union[bytes, BinaryIO],
+        content_type: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> UploadResult:
+        """Upload data to Supabase Storage."""
+        try:
+            client = self._get_client()
+            key = self.normalize_key(key)
+
+            # Determine content type
+            if not content_type:
+                content_type = self.get_content_type(key)
+
+            # Get bytes from file-like object if needed
+            if hasattr(data, "read"):
+                data = data.read()
+
+            # Upload to Supabase Storage
+            response = client.storage.from_(bucket).upload(
+                path=key,
+                file=data,
+                file_options={
+                    "content-type": content_type,
+                    "upsert": "true",  # Overwrite if exists
+                },
+            )
+
+            # Create file info
+            file_info = self._storage_file_from_response(bucket, key)
+            file_info.size = len(data) if isinstance(data, bytes) else 0
+            file_info.content_type = content_type
+
+            logger.info(f"[STORAGE:SUPABASE] Uploaded {bucket}/{key} ({file_info.size} bytes)")
+            return UploadResult(success=True, file=file_info)
+
+        except Exception as e:
+            logger.error(f"[STORAGE:SUPABASE] Upload failed {bucket}/{key}: {e}")
+            return UploadResult(success=False, error=str(e))
+
+    async def upload_from_path(
+        self,
+        bucket: str,
+        key: str,
+        local_path: Union[str, Path],
+        content_type: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> UploadResult:
+        """Upload file from local path to Supabase Storage."""
+        try:
+            local_path = Path(local_path)
+            if not local_path.exists():
+                return UploadResult(success=False, error=f"Source file not found: {local_path}")
+
+            data = local_path.read_bytes()
+
+            if not content_type:
+                content_type = self.get_content_type(local_path.name)
+
+            return await self.upload(bucket, key, data, content_type, metadata)
+
+        except Exception as e:
+            logger.error(f"[STORAGE:SUPABASE] Upload from path failed {bucket}/{key}: {e}")
+            return UploadResult(success=False, error=str(e))
+
+    # =========================================================================
+    # DOWNLOAD OPERATIONS
+    # =========================================================================
+
+    async def download(
+        self,
+        bucket: str,
+        key: str,
+    ) -> DownloadResult:
+        """Download file contents from Supabase Storage."""
+        try:
+            client = self._get_client()
+            key = self.normalize_key(key)
+
+            # Download from Supabase Storage
+            response = client.storage.from_(bucket).download(key)
+
+            file_info = self._storage_file_from_response(bucket, key)
+            file_info.size = len(response)
+
+            logger.debug(f"[STORAGE:SUPABASE] Downloaded {bucket}/{key}")
+            return DownloadResult(success=True, data=response, file=file_info)
+
+        except Exception as e:
+            logger.error(f"[STORAGE:SUPABASE] Download failed {bucket}/{key}: {e}")
+            return DownloadResult(success=False, error=str(e))
+
+    async def download_to_path(
+        self,
+        bucket: str,
+        key: str,
+        local_path: Union[str, Path],
+    ) -> DownloadResult:
+        """Download file to local filesystem."""
+        try:
+            result = await self.download(bucket, key)
+
+            if not result.success:
+                return result
+
+            dest_path = Path(local_path)
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            dest_path.write_bytes(result.data)
+
+            logger.debug(f"[STORAGE:SUPABASE] Downloaded {bucket}/{key} to {local_path}")
+            return DownloadResult(success=True, file=result.file)
+
+        except Exception as e:
+            logger.error(f"[STORAGE:SUPABASE] Download to path failed {bucket}/{key}: {e}")
+            return DownloadResult(success=False, error=str(e))
+
+    # =========================================================================
+    # FILE OPERATIONS
+    # =========================================================================
+
+    async def delete(
+        self,
+        bucket: str,
+        key: str,
+    ) -> bool:
+        """Delete a file from Supabase Storage."""
+        try:
+            client = self._get_client()
+            key = self.normalize_key(key)
+
+            client.storage.from_(bucket).remove([key])
+
+            logger.info(f"[STORAGE:SUPABASE] Deleted {bucket}/{key}")
+            return True
+
+        except Exception as e:
+            logger.error(f"[STORAGE:SUPABASE] Delete failed {bucket}/{key}: {e}")
+            return False
+
+    async def exists(
+        self,
+        bucket: str,
+        key: str,
+    ) -> bool:
+        """Check if a file exists in Supabase Storage."""
+        try:
+            client = self._get_client()
+            key = self.normalize_key(key)
+
+            # Try to get file info via list with exact path
+            # Supabase doesn't have a direct "exists" endpoint
+            parent_path = str(Path(key).parent)
+            if parent_path == ".":
+                parent_path = ""
+
+            response = client.storage.from_(bucket).list(parent_path)
+
+            filename = Path(key).name
+            return any(item.get("name") == filename for item in response)
+
+        except Exception as e:
+            logger.error(f"[STORAGE:SUPABASE] Exists check failed {bucket}/{key}: {e}")
+            return False
+
+    async def get_file_info(
+        self,
+        bucket: str,
+        key: str,
+    ) -> Optional[StorageFile]:
+        """Get file metadata from Supabase Storage."""
+        try:
+            client = self._get_client()
+            key = self.normalize_key(key)
+
+            # Get file info via list
+            parent_path = str(Path(key).parent)
+            if parent_path == ".":
+                parent_path = ""
+
+            response = client.storage.from_(bucket).list(parent_path)
+
+            filename = Path(key).name
+            for item in response:
+                if item.get("name") == filename:
+                    return self._storage_file_from_response(bucket, key, item)
+
+            return None
+
+        except Exception as e:
+            logger.error(f"[STORAGE:SUPABASE] Get file info failed {bucket}/{key}: {e}")
+            return None
+
+    async def list_files(
+        self,
+        bucket: str,
+        prefix: Optional[str] = None,
+        limit: int = 100,
+        continuation_token: Optional[str] = None,
+    ) -> ListResult:
+        """List files in a Supabase Storage bucket."""
+        try:
+            client = self._get_client()
+
+            # Supabase list options
+            options = {
+                "limit": limit,
+            }
+
+            if continuation_token:
+                options["offset"] = int(continuation_token)
+
+            path = self.normalize_key(prefix) if prefix else ""
+            response = client.storage.from_(bucket).list(path, options)
+
+            files = []
+            for item in response:
+                if item.get("id"):  # It's a file, not a folder
+                    file_key = f"{path}/{item['name']}" if path else item["name"]
+                    files.append(self._storage_file_from_response(bucket, file_key, item))
+
+            # Calculate next token
+            offset = int(continuation_token) if continuation_token else 0
+            next_token = str(offset + limit) if len(response) == limit else None
+
+            return ListResult(
+                success=True,
+                files=files,
+                total=len(files),  # Supabase doesn't return total count
+                continuation_token=next_token,
+            )
+
+        except Exception as e:
+            logger.error(f"[STORAGE:SUPABASE] List files failed {bucket}: {e}")
+            return ListResult(success=False, error=str(e))
+
+    async def copy(
+        self,
+        source_bucket: str,
+        source_key: str,
+        dest_bucket: str,
+        dest_key: str,
+    ) -> UploadResult:
+        """Copy a file within Supabase Storage."""
+        try:
+            client = self._get_client()
+            source_key = self.normalize_key(source_key)
+            dest_key = self.normalize_key(dest_key)
+
+            # Supabase doesn't have native copy - download and reupload
+            result = await self.download(source_bucket, source_key)
+            if not result.success:
+                return UploadResult(success=False, error=f"Source not found: {source_bucket}/{source_key}")
+
+            return await self.upload(
+                dest_bucket,
+                dest_key,
+                result.data,
+                result.file.content_type if result.file else None,
+            )
+
+        except Exception as e:
+            logger.error(f"[STORAGE:SUPABASE] Copy failed: {e}")
+            return UploadResult(success=False, error=str(e))
+
+    async def move(
+        self,
+        source_bucket: str,
+        source_key: str,
+        dest_bucket: str,
+        dest_key: str,
+    ) -> UploadResult:
+        """Move a file within Supabase Storage."""
+        try:
+            client = self._get_client()
+            source_key = self.normalize_key(source_key)
+            dest_key = self.normalize_key(dest_key)
+
+            if source_bucket == dest_bucket:
+                # Same bucket - use move
+                client.storage.from_(source_bucket).move(source_key, dest_key)
+                file_info = self._storage_file_from_response(dest_bucket, dest_key)
+                logger.info(f"[STORAGE:SUPABASE] Moved {source_bucket}/{source_key} to {dest_key}")
+                return UploadResult(success=True, file=file_info)
+            else:
+                # Different buckets - copy then delete
+                result = await self.copy(source_bucket, source_key, dest_bucket, dest_key)
+                if result.success:
+                    await self.delete(source_bucket, source_key)
+                return result
+
+        except Exception as e:
+            logger.error(f"[STORAGE:SUPABASE] Move failed: {e}")
+            return UploadResult(success=False, error=str(e))
+
+    # =========================================================================
+    # URL OPERATIONS
+    # =========================================================================
+
+    async def get_public_url(
+        self,
+        bucket: str,
+        key: str,
+    ) -> Optional[str]:
+        """Get public URL for a file (if bucket is public)."""
+        try:
+            client = self._get_client()
+            key = self.normalize_key(key)
+
+            response = client.storage.from_(bucket).get_public_url(key)
+            return response
+
+        except Exception as e:
+            logger.error(f"[STORAGE:SUPABASE] Get public URL failed {bucket}/{key}: {e}")
+            return None
+
+    async def get_signed_url(
+        self,
+        bucket: str,
+        key: str,
+        expires_in: int = 3600,
+    ) -> Optional[str]:
+        """Get signed URL for temporary access."""
+        try:
+            client = self._get_client()
+            key = self.normalize_key(key)
+
+            response = client.storage.from_(bucket).create_signed_url(key, expires_in)
+
+            if response and "signedURL" in response:
+                return response["signedURL"]
+
+            return None
+
+        except Exception as e:
+            logger.error(f"[STORAGE:SUPABASE] Get signed URL failed {bucket}/{key}: {e}")
+            return None
+
+    # =========================================================================
+    # BUCKET OPERATIONS
+    # =========================================================================
+
+    async def ensure_bucket(
+        self,
+        bucket: str,
+        public: bool = False,
+    ) -> bool:
+        """Ensure a bucket exists in Supabase Storage."""
+        try:
+            client = self._get_client()
+
+            # Try to create bucket (will fail if exists, which is fine)
+            try:
+                client.storage.create_bucket(
+                    bucket,
+                    options={
+                        "public": public,
+                    }
+                )
+                logger.info(f"[STORAGE:SUPABASE] Created bucket: {bucket}")
+            except Exception as e:
+                # Bucket likely already exists
+                if "already exists" not in str(e).lower():
+                    logger.debug(f"[STORAGE:SUPABASE] Bucket exists or error: {bucket} - {e}")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"[STORAGE:SUPABASE] Ensure bucket failed {bucket}: {e}")
+            return False
+
+    async def list_buckets(self) -> List[str]:
+        """List all buckets in Supabase Storage."""
+        try:
+            client = self._get_client()
+            response = client.storage.list_buckets()
+
+            return [b.name for b in response] if response else []
+
+        except Exception as e:
+            logger.error(f"[STORAGE:SUPABASE] List buckets failed: {e}")
+            return []

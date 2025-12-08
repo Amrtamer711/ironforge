@@ -31,6 +31,13 @@
   - [X] Permission management
   - [X] User-role assignments
   - [X] Database-backed provider
+  - [X] **Module-aware RBAC refactor** (for company-wide use)
+    - [X] Move `DEFAULT_PERMISSIONS` and `DEFAULT_ROLES` out of `base.py` into module-specific config
+    - [X] Add module registration system (`integrations/rbac/modules/`)
+    - [X] Update permission format to `{module}:{resource}:{action}` (e.g., `sales:proposals:create`)
+    - [X] Create generic company-level roles separate from module-specific roles
+    - [X] Unified UI RBAC that translates between module-specific and UI-level permissions
+    - [X] Module-to-UI permission mapping layer
 - [X] FastAPI auth dependencies (`api/auth.py`)
   - [X] `get_current_user`, `require_auth`
   - [X] `require_permission`, `require_role`
@@ -39,6 +46,8 @@
   - [X] Backend API (`api/routers/admin.py`)
   - [X] Frontend UI (`unified-ui/public/js/admin.js`)
   - [X] CSS styles (`unified-ui/public/css/styles.css` - LAYER 42)
+  - [X] User management endpoints (CRUD, role assignment)
+  - [X] User management UI tab
 
 ### Database Layer
 
@@ -100,6 +109,11 @@
   - [X] `/health/ready` - Readiness check with dependency status
   - [X] Database connectivity check
   - [X] Slack/LLM provider configuration checks
+- [X] **Audit logging** (`utils/audit.py`) - **COMPLETED**
+  - [X] Track sensitive operations (user management, permission changes)
+  - [X] Structured audit events (who, what, when, where)
+  - [X] Database-backed audit log storage (SQLite + Supabase)
+  - [ ] Retention policies for audit records (future enhancement)
 
 ### Security
 
@@ -246,10 +260,13 @@
   - Email-to-activity sync
 
 ### File & Document Management
-- [ ] **File storage abstraction** (`integrations/storage/`)
-  - Local, Supabase Storage, S3 providers
-  - Presigned URLs for secure access
-  - File-entity associations
+- [X] **File storage abstraction** (`integrations/storage/`) - **COMPLETED**
+  - [X] Base interface and client (`base.py`, `client.py`)
+  - [X] Local filesystem provider (`providers/local.py`)
+  - [X] Supabase Storage provider (`providers/supabase.py`)
+  - [ ] S3 provider (`providers/s3.py`) - optional
+  - [X] Presigned URLs for secure access
+  - [ ] File-entity associations
 
 ### Notifications & Alerts
 - [ ] **Notifications module** (`api/routers/notifications.py`)
@@ -459,12 +476,12 @@ This section documents all external vendor and platform integrations used in the
 
 **Setup Tutorial:**
 
-- [ ] Create storage abstraction with `StorageProvider` base class
-- [ ] Implement `LocalStorageProvider` for development
-- [ ] Implement `SupabaseStorageProvider` (recommended for production)
+- [X] Create storage abstraction with `StorageProvider` base class
+- [X] Implement `LocalStorageProvider` for development
+- [X] Implement `SupabaseStorageProvider` (recommended for production)
 - [ ] Create storage buckets in Supabase dashboard
 - [ ] Configure bucket policies and access rules
-- [ ] Implement presigned URLs for secure downloads
+- [X] Implement presigned URLs for secure downloads
 - [ ] Set up lifecycle rules for temp files cleanup
 
 ### 9. SendGrid / Resend (Email) - *Planned*
@@ -792,6 +809,61 @@ echo "=== All checks passed! ==="
 | `Connection refused :8000` | Server not running | Start with uvicorn command |
 | `401 Unauthorized` on all requests | Auth misconfigured | Check AUTH_PROVIDER and user setup |
 | `Redis connection failed` | Redis not running | Install/start Redis or use memory backend |
+
+---
+
+## Post-V1 Infrastructure Enhancements
+
+> **Note:** These items should be implemented AFTER V1 testing is complete.
+> Order reflects implementation priority based on dependencies and value.
+
+### 1. Audit Logging (`utils/audit.py`) - **COMPLETED**
+Foundation for compliance and debugging. Required before other features.
+- [X] `AuditEvent` dataclass (who, what, when, where, details)
+- [X] `AuditLogger` class with async logging
+- [X] Database table for audit records (already in schema)
+- [X] Decorator `@audit_action("action_name")` for endpoints
+- [X] Track: user management, role changes, permission changes, login attempts
+- [ ] Retention policy configuration (future enhancement)
+
+### 2. Scheduled Tasks (`utils/scheduler.py`)
+Build on existing `job_queue.py` for recurring tasks.
+- [ ] Cron-like scheduler abstraction
+- [ ] Built-in tasks: temp file cleanup, old log rotation
+- [ ] Task registration system
+- [ ] Admin UI for viewing scheduled tasks
+- [ ] Graceful shutdown handling
+
+### 3. Export Utilities (`utils/export.py`)
+Data export for reporting needs.
+- [ ] CSV export for proposals, costs, users
+- [ ] Excel export with formatting
+- [ ] PDF report generation (summary reports)
+- [ ] Export job queue (async for large datasets)
+- [ ] Download endpoint with auth
+
+### 4. Webhook System (`integrations/webhooks/`)
+For external integrations when needed.
+- [ ] `WebhookProvider` base class
+- [ ] Outbound webhook delivery with retries
+- [ ] Webhook signature generation (HMAC)
+- [ ] Event subscription management
+- [ ] Delivery status tracking and retry queue
+- [ ] Admin UI for webhook management
+
+### 5. Error Monitoring (Sentry Integration)
+Production observability.
+- [ ] Sentry SDK integration
+- [ ] Environment and release tagging
+- [ ] User context attachment
+- [ ] Performance monitoring sampling
+- [ ] Alert configuration
+
+### 6. API Versioning (when breaking changes needed)
+- [ ] `/api/v1/` route prefix structure
+- [ ] Version negotiation via header
+- [ ] Deprecation warning headers
+- [ ] Migration documentation template
 
 ---
 

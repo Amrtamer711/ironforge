@@ -15,8 +15,8 @@ from integrations.rbac.base import (
     Permission,
     UserRole,
     RBACContext,
-    DEFAULT_ROLES,
-    DEFAULT_PERMISSIONS,
+    get_default_roles,
+    get_default_permissions,
 )
 from utils.time import UAE_TZ, get_uae_time
 
@@ -191,11 +191,11 @@ class DatabaseRBACProvider(RBACProvider):
 
             if not hasattr(db._backend, 'get_role_by_name'):
                 # Fallback to static roles
-                return DEFAULT_ROLES.get(role_name)
+                return get_default_roles().get(role_name)
 
             role_data = db._backend.get_role_by_name(role_name)
             if not role_data:
-                return DEFAULT_ROLES.get(role_name)
+                return get_default_roles().get(role_name)
 
             # Get permissions for this role
             permissions = []
@@ -220,7 +220,7 @@ class DatabaseRBACProvider(RBACProvider):
 
         except Exception as e:
             logger.error(f"[RBAC:DB] Get role failed: {e}")
-            return DEFAULT_ROLES.get(role_name)
+            return get_default_roles().get(role_name)
 
     async def list_roles(self) -> List[Role]:
         """List all available roles."""
@@ -228,7 +228,7 @@ class DatabaseRBACProvider(RBACProvider):
             db = self._get_db()
 
             if not hasattr(db._backend, 'list_roles'):
-                return list(DEFAULT_ROLES.values())
+                return list(get_default_roles().values())
 
             role_data_list = db._backend.list_roles()
             roles = []
@@ -238,11 +238,11 @@ class DatabaseRBACProvider(RBACProvider):
                 if role:
                     roles.append(role)
 
-            return roles if roles else list(DEFAULT_ROLES.values())
+            return roles if roles else list(get_default_roles().values())
 
         except Exception as e:
             logger.error(f"[RBAC:DB] List roles failed: {e}")
-            return list(DEFAULT_ROLES.values())
+            return list(get_default_roles().values())
 
     async def create_role(
         self,
@@ -356,7 +356,7 @@ class DatabaseRBACProvider(RBACProvider):
             db = self._get_db()
 
             if not hasattr(db._backend, 'list_permissions'):
-                return DEFAULT_PERMISSIONS
+                return get_default_permissions()
 
             perm_data_list = db._backend.list_permissions()
             permissions = []
@@ -370,11 +370,11 @@ class DatabaseRBACProvider(RBACProvider):
                     description=pd.get("description"),
                 ))
 
-            return permissions if permissions else DEFAULT_PERMISSIONS
+            return permissions if permissions else get_default_permissions()
 
         except Exception as e:
             logger.error(f"[RBAC:DB] List permissions failed: {e}")
-            return DEFAULT_PERMISSIONS
+            return get_default_permissions()
 
     # =========================================================================
     # INITIALIZATION
@@ -392,7 +392,7 @@ class DatabaseRBACProvider(RBACProvider):
                 return False
 
             # Create default permissions
-            for perm in DEFAULT_PERMISSIONS:
+            for perm in get_default_permissions():
                 try:
                     db._backend.create_permission(
                         name=perm.name,
@@ -405,7 +405,7 @@ class DatabaseRBACProvider(RBACProvider):
                     pass  # Permission may already exist
 
             # Create default roles
-            for role_name, role in DEFAULT_ROLES.items():
+            for role_name, role in get_default_roles().items():
                 try:
                     role_id = db._backend.create_role(
                         name=role.name,

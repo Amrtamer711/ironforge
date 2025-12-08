@@ -627,3 +627,64 @@ class DatabaseBackend(ABC):
     ) -> Dict[str, Any]:
         """Get API key usage statistics."""
         pass
+
+    # =========================================================================
+    # AUDIT LOGGING
+    # =========================================================================
+
+    @abstractmethod
+    def log_audit_event(
+        self,
+        timestamp: str,
+        action: str,
+        user_id: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        details_json: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        """
+        Log an audit event.
+
+        Args:
+            timestamp: ISO format timestamp
+            action: Action performed (e.g., 'user.login', 'role.assign')
+            user_id: ID of user who performed the action
+            resource_type: Type of resource affected
+            resource_id: ID of resource affected
+            details_json: JSON string with additional details
+            ip_address: Client IP address
+            user_agent: Client user agent
+        """
+        pass
+
+    @abstractmethod
+    def query_audit_log(
+        self,
+        user_id: Optional[str] = None,
+        action: Optional[str] = None,
+        resource_type: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """
+        Query audit log entries.
+
+        Args:
+            user_id: Filter by user ID
+            action: Filter by action type
+            resource_type: Filter by resource type
+            resource_id: Filter by resource ID
+            start_date: Filter by start date (ISO format)
+            end_date: Filter by end date (ISO format)
+            limit: Maximum results
+            offset: Number to skip
+
+        Returns:
+            List of audit log entries
+        """
+        pass
