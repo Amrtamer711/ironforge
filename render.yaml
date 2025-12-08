@@ -1,25 +1,42 @@
+# =============================================================================
+# Render Blueprint - Sales Proposal Bot
+# =============================================================================
+# Deploy with: render blueprint apply
+#
+# This creates 3 services:
+# 1. proposal-bot (FastAPI backend)
+# 2. unified-ui (Node.js frontend)
+# 3. ai-costs-dashboard (Node.js dashboard)
+#
+# Environment Strategy:
+# - DEV branch → uses *_DEV_* env vars → connects to Dev Supabase projects
+# - MAIN branch → uses *_PROD_* env vars → connects to Prod Supabase projects
+# =============================================================================
+
 envVarGroups:
   - name: proposal-bot-shared
     envVars:
       - key: PYTHON_VERSION
-        value: "3.10.13"
+        value: "3.11"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: LOG_LEVEL
+        value: "INFO"
+      # API Keys
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      # Slack (optional)
       - key: SLACK_BOT_TOKEN
         sync: false
       - key: SLACK_SIGNING_SECRET
         sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_MODEL
-        value: "gpt-5"
-      - key: PDF_CONVERT_CONCURRENCY
-        value: "4"
-      - key: TEMPLATES_DIR
-        value: "/data/templates"
-      - key: PYTHONUNBUFFERED
-        value: "1"
 
 services:
+  # ==========================================================================
   # Sales Bot API (Python/FastAPI)
+  # ==========================================================================
   - type: web
     name: proposal-bot
     runtime: docker
@@ -28,20 +45,64 @@ services:
     healthCheckPath: /health
     envVars:
       - fromGroup: proposal-bot-shared
-      # Database backend selection (sqlite or supabase)
+      # Environment (development or production)
+      - key: ENVIRONMENT
+        value: "development"
+      # Database backend
       - key: DB_BACKEND
-        value: "sqlite"
-      # Supabase credentials (required if DB_BACKEND=supabase)
-      - key: SUPABASE_URL
+        value: "supabase"
+      # Sales Bot Supabase (DEV) - for data storage
+      - key: SALESBOT_DEV_SUPABASE_URL
         sync: false
-      - key: SUPABASE_SERVICE_KEY
+      - key: SALESBOT_DEV_SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Sales Bot Supabase (PROD) - for data storage
+      - key: SALESBOT_PROD_SUPABASE_URL
+        sync: false
+      - key: SALESBOT_PROD_SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # UI JWT Secret (for validating tokens from UI Supabase)
+      - key: UI_JWT_SECRET
         sync: false
     disk:
       name: proposal-bot-data
       mountPath: /data
       sizeGB: 5
 
+  # ==========================================================================
+  # Unified UI (Node.js)
+  # ==========================================================================
+  - type: web
+    name: unified-ui
+    runtime: docker
+    region: singapore
+    rootDir: unified-ui
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: SALES_BOT_URL
+        fromService:
+          type: web
+          name: proposal-bot
+          envVarKey: RENDER_EXTERNAL_URL
+      # UI Supabase (DEV) - for authentication
+      - key: UI_DEV_SUPABASE_URL
+        sync: false
+      - key: UI_DEV_SUPABASE_ANON_KEY
+        sync: false
+      - key: UI_DEV_SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # UI Supabase (PROD) - for authentication
+      - key: UI_PROD_SUPABASE_URL
+        sync: false
+      - key: UI_PROD_SUPABASE_ANON_KEY
+        sync: false
+      - key: UI_PROD_SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
+  # ==========================================================================
   # AI Costs Dashboard (Node.js)
+  # ==========================================================================
   - type: web
     name: ai-costs-dashboard
     runtime: docker
@@ -60,25 +121,4 @@ services:
       - key: DASHBOARD_USERNAME
         sync: false
       - key: DASHBOARD_PASSWORD
-        sync: false
-
-  # Unified UI (Node.js)
-  - type: web
-    name: unified-ui
-    runtime: docker
-    region: singapore
-    rootDir: unified-ui
-    dockerfilePath: ./Dockerfile
-    healthCheckPath: /health
-    envVars:
-      - key: SALES_BOT_URL
-        fromService:
-          type: web
-          name: proposal-bot
-          envVarKey: RENDER_EXTERNAL_URL
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_ANON_KEY
-        sync: false
-      - key: SUPABASE_SERVICE_KEY
         sync: false
