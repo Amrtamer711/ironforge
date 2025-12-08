@@ -10,10 +10,12 @@ const Chat = {
   pendingFile: null,
 
   init() {
+    console.log('[Chat] Initializing...');
     this.setupInput();
     this.setupSuggestions();
     this.setupFileUpload();
     this.updateTimeGreeting();
+    console.log('[Chat] Initialized');
   },
 
   updateTimeGreeting() {
@@ -144,6 +146,11 @@ const Chat = {
     // Must have message or file
     if (!message && !hasFile) return;
 
+    console.log('[Chat] Sending message:', message.substring(0, 50) + (message.length > 50 ? '...' : ''));
+    if (hasFile) {
+      console.log('[Chat] With file attachment:', this.pendingFile.name);
+    }
+
     // Capture file before clearing
     const fileToSend = this.pendingFile;
 
@@ -174,10 +181,12 @@ const Chat = {
     const assistantMsgId = this.addMessage('assistant', '', true);
 
     try {
+      console.log('[Chat] Calling API stream...');
       // Always try to use the real API first
       await this.apiStreamResponse(assistantMsgId, message, fileToSend);
+      console.log('[Chat] Stream completed successfully');
     } catch (error) {
-      console.error('Chat API error:', error);
+      console.error('[Chat] API error:', error.message);
       // Fallback to mock if API fails
       if (error.message && error.message.includes('Failed to fetch')) {
         this.updateMessage(assistantMsgId, 'Unable to connect to the server. Please make sure the FastAPI backend is running on port 8000.');
@@ -198,9 +207,12 @@ const Chat = {
     const userName = user.name || 'Web User';
     const roles = user.roles || ['sales_person'];
 
+    console.log('[Chat] Stream request - User:', userId, 'Roles:', roles);
+
     // Use streaming endpoint
     const url = `${API.baseUrl}/api/chat/stream`;
     const token = localStorage.getItem('authToken');
+    console.log('[Chat] Streaming to:', url, 'Token:', token ? 'present' : 'missing');
 
     // Build request body
     const requestBody = {

@@ -33,6 +33,7 @@ async def auth_login(request: LoginRequest):
     For local dev: Uses LocalDevAuthProvider with hardcoded users
     For production: Supabase handles login client-side, this is backup
     """
+    logger.info(f"[AUTH] Login attempt for: {request.email}")
     auth = get_auth_client()
 
     # For local dev provider, generate token
@@ -50,6 +51,7 @@ async def auth_login(request: LoginRequest):
                 roles = await rbac.get_user_roles(result.user.id)
                 role_names = [r.name for r in roles]
 
+                logger.info(f"[AUTH] Login successful for: {request.email}, roles: {role_names}")
                 return {
                     "token": token,
                     "user": {
@@ -60,19 +62,23 @@ async def auth_login(request: LoginRequest):
                     }
                 }
 
+    logger.warning(f"[AUTH] Login failed for: {request.email}")
     raise HTTPException(status_code=401, detail="Invalid email or password")
 
 
 @router.post("/logout")
 async def auth_logout():
     """Logout endpoint."""
+    logger.info("[AUTH] User logged out")
     return {"success": True}
 
 
 @router.get("/me")
 async def auth_me(user: Optional[AuthUser] = Depends(get_current_user)):
     """Get current user info from token."""
+    logger.info(f"[AUTH] /me request, user: {user.email if user else 'None'}")
     if not user:
+        logger.warning("[AUTH] /me called without authentication")
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     # Get roles from RBAC
@@ -81,6 +87,7 @@ async def auth_me(user: Optional[AuthUser] = Depends(get_current_user)):
     roles = await rbac.get_user_roles(user.id)
     role_names = [r.name for r in roles]
 
+    logger.info(f"[AUTH] /me returning user {user.email} with roles: {role_names}")
     return {
         "id": user.id,
         "name": user.name,
@@ -98,7 +105,10 @@ async def auth_sync(user: AuthUser = Depends(require_auth)):
     Called by frontend after successful Supabase login to ensure
     user exists in our database with current profile data.
     """
-    return await sync_user_from_token(user)
+    logger.info(f"[AUTH] Syncing user to database: {user.email}")
+    result = await sync_user_from_token(user)
+    logger.info(f"[AUTH] User sync completed for: {user.email}")
+    return result
 
 
 # =============================================================================
@@ -312,6 +322,8 @@ async def validate_invite_token(request: ValidateInviteRequest):
     from db import get_db
     from utils.time import get_uae_time
 
+    logger.info(f"[AUTH] Validating invite token for email: {request.email}")
+
     db = get_db()
 
     # Find the token
@@ -326,15 +338,18 @@ async def validate_invite_token(request: ValidateInviteRequest):
     )
 
     if not token_data:
+        logger.warning(f"[AUTH] Invalid invite token attempted for: {request.email}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Invalid invite token",
         )
 
     token_record = token_data[0]
+    logger.info(f"[AUTH] Found token for email: {token_record['email']}, role: {token_record['role_name']}")
 
     # Check if already used
     if token_record["used_at"]:
+        logger.warning(f"[AUTH] Token already used for: {request.email}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This invite token has already been used",
@@ -342,6 +357,7 @@ async def validate_invite_token(request: ValidateInviteRequest):
 
     # Check if revoked
     if token_record["is_revoked"]:
+        logger.warning(f"[AUTH] Token revoked for: {request.email}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This invite token has been revoked",
@@ -351,6 +367,7 @@ async def validate_invite_token(request: ValidateInviteRequest):
     now = get_uae_time()
     expires_at = datetime.fromisoformat(token_record["expires_at"])
     if now > expires_at:
+        logger.warning(f"[AUTH] Token expired for: {request.email}, expired at: {expires_at}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="This invite token has expired",
@@ -358,6 +375,7 @@ async def validate_invite_token(request: ValidateInviteRequest):
 
     # Check email matches
     if request.email.lower() != token_record["email"].lower():
+        logger.warning(f"[AUTH] Email mismatch: requested {request.email}, token for {token_record['email']}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email does not match the invite token",
@@ -369,7 +387,7 @@ async def validate_invite_token(request: ValidateInviteRequest):
         (now.isoformat(), token_record["id"])
     )
 
-    logger.info(f"[AUTH] Invite token validated for {request.email}")
+    logger.info(f"[AUTH] Invite token validated successfully for {request.email} with role {token_record['role_name']}")
 
     return ValidateInviteResponse(
         valid=True,

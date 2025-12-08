@@ -57,17 +57,30 @@ app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
+// Request logging middleware
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`[UI] ${req.method} ${req.path} -> ${res.statusCode} (${duration}ms)`);
+  });
+  next();
+});
+
 // =============================================================================
 // SUPABASE AUTH MIDDLEWARE
 // Verifies JWT tokens from Supabase Auth
 // =============================================================================
 async function requireAuth(req, res, next) {
+  console.log('[UI Auth] Checking authentication...');
   if (!supabase) {
+    console.error('[UI Auth] Supabase not configured');
     return res.status(500).json({ error: 'Supabase not configured' });
   }
 
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.warn('[UI Auth] No bearer token provided');
     return res.status(401).json({ error: 'Unauthorized', requiresAuth: true });
   }
 
@@ -77,13 +90,15 @@ async function requireAuth(req, res, next) {
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
     if (error || !user) {
+      console.warn('[UI Auth] Invalid token:', error?.message);
       return res.status(401).json({ error: 'Invalid token', requiresAuth: true });
     }
 
+    console.log('[UI Auth] Authenticated user:', user.email);
     req.user = user;
     next();
   } catch (err) {
-    console.error('Auth error:', err);
+    console.error('[UI Auth] Auth error:', err.message);
     return res.status(401).json({ error: 'Authentication failed', requiresAuth: true });
   }
 }
@@ -172,12 +187,15 @@ app.get('/', (req, res) => {
 
 // Verify session endpoint (for checking if user is authenticated)
 app.get('/api/base/auth/session', async (req, res) => {
+  console.log('[UI] Session check requested');
   if (!supabase) {
+    console.error('[UI] Session check failed: Supabase not configured');
     return res.status(500).json({ error: 'Supabase not configured' });
   }
 
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.log('[UI] Session check: No token provided');
     return res.json({ authenticated: false });
   }
 
@@ -187,9 +205,11 @@ app.get('/api/base/auth/session', async (req, res) => {
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
     if (error || !user) {
+      console.log('[UI] Session check: Invalid token');
       return res.json({ authenticated: false });
     }
 
+    console.log('[UI] Session check: Valid session for', user.email);
     res.json({
       authenticated: true,
       user: {
@@ -199,6 +219,7 @@ app.get('/api/base/auth/session', async (req, res) => {
       }
     });
   } catch (err) {
+    console.error('[UI] Session check error:', err.message);
     res.json({ authenticated: false });
   }
 });

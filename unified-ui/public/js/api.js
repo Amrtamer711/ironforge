@@ -25,7 +25,10 @@ let supabaseClient = null;
 
 // Check if Supabase JS library is loaded
 if (typeof supabase !== 'undefined' && SUPABASE_URL && SUPABASE_ANON_KEY) {
+  console.log('[API] Initializing Supabase client');
   supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+} else {
+  console.warn('[API] Supabase not configured - URL:', !!SUPABASE_URL, 'Key:', !!SUPABASE_ANON_KEY);
 }
 
 const API = {
@@ -44,6 +47,9 @@ const API = {
   async request(endpoint, options = {}) {
     const url = `${this.baseUrl}${endpoint}`;
     const token = await this.getAuthToken();
+    const method = options.method || 'GET';
+
+    console.log(`[API] ${method} ${endpoint}`);
 
     const headers = {
       'Content-Type': 'application/json',
@@ -54,13 +60,19 @@ const API = {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
+    const startTime = Date.now();
+
     try {
       const response = await fetch(url, {
         ...options,
         headers
       });
 
+      const duration = Date.now() - startTime;
+      console.log(`[API] ${method} ${endpoint} -> ${response.status} (${duration}ms)`);
+
       if (response.status === 401) {
+        console.warn('[API] 401 Unauthorized - triggering logout');
         // Token expired or invalid - trigger logout
         if (supabaseClient) {
           await supabaseClient.auth.signOut();
@@ -71,12 +83,13 @@ const API = {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ detail: 'Request failed' }));
+        console.error(`[API] Error response:`, error);
         throw new Error(error.detail || error.error || 'Request failed');
       }
 
       return response.json();
     } catch (error) {
-      console.error(`API Error [${endpoint}]:`, error);
+      console.error(`[API] ${method} ${endpoint} FAILED:`, error.message);
       throw error;
     }
   },

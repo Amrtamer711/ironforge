@@ -7,10 +7,12 @@ const Sidebar = {
   isCollapsed: false,
 
   init() {
+    console.log('[Sidebar] Initializing...');
     this.setupNavigation();
     this.setupSettings();
     this.setupCollapse();
     this.showTool('chat');
+    console.log('[Sidebar] Initialized');
   },
 
   setupNavigation() {
@@ -25,6 +27,7 @@ const Sidebar = {
   },
 
   showTool(tool) {
+    console.log('[Sidebar] Switching to tool:', tool);
     this.currentTool = tool;
 
     // Update nav items
@@ -99,12 +102,15 @@ const Sidebar = {
     const locationSelect = document.getElementById('mockupLocation');
     if (!locationSelect) return;
 
+    console.log('[Sidebar] Loading mockup locations...');
     try {
       // Try to load from API
       const locations = await API.mockup.getLocations();
+      console.log('[Sidebar] Loaded', locations.length, 'locations from API');
       locationSelect.innerHTML = '<option value="">Select location...</option>' +
         locations.map(loc => `<option value="${loc}">${loc}</option>`).join('');
     } catch (e) {
+      console.warn('[Sidebar] Failed to load locations from API, using defaults:', e.message);
       // Fallback to hardcoded locations
       const defaultLocations = [
         'Burj Khalifa',
@@ -169,11 +175,13 @@ const Sidebar = {
   },
 
   async initAdmin() {
+    console.log('[Sidebar] Initializing admin panel...');
     const adminPanel = document.getElementById('adminPanel');
     if (!adminPanel) return;
 
     // Check if already initialized
     if (adminPanel.dataset.initialized) {
+      console.log('[Sidebar] Admin panel already initialized, re-rendering');
       // Just re-render if already initialized
       if (window.AdminUI) {
         AdminUI.render();
@@ -185,9 +193,11 @@ const Sidebar = {
     if (window.AdminUI) {
       const success = await AdminUI.init();
       if (success) {
+        console.log('[Sidebar] Admin panel initialized successfully');
         adminPanel.dataset.initialized = 'true';
         AdminUI.render();
       } else {
+        console.warn('[Sidebar] Admin panel initialization failed');
         adminPanel.innerHTML = '<p class="empty-state">Admin panel not available.</p>';
       }
     }
