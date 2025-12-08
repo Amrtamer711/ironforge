@@ -16,8 +16,10 @@ from api.schemas import CallType, Workflow
 from integrations.auth import AuthUser
 from integrations.rbac import get_rbac_client
 from utils.time import get_uae_time
+from utils.logging import get_logger
 
 router = APIRouter(prefix="/costs", tags=["costs"])
+logger = get_logger("api.costs")
 
 
 @router.get("")
@@ -42,12 +44,16 @@ async def get_costs(
 
     Requires authentication. Non-admin users can only see their own costs.
     """
+    logger.info(f"[COSTS] Get costs request from {user.email}, filters: start={start_date}, end={end_date}, type={call_type}, workflow={workflow}")
+
     # Non-admins can only see their own costs
     rbac = get_rbac_client()
     is_admin = await rbac.has_role(user.id, "admin")
+    logger.debug(f"[COSTS] User {user.email} is_admin: {is_admin}")
 
     # If filter_user_id is provided but user is not admin, reject
     if filter_user_id and not is_admin:
+        logger.warning(f"[COSTS] Non-admin {user.email} attempted to filter by user_id")
         raise HTTPException(
             status_code=403,
             detail="Only admins can filter by user_id"
@@ -67,6 +73,8 @@ async def get_costs(
         workflow=workflow_str,
         user_id=effective_user_id
     )
+
+    logger.info(f"[COSTS] Returned costs summary for {user.email}: total_cost=${summary.get('total_cost', 0):.4f}")
 
     return {
         "summary": summary,
@@ -93,15 +101,21 @@ async def clear_costs(
     Requires admin role AND authentication code in query parameter:
     DELETE /costs/clear?auth_code=YOUR_CODE
     """
+    logger.warning(f"[COSTS] CLEAR COSTS REQUEST from admin {user.email}")
+
     # Check authentication code as additional safety
     required_code = settings.costs_clear_auth_code or "nour2024"
     if not auth_code or auth_code != required_code:
+        logger.error(f"[COSTS] CLEAR COSTS REJECTED - Invalid auth code from {user.email}")
         raise HTTPException(
             status_code=401,
             detail="Unauthorized: Invalid or missing authentication code"
         )
 
+    logger.warning(f"[COSTS] !!! CLEARING ALL COST DATA !!! Initiated by {user.email}")
     db.clear_ai_costs()
+    logger.warning(f"[COSTS] All cost data cleared by {user.email} at {get_uae_time().isoformat()}")
+
     return {
         "status": "success",
         "message": "All AI cost data cleared",

@@ -5,13 +5,13 @@ Uses the unified channel abstraction layer for all messaging operations.
 """
 
 import asyncio
-import logging
 from typing import Dict, Any, Optional
 
 import config
 from integrations.channels import Button, ButtonStyle
+from utils.logging import get_logger
 
-logger = logging.getLogger("proposal-bot")
+logger = get_logger("core.bo_messaging")
 
 
 def _format_amount(data: Optional[Dict[str, Any]], amount: Optional[float]) -> str:
@@ -42,8 +42,11 @@ async def post_to_thread(channel_id: str, thread_ts: str, text: str) -> Dict[str
 
     Returns: {"ts": message_timestamp}
     """
+    logger.info(f"[BO MSG] Posting to thread {thread_ts} in channel {channel_id}")
+
     channel = config.get_channel_adapter()
     if not channel:
+        logger.error("[BO MSG] No channel adapter available")
         raise RuntimeError("No channel adapter available")
 
     message = await channel.send_message(
@@ -51,6 +54,7 @@ async def post_to_thread(channel_id: str, thread_ts: str, text: str) -> Dict[str
         content=text,
         thread_id=thread_ts
     )
+    logger.info(f"[BO MSG] Message posted: {message.platform_message_id or message.id}")
     return {"ts": message.platform_message_id or message.id}
 
 
@@ -64,8 +68,11 @@ async def send_coordinator_approval_buttons(
 
     Returns: {"ts": message_timestamp}
     """
+    logger.info(f"[BO MSG] Sending coordinator approval buttons for workflow {workflow_id}")
+
     channel = config.get_channel_adapter()
     if not channel:
+        logger.error("[BO MSG] No channel adapter available")
         raise RuntimeError("No channel adapter available")
 
     text = "**Please review the Excel file above, then:**"
@@ -97,6 +104,7 @@ async def send_coordinator_approval_buttons(
         buttons=buttons
     )
 
+    logger.info(f"[BO MSG] Coordinator buttons sent: {message.platform_message_id or message.id}")
     return {"ts": message.platform_message_id or message.id}
 
 
@@ -114,8 +122,11 @@ async def send_to_head_of_sales(
 
     Returns: {"message_id": ts, "channel": channel}
     """
+    logger.info(f"[BO MSG] Sending to Head of Sales: workflow={workflow_id}, company={company}, client={data.get('client')}")
+
     channel = config.get_channel_adapter()
     if not channel:
+        logger.error("[BO MSG] No channel adapter available")
         raise RuntimeError("No channel adapter available")
 
     # Build message text
@@ -184,6 +195,7 @@ async def send_to_head_of_sales(
         buttons=buttons
     )
 
+    logger.info(f"[BO MSG] Head of Sales message sent: {button_message.platform_message_id or button_message.id}")
     return {
         "message_id": button_message.platform_message_id or button_message.id,
         "channel": channel_id,
@@ -208,8 +220,11 @@ async def send_to_coordinator(
 
     Returns: {"message_id": ts, "channel": channel}
     """
+    logger.info(f"[BO MSG] Sending to Coordinator: workflow={workflow_id}, company={company}, is_revision={is_revision}")
+
     channel = config.get_channel_adapter()
     if not channel:
+        logger.error("[BO MSG] No channel adapter available")
         raise RuntimeError("No channel adapter available")
 
     # Build message text
@@ -285,6 +300,7 @@ async def send_to_coordinator(
         buttons=buttons
     )
 
+    logger.info(f"[BO MSG] Coordinator message sent: {button_message.platform_message_id or button_message.id}")
     return {
         "message_id": button_message.platform_message_id or button_message.id,
         "channel": channel_id,
