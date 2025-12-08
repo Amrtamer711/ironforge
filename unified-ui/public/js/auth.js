@@ -142,7 +142,7 @@ const Auth = {
     return this.user;
   },
 
-  async signUp(email, password, name) {
+  async signUpWithToken(token, email, password, name) {
     if (this.isLocalDev) {
       throw new Error('Sign up not available in dev mode');
     }
@@ -151,13 +151,29 @@ const Auth = {
       throw new Error('Supabase not configured');
     }
 
+    // Step 1: Validate the invite token with the backend
+    const backendUrl = window.SALES_BOT_URL || '';
+    const validateResponse = await fetch(`${backendUrl}/api/auth/validate-invite`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, email })
+    });
+
+    if (!validateResponse.ok) {
+      const errorData = await validateResponse.json();
+      throw new Error(errorData.detail || 'Invalid or expired invite token');
+    }
+
+    const tokenData = await validateResponse.json();
+
+    // Step 2: Create the user in Supabase Auth
     const { data, error } = await this.supabaseClient.auth.signUp({
       email,
       password,
       options: {
         data: {
           name: name,
-          roles: ['sales_person'] // Default role
+          roles: [tokenData.role_name || 'user']
         }
       }
     });
@@ -165,6 +181,9 @@ const Auth = {
     if (error) {
       throw new Error(error.message);
     }
+
+    // Step 3: Mark token as used (backend will handle this on first API call with user sync)
+    // The token will be consumed when the user makes their first authenticated request
 
     return data;
   },
@@ -297,8 +316,48 @@ document.addEventListener('DOMContentLoaded', () => {
     closeLoginModal.addEventListener('click', () => Auth.hideLogin());
   }
 
-  // Login form submission
+  // Auth tab switching
+  const signInTab = document.getElementById('signInTab');
+  const signUpTab = document.getElementById('signUpTab');
   const loginForm = document.getElementById('loginForm');
+  const signupForm = document.getElementById('signupForm');
+  const authSubtitle = document.getElementById('authSubtitle');
+  const devModeHint = document.getElementById('devModeHint');
+
+  function switchToSignIn() {
+    signInTab.classList.add('active');
+    signInTab.style.background = 'var(--neural-800)';
+    signInTab.style.color = 'var(--neural-100)';
+    signUpTab.classList.remove('active');
+    signUpTab.style.background = 'var(--neural-900)';
+    signUpTab.style.color = 'var(--neural-500)';
+    loginForm.style.display = 'block';
+    signupForm.style.display = 'none';
+    authSubtitle.textContent = 'Sign in to continue to your workspace';
+    if (devModeHint) devModeHint.style.display = 'block';
+  }
+
+  function switchToSignUp() {
+    signUpTab.classList.add('active');
+    signUpTab.style.background = 'var(--neural-800)';
+    signUpTab.style.color = 'var(--neural-100)';
+    signInTab.classList.remove('active');
+    signInTab.style.background = 'var(--neural-900)';
+    signInTab.style.color = 'var(--neural-500)';
+    signupForm.style.display = 'block';
+    loginForm.style.display = 'none';
+    authSubtitle.textContent = 'Create your account with an invite token';
+    if (devModeHint) devModeHint.style.display = 'none';
+  }
+
+  if (signInTab) {
+    signInTab.addEventListener('click', switchToSignIn);
+  }
+  if (signUpTab) {
+    signUpTab.addEventListener('click', switchToSignUp);
+  }
+
+  // Login form submission
   if (loginForm) {
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -320,6 +379,50 @@ document.addEventListener('DOMContentLoaded', () => {
       } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Sign In';
+      }
+    });
+  }
+
+  // Sign up form submission
+  if (signupForm) {
+    signupForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const token = document.getElementById('signupTokenInput').value.trim();
+      const email = document.getElementById('signupEmailInput').value.trim();
+      const name = document.getElementById('signupNameInput').value.trim();
+      const password = document.getElementById('signupPasswordInput').value;
+      const confirmPassword = document.getElementById('signupConfirmPasswordInput').value;
+      const submitBtn = signupForm.querySelector('button[type="submit"]');
+
+      // Validate passwords match
+      if (password !== confirmPassword) {
+        Toast.error('Passwords do not match');
+        return;
+      }
+
+      // Validate password length
+      if (password.length < 8) {
+        Toast.error('Password must be at least 8 characters');
+        return;
+      }
+
+      try {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Creating account...';
+
+        await Auth.signUpWithToken(token, email, password, name);
+
+        Toast.success('Account created! Please check your email to verify, then sign in.');
+
+        // Switch to sign in tab
+        switchToSignIn();
+        document.getElementById('emailInput').value = email;
+      } catch (error) {
+        Toast.error(error.message || 'Sign up failed');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Account';
       }
     });
   }

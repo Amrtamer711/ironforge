@@ -199,7 +199,7 @@
        ═══════════════════════════════════════════════════════════════════════════════ -->
   <div class="modal" id="loginModal">
     <div class="modal-content" style="max-width: 420px;">
-      <div class="modal-header" style="flex-direction: column; align-items: center; text-align: center; border-bottom: none; padding: 3rem 2rem 1rem;">
+      <div class="modal-header" style="flex-direction: column; align-items: center; text-align: center; border-bottom: none; padding: 2rem 2rem 1rem;">
         <svg width="64" height="64" viewBox="0 0 48 48" fill="none" style="margin-bottom: 1.5rem; filter: drop-shadow(0 0 30px rgba(51, 129, 255, 0.5));">
           <defs>
             <linearGradient id="loginGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -214,9 +214,15 @@
           <path d="M14 27L24 32L34 27" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-opacity="0.6"/>
         </svg>
         <h2 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem;">Welcome to MMG</h2>
-        <p style="color: var(--neural-500); font-size: 0.9rem;">Sign in to continue to your workspace</p>
+        <p id="authSubtitle" style="color: var(--neural-500); font-size: 0.9rem;">Sign in to continue to your workspace</p>
+        <!-- Auth Tabs -->
+        <div class="auth-tabs" style="display: flex; gap: 0; margin-top: 1.5rem; width: 100%; border-radius: 8px; overflow: hidden; border: 1px solid var(--neural-700);">
+          <button class="auth-tab active" id="signInTab" style="flex: 1; padding: 0.75rem 1rem; border: none; background: var(--neural-800); color: var(--neural-100); font-weight: 600; cursor: pointer; transition: all 0.2s;">Sign In</button>
+          <button class="auth-tab" id="signUpTab" style="flex: 1; padding: 0.75rem 1rem; border: none; background: var(--neural-900); color: var(--neural-500); font-weight: 600; cursor: pointer; transition: all 0.2s;">Sign Up</button>
+        </div>
       </div>
       <div class="modal-body" style="padding: 1.5rem 2rem 2rem;">
+        <!-- Sign In Form -->
         <form id="loginForm">
           <div class="form-group" style="margin-top: 0;">
             <label for="emailInput">Email</label>
@@ -230,16 +236,35 @@
             Sign In
           </button>
         </form>
-        <div class="login-divider">
-          <span>or continue with</span>
-        </div>
-        <button class="btn btn-secondary" id="supabaseLoginBtn" style="width: 100%;">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
-          </svg>
-          Sign in with Supabase
-        </button>
-        <p class="login-help-text">
+        <!-- Sign Up Form (hidden by default) -->
+        <form id="signupForm" style="display: none;">
+          <div class="form-group" style="margin-top: 0;">
+            <label for="signupTokenInput">Invite Token</label>
+            <input type="text" id="signupTokenInput" class="form-control" placeholder="Enter your invite token" autocomplete="off" required>
+            <small style="color: var(--neural-500); font-size: 0.75rem;">Get this from your admin</small>
+          </div>
+          <div class="form-group">
+            <label for="signupEmailInput">Email</label>
+            <input type="email" id="signupEmailInput" class="form-control" placeholder="your@email.com" autocomplete="email" required>
+            <small style="color: var(--neural-500); font-size: 0.75rem;">Must match the email the token was created for</small>
+          </div>
+          <div class="form-group">
+            <label for="signupNameInput">Full Name</label>
+            <input type="text" id="signupNameInput" class="form-control" placeholder="Your full name" autocomplete="name" required>
+          </div>
+          <div class="form-group">
+            <label for="signupPasswordInput">Password</label>
+            <input type="password" id="signupPasswordInput" class="form-control" placeholder="Create a password (min 8 chars)" autocomplete="new-password" minlength="8" required>
+          </div>
+          <div class="form-group">
+            <label for="signupConfirmPasswordInput">Confirm Password</label>
+            <input type="password" id="signupConfirmPasswordInput" class="form-control" placeholder="Confirm your password" autocomplete="new-password" required>
+          </div>
+          <button type="submit" class="btn btn-primary btn-lg" style="width: 100%; margin-top: 1.5rem;">
+            Create Account
+          </button>
+        </form>
+        <p class="login-help-text" id="devModeHint">
           <small>Dev mode: Use <code>admin@mmg.com</code> / <code>admin123</code></small>
         </p>
       </div>

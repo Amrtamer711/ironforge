@@ -232,6 +232,23 @@ CREATE INDEX IF NOT EXISTS idx_api_key_usage_key ON api_key_usage(api_key_id);
 CREATE INDEX IF NOT EXISTS idx_api_key_usage_timestamp ON api_key_usage(timestamp);
 CREATE INDEX IF NOT EXISTS idx_api_key_usage_endpoint ON api_key_usage(endpoint);
 
+-- Invite tokens for signup (admin-generated)
+CREATE TABLE IF NOT EXISTS invite_tokens (
+    id BIGSERIAL PRIMARY KEY,
+    token TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL,
+    role_id BIGINT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    used_by_user_id TEXT,
+    is_revoked BIGINT NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_invite_tokens_token ON invite_tokens(token);
+CREATE INDEX IF NOT EXISTS idx_invite_tokens_email ON invite_tokens(email);
+CREATE INDEX IF NOT EXISTS idx_invite_tokens_expires ON invite_tokens(expires_at);
+
 -- AI costs tracking
 CREATE TABLE IF NOT EXISTS ai_costs (
     id BIGSERIAL PRIMARY KEY,
