@@ -34,13 +34,20 @@ const Auth = {
   },
 
   async init() {
+    console.log('[Auth] Initializing...');
+    console.log('[Auth] SUPABASE_URL:', window.SUPABASE_URL ? 'configured' : 'not set');
+    console.log('[Auth] SUPABASE_ANON_KEY:', window.SUPABASE_ANON_KEY ? 'configured' : 'not set');
+    console.log('[Auth] SALES_BOT_URL:', window.SALES_BOT_URL || 'not set');
+
     // Initialize Supabase client if configured
     if (window.SUPABASE_URL && window.SUPABASE_ANON_KEY && typeof supabase !== 'undefined') {
+      console.log('[Auth] Creating Supabase client...');
       this.supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
       this.isLocalDev = false;
 
       // Listen for auth state changes
       this.supabaseClient.auth.onAuthStateChange((event, session) => {
+        console.log('[Auth] Auth state changed:', event);
         if (event === 'SIGNED_IN' && session) {
           this.handleSession(session);
         } else if (event === 'SIGNED_OUT') {
@@ -50,12 +57,16 @@ const Auth = {
       });
 
       // Check for existing session
+      console.log('[Auth] Checking for existing session...');
       const { data: { session } } = await this.supabaseClient.auth.getSession();
       if (session) {
+        console.log('[Auth] Found existing session');
         this.handleSession(session);
         return true;
       }
+      console.log('[Auth] No existing session found');
     } else {
+      console.log('[Auth] Running in local dev mode');
       // Local dev mode - check localStorage
       const token = localStorage.getItem('authToken');
       const userData = localStorage.getItem('userData');
@@ -63,14 +74,17 @@ const Auth = {
       if (token && userData) {
         try {
           this.user = JSON.parse(userData);
+          console.log('[Auth] Restored dev session for:', this.user.email);
           this.showApp();
           return true;
         } catch (e) {
+          console.error('[Auth] Failed to parse stored user data');
           this.logout();
         }
       }
     }
 
+    console.log('[Auth] Showing landing page');
     this.showLanding();
     return false;
   },
@@ -125,7 +139,10 @@ const Auth = {
   },
 
   async supabaseLogin(email, password) {
+    console.log('[Auth] Attempting Supabase login for:', email);
+
     if (!this.supabaseClient) {
+      console.error('[Auth] Supabase client not configured');
       throw new Error('Supabase not configured');
     }
 
@@ -135,24 +152,32 @@ const Auth = {
     });
 
     if (error) {
+      console.error('[Auth] Login failed:', error.message);
       throw new Error(error.message);
     }
 
+    console.log('[Auth] Login successful for:', email);
     // Session will be handled by onAuthStateChange
     return this.user;
   },
 
   async signUpWithToken(token, email, password, name) {
+    console.log('[Auth] Starting signup with token for:', email);
+
     if (this.isLocalDev) {
+      console.error('[Auth] Sign up not available in dev mode');
       throw new Error('Sign up not available in dev mode');
     }
 
     if (!this.supabaseClient) {
+      console.error('[Auth] Supabase client not configured');
       throw new Error('Supabase not configured');
     }
 
     // Step 1: Validate the invite token with the backend
     const backendUrl = window.SALES_BOT_URL || '';
+    console.log('[Auth] Validating invite token with backend:', backendUrl);
+
     const validateResponse = await fetch(`${backendUrl}/api/auth/validate-invite`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -161,12 +186,15 @@ const Auth = {
 
     if (!validateResponse.ok) {
       const errorData = await validateResponse.json();
+      console.error('[Auth] Token validation failed:', errorData.detail || 'Unknown error');
       throw new Error(errorData.detail || 'Invalid or expired invite token');
     }
 
     const tokenData = await validateResponse.json();
+    console.log('[Auth] Token validated, role:', tokenData.role_name);
 
     // Step 2: Create the user in Supabase Auth
+    console.log('[Auth] Creating Supabase user...');
     const { data, error } = await this.supabaseClient.auth.signUp({
       email,
       password,
@@ -179,9 +207,11 @@ const Auth = {
     });
 
     if (error) {
+      console.error('[Auth] Supabase signup failed:', error.message);
       throw new Error(error.message);
     }
 
+    console.log('[Auth] Signup successful for:', email);
     // Step 3: Mark token as used (backend will handle this on first API call with user sync)
     // The token will be consumed when the user makes their first authenticated request
 
