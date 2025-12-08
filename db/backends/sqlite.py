@@ -205,6 +205,11 @@ class SQLiteBackend(DatabaseBackend):
                 (submitted_by, client_name, date_generated, package_type, locations, total_amount),
             )
             conn.execute("COMMIT")
+            logger.info(f"[SQLITE] Logged proposal for client: {client_name}")
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            logger.error(f"[SQLITE] Failed to log proposal for {client_name}: {e}", exc_info=True)
+            raise
         finally:
             conn.close()
 
@@ -492,7 +497,12 @@ class SQLiteBackend(DatabaseBackend):
             )
 
             conn.execute("COMMIT")
+            logger.info(f"[SQLITE] Saved mockup frame: {location_key}/{final_filename}")
             return final_filename
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            logger.error(f"[SQLITE] Failed to save mockup frame for {location_key}: {e}", exc_info=True)
+            raise
         finally:
             conn.close()
 
@@ -583,6 +593,11 @@ class SQLiteBackend(DatabaseBackend):
                 (location_key, time_of_day, finish, photo_filename)
             )
             conn.execute("COMMIT")
+            logger.info(f"[SQLITE] Deleted mockup frame: {location_key}/{photo_filename}")
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            logger.error(f"[SQLITE] Failed to delete mockup frame {location_key}/{photo_filename}: {e}", exc_info=True)
+            raise
         finally:
             conn.close()
 
@@ -613,6 +628,11 @@ class SQLiteBackend(DatabaseBackend):
                 (datetime.now().isoformat(), location_key, time_of_day, finish, photo_used, creative_type, ai_prompt, 1 if template_selected else 0, 1 if success else 0, user_ip),
             )
             conn.execute("COMMIT")
+            logger.debug(f"[SQLITE] Logged mockup usage: {location_key}/{photo_used}")
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            logger.error(f"[SQLITE] Failed to log mockup usage for {location_key}: {e}", exc_info=True)
+            # Don't raise - usage logging is non-critical
         finally:
             conn.close()
 
@@ -1124,7 +1144,7 @@ class SQLiteBackend(DatabaseBackend):
             return role_id
         except Exception as e:
             conn.execute("ROLLBACK")
-            logger.error(f"[DB] Error creating role: {e}")
+            logger.error(f"[DB] Error creating role {name}: {e}", exc_info=True)
             return None
         finally:
             conn.close()
@@ -1218,7 +1238,7 @@ class SQLiteBackend(DatabaseBackend):
             return perm_id
         except Exception as e:
             conn.execute("ROLLBACK")
-            logger.error(f"[DB] Error creating permission: {e}")
+            logger.error(f"[DB] Error creating permission {name}: {e}", exc_info=True)
             return None
         finally:
             conn.close()

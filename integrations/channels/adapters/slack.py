@@ -30,7 +30,7 @@ from ..base import (
 )
 from ..formatting import ChannelFormatter
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("proposal-bot")
 
 
 class SlackAdapter(ChannelAdapter):
@@ -122,7 +122,7 @@ class SlackAdapter(ChannelAdapter):
                 )
 
         except Exception as e:
-            logger.error(f"[SlackAdapter] Failed to send message: {e}")
+            logger.error(f"[SlackAdapter] Failed to send message: {e}", exc_info=True)
             raise
 
     async def update_message(
@@ -157,7 +157,7 @@ class SlackAdapter(ChannelAdapter):
             )
 
         except Exception as e:
-            logger.error(f"[SlackAdapter] Failed to update message: {e}")
+            logger.error(f"[SlackAdapter] Failed to update message: {e}", exc_info=True)
             raise
 
     async def delete_message(
@@ -173,7 +173,7 @@ class SlackAdapter(ChannelAdapter):
             )
             return True
         except Exception as e:
-            logger.error(f"[SlackAdapter] Failed to delete message: {e}")
+            logger.error(f"[SlackAdapter] Failed to delete message: {e}", exc_info=True)
             return False
 
     # ========================================================================
@@ -198,7 +198,7 @@ class SlackAdapter(ChannelAdapter):
             # Ignore "already_reacted" errors
             if "already_reacted" in str(e):
                 return True
-            logger.error(f"[SlackAdapter] Failed to add reaction: {e}")
+            logger.error(f"[SlackAdapter] Failed to add reaction: {e}", exc_info=True)
             return False
 
     async def remove_reaction(
@@ -216,7 +216,7 @@ class SlackAdapter(ChannelAdapter):
             )
             return True
         except Exception as e:
-            logger.error(f"[SlackAdapter] Failed to remove reaction: {e}")
+            logger.error(f"[SlackAdapter] Failed to remove reaction: {e}", exc_info=True)
             return False
 
     # ========================================================================
@@ -264,7 +264,7 @@ class SlackAdapter(ChannelAdapter):
             )
 
         except Exception as e:
-            logger.error(f"[SlackAdapter] Failed to upload file: {e}")
+            logger.error(f"[SlackAdapter] Failed to upload file: {e}", exc_info=True)
             return FileUpload(
                 success=False,
                 error=str(e),
@@ -303,7 +303,7 @@ class SlackAdapter(ChannelAdapter):
             )
 
         except Exception as e:
-            logger.error(f"[SlackAdapter] Failed to upload file bytes: {e}")
+            logger.error(f"[SlackAdapter] Failed to upload file bytes: {e}", exc_info=True)
             return FileUpload(
                 success=False,
                 error=str(e),
@@ -341,7 +341,7 @@ class SlackAdapter(ChannelAdapter):
                         return Path(tmp.name)
 
         except Exception as e:
-            logger.error(f"[SlackAdapter] Failed to download file: {e}")
+            logger.error(f"[SlackAdapter] Failed to download file: {e}", exc_info=True)
             return None
 
     # ========================================================================
@@ -375,7 +375,7 @@ class SlackAdapter(ChannelAdapter):
             return user
 
         except Exception as e:
-            logger.error(f"[SlackAdapter] Failed to get user {user_id}: {e}")
+            logger.error(f"[SlackAdapter] Failed to get user {user_id}: {e}", exc_info=True)
             return None
 
     async def get_user_display_name(self, user_id: str) -> str:
@@ -392,7 +392,7 @@ class SlackAdapter(ChannelAdapter):
             channel = response.get("channel", {})
             return channel.get("id")
         except Exception as e:
-            logger.error(f"[SlackAdapter] Failed to open DM with {user_id}: {e}")
+            logger.error(f"[SlackAdapter] Failed to open DM with {user_id}: {e}", exc_info=True)
             return None
 
     # ========================================================================
@@ -413,7 +413,7 @@ class SlackAdapter(ChannelAdapter):
             )
             return True
         except Exception as e:
-            logger.error(f"[SlackAdapter] Failed to open modal: {e}")
+            logger.error(f"[SlackAdapter] Failed to open modal: {e}", exc_info=True)
             return False
 
     async def respond_to_action(
@@ -443,7 +443,7 @@ class SlackAdapter(ChannelAdapter):
                 async with session.post(response_url, json=payload) as response:
                     return response.status == 200
         except Exception as e:
-            logger.error(f"[SlackAdapter] Failed to respond to action: {e}")
+            logger.error(f"[SlackAdapter] Failed to respond to action: {e}", exc_info=True)
             return False
 
     # ========================================================================
@@ -646,7 +646,7 @@ class SlackAdapter(ChannelAdapter):
             response = await self._client.files_info(file=file_id)
             return response.get("file")
         except Exception as e:
-            logger.error(f"[SlackAdapter] Failed to get file info: {e}")
+            logger.error(f"[SlackAdapter] Failed to get file info: {e}", exc_info=True)
             return None
 
     @property
