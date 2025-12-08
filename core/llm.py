@@ -812,8 +812,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     logger.error(f"Invalid PDF file: {f.get('name')}")
                     try:
                         os.unlink(pdf_file)
-                    except:
-                        pass
+                    except OSError as cleanup_err:
+                        logger.debug(f"[LOCATION_ADD] Failed to cleanup invalid PDF: {cleanup_err}")
                     await channel_adapter.send_message(
                         channel_id=channel,
                         content="**Error:** The uploaded file is not a valid PDF. Please upload a .pdf file."
@@ -834,8 +834,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 # Clean up original PDF
                 try:
                     os.unlink(pdf_file)
-                except:
-                    pass
+                except OSError as cleanup_err:
+                    logger.debug(f"[LOCATION_ADD] Failed to cleanup original PDF: {cleanup_err}")
 
                 # Delete conversion status message
                 await channel_adapter.delete_message(channel_id=channel, message_id=conversion_status_ts)
@@ -904,8 +904,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 # Clean up the temporary file
                 try:
                     os.unlink(pptx_file)
-                except:
-                    pass
+                except OSError as cleanup_err:
+                    logger.debug(f"[LOCATION_ADD] Failed to cleanup temp PPTX: {cleanup_err}")
                 return
         else:
             # No PPT file found, cancel the addition
@@ -1212,7 +1212,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     assistant_summary = "[Parsed booking order]"
                 else:
                     assistant_summary = f"[Called {tool_call.name}]"
-            except:
+            except (KeyError, TypeError, AttributeError):
                 assistant_summary = f"[Called {tool_call.name}]"
             history.append({"role": "assistant", "content": assistant_summary, "timestamp": datetime.now().isoformat()})
 
@@ -1264,8 +1264,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
         try:
             if 'status_ts' in locals() and status_ts and channel_adapter:
                 await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        except:
-            pass
+        except Exception as cleanup_err:
+            logger.debug(f"[LLM] Failed to delete status message during error cleanup: {cleanup_err}")
         channel_adapter = config.get_channel_adapter()
         if channel_adapter:
             await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** Something went wrong. Please try again.") 

@@ -426,8 +426,8 @@ The user provided this message with the file: "{user_message}"
                 dt = datetime.strptime(date_str, fmt)
                 # Format as "Xth Month YYYY"
                 return self._format_date_english(dt)
-            except:
-                continue
+            except ValueError:
+                continue  # Expected - try next format
 
         # Return original if can't parse
         return date_str
@@ -1175,13 +1175,14 @@ The user provided this message with the file: "{user_message}"
                 try:
                     # Use Helvetica Bold
                     font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 60, index=1)  # index=1 for bold
-                except:
+                except (OSError, IOError):
                     try:
                         font = ImageFont.truetype("/Library/Fonts/Arial Bold.ttf", 48)
-                    except:
+                    except (OSError, IOError):
                         try:
                             font = ImageFont.truetype("/Library/Fonts/Arial.ttf", 48)
-                        except:
+                        except (OSError, IOError):
+                            logger.debug("[BO PARSER] Using default font for stamp - system fonts not available")
                             font = ImageFont.load_default()
 
                 # Position date lower on the stamp
@@ -1320,23 +1321,24 @@ The user provided this message with the file: "{user_message}"
                 if dated_stamp_path and os.path.exists(dated_stamp_path):
                     try:
                         os.unlink(dated_stamp_path)
-                    except:
-                        pass
+                    except OSError as cleanup_err:
+                        logger.warning(f"[STAMP] Failed to cleanup temp stamp file {dated_stamp_path}: {cleanup_err}")
 
                 return output_path
             except Exception as write_error:
+                logger.error(f"[STAMP] Failed to write stamped PDF: {write_error}")
                 # Clean up partial file if write failed
                 if output_path.exists():
                     try:
                         output_path.unlink()
-                    except:
-                        pass
+                    except OSError as cleanup_err:
+                        logger.warning(f"[STAMP] Failed to cleanup partial output file: {cleanup_err}")
                 # Clean up temp dated stamp file
                 if dated_stamp_path and os.path.exists(dated_stamp_path):
                     try:
                         os.unlink(dated_stamp_path)
-                    except:
-                        pass
+                    except OSError as cleanup_err:
+                        logger.warning(f"[STAMP] Failed to cleanup temp stamp file: {cleanup_err}")
                 raise write_error
 
         except Exception as e:

@@ -80,8 +80,8 @@ async def periodic_cleanup():
                             last_time = datetime.fromisoformat(timestamp_str)
                             if last_time < cutoff:
                                 expired_users.append(uid)
-                        except:
-                            pass
+                        except (ValueError, TypeError):
+                            pass  # Invalid timestamp format, skip
 
             for uid in expired_users:
                 del user_history[uid]
@@ -118,8 +118,8 @@ async def periodic_cleanup():
                     try:
                         os.unlink(filepath)
                         cleaned_files += 1
-                    except:
-                        pass
+                    except OSError:
+                        pass  # File in use or permission denied
 
             if cleaned_files > 0:
                 logger.info(f"[CLEANUP] Removed {cleaned_files} old temporary files")

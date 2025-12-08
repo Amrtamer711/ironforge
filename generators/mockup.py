@@ -457,8 +457,8 @@ def generate_mockup(
         # Cleanup on error
         try:
             del billboard, result
-        except:
-            pass
+        except NameError:
+            pass  # Variables may not have been assigned
         cleanup_memory(context="mockup_save_error", aggressive=False, log_stats=False)
         return None, None
 

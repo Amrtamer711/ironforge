@@ -330,8 +330,8 @@ async def _handle_followup_mode(
 
         try:
             await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[MOCKUP] Failed to delete status message: {e}")
 
         # Update history with new location
         mockup_user_hist["metadata"]["location_key"] = location_key
@@ -353,8 +353,8 @@ async def _handle_followup_mode(
         if result_path:
             try:
                 os.unlink(result_path)
-            except:
-                pass
+            except OSError as cleanup_err:
+                logger.debug(f"[MOCKUP] Failed to cleanup result file: {cleanup_err}")
         cleanup_memory(context="mockup_followup", aggressive=False, log_stats=False)
 
     return True
@@ -437,8 +437,8 @@ async def _handle_upload_mode(
 
         try:
             await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[MOCKUP] Failed to delete status message: {e}")
 
         # Store in history for follow-ups
         location_frame_count = get_location_frame_count(location_key, time_of_day, finish)
@@ -463,15 +463,15 @@ async def _handle_upload_mode(
         for creative_file in uploaded_creatives:
             try:
                 os.unlink(creative_file)
-            except:
-                pass
+            except OSError as cleanup_err:
+                logger.debug(f"[MOCKUP] Failed to cleanup creative file: {cleanup_err}")
     finally:
         # Cleanup and memory management
         if result_path:
             try:
                 os.unlink(result_path)
-            except:
-                pass
+            except OSError as cleanup_err:
+                logger.debug(f"[MOCKUP] Failed to cleanup result file: {cleanup_err}")
         cleanup_memory(context="mockup_upload", aggressive=False, log_stats=False)
 
     return True
@@ -559,8 +559,8 @@ async def _handle_ai_mode(
 
         try:
             await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"[MOCKUP] Failed to delete status message: {e}")
 
         # Store in history for follow-ups
         store_mockup_history(user_id, ai_creative_paths, {
@@ -585,15 +585,15 @@ async def _handle_ai_mode(
             if creative_path and creative_path.exists():
                 try:
                     os.unlink(creative_path)
-                except:
-                    pass
+                except OSError as cleanup_err:
+                    logger.debug(f"[MOCKUP] Failed to cleanup AI creative: {cleanup_err}")
     finally:
         # Cleanup and memory management
         if result_path:
             try:
                 os.unlink(result_path)
-            except:
-                pass
+            except OSError as cleanup_err:
+                logger.debug(f"[MOCKUP] Failed to cleanup result file: {cleanup_err}")
         cleanup_memory(context="mockup_ai", aggressive=False, log_stats=False)
 
     return True

@@ -125,8 +125,8 @@ def convert_pptx_to_pdf(pptx_path: str) -> str:
                         if bg_color:
                             c.setFillColorRGB(bg_color[0]/255.0, bg_color[1]/255.0, bg_color[2]/255.0)
                             c.rect(0, 0, page_width, page_height, fill=1, stroke=0)
-                except:
-                    pass
+                except (AttributeError, TypeError, ValueError):
+                    pass  # Background color extraction is best-effort
             c.setFillColor(colors.black)
             for shape in slide.shapes:
                 try:
@@ -218,6 +218,6 @@ async def remove_slides_and_convert_to_pdf(pptx_path: str, remove_first: bool = 
         pdf_path = convert_pptx_to_pdf(temp_pptx.name)
         try:
             os.unlink(temp_pptx.name)
-        except:
-            pass
+        except OSError as cleanup_err:
+            logger.debug(f"[REMOVE_SLIDES] Failed to cleanup temp file {temp_pptx.name}: {cleanup_err}")
         return pdf_path 

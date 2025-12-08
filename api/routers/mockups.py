@@ -239,8 +239,8 @@ async def test_preview_mockup(
             del result
             from utils.memory import cleanup_memory
             cleanup_memory(context="mockup_preview_error", aggressive=False, log_stats=False)
-        except:
-            pass
+        except NameError:
+            pass  # Some variables may not have been assigned
         raise HTTPException(status_code=500, detail=str(e))
 
 

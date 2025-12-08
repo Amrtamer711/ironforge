@@ -119,8 +119,8 @@ def get_mockup_history(user_id: str) -> Optional[Dict[str, Any]]:
                 try:
                     os.unlink(creative_path)
                     deleted_count += 1
-                except:
-                    pass
+                except OSError:
+                    pass  # File in use or permission denied
         del mockup_history[user_id]
 
         # Force garbage collection if we deleted files

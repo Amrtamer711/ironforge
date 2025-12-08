@@ -139,12 +139,12 @@ async def _convert_pdf_to_pptx(pdf_path: Path) -> Optional[Path]:
         for img_path in image_paths:
             try:
                 os.remove(img_path)
-            except:
-                pass
+            except OSError as cleanup_err:
+                logger.debug(f"[PDF_CONVERT] Failed to cleanup temp image {img_path}: {cleanup_err}")
         try:
             os.rmdir(temp_dir)
-        except:
-            pass
+        except OSError as cleanup_err:
+            logger.debug(f"[PDF_CONVERT] Failed to cleanup temp directory {temp_dir}: {cleanup_err}")
 
         file_size_mb = os.path.getsize(pptx_temp.name) / (1024 * 1024)
         config.logger.info(f"[PDF_CONVERT] ✓ Conversion complete: {pptx_temp.name} ({file_size_mb:.1f} MB, {page_count} slides, 300 DPI)")
@@ -207,8 +207,8 @@ def _validate_powerpoint_file(file_path: Path) -> bool:
         # Cleanup on error path too
         try:
             del pres
-        except:
-            pass
+        except NameError:
+            pass  # pres was never assigned
         cleanup_memory(context="pptx_validation_error", aggressive=False, log_stats=False)
         return False
 

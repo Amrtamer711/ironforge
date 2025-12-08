@@ -337,8 +337,8 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
         if idx == len(validated_proposals) - 1:
             try:
                 os.unlink(pptx_file)
-            except:
-                pass
+            except OSError as e:
+                logger.warning(f"[COMBINED] Failed to cleanup temp PPTX file {pptx_file}: {e}")
     
     # For combined proposals, create intro and outro slides
     if intro_outro_info:
@@ -735,8 +735,8 @@ async def process_proposals(
                 try:
                     os.unlink(intro_pptx.name)
                     os.unlink(outro_pptx.name)
-                except:
-                    pass
+                except OSError as e:
+                    logger.warning(f"[PROCESS] Failed to cleanup temp intro/outro PPTX files: {e}")
             
             # Insert intro at beginning and outro at end
             pdf_files.insert(0, intro_pdf)

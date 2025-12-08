@@ -444,7 +444,7 @@ def _parse_metadata_file(folder: Path) -> Dict[str, object]:
     if meta.get("number_of_faces"):
         try:
             number_of_faces = int(meta.get("number_of_faces"))
-        except:
+        except (ValueError, TypeError):
             number_of_faces = 1
 
     display_type = str(meta.get("display_type", "Digital")).strip()
@@ -452,14 +452,14 @@ def _parse_metadata_file(folder: Path) -> Dict[str, object]:
     if meta.get("spot_duration"):
         try:
             spot_duration = int(meta.get("spot_duration"))
-        except:
+        except (ValueError, TypeError):
             spot_duration = 16
 
     loop_duration = 96
     if meta.get("loop_duration"):
         try:
             loop_duration = int(meta.get("loop_duration"))
-        except:
+        except (ValueError, TypeError):
             loop_duration = 96
 
     return {

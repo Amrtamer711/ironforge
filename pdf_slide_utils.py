@@ -77,5 +77,5 @@ async def extract_first_and_last_slide_as_pdfs(file_path: str) -> Tuple[str, str
             if should_delete_full_pdf:
                 try:
                     os.unlink(full_pdf)
-                except:
-                    pass
+                except OSError:
+                    pass  # File in use or permission denied

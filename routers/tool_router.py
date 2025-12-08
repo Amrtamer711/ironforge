@@ -132,7 +132,7 @@ async def handle_tool_call(
                 logger.info(f"[RESULT] Combined package - PDF: {result.get('pdf_filename')}")
                 await channel_adapter.upload_file(channel_id=channel, file_path=result["pdf_path"], title=result["pdf_filename"], comment=f"📦 **Combined Package Proposal**\n📍 Locations: {result['locations']}")
                 try: os.unlink(result["pdf_path"])  # type: ignore
-                except: pass
+                except OSError as cleanup_err: logger.debug(f"[RESULT] Failed to cleanup combined PDF: {cleanup_err}")
             elif result.get("is_single"):
                 logger.info(f"[RESULT] Single proposal - Location: {result.get('location')}")
                 await channel_adapter.upload_file(channel_id=channel, file_path=result["pptx_path"], title=result["pptx_filename"], comment=f"📊 **PowerPoint Proposal**\n📍 Location: {result['location']}")
@@ -140,7 +140,8 @@ async def handle_tool_call(
                 try:
                     os.unlink(result["pptx_path"])  # type: ignore
                     os.unlink(result["pdf_path"])  # type: ignore
-                except: pass
+                except OSError as cleanup_err:
+                    logger.debug(f"[RESULT] Failed to cleanup single proposal files: {cleanup_err}")
             else:
                 logger.info(f"[RESULT] Multiple separate proposals - Count: {len(result.get('individual_files', []))}")
                 for f in result["individual_files"]:
@@ -149,12 +150,13 @@ async def handle_tool_call(
                 try:
                     for f in result["individual_files"]: os.unlink(f["path"])  # type: ignore
                     os.unlink(result["merged_pdf_path"])  # type: ignore
-                except: pass
+                except OSError as cleanup_err:
+                    logger.debug(f"[RESULT] Failed to cleanup merged proposal files: {cleanup_err}")
             # Delete status message after uploads complete
             try:
                 await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"[RESULT] Failed to delete status message: {e}")
         else:
             logger.error(f"[RESULT] Error: {result.get('error')}")
             await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
@@ -430,15 +432,15 @@ async def handle_tool_call(
             # Delete status message after upload completes
             try:
                 await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"[EXCEL_EXPORT] Failed to delete status message: {e}")
 
             # Clean up temp file
             try:
                 os.unlink(excel_path)
-            except:
-                pass
-                
+            except OSError as cleanup_err:
+                logger.debug(f"[EXCEL_EXPORT] Failed to cleanup temp file: {cleanup_err}")
+
         except Exception as e:
             logger.error(f"[EXCEL_EXPORT] Error: {e}", exc_info=True)
             await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
@@ -484,14 +486,14 @@ async def handle_tool_call(
             # Delete status message after upload completes
             try:
                 await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            except:
-                pass
+            except Exception as e:
+                logger.debug(f"[BO_EXPORT] Failed to delete status message: {e}")
 
             # Clean up temp file
             try:
                 os.unlink(excel_path)
-            except:
-                pass
+            except OSError as cleanup_err:
+                logger.debug(f"[BO_EXPORT] Failed to cleanup temp file: {cleanup_err}")
 
         except Exception as e:
             logger.error(f"[BO_EXPORT] Error: {e}", exc_info=True)
@@ -567,8 +569,8 @@ async def handle_tool_call(
                 # Delete status message after upload completes
                 try:
                     await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"[BO_FETCH] Failed to delete status message: {e}")
             else:
                 # File not found, regenerate from data
                 await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="📤 Regenerating and uploading BO...")
@@ -595,14 +597,14 @@ async def handle_tool_call(
                 # Delete status message after upload completes
                 try:
                     await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-                except:
-                    pass
+                except Exception as e:
+                    logger.debug(f"[BO_FETCH] Failed to delete status message: {e}")
 
                 # Clean up temp file
                 try:
                     excel_path.unlink()
-                except:
-                    pass
+                except OSError as cleanup_err:
+                    logger.debug(f"[BO_FETCH] Failed to cleanup temp file: {cleanup_err}")
 
         except Exception as e:
             logger.error(f"[BO_FETCH] Error: {e}", exc_info=True)
