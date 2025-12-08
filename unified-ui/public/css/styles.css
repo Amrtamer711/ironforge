@@ -1511,10 +1511,16 @@ input:checked + .toggle-slider::before {
   align-items: center;
   justify-content: center;
   padding: var(--space-8);
+  overflow-y: auto;
 }
 
 .modal.active {
   display: flex;
+}
+
+/* Prevent body scroll when modal is open */
+body.modal-open {
+  overflow: hidden;
 }
 
 .modal-content {
@@ -1526,6 +1532,8 @@ input:checked + .toggle-slider::before {
   width: 100%;
   max-height: 90vh;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   box-shadow: var(--shadow-depth-lg), var(--shadow-quantum-glow);
   animation: modalAppear 0.5s var(--ease-out-expo);
 }
@@ -1584,7 +1592,8 @@ input:checked + .toggle-slider::before {
 .modal-body {
   padding: var(--space-8);
   overflow-y: auto;
-  max-height: calc(90vh - 100px);
+  flex: 1;
+  min-height: 0;
 }
 
 .templates-grid {

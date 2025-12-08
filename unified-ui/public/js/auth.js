@@ -247,19 +247,23 @@ const Auth = {
     document.getElementById('landingPage').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
     document.getElementById('loginModal').classList.remove('active');
+    document.body.classList.remove('modal-open');
   },
 
   showLogin() {
     document.getElementById('loginModal').classList.add('active');
+    document.body.classList.add('modal-open');
   },
 
   hideLogin() {
     document.getElementById('loginModal').classList.remove('active');
+    document.body.classList.remove('modal-open');
   },
 
   showApp() {
     document.getElementById('landingPage').style.display = 'none';
     document.getElementById('loginModal').classList.remove('active');
+    document.body.classList.remove('modal-open');
     document.getElementById('app').style.display = 'flex';
 
     // Update UI with user info
@@ -344,6 +348,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const closeLoginModal = document.getElementById('closeLoginModal');
   if (closeLoginModal) {
     closeLoginModal.addEventListener('click', () => Auth.hideLogin());
+  }
+
+  // Close modal when clicking outside (on the modal backdrop)
+  const loginModal = document.getElementById('loginModal');
+  if (loginModal) {
+    loginModal.addEventListener('click', (e) => {
+      // Only close if clicking directly on the modal backdrop, not on the content
+      if (e.target === loginModal) {
+        Auth.hideLogin();
+      }
+    });
   }
 
   // Auth tab switching
