@@ -26,15 +26,17 @@ class SupabaseAuthProvider(AuthProvider):
     """
     Supabase Auth provider implementation.
 
-    Uses Supabase for:
-    - JWT token validation
-    - User management via auth.users
-    - Token refresh
+    In a decoupled architecture (4-project setup):
+    - UI Supabase handles user authentication and issues JWTs
+    - Sales Bot only needs the JWT secret to validate tokens
+    - User data is extracted from JWT claims (no API calls needed)
 
-    Requires environment variables:
+    For token validation only, requires:
+    - UI_JWT_SECRET (or SUPABASE_JWT_SECRET for backwards compatibility)
+
+    For full user management (optional), also requires:
     - SUPABASE_URL
-    - SUPABASE_SERVICE_KEY (for admin operations)
-    - SUPABASE_JWT_SECRET (for token validation)
+    - SUPABASE_SERVICE_KEY
     """
 
     def __init__(
@@ -47,17 +49,32 @@ class SupabaseAuthProvider(AuthProvider):
         Initialize Supabase auth provider.
 
         Args:
-            supabase_url: Supabase project URL
-            service_key: Supabase service role key
-            jwt_secret: JWT secret for token validation
+            supabase_url: Supabase project URL (optional - for user management)
+            service_key: Supabase service role key (optional - for user management)
+            jwt_secret: JWT secret for token validation (required)
         """
+        # JWT secret is primary requirement - try new env var first, then legacy
+        self._jwt_secret = (
+            jwt_secret
+            or os.getenv("UI_JWT_SECRET", "")
+            or os.getenv("SUPABASE_JWT_SECRET", "")
+        )
+
+        # Supabase client credentials (optional - only needed for user management APIs)
         self._supabase_url = supabase_url or os.getenv("SUPABASE_URL", "")
         self._service_key = service_key or os.getenv("SUPABASE_SERVICE_KEY", "")
-        self._jwt_secret = jwt_secret or os.getenv("SUPABASE_JWT_SECRET", "")
         self._client = None
 
-        if not self._supabase_url or not self._service_key:
-            logger.warning("[AUTH:SUPABASE] Credentials not configured")
+        # Log configuration status
+        if self._jwt_secret:
+            logger.info("[AUTH:SUPABASE] JWT secret configured - token validation enabled")
+        else:
+            logger.warning("[AUTH:SUPABASE] No JWT secret! Set UI_JWT_SECRET env var.")
+
+        if self._supabase_url and self._service_key:
+            logger.info("[AUTH:SUPABASE] Supabase client credentials configured")
+        else:
+            logger.info("[AUTH:SUPABASE] No Supabase client credentials - using token-only mode")
 
     def _get_client(self):
         """Get or create Supabase client."""
@@ -76,13 +93,22 @@ class SupabaseAuthProvider(AuthProvider):
         return "supabase"
 
     async def verify_token(self, token: str) -> AuthResult:
-        """Verify JWT token using Supabase."""
+        """
+        Verify JWT token and extract user data from claims.
+
+        This is a stateless verification - no API calls to Supabase needed.
+        User data is extracted directly from the JWT claims.
+        """
         try:
             import jwt
 
             if not self._jwt_secret:
-                # Fallback: validate via Supabase API
-                return await self._verify_token_via_api(token)
+                logger.error("[AUTH:SUPABASE] Cannot verify token - no JWT secret configured")
+                return AuthResult(
+                    success=False,
+                    status=AuthStatus.INVALID,
+                    error="JWT secret not configured"
+                )
 
             # Decode and validate JWT
             try:
@@ -93,43 +119,46 @@ class SupabaseAuthProvider(AuthProvider):
                     audience="authenticated",
                 )
             except jwt.ExpiredSignatureError:
+                logger.debug("[AUTH:SUPABASE] Token expired")
                 return AuthResult(
                     success=False,
                     status=AuthStatus.EXPIRED,
                     error="Token has expired"
                 )
             except jwt.InvalidTokenError as e:
+                logger.warning(f"[AUTH:SUPABASE] Invalid token: {e}")
                 return AuthResult(
                     success=False,
                     status=AuthStatus.INVALID,
                     error=f"Invalid token: {e}"
                 )
 
-            # Extract user info from token
+            # Extract user info from token claims
             user_id = payload.get("sub")
             email = payload.get("email", "")
+            user_metadata = payload.get("user_metadata", {})
 
             if not user_id:
+                logger.warning("[AUTH:SUPABASE] Token missing user ID (sub)")
                 return AuthResult(
                     success=False,
                     status=AuthStatus.INVALID,
                     error="Token missing user ID (sub)"
                 )
 
-            # Get full user data from Supabase
-            user = await self.get_user_by_id(user_id)
-            if not user:
-                # Create user object from token data
-                user = AuthUser(
-                    id=user_id,
-                    email=email,
-                    name=payload.get("user_metadata", {}).get("name"),
-                    supabase_id=user_id,
-                    metadata=payload.get("user_metadata", {}),
-                )
+            # Build user object from token data (no API call needed)
+            user = AuthUser(
+                id=user_id,
+                email=email,
+                name=user_metadata.get("name") or user_metadata.get("full_name"),
+                avatar_url=user_metadata.get("avatar_url"),
+                is_active=True,
+                supabase_id=user_id,
+                metadata=user_metadata,
+                access_token=token,
+            )
 
-            user.access_token = token
-
+            logger.debug(f"[AUTH:SUPABASE] Token verified for user: {email}")
             return AuthResult(
                 success=True,
                 user=user,
