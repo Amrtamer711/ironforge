@@ -38,6 +38,9 @@ const Auth = {
     console.log('[Auth] SUPABASE_URL:', window.SUPABASE_URL ? 'configured' : 'not set');
     console.log('[Auth] SUPABASE_ANON_KEY:', window.SUPABASE_ANON_KEY ? 'configured' : 'not set');
 
+    // Check for auth errors in URL hash (e.g., expired email links)
+    this.handleAuthHashError();
+
     // Initialize Supabase client if configured
     if (window.SUPABASE_URL && window.SUPABASE_ANON_KEY && typeof supabase !== 'undefined') {
       console.log('[Auth] Creating Supabase client...');
@@ -213,12 +216,18 @@ const Auth = {
     console.log('[Auth] Signup successful for:', email);
 
     // Step 3: Mark token as used NOW that signup succeeded
+    // Also pass user_id so backend can create user in users table with correct profile
     console.log('[Auth] Consuming invite token...');
     try {
       const consumeResponse = await fetch('/api/base/auth/consume-invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, email })
+        body: JSON.stringify({
+          token,
+          email,
+          user_id: data.user?.id,  // Pass the Supabase Auth user ID
+          name: name               // Pass the user's name
+        })
       });
 
       if (!consumeResponse.ok) {
@@ -351,6 +360,43 @@ const Auth = {
 
   getUser() {
     return this.user;
+  },
+
+  handleAuthHashError() {
+    // Check URL hash for auth errors from Supabase redirects
+    const hash = window.location.hash;
+    if (!hash || !hash.includes('error=')) return;
+
+    // Parse hash parameters
+    const params = new URLSearchParams(hash.substring(1));
+    const error = params.get('error');
+    const errorCode = params.get('error_code');
+    const errorDescription = params.get('error_description');
+
+    if (error) {
+      console.error('[Auth] Auth error in URL:', { error, errorCode, errorDescription });
+
+      // Clear the hash from URL to prevent showing error again on refresh
+      history.replaceState(null, '', window.location.pathname);
+
+      // Map error codes to user-friendly messages
+      let userMessage = errorDescription ? decodeURIComponent(errorDescription.replace(/\+/g, ' ')) : 'Authentication failed';
+
+      if (errorCode === 'otp_expired') {
+        userMessage = 'Email link has expired. Please sign up again to receive a new confirmation email.';
+      } else if (errorCode === 'access_denied') {
+        userMessage = 'Access denied. The link may have expired or already been used.';
+      }
+
+      // Show error after a short delay to ensure Toast is initialized
+      setTimeout(() => {
+        if (window.Toast) {
+          Toast.error(userMessage);
+        } else {
+          alert(userMessage);
+        }
+      }, 500);
+    }
   }
 };
 

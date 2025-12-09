@@ -477,15 +477,15 @@ app.post('/api/base/auth/validate-invite', rateLimiter(5), async (req, res) => {
 });
 
 // Consume invite token (called AFTER successful Supabase signup)
-// This marks the token as used so it can't be reused
+// This marks the token as used AND creates the user in the users table with correct profile
 app.post('/api/base/auth/consume-invite', rateLimiter(5), async (req, res) => {
-  const { token, email } = req.body;
+  const { token, email, user_id, name } = req.body;
 
   if (!token || !email) {
     return res.status(400).json({ error: 'Missing token or email' });
   }
 
-  console.log(`[UI] Consuming invite token for email: ${email}`);
+  console.log(`[UI] Consuming invite token for email: ${email}, user_id: ${user_id || 'not provided'}`);
 
   try {
     const now = new Date();
@@ -519,6 +519,41 @@ app.post('/api/base/auth/consume-invite', rateLimiter(5), async (req, res) => {
     if (updateError) {
       console.error('[UI] Failed to mark token as used:', updateError);
       return res.status(500).json({ error: 'Failed to consume token' });
+    }
+
+    // If user_id is provided, create user in users table with correct profile
+    if (user_id) {
+      // Get the profile ID for the invite's profile_name
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('name', tokenRecord.profile_name)
+        .single();
+
+      if (profileError || !profile) {
+        console.error(`[UI] Profile not found: ${tokenRecord.profile_name}`, profileError);
+        // Don't fail the whole request - token is consumed, user can be fixed later
+      } else {
+        // Create or update user in users table
+        const { error: userError } = await supabase
+          .from('users')
+          .upsert({
+            id: user_id,
+            email: email.toLowerCase(),
+            name: name || email.split('@')[0],
+            profile_id: profile.id,
+            created_at: now.toISOString(),
+          }, { onConflict: 'id' });
+
+        if (userError) {
+          console.error('[UI] Failed to create user in users table:', userError);
+          // Don't fail - token is consumed, but log the error
+        } else {
+          console.log(`[UI] Created user ${email} with profile ${tokenRecord.profile_name}`);
+        }
+      }
+    } else {
+      console.warn(`[UI] No user_id provided for ${email} - user will need manual profile assignment`);
     }
 
     console.log(`[UI] Invite token consumed for ${email}`);
