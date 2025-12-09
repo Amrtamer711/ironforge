@@ -43,9 +43,15 @@ def _get_backend() -> DatabaseBackend:
         DatabaseBackend instance based on DB_BACKEND environment variable.
     """
     if DB_BACKEND == "supabase":
-        # Check if credentials are available before trying to import
-        supabase_url = os.getenv("SUPABASE_URL", "")
-        supabase_key = os.getenv("SUPABASE_SERVICE_KEY", "")
+        # Check if credentials are available using app_settings (handles dev/prod env vars)
+        try:
+            from app_settings import settings
+            supabase_url = settings.active_supabase_url or ""
+            supabase_key = settings.active_supabase_service_key or ""
+        except ImportError:
+            # Fallback to direct env vars (legacy)
+            supabase_url = os.getenv("SUPABASE_URL", "") or os.getenv("SALESBOT_DEV_SUPABASE_URL", "")
+            supabase_key = os.getenv("SUPABASE_SERVICE_KEY", "") or os.getenv("SALESBOT_DEV_SUPABASE_SERVICE_ROLE_KEY", "")
 
         if not supabase_url or not supabase_key:
             logger.warning("[DB] Supabase credentials not set, falling back to SQLite")
