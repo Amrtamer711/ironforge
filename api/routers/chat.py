@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from api.auth import get_current_user, require_auth
+from api.auth import require_auth
 from integrations.auth import AuthUser
 from integrations.rbac import get_rbac_client
 from utils.logging import get_logger
@@ -38,20 +38,13 @@ class ChatMessageResponse(BaseModel):
 
 async def _get_user_profile(user: AuthUser) -> List[str]:
     """Get profile name for a user from RBAC."""
-    import traceback
     try:
-        logger.info(f"[CHAT] _get_user_profile called for {user.email}")
         rbac = get_rbac_client()
-        logger.info(f"[CHAT] Got RBAC client: {rbac.provider_name}")
         profile = await rbac.get_user_profile(user.id)
-        logger.info(f"[CHAT] Got profile: {profile}")
         profile_name = profile.name if profile else user.metadata.get("role", "sales_user")
-        logger.info(f"[CHAT] Profile name for {user.email}: {profile_name}")
-        # Return as list for backwards compatibility with chat system
         return [profile_name]
     except Exception as e:
-        logger.error(f"[CHAT] Failed to get profile for {user.email}: {e}")
-        logger.error(traceback.format_exc())
+        logger.warning(f"[CHAT] Failed to get profile for {user.email}: {e}")
         return [user.metadata.get("role", "sales_user")]
 
 
@@ -80,7 +73,7 @@ async def chat_message(
             roles=roles
         )
 
-        logger.info(f"[CHAT] Response generated for {user.email}, has_content={bool(result.get('content'))}")
+        logger.info(f"[CHAT] Response generated for {user.email}")
         return ChatMessageResponse(
             content=result.get("content"),
             tool_call=result.get("tool_call"),
@@ -108,44 +101,22 @@ async def chat_stream(
     Returns real-time chunks as the LLM generates the response.
     Requires authentication.
     """
-    import traceback
+    logger.info(f"[CHAT] Stream from {user.email}: {request.message[:50]}...")
 
-    logger.info(f"[CHAT] === STREAM ENDPOINT HIT ===")
-    logger.info(f"[CHAT] User: {user.email}, ID: {user.id}")
-    logger.info(f"[CHAT] Message: {request.message[:100]}...")
+    from core.chat_api import stream_chat_message
 
-    try:
-        from core.chat_api import stream_chat_message
-        logger.info(f"[CHAT] Imported stream_chat_message successfully")
-    except Exception as e:
-        logger.error(f"[CHAT] Failed to import stream_chat_message: {e}")
-        logger.error(traceback.format_exc())
-        raise
-
-    try:
-        logger.info(f"[CHAT] Getting user profile...")
-        roles = await _get_user_profile(user)
-        logger.info(f"[CHAT] Roles: {roles}")
-    except Exception as e:
-        logger.error(f"[CHAT] Failed to get user profile: {e}")
-        logger.error(traceback.format_exc())
-        raise
+    roles = await _get_user_profile(user)
 
     async def event_generator():
         try:
-            logger.info(f"[CHAT] Starting stream_chat_message...")
-            chunk_count = 0
             async for chunk in stream_chat_message(
                 user_id=user.id,
                 user_name=user.name or user.email,
                 message=request.message,
                 roles=roles
             ):
-                chunk_count += 1
-                if chunk_count <= 3:
-                    logger.info(f"[CHAT] Chunk {chunk_count}: {chunk[:100]}...")
                 yield chunk
-            logger.info(f"[CHAT] Stream completed for {user.email}, {chunk_count} chunks sent")
+            logger.info(f"[CHAT] Stream completed for {user.email}")
         except Exception as e:
             logger.error(f"[CHAT] Stream error for {user.email}: {e}", exc_info=True)
             yield f"data: {{\"error\": \"{str(e)}\"}}\n\n"
@@ -164,30 +135,22 @@ async def chat_stream(
 @router.get("/conversations")
 async def get_conversations(user: AuthUser = Depends(require_auth)):
     """Get conversation history for the authenticated user."""
-    logger.info(f"[CHAT] Get conversations for {user.email}")
-
     from core.chat_api import get_conversation_history
 
     history = get_conversation_history(user.id)
-    logger.debug(f"[CHAT] Found {len(history)} messages for {user.email}")
     return {"conversations": [{"id": user.id, "messages": history}]}
 
 
 @router.post("/conversation")
 async def create_conversation(user: AuthUser = Depends(require_auth)):
     """Create a new conversation (clears existing history)."""
-    logger.info(f"[CHAT] Creating new conversation for {user.email}")
-
     from core.chat_api import clear_conversation, get_web_adapter
 
-    # Clear existing conversation
     clear_conversation(user.id)
 
-    # Create new session
     web_adapter = get_web_adapter()
     session = web_adapter.create_session(user.id, user.name or user.email)
 
-    logger.info(f"[CHAT] New conversation created for {user.email}: {session.conversation_id}")
     return {
         "conversation_id": session.conversation_id,
         "user_id": user.id
@@ -200,10 +163,7 @@ async def delete_conversation(
     user: AuthUser = Depends(require_auth),
 ):
     """Delete a conversation for the authenticated user."""
-    logger.info(f"[CHAT] Deleting conversation {conversation_id} for {user.email}")
-
     from core.chat_api import clear_conversation
 
     clear_conversation(user.id)
-    logger.info(f"[CHAT] Conversation deleted for {user.email}")
     return {"success": True, "conversation_id": conversation_id}

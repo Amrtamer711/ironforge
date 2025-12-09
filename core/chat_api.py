@@ -179,6 +179,7 @@ async def process_chat_message(
             messages=llm_messages,
             tools=all_tools,
             tool_choice="auto",
+            store=True,  # Store in OpenAI for debugging
             cache_key="web-chat",
             cache_retention="24h",
             call_type="main_llm",
@@ -302,53 +303,17 @@ async def stream_chat_message(
     Stream a chat response using Server-Sent Events format.
 
     Yields SSE-formatted strings that can be sent directly to the client.
-    Sends heartbeats every 5 seconds to keep connection alive during LLM processing.
     """
-    logger.info(f"[WebChat] stream_chat_message called for user={user_id}, message={message[:50]}...")
-
-    # CRITICAL: Send initial heartbeat immediately to establish connection
-    # This prevents proxy timeout before the LLM even starts
-    yield ": connection established\n\n"
-    logger.info(f"[WebChat] Connection established, starting LLM processing...")
-
-    collected_response = []
-
-    async def collect_chunk(chunk: str):
-        collected_response.append(chunk)
+    logger.info(f"[WebChat] stream_chat_message called for user={user_id}")
 
     try:
-        logger.info(f"[WebChat] Creating process_chat_message task...")
-
-        # Create task for LLM processing
-        process_task = asyncio.create_task(
-            process_chat_message(
-                user_id=user_id,
-                user_name=user_name,
-                message=message,
-                roles=roles,
-                files=files,
-                stream_callback=collect_chunk
-            )
+        result = await process_chat_message(
+            user_id=user_id,
+            user_name=user_name,
+            message=message,
+            roles=roles,
+            files=files,
         )
-        logger.info(f"[WebChat] Task created, entering heartbeat loop...")
-
-        # Send heartbeats while waiting for LLM response
-        heartbeat_count = 0
-        while not process_task.done():
-            # Send SSE comment as heartbeat (keeps connection alive)
-            yield ": heartbeat\n\n"
-            heartbeat_count += 1
-            if heartbeat_count <= 5:
-                logger.info(f"[WebChat] Sent heartbeat {heartbeat_count}")
-            try:
-                # Wait up to 3 seconds for task to complete (faster heartbeats)
-                await asyncio.wait_for(asyncio.shield(process_task), timeout=3.0)
-            except asyncio.TimeoutError:
-                # Task not done yet, continue sending heartbeats
-                pass
-
-        # Get result
-        result = await process_task
         logger.info(f"[WebChat] process_chat_message returned: error={result.get('error')}, has_content={bool(result.get('content'))}")
 
         if result.get("error"):
