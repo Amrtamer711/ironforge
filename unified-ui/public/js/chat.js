@@ -209,8 +209,8 @@ const Chat = {
 
     console.log('[Chat] Stream request - User:', userId, 'Roles:', roles);
 
-    // Use streaming endpoint
-    const url = `${API.baseUrl}/api/chat/stream`;
+    // Use streaming endpoint (via /api/sales proxy)
+    const url = `${API.baseUrl}/api/sales/chat/stream`;
     const token = localStorage.getItem('authToken');
     console.log('[Chat] Streaming to:', url, 'Token:', token ? 'present' : 'missing');
 
