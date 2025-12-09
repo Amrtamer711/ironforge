@@ -1100,6 +1100,196 @@ Production observability.
 
 ---
 
+## Architecture Design Problems (Dec 9, 2024)
+
+> **CRITICAL:** These issues need to be addressed for clean service separation.
+> The goal: unified-ui = frontend + auth, proposal-bot = sales module only.
+
+### Current Architecture (PROBLEMATIC)
+
+```
+UNIFIED-UI (Node.js - Port 3005)
+├── Serves static frontend files
+├── Proxies /api/sales/* → proposal-bot
+├── Validates JWT tokens ← DUPLICATE (also done in backend!)
+├── Handles /api/base/auth/session
+└── Serves Supabase config to frontend
+
+PROPOSAL-BOT (FastAPI - Port 8000)
+├── All business logic (proposals, mockups, BOs)
+├── Auth routes (login, logout, me, sync) ← SHOULD BE IN UI?
+├── Invite token routes ← WRONG LOCATION (auth concern)
+├── Admin/RBAC routes
+└── Validates JWT tokens ← DUPLICATE
+```
+
+**Two Supabase Projects:**
+- **UI Supabase**: Auth, RBAC, invite_tokens, profiles, permissions
+- **SalesBot Supabase**: Business data (proposals, BOs, mockups, ai_costs)
+
+---
+
+### PROBLEM 1: Duplicate Auth Validation - FIXED ✅
+
+**Locations:**
+- `unified-ui/server.js:74-104` - Was calling `supabase.auth.getUser(token)`
+- `api/auth.py:82-112` - Calls `auth.verify_token(token)`
+
+**Why it was bad:**
+- Double validation per request (performance overhead)
+- Inconsistent error handling between layers
+- Token might expire between proxy and backend
+- Hard to maintain two validation paths
+
+**Fix:** ✅ Removed validation from unified-ui proxy. It now only forwards Authorization headers to backend.
+
+---
+
+### PROBLEM 2: Invite Tokens in Wrong Service - FIXED ✅
+
+**Location:** Was in `api/routers/auth_routes.py:146-421`, now in `unified-ui/server.js`
+
+Invite tokens are for user signup (auth concern) but they were in proposal-bot (sales concern).
+
+**Old flow:**
+```
+Admin Panel → /api/sales/auth/invites → unified-ui proxy → proposal-bot → UI Supabase
+```
+
+**New flow (implemented Option B):**
+```
+Admin Panel → /api/base/auth/invites → unified-ui → UI Supabase (direct)
+```
+
+**Fix:** ✅ Moved invite endpoints to unified-ui:
+- POST /api/base/auth/invites (create)
+- GET /api/base/auth/invites (list)
+- DELETE /api/base/auth/invites/:id (revoke)
+- POST /api/base/auth/validate-invite (public, rate-limited)
+
+---
+
+### PROBLEM 3: Auth Routes Mixed with Business Logic
+
+**Location:** `api/routers/auth_routes.py`
+
+This file contains:
+1. Auth operations (login, logout, me, sync) - Auth concern
+2. Invite token operations (create, list, revoke, validate) - Auth concern
+
+Both are auth concerns but they're in the sales backend!
+
+**Fix:** Either:
+- Move all auth endpoints to unified-ui, OR
+- Accept that proposal-bot handles auth for the whole system (rename to "backend" not "sales module")
+
+---
+
+### PROBLEM 4: No Rate Limiting on Auth Endpoints - FIXED ✅
+
+**Vulnerable endpoints:** (now rate-limited in unified-ui)
+- `POST /api/base/auth/validate-invite` - 5 requests/minute (prevents brute-force)
+- `POST /api/base/auth/invites` - 20 requests/minute
+- `GET /api/base/auth/invites` - 30 requests/minute
+- `DELETE /api/base/auth/invites/:id` - 20 requests/minute
+
+**Fix:** ✅ Added in-memory rate limiting middleware to unified-ui/server.js with automatic cleanup.
+
+---
+
+### PROBLEM 5: Public Invite Validation Leaks Information - FIXED ✅
+
+**Location:** Was in `api/routers/auth_routes.py:340-408`, now in `unified-ui/server.js`
+
+`POST /api/auth/validate-invite` was returning specific error messages:
+- "Token not found" vs "Token expired" vs "Token revoked" vs "Email doesn't match"
+
+This allowed attackers to enumerate valid tokens and learn token state.
+
+**Fix:** ✅ All failure cases now return generic "Invalid or expired invite token" error.
+
+---
+
+### PROBLEM 6: Confusing Supabase Naming
+
+**Current:**
+```
+UI_DEV_SUPABASE_*       # Name suggests "UI only" but backend uses it too
+SALESBOT_DEV_SUPABASE_* # Name suggests "bot only" but it's core business data
+```
+
+**Better:**
+```
+AUTH_DEV_SUPABASE_*     # For authentication/RBAC (used by both UI and backend)
+BUSINESS_DEV_SUPABASE_* # For proposals/booking orders/mockups
+```
+
+---
+
+### RECOMMENDED ARCHITECTURE
+
+**Option A: Keep Current Split (Quick Fix)**
+```
+UNIFIED-UI (Node.js)
+├── Static files
+├── Supabase config delivery
+├── Session check (forward to backend)
+└── Proxy /api/sales/* → proposal-bot
+
+PROPOSAL-BOT (FastAPI) - Renamed to just "backend"
+├── ALL auth endpoints (login, logout, invites, RBAC)
+├── ALL business endpoints (proposals, mockups, BOs)
+├── Validates JWT (single source of truth)
+└── Connects to BOTH Supabase projects
+
+Required: Add UI_DEV_SUPABASE_* env vars to proposal-bot
+```
+
+**Option B: Clean Service Split (More Work)**
+```
+UNIFIED-UI (Node.js) - Auth + Frontend
+├── Static files
+├── /api/base/auth/* (login, logout, session, invites)
+├── Direct connection to UI Supabase (auth only)
+└── Proxy /api/sales/* → proposal-bot (no auth header validation)
+
+PROPOSAL-BOT (FastAPI) - Sales Module Only
+├── Business logic only (proposals, mockups, BOs)
+├── Validates JWT using UI_JWT_SECRET
+├── Connects to SalesBot Supabase only
+└── NO auth endpoints
+
+Benefits:
+- Clear separation of concerns
+- unified-ui owns all auth
+- proposal-bot is purely sales module
+- No cross-service database access
+```
+
+---
+
+### ACTION ITEMS
+
+**Immediate (to unblock current work):**
+- [x] Add UI Supabase env vars to proposal-bot render.yaml
+- [ ] Add UI Supabase env vars to proposal-bot on Render dashboard
+- [ ] Test invite token creation from admin panel
+
+**Short-term (security) - COMPLETED:**
+- [x] Add rate limiting to auth endpoints (unified-ui/server.js)
+- [x] Make invite validation errors generic (unified-ui/server.js)
+- [x] Remove duplicate auth validation from unified-ui proxy
+
+**Architecture Decision - IMPLEMENTED Option B (Clean Service Split):**
+- [x] Moved invite token endpoints to unified-ui (/api/base/auth/invites)
+- [x] unified-ui now handles auth/RBAC concerns directly
+- [x] proposal-bot is purely sales module (AI chat, mockups, proposals)
+- [x] Updated admin.js to use /api/base/* for invites
+- [x] Updated auth.js to use /api/base/auth/validate-invite
+- [ ] (Optional) Move remaining auth endpoints (login/logout/me) to unified-ui
+
+---
+
 ## Progress Log
 
 > **How to add entries:**

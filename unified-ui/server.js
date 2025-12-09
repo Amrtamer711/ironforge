@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const crypto = require('crypto');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const { createClient } = require('@supabase/supabase-js');
 
@@ -17,11 +18,10 @@ const IS_PRODUCTION = ENVIRONMENT === 'production';
 console.log(`[UI] Environment: ${ENVIRONMENT} (production: ${IS_PRODUCTION})`);
 
 // =============================================================================
-// UI SUPABASE CONFIGURATION (Auth only - completely separate from Sales Bot)
-// UI has its own Supabase project for authentication
+// UI SUPABASE CONFIGURATION (Auth/RBAC - unified-ui owns authentication)
 // =============================================================================
 
-// Get credentials based on environment (UI's own Supabase project)
+// Get credentials based on environment
 const supabaseUrl = IS_PRODUCTION
   ? (process.env.UI_PROD_SUPABASE_URL || process.env.SUPABASE_URL)
   : (process.env.UI_DEV_SUPABASE_URL || process.env.SUPABASE_URL);
@@ -39,18 +39,58 @@ if (!supabaseUrl || !supabaseServiceKey) {
   console.warn('Set UI_DEV_SUPABASE_URL and UI_DEV_SUPABASE_SERVICE_ROLE_KEY (or UI_PROD_* for production)');
 }
 
-// Service role client for server-side auth validation
+// Service role client for server-side operations
 const supabase = supabaseUrl && supabaseServiceKey
   ? createClient(supabaseUrl, supabaseServiceKey)
   : null;
 
 // =============================================================================
 // SERVICE REGISTRY
-// All business data routes go to Sales Bot
+// Sales module routes go to proposal-bot
 // =============================================================================
 const SERVICES = {
   sales: process.env.SALES_BOT_URL || 'http://localhost:8000',
 };
+
+// =============================================================================
+// RATE LIMITING (Simple in-memory rate limiter)
+// =============================================================================
+const rateLimitStore = new Map();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10; // max requests per window for auth endpoints
+
+function rateLimiter(maxRequests = RATE_LIMIT_MAX_REQUESTS) {
+  return (req, res, next) => {
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const key = `${ip}:${req.path}`;
+    const now = Date.now();
+
+    let record = rateLimitStore.get(key);
+    if (!record || now - record.windowStart > RATE_LIMIT_WINDOW_MS) {
+      record = { windowStart: now, count: 0 };
+    }
+
+    record.count++;
+    rateLimitStore.set(key, record);
+
+    if (record.count > maxRequests) {
+      console.warn(`[Rate Limit] Blocked ${ip} on ${req.path}`);
+      return res.status(429).json({ error: 'Too many requests, please try again later' });
+    }
+
+    next();
+  };
+}
+
+// Clean up rate limit store periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, record] of rateLimitStore.entries()) {
+    if (now - record.windowStart > RATE_LIMIT_WINDOW_MS * 2) {
+      rateLimitStore.delete(key);
+    }
+  }
+}, RATE_LIMIT_WINDOW_MS);
 
 // Middleware
 app.use(cors());
@@ -68,19 +108,15 @@ app.use((req, res, next) => {
 });
 
 // =============================================================================
-// SUPABASE AUTH MIDDLEWARE
-// Verifies JWT tokens from Supabase Auth
+// AUTH MIDDLEWARE - Validates JWT and attaches user to request
 // =============================================================================
 async function requireAuth(req, res, next) {
-  console.log('[UI Auth] Checking authentication...');
   if (!supabase) {
-    console.error('[UI Auth] Supabase not configured');
     return res.status(500).json({ error: 'Supabase not configured' });
   }
 
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.warn('[UI Auth] No bearer token provided');
     return res.status(401).json({ error: 'Unauthorized', requiresAuth: true });
   }
 
@@ -90,25 +126,61 @@ async function requireAuth(req, res, next) {
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
     if (error || !user) {
-      console.warn('[UI Auth] Invalid token:', error?.message);
       return res.status(401).json({ error: 'Invalid token', requiresAuth: true });
     }
 
-    console.log('[UI Auth] Authenticated user:', user.email);
     req.user = user;
     next();
   } catch (err) {
-    console.error('[UI Auth] Auth error:', err.message);
+    console.error('[UI Auth] Error:', err.message);
     return res.status(401).json({ error: 'Authentication failed', requiresAuth: true });
   }
+}
+
+// =============================================================================
+// PROFILE CHECK MIDDLEWARE - Checks if user has required profile
+// =============================================================================
+function requireProfile(...allowedProfiles) {
+  return async (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    try {
+      // Get user's profile from users table
+      const { data: userData, error } = await supabase
+        .from('users')
+        .select('profile_id, profiles(name)')
+        .eq('id', req.user.id)
+        .single();
+
+      if (error || !userData?.profiles?.name) {
+        console.warn(`[UI Auth] User ${req.user.email} has no profile assigned`);
+        return res.status(403).json({ error: 'No profile assigned' });
+      }
+
+      const userProfile = userData.profiles.name;
+
+      if (!allowedProfiles.includes(userProfile)) {
+        console.warn(`[UI Auth] User ${req.user.email} with profile ${userProfile} denied access (requires: ${allowedProfiles.join(', ')})`);
+        return res.status(403).json({ error: 'Insufficient permissions' });
+      }
+
+      req.userProfile = userProfile;
+      next();
+    } catch (err) {
+      console.error('[UI Auth] Profile check error:', err.message);
+      return res.status(500).json({ error: 'Failed to check permissions' });
+    }
+  };
 }
 
 app.use(express.static('public'));
 
 // =============================================================================
-// SERVICE PROXY - Forward ALL /api/sales/* to Sales Bot
-// This includes: chat, mockup, templates, proposals, bo, etc.
-// IMPORTANT: Forwards Authorization header for backend auth validation
+// SERVICE PROXY - Forward /api/sales/* to Sales Bot (proposal-bot)
+// Sales module only: chat, mockup, templates, proposals, bo, etc.
+// NO auth validation here - just forward headers, let backend handle auth
 // =============================================================================
 app.use('/api/sales', createProxyMiddleware({
   target: SERVICES.sales,
@@ -117,29 +189,14 @@ app.use('/api/sales', createProxyMiddleware({
     '^/api/sales': '/api', // /api/sales/chat -> /api/chat
   },
   on: {
-    proxyReq: async (proxyReq, req, res) => {
-      // Forward Authorization header to backend
+    proxyReq: (proxyReq, req, res) => {
+      // Forward Authorization header to backend (backend validates)
       const authHeader = req.headers.authorization;
       if (authHeader) {
         proxyReq.setHeader('Authorization', authHeader);
-
-        // Add X-Request-User-ID for tracing (extract from token if possible)
-        if (supabase && authHeader.startsWith('Bearer ')) {
-          try {
-            const token = authHeader.substring(7);
-            const { data: { user } } = await supabase.auth.getUser(token);
-            if (user) {
-              proxyReq.setHeader('X-Request-User-ID', user.id);
-              proxyReq.setHeader('X-Request-User-Email', user.email || '');
-            }
-          } catch (err) {
-            // Token validation failed, still forward to let backend handle
-            console.warn('Could not extract user from token:', err.message);
-          }
-        }
       }
 
-      // Forward other useful headers
+      // Forward IP for logging/rate limiting
       if (req.headers['x-forwarded-for']) {
         proxyReq.setHeader('X-Forwarded-For', req.headers['x-forwarded-for']);
       } else if (req.socket.remoteAddress) {
@@ -183,6 +240,251 @@ app.get('/', (req, res) => {
 // AUTH ENDPOINTS - Using Supabase Auth
 // Note: Most auth is handled client-side with Supabase JS SDK
 // These endpoints are for server-side validation
+// =============================================================================
+
+// =============================================================================
+// INVITE TOKEN ENDPOINTS
+// Invite tokens are stored in UI Supabase (auth/RBAC database)
+// =============================================================================
+
+// Create invite token (requires system_admin)
+app.post('/api/base/auth/invites', rateLimiter(20), requireAuth, requireProfile('system_admin'), async (req, res) => {
+  console.log('[UI] Create invite request');
+
+  const { email, profile_name = 'sales_user', expires_in_days = 7 } = req.body;
+
+  if (!email || email.length < 5) {
+    return res.status(400).json({ error: 'Valid email is required' });
+  }
+
+  if (expires_in_days < 1 || expires_in_days > 30) {
+    return res.status(400).json({ error: 'Expiry must be between 1 and 30 days' });
+  }
+
+  // Validate profile exists
+  const validProfiles = ['system_admin', 'sales_manager', 'sales_user', 'coordinator', 'finance', 'viewer'];
+  if (!validProfiles.includes(profile_name)) {
+    return res.status(400).json({ error: `Invalid profile: ${profile_name}` });
+  }
+
+  try {
+    const now = new Date();
+
+    // Check if email already has a pending invite
+    const { data: existing } = await supabase
+      .from('invite_tokens')
+      .select('*')
+      .eq('email', email.toLowerCase())
+      .is('used_at', null)
+      .eq('is_revoked', false)
+      .gt('expires_at', now.toISOString());
+
+    if (existing && existing.length > 0) {
+      return res.status(409).json({ error: `A pending invite already exists for ${email}` });
+    }
+
+    // Generate secure token
+    const token = crypto.randomBytes(32).toString('base64url');
+
+    // Calculate expiry
+    const expiresAt = new Date(now.getTime() + expires_in_days * 24 * 60 * 60 * 1000);
+
+    // Store in UI Supabase
+    const { error: insertError } = await supabase
+      .from('invite_tokens')
+      .insert({
+        token,
+        email: email.toLowerCase(),
+        profile_name,
+        created_by: req.user.id,
+        created_at: now.toISOString(),
+        expires_at: expiresAt.toISOString(),
+      });
+
+    if (insertError) {
+      console.error('[UI] Failed to create invite:', insertError);
+      return res.status(500).json({ error: 'Failed to create invite' });
+    }
+
+    console.log(`[UI] Invite token created for ${email} with profile ${profile_name} by ${req.user.email}`);
+
+    res.status(201).json({
+      token,
+      email: email.toLowerCase(),
+      profile_name,
+      expires_at: expiresAt.toISOString(),
+      message: `Invite token created. Share this token with ${email} to allow them to sign up.`,
+    });
+  } catch (err) {
+    console.error('[UI] Error creating invite:', err);
+    res.status(500).json({ error: 'Failed to create invite' });
+  }
+});
+
+// List invite tokens (requires system_admin)
+app.get('/api/base/auth/invites', rateLimiter(30), requireAuth, requireProfile('system_admin'), async (req, res) => {
+  console.log('[UI] List invites request');
+
+  const includeUsed = req.query.include_used === 'true';
+
+  try {
+    let query = supabase
+      .from('invite_tokens')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!includeUsed) {
+      query = query.is('used_at', null).eq('is_revoked', false);
+    }
+
+    const { data: tokens, error } = await query;
+
+    if (error) {
+      console.error('[UI] Failed to list invites:', error);
+      return res.status(500).json({ error: 'Failed to list invites' });
+    }
+
+    const result = (tokens || []).map(t => ({
+      id: t.id,
+      email: t.email,
+      profile_name: t.profile_name,
+      token: t.token,
+      created_by: t.created_by,
+      created_at: t.created_at,
+      expires_at: t.expires_at,
+      is_used: t.used_at !== null,
+      is_revoked: !!t.is_revoked,
+    }));
+
+    res.json(result);
+  } catch (err) {
+    console.error('[UI] Error listing invites:', err);
+    res.status(500).json({ error: 'Failed to list invites' });
+  }
+});
+
+// Revoke invite token (requires system_admin)
+app.delete('/api/base/auth/invites/:tokenId', rateLimiter(20), requireAuth, requireProfile('system_admin'), async (req, res) => {
+  const tokenId = parseInt(req.params.tokenId);
+  console.log(`[UI] Revoke invite request for ID: ${tokenId}`);
+
+  if (isNaN(tokenId)) {
+    return res.status(400).json({ error: 'Invalid token ID' });
+  }
+
+  try {
+    // Check token exists
+    const { data: existing, error: fetchError } = await supabase
+      .from('invite_tokens')
+      .select('*')
+      .eq('id', tokenId);
+
+    if (fetchError || !existing || existing.length === 0) {
+      return res.status(404).json({ error: `Invite token ${tokenId} not found` });
+    }
+
+    // Revoke it
+    const { error: updateError } = await supabase
+      .from('invite_tokens')
+      .update({ is_revoked: true })
+      .eq('id', tokenId);
+
+    if (updateError) {
+      console.error('[UI] Failed to revoke invite:', updateError);
+      return res.status(500).json({ error: 'Failed to revoke invite' });
+    }
+
+    console.log(`[UI] Invite token ${tokenId} revoked by ${req.user.email}`);
+    res.status(204).send();
+  } catch (err) {
+    console.error('[UI] Error revoking invite:', err);
+    res.status(500).json({ error: 'Failed to revoke invite' });
+  }
+});
+
+// Validate invite token (PUBLIC - for signup flow)
+// Rate limited heavily to prevent brute force
+app.post('/api/base/auth/validate-invite', rateLimiter(5), async (req, res) => {
+  const { token, email } = req.body;
+
+  if (!token || !email) {
+    // Generic error for security
+    return res.status(400).json({ error: 'Invalid or expired invite token' });
+  }
+
+  console.log(`[UI] Validating invite token for email: ${email}`);
+
+  try {
+    // Find the token
+    const { data: tokens, error: fetchError } = await supabase
+      .from('invite_tokens')
+      .select('*')
+      .eq('token', token);
+
+    if (fetchError || !tokens || tokens.length === 0) {
+      console.warn(`[UI] Invalid invite token attempted for: ${email}`);
+      // Generic error - don't reveal if token exists
+      return res.status(400).json({ error: 'Invalid or expired invite token' });
+    }
+
+    const tokenRecord = tokens[0];
+
+    // Check if already used
+    if (tokenRecord.used_at) {
+      console.warn(`[UI] Token already used for: ${email}`);
+      // Generic error
+      return res.status(400).json({ error: 'Invalid or expired invite token' });
+    }
+
+    // Check if revoked
+    if (tokenRecord.is_revoked) {
+      console.warn(`[UI] Token revoked for: ${email}`);
+      // Generic error
+      return res.status(400).json({ error: 'Invalid or expired invite token' });
+    }
+
+    // Check expiry
+    const now = new Date();
+    const expiresAt = new Date(tokenRecord.expires_at);
+    if (now > expiresAt) {
+      console.warn(`[UI] Token expired for: ${email}, expired at: ${expiresAt}`);
+      // Generic error
+      return res.status(400).json({ error: 'Invalid or expired invite token' });
+    }
+
+    // Check email matches
+    if (email.toLowerCase() !== tokenRecord.email.toLowerCase()) {
+      console.warn(`[UI] Email mismatch: requested ${email}, token for ${tokenRecord.email}`);
+      // Generic error
+      return res.status(400).json({ error: 'Invalid or expired invite token' });
+    }
+
+    // Mark token as used
+    const { error: updateError } = await supabase
+      .from('invite_tokens')
+      .update({ used_at: now.toISOString() })
+      .eq('id', tokenRecord.id);
+
+    if (updateError) {
+      console.error('[UI] Failed to mark token as used:', updateError);
+    }
+
+    console.log(`[UI] Invite token validated successfully for ${email} with profile ${tokenRecord.profile_name}`);
+
+    res.json({
+      valid: true,
+      email: tokenRecord.email,
+      profile_name: tokenRecord.profile_name,
+    });
+  } catch (err) {
+    console.error('[UI] Error validating invite:', err);
+    // Generic error
+    res.status(400).json({ error: 'Invalid or expired invite token' });
+  }
+});
+
+// =============================================================================
+// SESSION ENDPOINT
 // =============================================================================
 
 // Verify session endpoint (for checking if user is authenticated)

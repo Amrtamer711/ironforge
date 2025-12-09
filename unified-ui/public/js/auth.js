@@ -173,10 +173,10 @@ const Auth = {
       throw new Error('Supabase not configured');
     }
 
-    // Step 1: Validate the invite token with the backend (via /api/sales proxy)
+    // Step 1: Validate the invite token with unified-ui backend (handles auth/RBAC)
     console.log('[Auth] Validating invite token with backend...');
 
-    const validateResponse = await fetch('/api/sales/auth/validate-invite', {
+    const validateResponse = await fetch('/api/base/auth/validate-invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, email })
@@ -184,12 +184,12 @@ const Auth = {
 
     if (!validateResponse.ok) {
       const errorData = await validateResponse.json();
-      console.error('[Auth] Token validation failed:', errorData.detail || 'Unknown error');
-      throw new Error(errorData.detail || 'Invalid or expired invite token');
+      console.error('[Auth] Token validation failed:', errorData.error || 'Unknown error');
+      throw new Error(errorData.error || 'Invalid or expired invite token');
     }
 
     const tokenData = await validateResponse.json();
-    console.log('[Auth] Token validated, role:', tokenData.role_name);
+    console.log('[Auth] Token validated, profile:', tokenData.profile_name);
 
     // Step 2: Create the user in Supabase Auth
     console.log('[Auth] Creating Supabase user...');
@@ -199,7 +199,7 @@ const Auth = {
       options: {
         data: {
           name: name,
-          roles: [tokenData.role_name || 'user']
+          profile: tokenData.profile_name || 'sales_user'
         }
       }
     });

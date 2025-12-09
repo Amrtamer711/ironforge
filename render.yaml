@@ -64,6 +64,16 @@ services:
       # UI JWT Secret (for validating tokens from UI Supabase)
       - key: UI_JWT_SECRET
         sync: false
+      # UI Supabase (DEV) - for invite tokens (stored in UI database)
+      - key: UI_DEV_SUPABASE_URL
+        sync: false
+      - key: UI_DEV_SUPABASE_SERVICE_KEY
+        sync: false
+      # UI Supabase (PROD) - for invite tokens
+      - key: UI_PROD_SUPABASE_URL
+        sync: false
+      - key: UI_PROD_SUPABASE_SERVICE_KEY
+        sync: false
     disk:
       name: proposal-bot-data
       mountPath: /data

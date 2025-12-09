@@ -96,14 +96,14 @@ const AdminAPI = {
     return response;
   },
 
-  // Invite Tokens
+  // Invite Tokens (handled by unified-ui, not sales module)
   async getInvites(includeUsed = false) {
-    const response = await API.fetch(`/api/sales/auth/invites?include_used=${includeUsed}`);
+    const response = await API.fetch(`/api/base/auth/invites?include_used=${includeUsed}`);
     return response;
   },
 
   async createInvite(inviteData) {
-    const response = await API.fetch('/api/sales/auth/invites', {
+    const response = await API.fetch('/api/base/auth/invites', {
       method: 'POST',
       body: JSON.stringify(inviteData),
     });
@@ -111,7 +111,7 @@ const AdminAPI = {
   },
 
   async revokeInvite(tokenId) {
-    await API.fetch(`/api/sales/auth/invites/${tokenId}`, {
+    await API.fetch(`/api/base/auth/invites/${tokenId}`, {
       method: 'DELETE',
     });
   },
