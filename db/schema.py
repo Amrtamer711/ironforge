@@ -4,8 +4,12 @@ Unified Database Schema Definition
 This is the SINGLE SOURCE OF TRUTH for all database tables.
 Both SQLite and Supabase backends read from this file.
 
+ARCHITECTURE:
+- UI Supabase: Core/Auth tables (users, roles, permissions, modules, invite_tokens, etc.)
+- Sales Bot Supabase: Business data tables (proposals, mockups, booking_orders, ai_costs)
+
 To add a new table or modify schema:
-1. Update the TABLES dictionary below
+1. Update the appropriate TABLES dictionary below (CORE_TABLES or SALES_TABLES)
 2. Run: python -m db.schema --generate sqlite   (for SQLite SQL)
 3. Run: python -m db.schema --generate postgres (for Supabase/PostgreSQL SQL)
 4. Apply migrations as needed
@@ -59,31 +63,25 @@ class Table:
 
 
 # =============================================================================
-# SCHEMA DEFINITIONS - Edit these to change the database structure
+# CORE/AUTH TABLES - For UI Supabase (authentication, authorization, modules)
 # =============================================================================
 
-TABLES: Dict[str, Table] = {
-    # =========================================================================
-    # AUTHENTICATION & AUTHORIZATION TABLES
-    # =========================================================================
-
+CORE_TABLES: Dict[str, Table] = {
     # -------------------------------------------------------------------------
     # USERS - Synced with Supabase Auth (auth.users)
-    # For SQLite: standalone user table
-    # For Supabase: references auth.users via trigger
     # -------------------------------------------------------------------------
     "users": Table(
         name="users",
         columns=[
-            Column("id", ColumnType.TEXT, primary_key=True),  # UUID from Supabase Auth or generated
+            Column("id", ColumnType.TEXT, primary_key=True),  # UUID from Supabase Auth
             Column("email", ColumnType.TEXT, nullable=False, unique=True),
             Column("name", ColumnType.TEXT),
             Column("avatar_url", ColumnType.TEXT),
-            Column("is_active", ColumnType.INTEGER, nullable=False, default=1),  # Boolean as int
+            Column("is_active", ColumnType.INTEGER, nullable=False, default=1),
             Column("created_at", ColumnType.TEXT, nullable=False),
             Column("updated_at", ColumnType.TEXT, nullable=False),
             Column("last_login_at", ColumnType.TEXT),
-            Column("metadata_json", ColumnType.TEXT),  # Additional user metadata
+            Column("metadata_json", ColumnType.TEXT),
         ],
         indexes=[
             Index("idx_users_email", ["email"]),
@@ -99,12 +97,15 @@ TABLES: Dict[str, Table] = {
         columns=[
             Column("id", ColumnType.INTEGER, primary_key=True),
             Column("name", ColumnType.TEXT, nullable=False, unique=True),
+            Column("display_name", ColumnType.TEXT),
             Column("description", ColumnType.TEXT),
-            Column("is_system", ColumnType.INTEGER, nullable=False, default=0),  # System roles can't be deleted
+            Column("module", ColumnType.TEXT),  # NULL = system-wide, 'sales' = module-specific
+            Column("is_system", ColumnType.INTEGER, nullable=False, default=0),
             Column("created_at", ColumnType.TEXT, nullable=False),
         ],
         indexes=[
             Index("idx_roles_name", ["name"]),
+            Index("idx_roles_module", ["module"]),
         ],
     ),
 
@@ -115,11 +116,11 @@ TABLES: Dict[str, Table] = {
         name="user_roles",
         columns=[
             Column("id", ColumnType.INTEGER, primary_key=True),
-            Column("user_id", ColumnType.TEXT, nullable=False),  # FK to users.id
-            Column("role_id", ColumnType.INTEGER, nullable=False),  # FK to roles.id
-            Column("granted_by", ColumnType.TEXT),  # User who granted this role
+            Column("user_id", ColumnType.TEXT, nullable=False),
+            Column("role_id", ColumnType.INTEGER, nullable=False),
+            Column("granted_by", ColumnType.TEXT),
             Column("granted_at", ColumnType.TEXT, nullable=False),
-            Column("expires_at", ColumnType.TEXT),  # Optional expiration
+            Column("expires_at", ColumnType.TEXT),
         ],
         indexes=[
             Index("idx_user_roles_user", ["user_id"]),
@@ -135,17 +136,19 @@ TABLES: Dict[str, Table] = {
         name="permissions",
         columns=[
             Column("id", ColumnType.INTEGER, primary_key=True),
-            Column("name", ColumnType.TEXT, nullable=False, unique=True),
+            Column("name", ColumnType.TEXT, nullable=False, unique=True),  # e.g., 'sales:proposals:create'
             Column("description", ColumnType.TEXT),
-            Column("resource", ColumnType.TEXT, nullable=False),  # e.g., 'proposals', 'booking_orders', 'mockups'
-            Column("action", ColumnType.TEXT, nullable=False),  # e.g., 'create', 'read', 'update', 'delete', 'manage'
+            Column("module", ColumnType.TEXT, nullable=False),  # 'core', 'sales', etc.
+            Column("resource", ColumnType.TEXT, nullable=False),  # 'proposals', 'users', etc.
+            Column("action", ColumnType.TEXT, nullable=False),  # 'create', 'read', 'update', 'delete', 'manage'
             Column("created_at", ColumnType.TEXT, nullable=False),
         ],
         indexes=[
             Index("idx_permissions_name", ["name"]),
+            Index("idx_permissions_module", ["module"]),
             Index("idx_permissions_resource", ["resource"]),
         ],
-        unique_constraints=[["resource", "action"]],
+        unique_constraints=[["module", "resource", "action"]],
     ),
 
     # -------------------------------------------------------------------------
@@ -155,8 +158,8 @@ TABLES: Dict[str, Table] = {
         name="role_permissions",
         columns=[
             Column("id", ColumnType.INTEGER, primary_key=True),
-            Column("role_id", ColumnType.INTEGER, nullable=False),  # FK to roles.id
-            Column("permission_id", ColumnType.INTEGER, nullable=False),  # FK to permissions.id
+            Column("role_id", ColumnType.INTEGER, nullable=False),
+            Column("permission_id", ColumnType.INTEGER, nullable=False),
             Column("granted_at", ColumnType.TEXT, nullable=False),
         ],
         indexes=[
@@ -167,43 +170,21 @@ TABLES: Dict[str, Table] = {
     ),
 
     # -------------------------------------------------------------------------
-    # INVITE_TOKENS - For user signup invitations
-    # -------------------------------------------------------------------------
-    "invite_tokens": Table(
-        name="invite_tokens",
-        columns=[
-            Column("id", ColumnType.INTEGER, primary_key=True),
-            Column("token", ColumnType.TEXT, nullable=False, unique=True),
-            Column("email", ColumnType.TEXT, nullable=False),
-            Column("role_id", ColumnType.INTEGER, nullable=False),  # FK to roles.id
-            Column("created_by", ColumnType.TEXT, nullable=False),  # FK to users.id
-            Column("created_at", ColumnType.TEXT, nullable=False),
-            Column("expires_at", ColumnType.TEXT, nullable=False),
-            Column("used_at", ColumnType.TEXT),  # NULL until used
-            Column("is_revoked", ColumnType.INTEGER, nullable=False, default=0),
-        ],
-        indexes=[
-            Index("idx_invite_tokens_token", ["token"]),
-            Index("idx_invite_tokens_email", ["email"]),
-        ],
-    ),
-
-    # -------------------------------------------------------------------------
     # MODULES - Define available application modules
     # -------------------------------------------------------------------------
     "modules": Table(
         name="modules",
         columns=[
             Column("id", ColumnType.INTEGER, primary_key=True),
-            Column("name", ColumnType.TEXT, nullable=False, unique=True),  # e.g., 'sales', 'crm', 'analytics'
-            Column("display_name", ColumnType.TEXT, nullable=False),  # e.g., 'Sales Bot'
+            Column("name", ColumnType.TEXT, nullable=False, unique=True),  # 'sales', 'crm', 'analytics'
+            Column("display_name", ColumnType.TEXT, nullable=False),
             Column("description", ColumnType.TEXT),
-            Column("icon", ColumnType.TEXT),  # Icon identifier for frontend
-            Column("is_active", ColumnType.INTEGER, nullable=False, default=1),  # Whether module is enabled
-            Column("is_default", ColumnType.INTEGER, nullable=False, default=0),  # Default landing module
-            Column("sort_order", ColumnType.INTEGER, nullable=False, default=0),  # Display order
-            Column("required_permission", ColumnType.TEXT),  # Permission needed to access (e.g., 'sales:*:read')
-            Column("config_json", ColumnType.TEXT),  # Module-specific configuration
+            Column("icon", ColumnType.TEXT),
+            Column("is_active", ColumnType.INTEGER, nullable=False, default=1),
+            Column("is_default", ColumnType.INTEGER, nullable=False, default=0),
+            Column("sort_order", ColumnType.INTEGER, nullable=False, default=0),
+            Column("required_permission", ColumnType.TEXT),  # e.g., 'sales:*:read'
+            Column("config_json", ColumnType.TEXT),
             Column("created_at", ColumnType.TEXT, nullable=False),
         ],
         indexes=[
@@ -219,10 +200,10 @@ TABLES: Dict[str, Table] = {
         name="user_modules",
         columns=[
             Column("id", ColumnType.INTEGER, primary_key=True),
-            Column("user_id", ColumnType.TEXT, nullable=False),  # FK to users.id
-            Column("module_id", ColumnType.INTEGER, nullable=False),  # FK to modules.id
-            Column("is_default", ColumnType.INTEGER, nullable=False, default=0),  # User's default module
-            Column("granted_by", ColumnType.TEXT),  # User who granted access
+            Column("user_id", ColumnType.TEXT, nullable=False),
+            Column("module_id", ColumnType.INTEGER, nullable=False),
+            Column("is_default", ColumnType.INTEGER, nullable=False, default=0),
+            Column("granted_by", ColumnType.TEXT),
             Column("granted_at", ColumnType.TEXT, nullable=False),
         ],
         indexes=[
@@ -233,6 +214,30 @@ TABLES: Dict[str, Table] = {
     ),
 
     # -------------------------------------------------------------------------
+    # INVITE_TOKENS - For user signup invitations
+    # -------------------------------------------------------------------------
+    "invite_tokens": Table(
+        name="invite_tokens",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("token", ColumnType.TEXT, nullable=False, unique=True),
+            Column("email", ColumnType.TEXT, nullable=False),
+            Column("role_id", ColumnType.INTEGER, nullable=False),
+            Column("created_by", ColumnType.TEXT, nullable=False),
+            Column("created_at", ColumnType.TEXT, nullable=False),
+            Column("expires_at", ColumnType.TEXT, nullable=False),
+            Column("used_at", ColumnType.TEXT),
+            Column("used_by_user_id", ColumnType.TEXT),
+            Column("is_revoked", ColumnType.INTEGER, nullable=False, default=0),
+        ],
+        indexes=[
+            Index("idx_invite_tokens_token", ["token"]),
+            Index("idx_invite_tokens_email", ["email"]),
+            Index("idx_invite_tokens_expires", ["expires_at"]),
+        ],
+    ),
+
+    # -------------------------------------------------------------------------
     # AUDIT_LOG - Track important actions for security
     # -------------------------------------------------------------------------
     "audit_log": Table(
@@ -240,11 +245,11 @@ TABLES: Dict[str, Table] = {
         columns=[
             Column("id", ColumnType.INTEGER, primary_key=True),
             Column("timestamp", ColumnType.TEXT, nullable=False),
-            Column("user_id", ColumnType.TEXT),  # FK to users.id (nullable for system actions)
-            Column("action", ColumnType.TEXT, nullable=False),  # e.g., 'login', 'logout', 'create', 'update', 'delete'
-            Column("resource_type", ColumnType.TEXT),  # e.g., 'user', 'role', 'proposal', 'booking_order'
-            Column("resource_id", ColumnType.TEXT),  # ID of the affected resource
-            Column("details_json", ColumnType.TEXT),  # Additional context (old/new values, etc.)
+            Column("user_id", ColumnType.TEXT),
+            Column("action", ColumnType.TEXT, nullable=False),
+            Column("resource_type", ColumnType.TEXT),
+            Column("resource_id", ColumnType.TEXT),
+            Column("details_json", ColumnType.TEXT),
             Column("ip_address", ColumnType.TEXT),
             Column("user_agent", ColumnType.TEXT),
         ],
@@ -256,61 +261,123 @@ TABLES: Dict[str, Table] = {
         ],
     ),
 
-    # =========================================================================
-    # BUSINESS DATA TABLES
-    # =========================================================================
+    # -------------------------------------------------------------------------
+    # API_KEYS - For programmatic API access
+    # -------------------------------------------------------------------------
+    "api_keys": Table(
+        name="api_keys",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("key_hash", ColumnType.TEXT, nullable=False, unique=True),
+            Column("key_prefix", ColumnType.TEXT, nullable=False),
+            Column("name", ColumnType.TEXT, nullable=False),
+            Column("description", ColumnType.TEXT),
+            Column("scopes_json", ColumnType.TEXT, nullable=False),
+            Column("rate_limit", ColumnType.INTEGER),
+            Column("is_active", ColumnType.INTEGER, nullable=False, default=1),
+            Column("created_at", ColumnType.TEXT, nullable=False),
+            Column("created_by", ColumnType.TEXT),
+            Column("expires_at", ColumnType.TEXT),
+            Column("last_used_at", ColumnType.TEXT),
+            Column("last_rotated_at", ColumnType.TEXT),
+            Column("metadata_json", ColumnType.TEXT),
+        ],
+        indexes=[
+            Index("idx_api_keys_hash", ["key_hash"]),
+            Index("idx_api_keys_name", ["name"]),
+            Index("idx_api_keys_active", ["is_active"]),
+            Index("idx_api_keys_created_by", ["created_by"]),
+        ],
+    ),
 
     # -------------------------------------------------------------------------
-    # PROPOSALS LOG
+    # API_KEY_USAGE - Audit trail for API key usage
+    # -------------------------------------------------------------------------
+    "api_key_usage": Table(
+        name="api_key_usage",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("api_key_id", ColumnType.INTEGER, nullable=False),
+            Column("timestamp", ColumnType.TEXT, nullable=False),
+            Column("endpoint", ColumnType.TEXT, nullable=False),
+            Column("method", ColumnType.TEXT, nullable=False),
+            Column("status_code", ColumnType.INTEGER),
+            Column("ip_address", ColumnType.TEXT),
+            Column("user_agent", ColumnType.TEXT),
+            Column("response_time_ms", ColumnType.INTEGER),
+            Column("request_size", ColumnType.INTEGER),
+            Column("response_size", ColumnType.INTEGER),
+        ],
+        indexes=[
+            Index("idx_api_key_usage_key", ["api_key_id"]),
+            Index("idx_api_key_usage_timestamp", ["timestamp"]),
+            Index("idx_api_key_usage_endpoint", ["endpoint"]),
+        ],
+    ),
+}
+
+
+# =============================================================================
+# SALES MODULE TABLES - For Sales Bot Supabase (business data)
+# =============================================================================
+
+SALES_TABLES: Dict[str, Table] = {
+    # -------------------------------------------------------------------------
+    # PROPOSALS_LOG
     # -------------------------------------------------------------------------
     "proposals_log": Table(
         name="proposals_log",
         columns=[
             Column("id", ColumnType.INTEGER, primary_key=True),
-            Column("user_id", ColumnType.TEXT),  # FK to users.id (owner)
-            Column("submitted_by", ColumnType.TEXT, nullable=False),  # Display name
+            Column("user_id", ColumnType.TEXT),
+            Column("submitted_by", ColumnType.TEXT, nullable=False),
             Column("client_name", ColumnType.TEXT, nullable=False),
             Column("date_generated", ColumnType.TEXT, nullable=False),
             Column("package_type", ColumnType.TEXT, nullable=False),
             Column("locations", ColumnType.TEXT, nullable=False),
             Column("total_amount", ColumnType.TEXT, nullable=False),
+            Column("proposal_data", ColumnType.TEXT),  # JSON
+            Column("created_at", ColumnType.TEXT),
         ],
         indexes=[
             Index("idx_proposals_user", ["user_id"]),
+            Index("idx_proposals_client", ["client_name"]),
+            Index("idx_proposals_date", ["date_generated"]),
         ],
     ),
 
     # -------------------------------------------------------------------------
-    # MOCKUP FRAMES
+    # MOCKUP_FRAMES
     # -------------------------------------------------------------------------
     "mockup_frames": Table(
         name="mockup_frames",
         columns=[
             Column("id", ColumnType.INTEGER, primary_key=True),
-            Column("user_id", ColumnType.TEXT),  # FK to users.id (owner)
+            Column("user_id", ColumnType.TEXT),
             Column("location_key", ColumnType.TEXT, nullable=False),
             Column("time_of_day", ColumnType.TEXT, nullable=False, default="day"),
             Column("finish", ColumnType.TEXT, nullable=False, default="gold"),
             Column("photo_filename", ColumnType.TEXT, nullable=False),
-            Column("frames_data", ColumnType.TEXT, nullable=False),  # JSON stored as text
+            Column("frames_data", ColumnType.TEXT, nullable=False),
             Column("created_at", ColumnType.TEXT, nullable=False),
-            Column("created_by", ColumnType.TEXT),  # Display name (kept for backwards compat)
+            Column("created_by", ColumnType.TEXT),
             Column("config_json", ColumnType.TEXT),
         ],
         indexes=[
             Index("idx_mockup_frames_user", ["user_id"]),
+            Index("idx_mockup_frames_location", ["location_key"]),
         ],
         unique_constraints=[["location_key", "time_of_day", "finish", "photo_filename"]],
     ),
 
     # -------------------------------------------------------------------------
-    # MOCKUP USAGE ANALYTICS
+    # MOCKUP_USAGE
     # -------------------------------------------------------------------------
     "mockup_usage": Table(
         name="mockup_usage",
         columns=[
             Column("id", ColumnType.INTEGER, primary_key=True),
-            Column("user_id", ColumnType.TEXT),  # FK to users.id
+            Column("user_id", ColumnType.TEXT),
             Column("generated_at", ColumnType.TEXT, nullable=False),
             Column("location_key", ColumnType.TEXT, nullable=False),
             Column("time_of_day", ColumnType.TEXT, nullable=False),
@@ -322,20 +389,23 @@ TABLES: Dict[str, Table] = {
             Column("template_selected", ColumnType.INTEGER, nullable=False, default=0),
             Column("success", ColumnType.INTEGER, nullable=False, default=1),
             Column("user_ip", ColumnType.TEXT),
+            Column("metadata_json", ColumnType.TEXT),
         ],
         indexes=[
             Index("idx_mockup_usage_user", ["user_id"]),
+            Index("idx_mockup_usage_date", ["generated_at"]),
+            Index("idx_mockup_usage_location", ["location_key"]),
         ],
     ),
 
     # -------------------------------------------------------------------------
-    # BOOKING ORDERS
+    # BOOKING_ORDERS
     # -------------------------------------------------------------------------
     "booking_orders": Table(
         name="booking_orders",
         columns=[
             Column("id", ColumnType.INTEGER, primary_key=True),
-            Column("user_id", ColumnType.TEXT),  # FK to users.id (owner/submitter)
+            Column("user_id", ColumnType.TEXT),
             Column("bo_ref", ColumnType.TEXT, nullable=False, unique=True),
             Column("company", ColumnType.TEXT, nullable=False),
             Column("original_file_path", ColumnType.TEXT, nullable=False),
@@ -380,81 +450,31 @@ TABLES: Dict[str, Table] = {
             Index("idx_booking_orders_company", ["company"]),
             Index("idx_booking_orders_client", ["client"]),
             Index("idx_booking_orders_parsed_at", ["parsed_at"]),
+            Index("idx_booking_orders_sales_person", ["sales_person"]),
         ],
     ),
 
     # -------------------------------------------------------------------------
-    # BO APPROVAL WORKFLOWS
+    # BO_APPROVAL_WORKFLOWS
     # -------------------------------------------------------------------------
     "bo_approval_workflows": Table(
         name="bo_approval_workflows",
         columns=[
             Column("workflow_id", ColumnType.TEXT, primary_key=True),
             Column("workflow_data", ColumnType.TEXT, nullable=False),
+            Column("status", ColumnType.TEXT, nullable=False, default="pending",
+                   check="status IN ('pending', 'approved', 'rejected', 'cancelled')"),
             Column("created_at", ColumnType.TEXT, nullable=False),
             Column("updated_at", ColumnType.TEXT, nullable=False),
         ],
         indexes=[
+            Index("idx_bo_workflows_status", ["status"]),
             Index("idx_bo_workflows_updated", ["updated_at"]),
         ],
     ),
 
     # -------------------------------------------------------------------------
-    # API KEYS - For programmatic API access
-    # -------------------------------------------------------------------------
-    "api_keys": Table(
-        name="api_keys",
-        columns=[
-            Column("id", ColumnType.INTEGER, primary_key=True),
-            Column("key_hash", ColumnType.TEXT, nullable=False, unique=True),  # SHA256 hash of the key
-            Column("key_prefix", ColumnType.TEXT, nullable=False),  # First 8 chars for identification
-            Column("name", ColumnType.TEXT, nullable=False),  # Client/app name
-            Column("description", ColumnType.TEXT),
-            Column("scopes_json", ColumnType.TEXT, nullable=False),  # JSON array of scopes
-            Column("rate_limit", ColumnType.INTEGER),  # Requests per minute (null = unlimited)
-            Column("is_active", ColumnType.INTEGER, nullable=False, default=1),
-            Column("created_at", ColumnType.TEXT, nullable=False),
-            Column("created_by", ColumnType.TEXT),  # FK to users.id
-            Column("expires_at", ColumnType.TEXT),  # Optional expiration
-            Column("last_used_at", ColumnType.TEXT),
-            Column("last_rotated_at", ColumnType.TEXT),  # For key rotation tracking
-            Column("metadata_json", ColumnType.TEXT),  # Additional metadata
-        ],
-        indexes=[
-            Index("idx_api_keys_hash", ["key_hash"]),
-            Index("idx_api_keys_name", ["name"]),
-            Index("idx_api_keys_active", ["is_active"]),
-            Index("idx_api_keys_created_by", ["created_by"]),
-        ],
-    ),
-
-    # -------------------------------------------------------------------------
-    # API KEY USAGE LOG - Audit trail for API key usage
-    # -------------------------------------------------------------------------
-    "api_key_usage": Table(
-        name="api_key_usage",
-        columns=[
-            Column("id", ColumnType.INTEGER, primary_key=True),
-            Column("api_key_id", ColumnType.INTEGER, nullable=False),  # FK to api_keys.id
-            Column("timestamp", ColumnType.TEXT, nullable=False),
-            Column("endpoint", ColumnType.TEXT, nullable=False),
-            Column("method", ColumnType.TEXT, nullable=False),
-            Column("status_code", ColumnType.INTEGER),
-            Column("ip_address", ColumnType.TEXT),
-            Column("user_agent", ColumnType.TEXT),
-            Column("response_time_ms", ColumnType.INTEGER),
-            Column("request_size", ColumnType.INTEGER),
-            Column("response_size", ColumnType.INTEGER),
-        ],
-        indexes=[
-            Index("idx_api_key_usage_key", ["api_key_id"]),
-            Index("idx_api_key_usage_timestamp", ["timestamp"]),
-            Index("idx_api_key_usage_endpoint", ["endpoint"]),
-        ],
-    ),
-
-    # -------------------------------------------------------------------------
-    # AI COSTS TRACKING
+    # AI_COSTS
     # -------------------------------------------------------------------------
     "ai_costs": Table(
         name="ai_costs",
@@ -484,9 +504,17 @@ TABLES: Dict[str, Table] = {
             Index("idx_ai_costs_call_type", ["call_type"]),
             Index("idx_ai_costs_user", ["user_id"]),
             Index("idx_ai_costs_workflow", ["workflow"]),
+            Index("idx_ai_costs_model", ["model"]),
         ],
     ),
 }
+
+
+# =============================================================================
+# COMBINED TABLES (for backwards compatibility with existing code)
+# =============================================================================
+
+TABLES: Dict[str, Table] = {**CORE_TABLES, **SALES_TABLES}
 
 
 # =============================================================================
@@ -502,14 +530,26 @@ class SQLGenerator:
     def generate_create_index(self, table_name: str, index: Index) -> str:
         raise NotImplementedError
 
-    def generate_full_schema(self) -> str:
-        """Generate complete schema SQL."""
+    def generate_schema(self, tables: Dict[str, Table]) -> str:
+        """Generate schema SQL for given tables."""
         statements = []
-        for table in TABLES.values():
+        for table in tables.values():
             statements.append(self.generate_create_table(table))
             for index in table.indexes:
                 statements.append(self.generate_create_index(table.name, index))
         return "\n\n".join(statements)
+
+    def generate_full_schema(self) -> str:
+        """Generate complete schema SQL (all tables)."""
+        return self.generate_schema(TABLES)
+
+    def generate_core_schema(self) -> str:
+        """Generate schema SQL for core/auth tables only."""
+        return self.generate_schema(CORE_TABLES)
+
+    def generate_sales_schema(self) -> str:
+        """Generate schema SQL for sales tables only."""
+        return self.generate_schema(SALES_TABLES)
 
 
 class SQLiteGenerator(SQLGenerator):
@@ -645,9 +685,39 @@ def get_postgres_schema() -> str:
     return PostgresGenerator().generate_full_schema()
 
 
+def get_core_sqlite_schema() -> str:
+    """Get SQLite schema for core/auth tables only."""
+    return SQLiteGenerator().generate_core_schema()
+
+
+def get_core_postgres_schema() -> str:
+    """Get PostgreSQL schema for core/auth tables only."""
+    return PostgresGenerator().generate_core_schema()
+
+
+def get_sales_sqlite_schema() -> str:
+    """Get SQLite schema for sales tables only."""
+    return SQLiteGenerator().generate_sales_schema()
+
+
+def get_sales_postgres_schema() -> str:
+    """Get PostgreSQL schema for sales tables only."""
+    return PostgresGenerator().generate_sales_schema()
+
+
 def get_table_names() -> List[str]:
     """Get list of all table names."""
     return list(TABLES.keys())
+
+
+def get_core_table_names() -> List[str]:
+    """Get list of core/auth table names."""
+    return list(CORE_TABLES.keys())
+
+
+def get_sales_table_names() -> List[str]:
+    """Get list of sales table names."""
+    return list(SALES_TABLES.keys())
 
 
 def get_table(name: str) -> Optional[Table]:
@@ -670,6 +740,12 @@ if __name__ == "__main__":
         help="Which SQL dialect to generate"
     )
     parser.add_argument(
+        "--tables", "-t",
+        choices=["all", "core", "sales"],
+        default="all",
+        help="Which tables to generate (all, core/auth only, or sales only)"
+    )
+    parser.add_argument(
         "--output", "-o",
         help="Output file (default: stdout)"
     )
@@ -678,20 +754,34 @@ if __name__ == "__main__":
 
     output_lines = []
 
+    # Determine which generator methods to use
+    if args.tables == "core":
+        sqlite_fn = get_core_sqlite_schema
+        postgres_fn = get_core_postgres_schema
+        label = "Core/Auth"
+    elif args.tables == "sales":
+        sqlite_fn = get_sales_sqlite_schema
+        postgres_fn = get_sales_postgres_schema
+        label = "Sales"
+    else:
+        sqlite_fn = get_sqlite_schema
+        postgres_fn = get_postgres_schema
+        label = "All"
+
     if args.generate in ("sqlite", "both"):
-        output_lines.append("-- ===========================================")
-        output_lines.append("-- SQLite Schema")
-        output_lines.append("-- ===========================================")
+        output_lines.append(f"-- ===========================================")
+        output_lines.append(f"-- SQLite Schema ({label} Tables)")
+        output_lines.append(f"-- ===========================================")
         output_lines.append("")
-        output_lines.append(get_sqlite_schema())
+        output_lines.append(sqlite_fn())
         output_lines.append("")
 
     if args.generate in ("postgres", "both"):
-        output_lines.append("-- ===========================================")
-        output_lines.append("-- PostgreSQL/Supabase Schema")
-        output_lines.append("-- ===========================================")
+        output_lines.append(f"-- ===========================================")
+        output_lines.append(f"-- PostgreSQL/Supabase Schema ({label} Tables)")
+        output_lines.append(f"-- ===========================================")
         output_lines.append("")
-        output_lines.append(get_postgres_schema())
+        output_lines.append(postgres_fn())
         output_lines.append("")
 
     output = "\n".join(output_lines)
