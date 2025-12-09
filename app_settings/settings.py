@@ -125,14 +125,26 @@ class Settings(BaseSettings):
     # UI SUPABASE (Auth/RBAC - separate from Sales Bot data)
     # =========================================================================
 
-    ui_supabase_url: Optional[str] = Field(
+    # Development
+    ui_dev_supabase_url: Optional[str] = Field(
         default=None,
-        description="UI Supabase project URL (for auth/RBAC)",
+        description="UI DEV Supabase project URL (for auth/RBAC)",
     )
-    ui_supabase_service_key: Optional[str] = Field(
+    ui_dev_supabase_service_key: Optional[str] = Field(
         default=None,
-        description="UI Supabase service role key",
+        description="UI DEV Supabase service role key",
     )
+
+    # Production
+    ui_prod_supabase_url: Optional[str] = Field(
+        default=None,
+        description="UI PROD Supabase project URL (for auth/RBAC)",
+    )
+    ui_prod_supabase_service_key: Optional[str] = Field(
+        default=None,
+        description="UI PROD Supabase service role key",
+    )
+
     ui_jwt_secret: Optional[str] = Field(
         default=None,
         description="JWT secret from UI's Supabase project (for cross-service auth)",
@@ -434,6 +446,24 @@ class Settings(BaseSettings):
             return self.salesbot_prod_supabase_service_role_key or self.supabase_service_key
         elif self.environment == "development":
             return self.salesbot_dev_supabase_service_role_key or self.supabase_service_key
+        return None
+
+    @property
+    def active_ui_supabase_url(self) -> Optional[str]:
+        """Get the active UI Supabase URL based on ENVIRONMENT setting."""
+        if self.environment == "production":
+            return self.ui_prod_supabase_url
+        elif self.environment == "development":
+            return self.ui_dev_supabase_url
+        return None
+
+    @property
+    def active_ui_supabase_service_key(self) -> Optional[str]:
+        """Get the active UI Supabase service role key based on ENVIRONMENT setting."""
+        if self.environment == "production":
+            return self.ui_prod_supabase_service_key
+        elif self.environment == "development":
+            return self.ui_dev_supabase_service_key
         return None
 
     # =========================================================================

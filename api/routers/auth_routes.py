@@ -31,17 +31,20 @@ def get_ui_supabase():
         return _ui_supabase_client
 
     from app_settings import settings
-    if not settings.ui_supabase_url or not settings.ui_supabase_service_key:
+
+    # Use environment-aware UI Supabase credentials (dev/prod)
+    url = settings.active_ui_supabase_url
+    key = settings.active_ui_supabase_service_key
+
+    if not url or not key:
         logger.warning("[AUTH] UI Supabase not configured, invite tokens won't work")
         return None
 
     try:
         from supabase import create_client
-        _ui_supabase_client = create_client(
-            settings.ui_supabase_url,
-            settings.ui_supabase_service_key
-        )
-        logger.info("[AUTH] UI Supabase client initialized")
+        _ui_supabase_client = create_client(url, key)
+        env_name = "PROD" if settings.is_production else "DEV"
+        logger.info(f"[AUTH] UI Supabase client initialized ({env_name})")
         return _ui_supabase_client
     except Exception as e:
         logger.error(f"[AUTH] Failed to create UI Supabase client: {e}")
