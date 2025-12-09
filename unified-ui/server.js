@@ -459,15 +459,8 @@ app.post('/api/base/auth/validate-invite', rateLimiter(5), async (req, res) => {
       return res.status(400).json({ error: 'Invalid or expired invite token' });
     }
 
-    // Mark token as used
-    const { error: updateError } = await supabase
-      .from('invite_tokens')
-      .update({ used_at: now.toISOString() })
-      .eq('id', tokenRecord.id);
-
-    if (updateError) {
-      console.error('[UI] Failed to mark token as used:', updateError);
-    }
+    // NOTE: Don't mark token as used yet - wait until signup actually succeeds
+    // The /api/base/auth/consume-invite endpoint will mark it as used
 
     console.log(`[UI] Invite token validated successfully for ${email} with profile ${tokenRecord.profile_name}`);
 
@@ -480,6 +473,59 @@ app.post('/api/base/auth/validate-invite', rateLimiter(5), async (req, res) => {
     console.error('[UI] Error validating invite:', err);
     // Generic error
     res.status(400).json({ error: 'Invalid or expired invite token' });
+  }
+});
+
+// Consume invite token (called AFTER successful Supabase signup)
+// This marks the token as used so it can't be reused
+app.post('/api/base/auth/consume-invite', rateLimiter(5), async (req, res) => {
+  const { token, email } = req.body;
+
+  if (!token || !email) {
+    return res.status(400).json({ error: 'Missing token or email' });
+  }
+
+  console.log(`[UI] Consuming invite token for email: ${email}`);
+
+  try {
+    const now = new Date();
+
+    // Find the token
+    const { data: tokens, error: fetchError } = await supabase
+      .from('invite_tokens')
+      .select('*')
+      .eq('token', token)
+      .eq('email', email.toLowerCase());
+
+    if (fetchError || !tokens || tokens.length === 0) {
+      console.warn(`[UI] Token not found for consume: ${email}`);
+      return res.status(400).json({ error: 'Token not found' });
+    }
+
+    const tokenRecord = tokens[0];
+
+    // If already used, that's fine - just return success
+    if (tokenRecord.used_at) {
+      console.log(`[UI] Token already consumed for: ${email}`);
+      return res.json({ success: true, already_used: true });
+    }
+
+    // Mark token as used
+    const { error: updateError } = await supabase
+      .from('invite_tokens')
+      .update({ used_at: now.toISOString() })
+      .eq('id', tokenRecord.id);
+
+    if (updateError) {
+      console.error('[UI] Failed to mark token as used:', updateError);
+      return res.status(500).json({ error: 'Failed to consume token' });
+    }
+
+    console.log(`[UI] Invite token consumed for ${email}`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[UI] Error consuming invite:', err);
+    res.status(500).json({ error: 'Failed to consume token' });
   }
 });
 

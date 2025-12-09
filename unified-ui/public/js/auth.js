@@ -174,6 +174,7 @@ const Auth = {
     }
 
     // Step 1: Validate the invite token with unified-ui backend (handles auth/RBAC)
+    // NOTE: This does NOT mark the token as used - only validates it
     console.log('[Auth] Validating invite token with backend...');
 
     const validateResponse = await fetch('/api/base/auth/validate-invite', {
@@ -210,8 +211,26 @@ const Auth = {
     }
 
     console.log('[Auth] Signup successful for:', email);
-    // Step 3: Mark token as used (backend will handle this on first API call with user sync)
-    // The token will be consumed when the user makes their first authenticated request
+
+    // Step 3: Mark token as used NOW that signup succeeded
+    console.log('[Auth] Consuming invite token...');
+    try {
+      const consumeResponse = await fetch('/api/base/auth/consume-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, email })
+      });
+
+      if (!consumeResponse.ok) {
+        // Don't fail the signup if consume fails - user was created successfully
+        console.warn('[Auth] Failed to consume token, but signup succeeded');
+      } else {
+        console.log('[Auth] Invite token consumed successfully');
+      }
+    } catch (consumeErr) {
+      // Don't fail the signup if consume fails
+      console.warn('[Auth] Error consuming token:', consumeErr.message);
+    }
 
     return data;
   },
