@@ -32,6 +32,7 @@ from api.routers import (
     proposals_router,
     files_router,
     admin_router,
+    modules_router,
 )
 
 # Install custom fonts on startup
@@ -188,3 +189,4 @@ app.include_router(auth_router)
 app.include_router(proposals_router)
 app.include_router(files_router)
 app.include_router(admin_router)
+app.include_router(modules_router)

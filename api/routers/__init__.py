@@ -14,6 +14,7 @@ from api.routers.auth_routes import router as auth_router
 from api.routers.proposals import router as proposals_router
 from api.routers.files import router as files_router
 from api.routers.admin import router as admin_router
+from api.routers.modules import router as modules_router
 
 __all__ = [
     "slack_router",
@@ -25,4 +26,5 @@ __all__ = [
     "proposals_router",
     "files_router",
     "admin_router",
+    "modules_router",
 ]

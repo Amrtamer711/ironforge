@@ -167,6 +167,72 @@ TABLES: Dict[str, Table] = {
     ),
 
     # -------------------------------------------------------------------------
+    # INVITE_TOKENS - For user signup invitations
+    # -------------------------------------------------------------------------
+    "invite_tokens": Table(
+        name="invite_tokens",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("token", ColumnType.TEXT, nullable=False, unique=True),
+            Column("email", ColumnType.TEXT, nullable=False),
+            Column("role_id", ColumnType.INTEGER, nullable=False),  # FK to roles.id
+            Column("created_by", ColumnType.TEXT, nullable=False),  # FK to users.id
+            Column("created_at", ColumnType.TEXT, nullable=False),
+            Column("expires_at", ColumnType.TEXT, nullable=False),
+            Column("used_at", ColumnType.TEXT),  # NULL until used
+            Column("is_revoked", ColumnType.INTEGER, nullable=False, default=0),
+        ],
+        indexes=[
+            Index("idx_invite_tokens_token", ["token"]),
+            Index("idx_invite_tokens_email", ["email"]),
+        ],
+    ),
+
+    # -------------------------------------------------------------------------
+    # MODULES - Define available application modules
+    # -------------------------------------------------------------------------
+    "modules": Table(
+        name="modules",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("name", ColumnType.TEXT, nullable=False, unique=True),  # e.g., 'sales', 'crm', 'analytics'
+            Column("display_name", ColumnType.TEXT, nullable=False),  # e.g., 'Sales Bot'
+            Column("description", ColumnType.TEXT),
+            Column("icon", ColumnType.TEXT),  # Icon identifier for frontend
+            Column("is_active", ColumnType.INTEGER, nullable=False, default=1),  # Whether module is enabled
+            Column("is_default", ColumnType.INTEGER, nullable=False, default=0),  # Default landing module
+            Column("sort_order", ColumnType.INTEGER, nullable=False, default=0),  # Display order
+            Column("required_permission", ColumnType.TEXT),  # Permission needed to access (e.g., 'sales:*:read')
+            Column("config_json", ColumnType.TEXT),  # Module-specific configuration
+            Column("created_at", ColumnType.TEXT, nullable=False),
+        ],
+        indexes=[
+            Index("idx_modules_name", ["name"]),
+            Index("idx_modules_active", ["is_active"]),
+        ],
+    ),
+
+    # -------------------------------------------------------------------------
+    # USER_MODULES - Junction table for user-module access
+    # -------------------------------------------------------------------------
+    "user_modules": Table(
+        name="user_modules",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("user_id", ColumnType.TEXT, nullable=False),  # FK to users.id
+            Column("module_id", ColumnType.INTEGER, nullable=False),  # FK to modules.id
+            Column("is_default", ColumnType.INTEGER, nullable=False, default=0),  # User's default module
+            Column("granted_by", ColumnType.TEXT),  # User who granted access
+            Column("granted_at", ColumnType.TEXT, nullable=False),
+        ],
+        indexes=[
+            Index("idx_user_modules_user", ["user_id"]),
+            Index("idx_user_modules_module", ["module_id"]),
+        ],
+        unique_constraints=[["user_id", "module_id"]],
+    ),
+
+    # -------------------------------------------------------------------------
     # AUDIT_LOG - Track important actions for security
     # -------------------------------------------------------------------------
     "audit_log": Table(

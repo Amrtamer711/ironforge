@@ -225,6 +225,11 @@ const Auth = {
     localStorage.removeItem('userData');
     this.user = null;
 
+    // Reset module registry
+    if (window.ModuleRegistry) {
+      ModuleRegistry.reset();
+    }
+
     this.showLanding();
   },
 
@@ -258,7 +263,7 @@ const Auth = {
     document.body.classList.remove('modal-open');
   },
 
-  showApp() {
+  async showApp() {
     document.getElementById('landingPage').style.display = 'none';
     document.getElementById('loginModal').classList.remove('active');
     document.body.classList.remove('modal-open');
@@ -267,10 +272,12 @@ const Auth = {
     // Update UI with user info
     this.updateUserUI();
 
-    // Initialize sidebar and tools
-    if (window.Sidebar) {
+    // Initialize module registry (handles navigation and tools)
+    if (window.ModuleRegistry) {
+      await ModuleRegistry.init();
+    } else if (window.Sidebar) {
+      // Fallback to legacy sidebar if ModuleRegistry not loaded
       Sidebar.init();
-      // Update admin visibility based on user roles
       Sidebar.updateAdminVisibility(this.user);
     }
   },

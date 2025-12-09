@@ -2724,6 +2724,114 @@ body.modal-open {
   border: 1px solid var(--glass-border);
 }
 
+/* Module Switcher */
+.module-switcher {
+  position: relative;
+  margin-right: var(--space-4);
+}
+
+.module-switcher-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--void-hover);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--duration-fast) ease;
+  color: var(--neural-300);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.module-switcher-btn:hover {
+  background: var(--void-surface);
+  border-color: var(--primary-500);
+}
+
+.module-switcher-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--primary-400);
+}
+
+.module-switcher-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.module-switcher-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.module-switcher-arrow {
+  color: var(--neural-500);
+  transition: transform var(--duration-fast) ease;
+}
+
+.module-switcher-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 200px;
+  background: var(--void-surface);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-depth-lg);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px);
+  transition: all var(--duration-fast) var(--ease-out-expo);
+  z-index: 1001;
+  padding: var(--space-2);
+}
+
+.module-switcher-dropdown.open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.module-switcher-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-fast) ease;
+  color: var(--neural-300);
+  font-size: var(--text-sm);
+  text-align: left;
+}
+
+.module-switcher-option:hover {
+  background: var(--void-hover);
+  color: var(--neural-100);
+}
+
+.module-switcher-option.active {
+  background: var(--primary-500);
+  background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+  color: var(--neural-white);
+}
+
+.module-switcher-option svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
 /* User Menu */
 .user-menu {
   position: relative;
