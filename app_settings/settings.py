@@ -40,9 +40,9 @@ class Settings(BaseSettings):
     # ENVIRONMENT
     # =========================================================================
 
-    environment: Literal["development", "staging", "production"] = Field(
-        default="development",
-        description="Application environment",
+    environment: Literal["local", "development", "production"] = Field(
+        default="local",
+        description="Application environment: local (SQLite), development (DEV Supabase), production (PROD Supabase)",
     )
     debug: bool = Field(
         default=False,
@@ -355,12 +355,17 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         """Check if running in production environment."""
-        return self.environment == "production" or os.path.exists("/data/")
+        return self.environment == "production"
 
     @property
     def is_development(self) -> bool:
-        """Check if running in development environment."""
+        """Check if running in development environment (DEV Supabase)."""
         return self.environment == "development"
+
+    @property
+    def is_local(self) -> bool:
+        """Check if running in local environment (SQLite)."""
+        return self.environment == "local"
 
     @property
     def base_dir(self) -> Path:
@@ -372,6 +377,7 @@ class Settings(BaseSettings):
         """Get the resolved data directory path."""
         if self.data_dir:
             return Path(self.data_dir)
+        # Use /data/ on Render (mounted disk), otherwise local data/
         if os.path.exists("/data/"):
             return Path("/data")
         return self.base_dir / "data"
@@ -396,24 +402,31 @@ class Settings(BaseSettings):
 
     @property
     def active_supabase_url(self) -> Optional[str]:
-        """Get the active Supabase URL based on environment."""
-        if self.is_production:
+        """Get the active Supabase URL based on ENVIRONMENT setting."""
+        if self.environment == "production":
             return self.salesbot_prod_supabase_url or self.supabase_url
-        return self.salesbot_dev_supabase_url or self.supabase_url
+        elif self.environment == "development":
+            return self.salesbot_dev_supabase_url or self.supabase_url
+        # local environment - no Supabase, uses SQLite
+        return None
 
     @property
     def active_supabase_anon_key(self) -> Optional[str]:
-        """Get the active Supabase anon key based on environment."""
-        if self.is_production:
+        """Get the active Supabase anon key based on ENVIRONMENT setting."""
+        if self.environment == "production":
             return self.salesbot_prod_supabase_anon_key
-        return self.salesbot_dev_supabase_anon_key
+        elif self.environment == "development":
+            return self.salesbot_dev_supabase_anon_key
+        return None
 
     @property
     def active_supabase_service_key(self) -> Optional[str]:
-        """Get the active Supabase service role key based on environment."""
-        if self.is_production:
+        """Get the active Supabase service role key based on ENVIRONMENT setting."""
+        if self.environment == "production":
             return self.salesbot_prod_supabase_service_role_key or self.supabase_service_key
-        return self.salesbot_dev_supabase_service_role_key or self.supabase_service_key
+        elif self.environment == "development":
+            return self.salesbot_dev_supabase_service_role_key or self.supabase_service_key
+        return None
 
     # =========================================================================
     # VALIDATION
