@@ -31,8 +31,11 @@ class SupabaseAuthProvider(AuthProvider):
     - Sales Bot only needs the JWT secret to validate tokens
     - User data is extracted from JWT claims (no API calls needed)
 
-    For token validation only, requires:
-    - UI_JWT_SECRET (or SUPABASE_JWT_SECRET for backwards compatibility)
+    For token validation only, requires one of:
+    - UI_JWT_SECRET (generic)
+    - UI_DEV_JWT_SECRET (development environment)
+    - UI_PROD_JWT_SECRET (production environment)
+    - SUPABASE_JWT_SECRET (legacy backwards compatibility)
 
     For full user management (optional), also requires:
     - SUPABASE_URL
@@ -53,12 +56,26 @@ class SupabaseAuthProvider(AuthProvider):
             service_key: Supabase service role key (optional - for user management)
             jwt_secret: JWT secret for token validation (required)
         """
-        # JWT secret is primary requirement - try new env var first, then legacy
-        self._jwt_secret = (
-            jwt_secret
-            or os.getenv("UI_JWT_SECRET", "")
-            or os.getenv("SUPABASE_JWT_SECRET", "")
-        )
+        # JWT secret is primary requirement
+        # Check in order: explicit param, environment-specific, generic, legacy
+        environment = os.getenv("ENVIRONMENT", "development")
+
+        if jwt_secret:
+            self._jwt_secret = jwt_secret
+        elif environment == "production":
+            # Production: try PROD first, then generic, then legacy
+            self._jwt_secret = (
+                os.getenv("UI_PROD_JWT_SECRET", "")
+                or os.getenv("UI_JWT_SECRET", "")
+                or os.getenv("SUPABASE_JWT_SECRET", "")
+            )
+        else:
+            # Development: try DEV first, then generic, then legacy
+            self._jwt_secret = (
+                os.getenv("UI_DEV_JWT_SECRET", "")
+                or os.getenv("UI_JWT_SECRET", "")
+                or os.getenv("SUPABASE_JWT_SECRET", "")
+            )
 
         # Supabase client credentials (optional - only needed for user management APIs)
         self._supabase_url = supabase_url or os.getenv("SUPABASE_URL", "")
@@ -67,9 +84,9 @@ class SupabaseAuthProvider(AuthProvider):
 
         # Log configuration status
         if self._jwt_secret:
-            logger.info("[AUTH:SUPABASE] JWT secret configured - token validation enabled")
+            logger.info(f"[AUTH:SUPABASE] JWT secret configured for {environment} - token validation enabled")
         else:
-            logger.warning("[AUTH:SUPABASE] No JWT secret! Set UI_JWT_SECRET env var.")
+            logger.warning(f"[AUTH:SUPABASE] No JWT secret! Set UI_DEV_JWT_SECRET or UI_PROD_JWT_SECRET env var.")
 
         if self._supabase_url and self._service_key:
             logger.info("[AUTH:SUPABASE] Supabase client credentials configured")

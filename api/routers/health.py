@@ -185,8 +185,15 @@ async def health_auth():
     from integrations.auth import get_auth_client
 
     auth_provider = os.getenv("AUTH_PROVIDER", "local_dev")
-    ui_jwt_secret = os.getenv("UI_JWT_SECRET", "")
-    supabase_jwt_secret = os.getenv("SUPABASE_JWT_SECRET", "")
+    environment = os.getenv("ENVIRONMENT", "development")
+
+    # Check all possible JWT secret env vars
+    jwt_secrets = {
+        "UI_DEV_JWT_SECRET": bool(os.getenv("UI_DEV_JWT_SECRET", "")),
+        "UI_PROD_JWT_SECRET": bool(os.getenv("UI_PROD_JWT_SECRET", "")),
+        "UI_JWT_SECRET": bool(os.getenv("UI_JWT_SECRET", "")),
+        "SUPABASE_JWT_SECRET": bool(os.getenv("SUPABASE_JWT_SECRET", "")),
+    }
 
     # Get the actual auth client to see what's configured
     try:
@@ -201,10 +208,9 @@ async def health_auth():
 
     return {
         "auth_provider_env": auth_provider,
+        "environment": environment,
         "active_provider": provider_name,
-        "ui_jwt_secret_set": bool(ui_jwt_secret),
-        "ui_jwt_secret_length": len(ui_jwt_secret) if ui_jwt_secret else 0,
-        "supabase_jwt_secret_set": bool(supabase_jwt_secret),
+        "jwt_secrets_set": jwt_secrets,
         "provider_has_jwt_secret": has_jwt_secret,
         "timestamp": get_uae_time().isoformat(),
     }
