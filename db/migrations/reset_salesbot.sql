@@ -8,6 +8,7 @@
 DROP FUNCTION IF EXISTS public.update_updated_at() CASCADE;
 
 -- Drop all tables (CASCADE handles dependencies)
+DROP TABLE IF EXISTS chat_sessions CASCADE;
 DROP TABLE IF EXISTS ai_costs CASCADE;
 DROP TABLE IF EXISTS bo_approval_workflows CASCADE;
 DROP TABLE IF EXISTS booking_orders CASCADE;

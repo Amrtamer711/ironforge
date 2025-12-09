@@ -157,6 +157,22 @@ CREATE INDEX IF NOT EXISTS idx_bo_workflows_status ON bo_approval_workflows(stat
 CREATE INDEX IF NOT EXISTS idx_bo_workflows_updated ON bo_approval_workflows(updated_at);
 
 -- =============================================================================
+-- CHAT SESSIONS (Persistent chat history)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    id BIGSERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL,  -- From JWT, references UI Supabase users
+    session_id TEXT NOT NULL,  -- Unique session identifier
+    messages JSONB NOT NULL DEFAULT '[]',  -- Array of message objects
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chat_sessions_user_unique UNIQUE (user_id)  -- One session per user
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated ON chat_sessions(updated_at);
+
+-- =============================================================================
 -- AI COSTS TRACKING
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS ai_costs (
@@ -229,6 +245,11 @@ ALTER TABLE bo_approval_workflows ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Service role full access to bo_workflows" ON bo_approval_workflows
     FOR ALL USING (true);
 
+-- Chat sessions - users see own
+ALTER TABLE chat_sessions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access to chat_sessions" ON chat_sessions
+    FOR ALL USING (true);
+
 -- AI costs - analytics, service role only
 ALTER TABLE ai_costs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Service role full access to ai_costs" ON ai_costs
@@ -257,6 +278,12 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS update_bo_workflows_updated_at ON bo_approval_workflows;
 CREATE TRIGGER update_bo_workflows_updated_at
     BEFORE UPDATE ON bo_approval_workflows
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- Auto-update chat session timestamp
+DROP TRIGGER IF EXISTS update_chat_sessions_updated_at ON chat_sessions;
+CREATE TRIGGER update_chat_sessions_updated_at
+    BEFORE UPDATE ON chat_sessions
     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
 -- =============================================================================
