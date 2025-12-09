@@ -12,6 +12,8 @@ const AdminState = {
   permissions: [],
   permissionsGrouped: {},
   users: [],
+  invites: [],
+  profiles: ['system_admin', 'sales_manager', 'sales_user', 'coordinator', 'finance', 'viewer'],
   selectedRole: null,
   selectedUser: null,
   isLoading: false,
@@ -94,6 +96,26 @@ const AdminAPI = {
     return response;
   },
 
+  // Invite Tokens
+  async getInvites(includeUsed = false) {
+    const response = await API.fetch(`/api/sales/auth/invites?include_used=${includeUsed}`);
+    return response;
+  },
+
+  async createInvite(inviteData) {
+    const response = await API.fetch('/api/sales/auth/invites', {
+      method: 'POST',
+      body: JSON.stringify(inviteData),
+    });
+    return response;
+  },
+
+  async revokeInvite(tokenId) {
+    await API.fetch(`/api/sales/auth/invites/${tokenId}`, {
+      method: 'DELETE',
+    });
+  },
+
   // User Management
   async getUsers(limit = 100, offset = 0) {
     const response = await API.fetch(`/api/sales/admin/users?limit=${limit}&offset=${offset}`);
@@ -153,19 +175,22 @@ const AdminUI = {
       AdminState.isLoading = true;
 
       // Load initial data
-      const [roles, permissionsGrouped, users] = await Promise.all([
-        AdminAPI.getRoles(),
-        AdminAPI.getPermissionsGrouped(),
-        AdminAPI.getUsers(),
+      const [roles, permissionsGrouped, users, invites] = await Promise.all([
+        AdminAPI.getRoles().catch(() => []),
+        AdminAPI.getPermissionsGrouped().catch(() => ({})),
+        AdminAPI.getUsers().catch(() => []),
+        AdminAPI.getInvites().catch(() => []),
       ]);
 
       AdminState.roles = roles;
       AdminState.permissionsGrouped = permissionsGrouped;
       AdminState.users = users;
+      AdminState.invites = invites;
 
       console.log('[Admin] Loaded roles:', roles.length);
       console.log('[Admin] Loaded permissions:', Object.keys(permissionsGrouped).length, 'groups');
       console.log('[Admin] Loaded users:', users.length);
+      console.log('[Admin] Loaded invites:', invites.length);
 
       return true;
     } catch (error) {
@@ -201,6 +226,13 @@ const AdminUI = {
             </svg>
             Users
           </button>
+          <button class="admin-tab" data-tab="invites">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 2L11 13"/>
+              <path d="M22 2L15 22L11 13L2 9L22 2Z"/>
+            </svg>
+            Invites
+          </button>
           <button class="admin-tab" data-tab="roles">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -219,6 +251,9 @@ const AdminUI = {
         <div class="admin-content">
           <div class="admin-tab-content active" id="usersTab">
             ${this.renderUsersTab()}
+          </div>
+          <div class="admin-tab-content" id="invitesTab">
+            ${this.renderInvitesTab()}
           </div>
           <div class="admin-tab-content" id="rolesTab">
             ${this.renderRolesTab()}
@@ -319,6 +354,290 @@ const AdminUI = {
         </td>
       </tr>
     `;
+  },
+
+  /**
+   * Render the invites tab
+   */
+  renderInvitesTab() {
+    const pendingInvites = AdminState.invites.filter(i => !i.is_used && !i.is_revoked);
+    const usedInvites = AdminState.invites.filter(i => i.is_used);
+
+    return `
+      <div class="admin-section">
+        <div class="admin-section-header">
+          <h3>Invite Tokens</h3>
+          <span class="admin-badge">${pendingInvites.length} pending</span>
+          <button class="btn btn-primary btn-sm" id="createInviteBtn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            New Invite
+          </button>
+        </div>
+        <p class="section-description">Create invite tokens for new users. Each token is tied to an email and profile.</p>
+        <div class="invites-table-container">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Email</th>
+                <th>Profile</th>
+                <th>Token</th>
+                <th>Expires</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${pendingInvites.length > 0
+                ? pendingInvites.map(invite => this.renderInviteRow(invite)).join('')
+                : '<tr><td colspan="6" class="empty-state">No pending invites. Create one to invite a new user.</td></tr>'
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+      ${usedInvites.length > 0 ? `
+        <div class="admin-section">
+          <div class="admin-section-header">
+            <h3>Used Invites</h3>
+            <span class="admin-badge secondary">${usedInvites.length}</span>
+          </div>
+          <div class="invites-table-container">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Profile</th>
+                  <th>Used</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${usedInvites.map(invite => `
+                  <tr class="invite-row used">
+                    <td>${invite.email}</td>
+                    <td><span class="profile-tag">${invite.profile_name}</span></td>
+                    <td>${new Date(invite.created_at).toLocaleDateString()}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ` : ''}
+    `;
+  },
+
+  /**
+   * Render a single invite row
+   */
+  renderInviteRow(invite) {
+    const expiresAt = new Date(invite.expires_at);
+    const isExpired = expiresAt < new Date();
+    const statusClass = invite.is_revoked ? 'status-revoked' : (isExpired ? 'status-expired' : 'status-pending');
+    const statusText = invite.is_revoked ? 'Revoked' : (isExpired ? 'Expired' : 'Pending');
+
+    return `
+      <tr class="invite-row" data-invite-id="${invite.id}">
+        <td class="invite-email">${invite.email}</td>
+        <td><span class="profile-tag">${invite.profile_name}</span></td>
+        <td class="invite-token">
+          <code class="token-display">${invite.token || '••••••••'}</code>
+          ${invite.token ? `
+            <button class="btn-icon copy-token-btn" title="Copy token" data-token="${invite.token}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+            </button>
+          ` : ''}
+        </td>
+        <td class="invite-expires">${expiresAt.toLocaleDateString()}</td>
+        <td>
+          <span class="status-badge ${statusClass}">${statusText}</span>
+        </td>
+        <td class="invite-actions">
+          ${!invite.is_revoked && !isExpired ? `
+            <button class="btn-icon revoke-invite-btn" title="Revoke invite" data-invite-id="${invite.id}">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="15" y1="9" x2="9" y2="15"/>
+                <line x1="9" y1="9" x2="15" y2="15"/>
+              </svg>
+            </button>
+          ` : ''}
+        </td>
+      </tr>
+    `;
+  },
+
+  /**
+   * Show the invite creator modal
+   */
+  showInviteCreator() {
+    const modalHtml = `
+      <div class="modal active" id="inviteCreatorModal">
+        <div class="modal-content" style="max-width: 500px;">
+          <div class="modal-header">
+            <h3>Create Invite Token</h3>
+            <button class="modal-close" id="closeInviteCreatorBtn">&times;</button>
+          </div>
+          <div class="modal-body">
+            <form id="inviteCreatorForm">
+              <div class="form-group">
+                <label for="inviteEmail">Email Address</label>
+                <input
+                  type="email"
+                  id="inviteEmail"
+                  class="form-control"
+                  placeholder="user@example.com"
+                  required
+                >
+                <small class="form-help">The user must sign up with this exact email</small>
+              </div>
+              <div class="form-group">
+                <label for="inviteProfile">Profile</label>
+                <select id="inviteProfile" class="form-control" required>
+                  ${AdminState.profiles.map(profile => `
+                    <option value="${profile}" ${profile === 'sales_user' ? 'selected' : ''}>
+                      ${profile.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                    </option>
+                  `).join('')}
+                </select>
+                <small class="form-help">Determines what permissions the user will have</small>
+              </div>
+              <div class="form-group">
+                <label for="inviteExpiry">Expires In</label>
+                <select id="inviteExpiry" class="form-control">
+                  <option value="1">1 day</option>
+                  <option value="3">3 days</option>
+                  <option value="7" selected>7 days</option>
+                  <option value="14">14 days</option>
+                  <option value="30">30 days</option>
+                </select>
+              </div>
+              <div class="form-actions">
+                <button type="button" class="btn btn-secondary" id="cancelInviteCreatorBtn">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Invite</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    this.attachInviteCreatorListeners();
+  },
+
+  /**
+   * Attach event listeners to the invite creator modal
+   */
+  attachInviteCreatorListeners() {
+    const modal = document.getElementById('inviteCreatorModal');
+    const form = document.getElementById('inviteCreatorForm');
+    const closeBtn = document.getElementById('closeInviteCreatorBtn');
+    const cancelBtn = document.getElementById('cancelInviteCreatorBtn');
+
+    const closeModal = () => modal.remove();
+
+    closeBtn.onclick = closeModal;
+    cancelBtn.onclick = closeModal;
+    modal.onclick = (e) => {
+      if (e.target === modal) closeModal();
+    };
+
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+
+      const email = document.getElementById('inviteEmail').value.trim();
+      const profileName = document.getElementById('inviteProfile').value;
+      const expiresInDays = parseInt(document.getElementById('inviteExpiry').value);
+
+      try {
+        const result = await AdminAPI.createInvite({
+          email,
+          profile_name: profileName,
+          expires_in_days: expiresInDays,
+        });
+
+        // Show success with token
+        closeModal();
+        this.showInviteSuccess(result);
+
+        // Refresh invites list
+        AdminState.invites = await AdminAPI.getInvites();
+        this.render();
+      } catch (error) {
+        showToast(error.message || 'Failed to create invite', 'error');
+      }
+    };
+  },
+
+  /**
+   * Show invite success modal with copyable token
+   */
+  showInviteSuccess(invite) {
+    const modalHtml = `
+      <div class="modal active" id="inviteSuccessModal">
+        <div class="modal-content" style="max-width: 500px;">
+          <div class="modal-header">
+            <h3>Invite Created!</h3>
+            <button class="modal-close" id="closeInviteSuccessBtn">&times;</button>
+          </div>
+          <div class="modal-body">
+            <div class="invite-success-content">
+              <p>Share these details with <strong>${invite.email}</strong>:</p>
+              <div class="invite-details">
+                <div class="invite-detail-row">
+                  <label>Token:</label>
+                  <div class="token-copy-container">
+                    <code id="inviteTokenValue">${invite.token}</code>
+                    <button class="btn btn-sm btn-secondary" id="copyInviteTokenBtn">Copy</button>
+                  </div>
+                </div>
+                <div class="invite-detail-row">
+                  <label>Profile:</label>
+                  <span>${invite.profile_name}</span>
+                </div>
+                <div class="invite-detail-row">
+                  <label>Expires:</label>
+                  <span>${new Date(invite.expires_at).toLocaleDateString()}</span>
+                </div>
+              </div>
+              <p class="invite-warning">This token will only be shown once. Make sure to copy it!</p>
+            </div>
+            <div class="form-actions">
+              <button type="button" class="btn btn-primary" id="doneInviteSuccessBtn">Done</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    const modal = document.getElementById('inviteSuccessModal');
+    const closeBtn = document.getElementById('closeInviteSuccessBtn');
+    const doneBtn = document.getElementById('doneInviteSuccessBtn');
+    const copyBtn = document.getElementById('copyInviteTokenBtn');
+
+    const closeModal = () => modal.remove();
+
+    closeBtn.onclick = closeModal;
+    doneBtn.onclick = closeModal;
+    modal.onclick = (e) => {
+      if (e.target === modal) closeModal();
+    };
+
+    copyBtn.onclick = () => {
+      const token = document.getElementById('inviteTokenValue').textContent;
+      navigator.clipboard.writeText(token).then(() => {
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000);
+      });
+    };
   },
 
   /**
@@ -929,6 +1248,45 @@ const AdminUI = {
       header.onclick = () => {
         const group = header.closest('.permission-group');
         group.classList.toggle('expanded');
+      };
+    });
+
+    // Create invite button
+    const createInviteBtn = document.getElementById('createInviteBtn');
+    if (createInviteBtn) {
+      createInviteBtn.onclick = () => this.showInviteCreator();
+    }
+
+    // Copy token buttons
+    document.querySelectorAll('.copy-token-btn').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const token = btn.dataset.token;
+        navigator.clipboard.writeText(token).then(() => {
+          showToast('Token copied to clipboard', 'success');
+        }).catch(() => {
+          showToast('Failed to copy token', 'error');
+        });
+      };
+    });
+
+    // Revoke invite buttons
+    document.querySelectorAll('.revoke-invite-btn').forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        const inviteId = btn.dataset.inviteId;
+        const invite = AdminState.invites.find(i => i.id === inviteId);
+        if (invite && confirm(`Are you sure you want to revoke the invite for "${invite.email}"?`)) {
+          try {
+            await AdminAPI.revokeInvite(inviteId);
+            showToast('Invite revoked', 'success');
+            // Refresh invites list
+            AdminState.invites = await AdminAPI.getInvites();
+            this.render();
+          } catch (error) {
+            showToast(error.message || 'Failed to revoke invite', 'error');
+          }
+        }
       };
     });
   },
