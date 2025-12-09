@@ -1,6 +1,9 @@
 """
 Authentication endpoints for Unified UI.
 Uses integrations/auth and integrations/rbac providers.
+
+NOTE: Invite tokens are stored in UI Supabase (not SalesBot Supabase),
+so we use a separate UI Supabase client for invite operations.
 """
 
 import secrets
@@ -17,6 +20,32 @@ from utils.logging import get_logger
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 logger = get_logger("api.auth")
+
+# UI Supabase client (for invite_tokens table in UI database)
+_ui_supabase_client = None
+
+def get_ui_supabase():
+    """Get the UI Supabase client for auth/RBAC operations."""
+    global _ui_supabase_client
+    if _ui_supabase_client is not None:
+        return _ui_supabase_client
+
+    from app_settings import settings
+    if not settings.ui_supabase_url or not settings.ui_supabase_service_key:
+        logger.warning("[AUTH] UI Supabase not configured, invite tokens won't work")
+        return None
+
+    try:
+        from supabase import create_client
+        _ui_supabase_client = create_client(
+            settings.ui_supabase_url,
+            settings.ui_supabase_service_key
+        )
+        logger.info("[AUTH] UI Supabase client initialized")
+        return _ui_supabase_client
+    except Exception as e:
+        logger.error(f"[AUTH] Failed to create UI Supabase client: {e}")
+        return None
 
 
 class LoginRequest(BaseModel):
@@ -170,9 +199,15 @@ async def create_invite_token(
     The token is tied to a specific email address and profile.
     Users must use this token along with the matching email to sign up.
     """
-    from db.database import db
     from integrations.rbac import get_rbac_client
     from utils.time import get_uae_time
+
+    ui_client = get_ui_supabase()
+    if not ui_client:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="UI Supabase not configured",
+        )
 
     rbac = get_rbac_client()
 
@@ -184,12 +219,16 @@ async def create_invite_token(
             detail=f"Invalid profile: {invite_data.profile_name}",
         )
 
+    now = get_uae_time()
+
     # Check if email already has a pending invite
-    existing = db.execute_query(
-        "SELECT * FROM invite_tokens WHERE email = ? AND used_at IS NULL AND is_revoked = 0 AND expires_at > ?",
-        (invite_data.email.lower(), get_uae_time().isoformat())
-    )
-    if existing:
+    existing = ui_client.table("invite_tokens").select("*").eq(
+        "email", invite_data.email.lower()
+    ).is_("used_at", "null").eq("is_revoked", False).gt(
+        "expires_at", now.isoformat()
+    ).execute()
+
+    if existing.data:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"A pending invite already exists for {invite_data.email}",
@@ -199,24 +238,17 @@ async def create_invite_token(
     token = secrets.token_urlsafe(32)
 
     # Calculate expiry
-    now = get_uae_time()
     expires_at = now + timedelta(days=invite_data.expires_in_days)
 
-    # Store in database - use profile_name directly since profiles are referenced by name
-    db.execute_query(
-        """
-        INSERT INTO invite_tokens (token, email, profile_name, created_by, created_at, expires_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (
-            token,
-            invite_data.email.lower(),
-            invite_data.profile_name,
-            user.id,
-            now.isoformat(),
-            expires_at.isoformat(),
-        )
-    )
+    # Store in UI Supabase
+    ui_client.table("invite_tokens").insert({
+        "token": token,
+        "email": invite_data.email.lower(),
+        "profile_name": invite_data.profile_name,
+        "created_by": user.id,
+        "created_at": now.isoformat(),
+        "expires_at": expires_at.isoformat(),
+    }).execute()
 
     logger.info(f"[AUTH] Invite token created for {invite_data.email} with profile {invite_data.profile_name} by {user.email}")
 
@@ -239,22 +271,21 @@ async def list_invite_tokens(
 
     Requires: system_admin profile
     """
-    from db.database import db
-    from utils.time import get_uae_time
+    ui_client = get_ui_supabase()
+    if not ui_client:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="UI Supabase not configured",
+        )
 
     if include_used:
-        query = """
-            SELECT * FROM invite_tokens
-            ORDER BY created_at DESC
-        """
-        tokens = db.execute_query(query)
+        result = ui_client.table("invite_tokens").select("*").order("created_at", desc=True).execute()
     else:
-        query = """
-            SELECT * FROM invite_tokens
-            WHERE used_at IS NULL AND is_revoked = 0
-            ORDER BY created_at DESC
-        """
-        tokens = db.execute_query(query)
+        result = ui_client.table("invite_tokens").select("*").is_(
+            "used_at", "null"
+        ).eq("is_revoked", False).order("created_at", desc=True).execute()
+
+    tokens = result.data or []
 
     return [
         InviteTokenListItem(
@@ -267,7 +298,7 @@ async def list_invite_tokens(
             is_used=t["used_at"] is not None,
             is_revoked=bool(t["is_revoked"]),
         )
-        for t in (tokens or [])
+        for t in tokens
     ]
 
 
@@ -281,21 +312,23 @@ async def revoke_invite_token(
 
     Requires: system_admin profile
     """
-    from db.database import db
+    ui_client = get_ui_supabase()
+    if not ui_client:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="UI Supabase not configured",
+        )
 
     # Check token exists
-    existing = db.execute_query("SELECT * FROM invite_tokens WHERE id = ?", (token_id,))
-    if not existing:
+    existing = ui_client.table("invite_tokens").select("*").eq("id", token_id).execute()
+    if not existing.data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Invite token {token_id} not found",
         )
 
     # Revoke it
-    db.execute_query(
-        "UPDATE invite_tokens SET is_revoked = 1 WHERE id = ?",
-        (token_id,)
-    )
+    ui_client.table("invite_tokens").update({"is_revoked": True}).eq("id", token_id).execute()
 
     logger.info(f"[AUTH] Invite token {token_id} revoked by {user.email}")
 
@@ -309,27 +342,28 @@ async def validate_invite_token(request: ValidateInviteRequest):
     Called by the frontend during signup to verify the token is valid
     before creating the user in Supabase Auth.
     """
-    from db.database import db
     from utils.time import get_uae_time
+
+    ui_client = get_ui_supabase()
+    if not ui_client:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="UI Supabase not configured",
+        )
 
     logger.info(f"[AUTH] Validating invite token for email: {request.email}")
 
     # Find the token
-    token_data = db.execute_query(
-        """
-        SELECT * FROM invite_tokens WHERE token = ?
-        """,
-        (request.token,)
-    )
+    result = ui_client.table("invite_tokens").select("*").eq("token", request.token).execute()
 
-    if not token_data:
+    if not result.data:
         logger.warning(f"[AUTH] Invalid invite token attempted for: {request.email}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Invalid invite token",
+            detail="Invalid or expired invite token",
         )
 
-    token_record = token_data[0]
+    token_record = result.data[0]
     logger.info(f"[AUTH] Found token for email: {token_record['email']}, profile: {token_record['profile_name']}")
 
     # Check if already used
@@ -350,8 +384,12 @@ async def validate_invite_token(request: ValidateInviteRequest):
 
     # Check expiry
     now = get_uae_time()
-    expires_at = datetime.fromisoformat(token_record["expires_at"])
-    if now > expires_at:
+    expires_at_str = token_record["expires_at"]
+    # Handle both ISO format with and without timezone
+    if expires_at_str.endswith("Z"):
+        expires_at_str = expires_at_str[:-1] + "+00:00"
+    expires_at = datetime.fromisoformat(expires_at_str.replace("+00:00", ""))
+    if now.replace(tzinfo=None) > expires_at:
         logger.warning(f"[AUTH] Token expired for: {request.email}, expired at: {expires_at}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -366,11 +404,10 @@ async def validate_invite_token(request: ValidateInviteRequest):
             detail="Email does not match the invite token",
         )
 
-    # Mark token as used (it will be fully consumed when user first logs in)
-    db.execute_query(
-        "UPDATE invite_tokens SET used_at = ? WHERE id = ?",
-        (now.isoformat(), token_record["id"])
-    )
+    # Mark token as used
+    ui_client.table("invite_tokens").update({
+        "used_at": now.isoformat()
+    }).eq("id", token_record["id"]).execute()
 
     logger.info(f"[AUTH] Invite token validated successfully for {request.email} with profile {token_record['profile_name']}")
 

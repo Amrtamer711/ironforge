@@ -122,9 +122,17 @@ class Settings(BaseSettings):
     )
 
     # =========================================================================
-    # UI AUTH JWT SECRET (for validating tokens from UI's Supabase)
+    # UI SUPABASE (Auth/RBAC - separate from Sales Bot data)
     # =========================================================================
 
+    ui_supabase_url: Optional[str] = Field(
+        default=None,
+        description="UI Supabase project URL (for auth/RBAC)",
+    )
+    ui_supabase_service_key: Optional[str] = Field(
+        default=None,
+        description="UI Supabase service role key",
+    )
     ui_jwt_secret: Optional[str] = Field(
         default=None,
         description="JWT secret from UI's Supabase project (for cross-service auth)",
