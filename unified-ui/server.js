@@ -607,6 +607,42 @@ app.get('/api/base/auth/session', async (req, res) => {
   }
 });
 
+// Get current user's profile (for frontend to know user's role)
+app.get('/api/base/auth/me', requireAuth, async (req, res) => {
+  try {
+    // Get user's profile from users table
+    const { data: userData, error } = await supabase
+      .from('users')
+      .select('id, email, name, profile_id, profiles(name, display_name)')
+      .eq('id', req.user.id)
+      .single();
+
+    if (error || !userData) {
+      console.warn(`[UI] User ${req.user.email} not found in users table`);
+      // Return basic info from auth, no profile
+      return res.json({
+        id: req.user.id,
+        email: req.user.email,
+        name: req.user.user_metadata?.name || req.user.email?.split('@')[0],
+        profile_name: null,
+        profile_display_name: null
+      });
+    }
+
+    console.log(`[UI] User profile fetched: ${userData.email} -> ${userData.profiles?.name}`);
+    res.json({
+      id: userData.id,
+      email: userData.email,
+      name: userData.name,
+      profile_name: userData.profiles?.name || null,
+      profile_display_name: userData.profiles?.display_name || null
+    });
+  } catch (err) {
+    console.error('[UI] Error fetching user profile:', err.message);
+    res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+});
+
 // =============================================================================
 // SPA CATCH-ALL - Serve index.html for all non-API routes
 // This enables client-side routing and handles Supabase auth redirects

@@ -91,20 +91,52 @@ const Auth = {
     return false;
   },
 
-  handleSession(session) {
+  async handleSession(session) {
     const user = session.user;
+
+    // Store token first for API requests
+    localStorage.setItem('authToken', session.access_token);
+
+    // Fetch user's profile from the users table (the source of truth for RBAC)
+    let profileName = 'sales_user'; // Default fallback
+    try {
+      const response = await fetch('/api/base/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        profileName = data.profile_name || data.profile || 'sales_user';
+        console.log('[Auth] User profile from server:', profileName);
+      }
+    } catch (err) {
+      console.warn('[Auth] Could not fetch user profile, using default:', err.message);
+      // Fallback to user_metadata if server call fails
+      profileName = user.user_metadata?.profile || 'sales_user';
+    }
+
+    // Map profile to roles for backward compatibility
+    const profileToRoles = {
+      'system_admin': ['admin', 'hos', 'sales_person'],
+      'sales_manager': ['hos', 'sales_person'],
+      'sales_user': ['sales_person'],
+      'coordinator': ['coordinator'],
+      'finance': ['finance'],
+      'viewer': ['viewer']
+    };
 
     // Build user object from Supabase user
     this.user = {
       id: user.id,
       email: user.email,
       name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
-      roles: user.user_metadata?.roles || ['sales_person']
+      profile: profileName,
+      roles: profileToRoles[profileName] || ['sales_person']
     };
 
-    // Store for API requests
-    localStorage.setItem('authToken', session.access_token);
     localStorage.setItem('userData', JSON.stringify(this.user));
+    console.log('[Auth] Session established for:', this.user.email, 'with profile:', profileName);
 
     this.showApp();
   },
