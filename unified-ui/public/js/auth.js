@@ -37,7 +37,6 @@ const Auth = {
     console.log('[Auth] Initializing...');
     console.log('[Auth] SUPABASE_URL:', window.SUPABASE_URL ? 'configured' : 'not set');
     console.log('[Auth] SUPABASE_ANON_KEY:', window.SUPABASE_ANON_KEY ? 'configured' : 'not set');
-    console.log('[Auth] SALES_BOT_URL:', window.SALES_BOT_URL || 'not set');
 
     // Initialize Supabase client if configured
     if (window.SUPABASE_URL && window.SUPABASE_ANON_KEY && typeof supabase !== 'undefined') {
@@ -174,11 +173,10 @@ const Auth = {
       throw new Error('Supabase not configured');
     }
 
-    // Step 1: Validate the invite token with the backend
-    const backendUrl = window.SALES_BOT_URL || '';
-    console.log('[Auth] Validating invite token with backend:', backendUrl);
+    // Step 1: Validate the invite token with the backend (via /api/sales proxy)
+    console.log('[Auth] Validating invite token with backend...');
 
-    const validateResponse = await fetch(`${backendUrl}/api/auth/validate-invite`, {
+    const validateResponse = await fetch('/api/sales/auth/validate-invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, email })
