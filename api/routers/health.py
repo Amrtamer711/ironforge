@@ -173,6 +173,78 @@ async def health_ready():
     }
 
 
+@router.get("/health/auth")
+async def health_auth():
+    """
+    Debug endpoint to check auth configuration.
+
+    Shows which auth provider is configured and whether JWT secret is set.
+    Does NOT require authentication (for debugging auth issues).
+    """
+    import os
+    from integrations.auth import get_auth_client
+
+    auth_provider = os.getenv("AUTH_PROVIDER", "local_dev")
+    ui_jwt_secret = os.getenv("UI_JWT_SECRET", "")
+    supabase_jwt_secret = os.getenv("SUPABASE_JWT_SECRET", "")
+
+    # Get the actual auth client to see what's configured
+    try:
+        client = get_auth_client()
+        provider_name = client.provider_name
+
+        # Check if JWT secret is configured in the provider
+        has_jwt_secret = bool(getattr(client._provider, '_jwt_secret', None))
+    except Exception as e:
+        provider_name = f"error: {e}"
+        has_jwt_secret = False
+
+    return {
+        "auth_provider_env": auth_provider,
+        "active_provider": provider_name,
+        "ui_jwt_secret_set": bool(ui_jwt_secret),
+        "ui_jwt_secret_length": len(ui_jwt_secret) if ui_jwt_secret else 0,
+        "supabase_jwt_secret_set": bool(supabase_jwt_secret),
+        "provider_has_jwt_secret": has_jwt_secret,
+        "timestamp": get_uae_time().isoformat(),
+    }
+
+
+@router.post("/health/auth/test")
+async def health_auth_test():
+    """
+    Test endpoint that requires authentication.
+
+    If this returns 401, auth is not working.
+    If this returns 200, auth is working.
+    """
+    from fastapi import Request, HTTPException
+    from api.auth import get_token_from_request, get_current_user
+
+    # This endpoint intentionally doesn't use Depends(require_auth)
+    # so we can return detailed error messages
+    return {
+        "message": "To test auth, call POST /api/chat/message or GET /health/auth/test-protected",
+        "timestamp": get_uae_time().isoformat(),
+    }
+
+
+@router.get("/health/auth/test-protected")
+async def health_auth_test_protected(user: AuthUser = Depends(require_auth)):
+    """
+    Protected test endpoint - requires valid auth.
+
+    If you can call this, auth is working correctly.
+    """
+    return {
+        "status": "authenticated",
+        "user_id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "timestamp": get_uae_time().isoformat(),
+    }
+
+
 @router.get("/metrics")
 async def metrics(user: AuthUser = Depends(require_auth)):
     """
