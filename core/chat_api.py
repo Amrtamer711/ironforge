@@ -302,6 +302,7 @@ async def stream_chat_message(
     Stream a chat response using Server-Sent Events format.
 
     Yields SSE-formatted strings that can be sent directly to the client.
+    Sends heartbeats every 5 seconds to keep connection alive during LLM processing.
     """
     logger.info(f"[WebChat] stream_chat_message called for user={user_id}, message={message[:50]}...")
     collected_response = []
@@ -311,14 +312,36 @@ async def stream_chat_message(
 
     try:
         logger.info(f"[WebChat] Calling process_chat_message...")
-        result = await process_chat_message(
-            user_id=user_id,
-            user_name=user_name,
-            message=message,
-            roles=roles,
-            files=files,
-            stream_callback=collect_chunk
+
+        # Create task for LLM processing
+        process_task = asyncio.create_task(
+            process_chat_message(
+                user_id=user_id,
+                user_name=user_name,
+                message=message,
+                roles=roles,
+                files=files,
+                stream_callback=collect_chunk
+            )
         )
+
+        # Send heartbeats while waiting for LLM response
+        heartbeat_count = 0
+        while not process_task.done():
+            # Send SSE comment as heartbeat (keeps connection alive)
+            yield ": heartbeat\n\n"
+            heartbeat_count += 1
+            if heartbeat_count <= 3:
+                logger.info(f"[WebChat] Sent heartbeat {heartbeat_count}")
+            try:
+                # Wait up to 5 seconds for task to complete
+                await asyncio.wait_for(asyncio.shield(process_task), timeout=5.0)
+            except asyncio.TimeoutError:
+                # Task not done yet, continue sending heartbeats
+                pass
+
+        # Get result
+        result = await process_task
         logger.info(f"[WebChat] process_chat_message returned: error={result.get('error')}, has_content={bool(result.get('content'))}")
 
         if result.get("error"):
