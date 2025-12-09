@@ -48,6 +48,9 @@ services:
       # Environment (development or production)
       - key: ENVIRONMENT
         value: "development"
+      # Auth provider (supabase to validate UI-issued JWTs)
+      - key: AUTH_PROVIDER
+        value: "supabase"
       # Database backend
       - key: DB_BACKEND
         value: "supabase"
