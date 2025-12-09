@@ -173,6 +173,18 @@ const ModuleRegistry = {
       `;
     });
 
+    // Add admin nav item for admin users (always visible regardless of current module)
+    const user = Auth.getUser();
+    const isAdmin = user && user.roles && user.roles.includes('admin');
+    if (isAdmin && moduleConfig.name !== 'core') {
+      navHTML += `
+        <button class="sidebar-nav-item admin-only" data-tool="admin" data-module="core" id="adminNavItem">
+          ${this.getToolIcon('admin')}
+          <span>Admin Panel</span>
+        </button>
+      `;
+    }
+
     navContainer.innerHTML = navHTML;
 
     // Add click handlers
