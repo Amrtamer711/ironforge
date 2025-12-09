@@ -188,6 +188,9 @@ app.use('/api/sales', createProxyMiddleware({
   pathRewrite: {
     '^/api/sales': '/api', // /api/sales/chat -> /api/chat
   },
+  // Increase timeout for LLM operations (5 minutes)
+  proxyTimeout: 300000,
+  timeout: 300000,
   on: {
     proxyReq: (proxyReq, req, res) => {
       // Forward Authorization header to backend (backend validates)
@@ -202,10 +205,27 @@ app.use('/api/sales', createProxyMiddleware({
       } else if (req.socket.remoteAddress) {
         proxyReq.setHeader('X-Forwarded-For', req.socket.remoteAddress);
       }
+
+      // Log streaming requests
+      if (req.path.includes('/stream')) {
+        console.log(`[UI] Proxying SSE request: ${req.method} ${req.path}`);
+      }
+    },
+    proxyRes: (proxyRes, req, res) => {
+      // For SSE endpoints, ensure no buffering
+      if (req.path.includes('/stream') || proxyRes.headers['content-type']?.includes('text/event-stream')) {
+        console.log(`[UI] SSE response detected, disabling buffering`);
+        // Disable compression/buffering for SSE
+        res.setHeader('X-Accel-Buffering', 'no');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+      }
     },
     error: (err, req, res) => {
       console.error(`Proxy error to ${SERVICES.sales}:`, err.message);
-      res.status(502).json({ error: 'Service unavailable', service: SERVICES.sales });
+      if (!res.headersSent) {
+        res.status(502).json({ error: 'Service unavailable', service: SERVICES.sales });
+      }
     },
   },
 }));

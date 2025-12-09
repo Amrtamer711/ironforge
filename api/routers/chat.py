@@ -38,15 +38,20 @@ class ChatMessageResponse(BaseModel):
 
 async def _get_user_profile(user: AuthUser) -> List[str]:
     """Get profile name for a user from RBAC."""
+    import traceback
     try:
+        logger.info(f"[CHAT] _get_user_profile called for {user.email}")
         rbac = get_rbac_client()
+        logger.info(f"[CHAT] Got RBAC client: {rbac.provider_name}")
         profile = await rbac.get_user_profile(user.id)
+        logger.info(f"[CHAT] Got profile: {profile}")
         profile_name = profile.name if profile else user.metadata.get("role", "sales_user")
-        logger.debug(f"[CHAT] Got profile for {user.email}: {profile_name}")
+        logger.info(f"[CHAT] Profile name for {user.email}: {profile_name}")
         # Return as list for backwards compatibility with chat system
         return [profile_name]
     except Exception as e:
-        logger.warning(f"[CHAT] Failed to get profile for {user.email}: {e}, using default")
+        logger.error(f"[CHAT] Failed to get profile for {user.email}: {e}")
+        logger.error(traceback.format_exc())
         return [user.metadata.get("role", "sales_user")]
 
 
@@ -103,15 +108,28 @@ async def chat_stream(
     Returns real-time chunks as the LLM generates the response.
     Requires authentication.
     """
+    import traceback
+
     logger.info(f"[CHAT] === STREAM ENDPOINT HIT ===")
     logger.info(f"[CHAT] User: {user.email}, ID: {user.id}")
     logger.info(f"[CHAT] Message: {request.message[:100]}...")
 
-    from core.chat_api import stream_chat_message
+    try:
+        from core.chat_api import stream_chat_message
+        logger.info(f"[CHAT] Imported stream_chat_message successfully")
+    except Exception as e:
+        logger.error(f"[CHAT] Failed to import stream_chat_message: {e}")
+        logger.error(traceback.format_exc())
+        raise
 
-    logger.info(f"[CHAT] Getting user profile...")
-    roles = await _get_user_profile(user)
-    logger.info(f"[CHAT] Roles: {roles}")
+    try:
+        logger.info(f"[CHAT] Getting user profile...")
+        roles = await _get_user_profile(user)
+        logger.info(f"[CHAT] Roles: {roles}")
+    except Exception as e:
+        logger.error(f"[CHAT] Failed to get user profile: {e}")
+        logger.error(traceback.format_exc())
+        raise
 
     async def event_generator():
         try:
