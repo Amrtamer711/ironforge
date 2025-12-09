@@ -1,7 +1,7 @@
 """
 Module-aware RBAC system.
 
-This module provides a registration system for RBAC permissions and roles
+This module provides a registration system for RBAC permissions
 that can be extended by different application modules (sales, crm, etc.).
 
 Architecture:
@@ -27,9 +27,7 @@ from integrations.rbac.modules.registry import (
     get_module,
     get_all_modules,
     get_all_permissions,
-    get_all_roles,
     get_permissions_for_module,
-    get_roles_for_module,
     is_module_registered,
 )
 
@@ -44,9 +42,7 @@ __all__ = [
     "get_module",
     "get_all_modules",
     "get_all_permissions",
-    "get_all_roles",
     "get_permissions_for_module",
-    "get_roles_for_module",
     "is_module_registered",
     # Module definitions
     "CoreModule",

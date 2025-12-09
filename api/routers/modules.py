@@ -11,7 +11,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from api.auth import get_current_user, require_auth, require_any_role
+from api.auth import get_current_user, require_auth, require_any_profile
 from integrations.auth import AuthUser
 from integrations.rbac import get_rbac_client
 from integrations.rbac.modules import get_all_modules, get_module
@@ -140,13 +140,14 @@ async def get_accessible_modules(user: AuthUser = Depends(require_auth)):
     default_module = None
     user_default_module = None
 
-    # Get user's roles to check permissions
-    user_roles = await rbac.get_user_roles(user.id)
-    role_names = [r.name for r in user_roles]
-    logger.debug(f"[MODULES] User {user.email} has roles: {role_names}")
+    # Get user's profile and permissions to check access
+    profile = await rbac.get_user_profile(user.id)
+    user_permissions = await rbac.get_user_permissions(user.id)
+    profile_name = profile.name if profile else None
+    logger.debug(f"[MODULES] User {user.email} has profile: {profile_name}")
 
     # Check if user is admin (has access to everything)
-    is_admin = "admin" in role_names
+    is_admin = profile_name == "system_admin"
 
     # Check each module
     for module_name, config in MODULE_CONFIGS.items():
@@ -161,13 +162,10 @@ async def get_accessible_modules(user: AuthUser = Depends(require_auth)):
             req_perm = config["required_permission"]
             module_prefix = req_perm.split(":")[0]
 
-            # Check if user has any role that grants access to this module
-            for role in user_roles:
-                for perm in role.permissions:
-                    if perm.name.startswith(f"{module_prefix}:"):
-                        has_access = True
-                        break
-                if has_access:
+            # Check if user has any permission that grants access to this module
+            for perm in user_permissions:
+                if perm.startswith(f"{module_prefix}:"):
+                    has_access = True
                     break
         else:
             # No permission required, everyone can access
@@ -192,8 +190,7 @@ async def get_accessible_modules(user: AuthUser = Depends(require_auth)):
     accessible_modules.sort(key=lambda m: m.sort_order)
 
     # Check if user has a custom default module set
-    from db import get_db
-    db = get_db()
+    from db.database import db
 
     try:
         user_pref = db.execute_query(
@@ -240,18 +237,16 @@ async def get_module_config(
 
     # Verify user has access to this module
     rbac = get_rbac_client()
-    user_roles = await rbac.get_user_roles(user.id)
-    role_names = [r.name for r in user_roles]
+    profile = await rbac.get_user_profile(user.id)
+    user_permissions = await rbac.get_user_permissions(user.id)
+    profile_name = profile.name if profile else None
 
-    has_access = "admin" in role_names
+    has_access = profile_name == "system_admin"
     if not has_access and config.get("required_permission"):
         module_prefix = config["required_permission"].split(":")[0]
-        for role in user_roles:
-            for perm in role.permissions:
-                if perm.name.startswith(f"{module_prefix}:"):
-                    has_access = True
-                    break
-            if has_access:
+        for perm in user_permissions:
+            if perm.startswith(f"{module_prefix}:"):
+                has_access = True
                 break
 
     if not has_access:
@@ -272,7 +267,7 @@ async def get_module_config(
 
 @router.get("/all")
 async def list_all_modules(
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     List all modules (admin only).
@@ -301,12 +296,12 @@ async def list_all_modules(
 @router.post("/user-access")
 async def grant_module_access(
     assignment: UserModuleAssignment,
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     Grant a user access to a module (admin only).
     """
-    from db import get_db
+    from db.database import db
 
     logger.info(f"[MODULES] Admin {user.email} granting {assignment.user_id} access to {assignment.module_name}")
 
@@ -315,8 +310,6 @@ async def grant_module_access(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Module '{assignment.module_name}' not found",
         )
-
-    db = get_db()
     now = get_uae_time().isoformat()
 
     # Get or create module in database
@@ -386,7 +379,7 @@ async def grant_module_access(
 async def revoke_module_access(
     user_id: str,
     module_name: str,
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     Revoke a user's access to a module (admin only).
@@ -425,7 +418,7 @@ async def revoke_module_access(
 @router.get("/user/{user_id}/modules")
 async def get_user_modules(
     user_id: str,
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     Get all modules a specific user has explicit access to (admin only).

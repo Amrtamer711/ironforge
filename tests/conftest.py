@@ -109,21 +109,21 @@ def mock_admin_auth(mock_admin_user: AuthUser):
     async def override_require_auth():
         return mock_admin_user
 
-    # Also mock the role check
-    original_require_any_role = auth.require_any_role
+    # Also mock the profile check
+    original_require_any_profile = auth.require_any_profile
 
-    def mock_require_any_role(*roles):
+    def mock_require_any_profile(*profiles):
         async def dependency():
             return mock_admin_user
         return dependency
 
     app.dependency_overrides[auth.require_auth] = lambda: mock_admin_user
-    auth.require_any_role = mock_require_any_role
+    auth.require_any_profile = mock_require_any_profile
 
     yield mock_admin_user
 
     app.dependency_overrides.clear()
-    auth.require_any_role = original_require_any_role
+    auth.require_any_profile = original_require_any_profile
 
 
 # =============================================================================

@@ -382,50 +382,6 @@ class DatabaseBackend(ABC):
         pass
 
     # =========================================================================
-    # RBAC: ROLES
-    # =========================================================================
-
-    @abstractmethod
-    def get_role_by_name(self, role_name: str) -> Optional[Dict[str, Any]]:
-        """Get a role by name."""
-        pass
-
-    @abstractmethod
-    def list_roles(self) -> List[Dict[str, Any]]:
-        """List all roles."""
-        pass
-
-    @abstractmethod
-    def create_role(
-        self,
-        name: str,
-        description: Optional[str] = None,
-        is_system: bool = False,
-        created_at: Optional[str] = None,
-    ) -> Optional[str]:
-        """
-        Create a new role.
-
-        Returns:
-            Role ID if created, None otherwise
-        """
-        pass
-
-    @abstractmethod
-    def update_role(
-        self,
-        role_id: str,
-        description: Optional[str] = None,
-    ) -> bool:
-        """Update a role."""
-        pass
-
-    @abstractmethod
-    def delete_role(self, role_id: str) -> bool:
-        """Delete a role."""
-        pass
-
-    # =========================================================================
     # RBAC: PERMISSIONS
     # =========================================================================
 
@@ -449,57 +405,6 @@ class DatabaseBackend(ABC):
         Returns:
             Permission ID if created, None otherwise
         """
-        pass
-
-    @abstractmethod
-    def get_role_permissions(self, role_id: str) -> List[Dict[str, Any]]:
-        """Get all permissions for a role."""
-        pass
-
-    @abstractmethod
-    def assign_role_permission(
-        self,
-        role_id: str,
-        permission_name: str,
-        assigned_at: Optional[str] = None,
-    ) -> bool:
-        """Assign a permission to a role."""
-        pass
-
-    @abstractmethod
-    def set_role_permissions(
-        self,
-        role_id: str,
-        permission_names: List[str],
-        assigned_at: Optional[str] = None,
-    ) -> bool:
-        """Set all permissions for a role (replaces existing)."""
-        pass
-
-    # =========================================================================
-    # RBAC: USER ROLES
-    # =========================================================================
-
-    @abstractmethod
-    def get_user_roles(self, user_id: str) -> List[Dict[str, Any]]:
-        """Get all roles assigned to a user."""
-        pass
-
-    @abstractmethod
-    def assign_user_role(
-        self,
-        user_id: str,
-        role_id: str,
-        granted_by: Optional[str] = None,
-        granted_at: Optional[str] = None,
-        expires_at: Optional[str] = None,
-    ) -> bool:
-        """Assign a role to a user."""
-        pass
-
-    @abstractmethod
-    def revoke_user_role(self, user_id: str, role_name: str) -> bool:
-        """Revoke a role from a user."""
         pass
 
     # =========================================================================

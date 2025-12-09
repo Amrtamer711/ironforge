@@ -1,13 +1,13 @@
 """
-Admin API endpoints for role and permission management.
+Admin API endpoints for RBAC and user management.
 
-Provides endpoints for:
-- Role management (CRUD)
-- Permission listing
-- User-role assignment
-- System overview
+Enterprise RBAC with 4 levels:
+- Level 1: Profiles (base permission templates)
+- Level 2: Permission Sets (additive permissions)
+- Level 3: Teams & Hierarchy
+- Level 4: Record-Level Sharing
 
-All endpoints require admin role or system:admin permission.
+All endpoints require system_admin profile or appropriate permissions.
 """
 
 from typing import List, Optional
@@ -15,14 +15,19 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from api.auth import require_auth, require_permission, require_any_role
+from api.auth import require_auth, require_permission, require_any_profile
 from integrations.auth import AuthUser, get_auth_client
 from integrations.rbac import (
     get_rbac_client,
-    Role,
     Permission,
-    DEFAULT_ROLES,
-    DEFAULT_PERMISSIONS,
+    Profile,
+    PermissionSet,
+    Team,
+    TeamMember,
+    TeamRole,
+    AccessLevel,
+    SharingRule,
+    RecordShare,
 )
 from utils.logging import get_logger
 
@@ -35,27 +40,6 @@ logger = get_logger("api.admin")
 # =============================================================================
 
 
-class RoleCreate(BaseModel):
-    """Request model for creating a role."""
-    name: str = Field(..., min_length=1, max_length=50, pattern=r"^[a-z_]+$")
-    description: Optional[str] = Field(None, max_length=200)
-    permissions: List[str] = Field(default_factory=list)
-
-
-class RoleUpdate(BaseModel):
-    """Request model for updating a role."""
-    description: Optional[str] = Field(None, max_length=200)
-    permissions: Optional[List[str]] = None
-
-
-class RoleResponse(BaseModel):
-    """Response model for a role."""
-    name: str
-    description: Optional[str]
-    permissions: List[str]
-    is_system: bool
-
-
 class PermissionResponse(BaseModel):
     """Response model for a permission."""
     name: str
@@ -64,16 +48,11 @@ class PermissionResponse(BaseModel):
     description: Optional[str]
 
 
-class UserRoleAssign(BaseModel):
-    """Request model for assigning a role to a user."""
+class UserPermissionsInfo(BaseModel):
+    """Response model for user permission information."""
     user_id: str
-    role_name: str
-
-
-class UserRoleInfo(BaseModel):
-    """Response model for user role information."""
-    user_id: str
-    roles: List[str]
+    profile: Optional[str]
+    permission_sets: List[str]
     permissions: List[str]
 
 
@@ -85,7 +64,7 @@ class UserResponse(BaseModel):
     is_active: bool
     created_at: str
     last_login_at: Optional[str]
-    roles: List[str] = []
+    profile: Optional[str] = None
 
 
 class UserCreate(BaseModel):
@@ -93,7 +72,7 @@ class UserCreate(BaseModel):
     email: str = Field(..., min_length=5)
     name: Optional[str] = Field(None, max_length=100)
     password: str = Field(..., min_length=6)
-    roles: List[str] = Field(default_factory=lambda: ["sales_person"])
+    profile: str = Field(default="sales_user")
 
 
 class UserUpdate(BaseModel):
@@ -104,225 +83,11 @@ class UserUpdate(BaseModel):
 
 class AdminDashboard(BaseModel):
     """Response model for admin dashboard."""
-    total_roles: int
+    total_profiles: int
+    total_permission_sets: int
     total_permissions: int
-    system_roles: List[str]
-    custom_roles: List[str]
-
-
-# =============================================================================
-# ROLE ENDPOINTS
-# =============================================================================
-
-
-@router.get("/roles", response_model=List[RoleResponse])
-async def list_roles(
-    user: AuthUser = Depends(require_any_role("admin")),
-):
-    """
-    List all available roles.
-
-    Requires: system:admin permission
-    """
-    rbac = get_rbac_client()
-    roles = await rbac.list_roles()
-
-    return [
-        RoleResponse(
-            name=role.name,
-            description=role.description,
-            permissions=[p.name for p in role.permissions],
-            is_system=role.is_system,
-        )
-        for role in roles
-    ]
-
-
-@router.get("/roles/{role_name}", response_model=RoleResponse)
-async def get_role(
-    role_name: str,
-    user: AuthUser = Depends(require_any_role("admin")),
-):
-    """
-    Get a specific role by name.
-
-    Requires: system:admin permission
-    """
-    rbac = get_rbac_client()
-    role = await rbac.get_role(role_name)
-
-    if not role:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Role '{role_name}' not found",
-        )
-
-    return RoleResponse(
-        name=role.name,
-        description=role.description,
-        permissions=[p.name for p in role.permissions],
-        is_system=role.is_system,
-    )
-
-
-@router.post("/roles", response_model=RoleResponse, status_code=status.HTTP_201_CREATED)
-async def create_role(
-    role_data: RoleCreate,
-    user: AuthUser = Depends(require_any_role("admin")),
-):
-    """
-    Create a new custom role.
-
-    Requires: system:admin permission
-
-    Note: System roles cannot be created via API.
-    """
-    rbac = get_rbac_client()
-
-    # Check if role already exists
-    existing = await rbac.get_role(role_data.name)
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Role '{role_data.name}' already exists",
-        )
-
-    # Validate permissions exist
-    available_perms = await rbac.list_permissions()
-    available_names = {p.name for p in available_perms}
-
-    for perm in role_data.permissions:
-        if perm not in available_names and perm != "*:manage":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid permission: {perm}",
-            )
-
-    # Create the role
-    role = await rbac.create_role(
-        name=role_data.name,
-        description=role_data.description,
-        permissions=role_data.permissions,
-    )
-
-    if not role:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create role",
-        )
-
-    logger.info(f"[ADMIN] Role created: {role.name} by {user.email}")
-
-    return RoleResponse(
-        name=role.name,
-        description=role.description,
-        permissions=[p.name for p in role.permissions],
-        is_system=role.is_system,
-    )
-
-
-@router.put("/roles/{role_name}", response_model=RoleResponse)
-async def update_role(
-    role_name: str,
-    role_data: RoleUpdate,
-    user: AuthUser = Depends(require_any_role("admin")),
-):
-    """
-    Update an existing role.
-
-    Requires: system:admin permission
-
-    Note: System roles can have descriptions updated but not permissions.
-    """
-    rbac = get_rbac_client()
-
-    # Check role exists
-    existing = await rbac.get_role(role_name)
-    if not existing:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Role '{role_name}' not found",
-        )
-
-    # Prevent modifying system role permissions
-    if existing.is_system and role_data.permissions is not None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot modify permissions of system roles",
-        )
-
-    # Validate permissions if provided
-    if role_data.permissions is not None:
-        available_perms = await rbac.list_permissions()
-        available_names = {p.name for p in available_perms}
-
-        for perm in role_data.permissions:
-            if perm not in available_names and perm != "*:manage":
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid permission: {perm}",
-                )
-
-    # Update the role
-    role = await rbac.update_role(
-        name=role_name,
-        description=role_data.description,
-        permissions=role_data.permissions,
-    )
-
-    if not role:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update role",
-        )
-
-    logger.info(f"[ADMIN] Role updated: {role.name} by {user.email}")
-
-    return RoleResponse(
-        name=role.name,
-        description=role.description,
-        permissions=[p.name for p in role.permissions],
-        is_system=role.is_system,
-    )
-
-
-@router.delete("/roles/{role_name}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_role(
-    role_name: str,
-    user: AuthUser = Depends(require_any_role("admin")),
-):
-    """
-    Delete a custom role.
-
-    Requires: system:admin permission
-
-    Note: System roles cannot be deleted.
-    """
-    rbac = get_rbac_client()
-
-    # Check role exists
-    existing = await rbac.get_role(role_name)
-    if not existing:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Role '{role_name}' not found",
-        )
-
-    if existing.is_system:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot delete system roles",
-        )
-
-    success = await rbac.delete_role(role_name)
-
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete role",
-        )
-
-    logger.info(f"[ADMIN] Role deleted: {role_name} by {user.email}")
+    system_profiles: List[str]
+    custom_profiles: List[str]
 
 
 # =============================================================================
@@ -332,12 +97,12 @@ async def delete_role(
 
 @router.get("/permissions", response_model=List[PermissionResponse])
 async def list_permissions(
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     List all available permissions.
 
-    Requires: system:admin permission
+    Requires: system_admin profile
     """
     rbac = get_rbac_client()
     permissions = await rbac.list_permissions()
@@ -355,12 +120,12 @@ async def list_permissions(
 
 @router.get("/permissions/grouped")
 async def list_permissions_grouped(
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     List permissions grouped by resource.
 
-    Requires: system:admin permission
+    Requires: system_admin profile
     """
     rbac = get_rbac_client()
     permissions = await rbac.list_permissions()
@@ -380,106 +145,32 @@ async def list_permissions_grouped(
 
 
 # =============================================================================
-# USER ROLE MANAGEMENT
+# USER PERMISSIONS INFO
 # =============================================================================
 
 
-@router.get("/users/{user_id}/roles", response_model=UserRoleInfo)
-async def get_user_roles(
+@router.get("/users/{user_id}/permissions", response_model=UserPermissionsInfo)
+async def get_user_permissions_info(
     user_id: str,
     user: AuthUser = Depends(require_permission("core:users:read")),
 ):
     """
-    Get roles and permissions for a specific user.
+    Get profile, permission sets, and permissions for a specific user.
 
     Requires: core:users:read permission
     """
     rbac = get_rbac_client()
 
-    roles = await rbac.get_user_roles(user_id)
+    profile = await rbac.get_user_profile(user_id)
+    permission_sets = await rbac.get_user_permission_sets(user_id)
     permissions = await rbac.get_user_permissions(user_id)
 
-    return UserRoleInfo(
+    return UserPermissionsInfo(
         user_id=user_id,
-        roles=[r.name for r in roles],
+        profile=profile.name if profile else None,
+        permission_sets=[ps.name for ps in permission_sets],
         permissions=list(permissions),
     )
-
-
-@router.post("/users/{user_id}/roles/{role_name}", status_code=status.HTTP_201_CREATED)
-async def assign_user_role(
-    user_id: str,
-    role_name: str,
-    user: AuthUser = Depends(require_permission("core:users:manage")),
-):
-    """
-    Assign a role to a user.
-
-    Requires: core:users:manage permission
-    """
-    rbac = get_rbac_client()
-
-    # Verify role exists
-    role = await rbac.get_role(role_name)
-    if not role:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Role '{role_name}' not found",
-        )
-
-    # Check if user already has role
-    if await rbac.has_role(user_id, role_name):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"User already has role '{role_name}'",
-        )
-
-    success = await rbac.assign_role(
-        user_id=user_id,
-        role_name=role_name,
-        granted_by=user.id,
-    )
-
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to assign role",
-        )
-
-    logger.info(f"[ADMIN] Role '{role_name}' assigned to user {user_id} by {user.email}")
-
-    return {"success": True, "message": f"Role '{role_name}' assigned to user"}
-
-
-@router.delete("/users/{user_id}/roles/{role_name}", status_code=status.HTTP_204_NO_CONTENT)
-async def revoke_user_role(
-    user_id: str,
-    role_name: str,
-    user: AuthUser = Depends(require_permission("core:users:manage")),
-):
-    """
-    Revoke a role from a user.
-
-    Requires: core:users:manage permission
-    """
-    rbac = get_rbac_client()
-
-    # Check if user has the role
-    if not await rbac.has_role(user_id, role_name):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User does not have role '{role_name}'",
-        )
-
-    success = await rbac.revoke_role(user_id, role_name)
-
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to revoke role",
-        )
-
-    logger.info(f"[ADMIN] Role '{role_name}' revoked from user {user_id} by {user.email}")
 
 
 # =============================================================================
@@ -489,37 +180,39 @@ async def revoke_user_role(
 
 @router.get("/dashboard", response_model=AdminDashboard)
 async def admin_dashboard(
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     Get admin dashboard overview.
 
-    Requires: system:admin permission
+    Requires: system_admin profile
     """
     rbac = get_rbac_client()
 
-    roles = await rbac.list_roles()
+    profiles = await rbac.list_profiles()
+    permission_sets = await rbac.list_permission_sets()
     permissions = await rbac.list_permissions()
 
-    system_roles = [r.name for r in roles if r.is_system]
-    custom_roles = [r.name for r in roles if not r.is_system]
+    system_profiles = [p.name for p in profiles if p.is_system]
+    custom_profiles = [p.name for p in profiles if not p.is_system]
 
     return AdminDashboard(
-        total_roles=len(roles),
+        total_profiles=len(profiles),
+        total_permission_sets=len(permission_sets),
         total_permissions=len(permissions),
-        system_roles=system_roles,
-        custom_roles=custom_roles,
+        system_profiles=system_profiles,
+        custom_profiles=custom_profiles,
     )
 
 
 @router.post("/initialize", status_code=status.HTTP_200_OK)
 async def initialize_rbac(
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
-    Initialize default roles and permissions.
+    Initialize default profiles and permissions.
 
-    Requires: system:admin permission
+    Requires: system_admin profile
 
     This is idempotent - calling it multiple times won't duplicate data.
     """
@@ -591,15 +284,15 @@ class APIKeyCreateResponse(BaseModel):
 @router.get("/api-keys", response_model=List[APIKeyResponse])
 async def list_api_keys(
     include_inactive: bool = False,
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     List all API keys.
 
     Requires: system:admin permission
     """
-    from db import get_db
-    db = get_db()
+    from db.database import db
+    
 
     keys = db.list_api_keys(include_inactive=include_inactive)
 
@@ -625,15 +318,15 @@ async def list_api_keys(
 @router.get("/api-keys/{key_id}", response_model=APIKeyResponse)
 async def get_api_key(
     key_id: int,
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     Get a specific API key by ID.
 
     Requires: system:admin permission
     """
-    from db import get_db
-    db = get_db()
+    from db.database import db
+    
 
     k = db.get_api_key_by_id(key_id)
 
@@ -662,7 +355,7 @@ async def get_api_key(
 @router.post("/api-keys", response_model=APIKeyCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_api_key(
     key_data: APIKeyCreate,
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     Create a new API key.
@@ -672,10 +365,10 @@ async def create_api_key(
     IMPORTANT: The raw API key is only returned ONCE in this response.
     Store it securely - it cannot be retrieved again.
     """
-    from db import get_db
+    from db.database import db
     from api.middleware import generate_api_key
 
-    db = get_db()
+    
 
     # Generate the key
     raw_key, key_hash = generate_api_key(prefix="sk")
@@ -724,15 +417,15 @@ async def create_api_key(
 async def update_api_key(
     key_id: int,
     key_data: APIKeyUpdate,
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     Update an API key.
 
     Requires: system:admin permission
     """
-    from db import get_db
-    db = get_db()
+    from db.database import db
+    
 
     # Check key exists
     existing = db.get_api_key_by_id(key_id)
@@ -793,7 +486,7 @@ async def update_api_key(
 @router.post("/api-keys/{key_id}/rotate")
 async def rotate_api_key(
     key_id: int,
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     Rotate an API key (generate new secret, invalidate old).
@@ -803,11 +496,11 @@ async def rotate_api_key(
     IMPORTANT: The new raw key is only returned ONCE.
     Store it securely - it cannot be retrieved again.
     """
-    from db import get_db
+    from db.database import db
     from api.middleware import generate_api_key
     from utils.time import get_uae_time
 
-    db = get_db()
+    
 
     # Check key exists
     existing = db.get_api_key_by_id(key_id)
@@ -848,15 +541,15 @@ async def rotate_api_key(
 @router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_api_key(
     key_id: int,
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     Delete an API key (hard delete).
 
     Requires: system:admin permission
     """
-    from db import get_db
-    db = get_db()
+    from db.database import db
+    
 
     # Check key exists
     existing = db.get_api_key_by_id(key_id)
@@ -880,15 +573,15 @@ async def delete_api_key(
 @router.post("/api-keys/{key_id}/deactivate", status_code=status.HTTP_200_OK)
 async def deactivate_api_key(
     key_id: int,
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     Deactivate an API key (soft delete).
 
     Requires: system:admin permission
     """
-    from db import get_db
-    db = get_db()
+    from db.database import db
+    
 
     # Check key exists
     existing = db.get_api_key_by_id(key_id)
@@ -916,15 +609,15 @@ async def get_api_key_usage(
     key_id: int,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     Get usage statistics for an API key.
 
     Requires: system:admin permission
     """
-    from db import get_db
-    db = get_db()
+    from db.database import db
+    
 
     # Check key exists
     existing = db.get_api_key_by_id(key_id)
@@ -971,8 +664,8 @@ async def list_users(
 
     result = []
     for u in users:
-        # Get roles for each user using RBAC client
-        roles = await rbac.get_user_roles(u.id)
+        # Get profile for each user using RBAC client
+        profile = await rbac.get_user_profile(u.id)
         result.append(
             UserResponse(
                 id=u.id,
@@ -981,7 +674,7 @@ async def list_users(
                 is_active=u.is_active,
                 created_at=u.metadata.get("created_at", ""),
                 last_login_at=u.metadata.get("last_login_at"),
-                roles=[r.name for r in roles],
+                profile=profile.name if profile else None,
             )
         )
 
@@ -1009,7 +702,7 @@ async def get_user(
             detail=f"User '{user_id}' not found",
         )
 
-    roles = await rbac.get_user_roles(user_id)
+    profile = await rbac.get_user_profile(user_id)
 
     return UserResponse(
         id=target_user.id,
@@ -1018,7 +711,7 @@ async def get_user(
         is_active=target_user.is_active,
         created_at=target_user.metadata.get("created_at", ""),
         last_login_at=target_user.metadata.get("last_login_at"),
-        roles=[r.name for r in roles],
+        profile=profile.name if profile else None,
     )
 
 
@@ -1032,7 +725,7 @@ async def create_user(
 
     Requires: core:users:create permission
 
-    Creates user in auth system and assigns initial roles.
+    Creates user in auth system and assigns initial profile.
     """
     auth = get_auth_client()
     rbac = get_rbac_client()
@@ -1045,14 +738,13 @@ async def create_user(
             detail=f"User with email '{user_data.email}' already exists",
         )
 
-    # Validate roles exist
-    for role_name in user_data.roles:
-        role = await rbac.get_role(role_name)
-        if not role:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid role: {role_name}",
-            )
+    # Validate profile exists
+    profile = await rbac.get_profile(user_data.profile)
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid profile: {user_data.profile}",
+        )
 
     # Create user via auth provider
     # Note: password handling depends on the auth provider
@@ -1070,13 +762,8 @@ async def create_user(
             detail="Failed to create user",
         )
 
-    # Assign roles via RBAC provider
-    for role_name in user_data.roles:
-        await rbac.assign_role(
-            user_id=new_user.id,
-            role_name=role_name,
-            granted_by=user.id,
-        )
+    # Assign profile via RBAC provider
+    await rbac.assign_profile(new_user.id, user_data.profile)
 
     logger.info(f"[ADMIN] User created: {new_user.email} (id={new_user.id}) by {user.email}")
 
@@ -1087,7 +774,7 @@ async def create_user(
         is_active=new_user.is_active,
         created_at=new_user.metadata.get("created_at", ""),
         last_login_at=None,
-        roles=user_data.roles,
+        profile=user_data.profile,
     )
 
 
@@ -1098,7 +785,7 @@ async def update_user(
     user: AuthUser = Depends(require_permission("core:users:update")),
 ):
     """
-    Update a user's profile.
+    Update a user's information.
 
     Requires: core:users:update permission
     """
@@ -1126,7 +813,7 @@ async def update_user(
             detail="Failed to update user",
         )
 
-    roles = await rbac.get_user_roles(user_id)
+    profile = await rbac.get_user_profile(user_id)
 
     logger.info(f"[ADMIN] User updated: {user_id} by {user.email}")
 
@@ -1137,7 +824,7 @@ async def update_user(
         is_active=updated_user.is_active,
         created_at=updated_user.metadata.get("created_at", ""),
         last_login_at=updated_user.metadata.get("last_login_at"),
-        roles=[r.name for r in roles],
+        profile=profile.name if profile else None,
     )
 
 
@@ -1180,3 +867,1049 @@ async def delete_user(
         )
 
     logger.info(f"[ADMIN] User deleted: {user_id} by {user.email}")
+
+
+# =============================================================================
+# ENTERPRISE RBAC: PROFILE MANAGEMENT
+# =============================================================================
+
+
+class ProfileCreate(BaseModel):
+    """Request model for creating a profile."""
+    name: str = Field(..., min_length=1, max_length=50, pattern=r"^[a-z_]+$")
+    display_name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    permissions: List[str] = Field(default_factory=list)
+
+
+class ProfileUpdate(BaseModel):
+    """Request model for updating a profile."""
+    display_name: Optional[str] = Field(None, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    permissions: Optional[List[str]] = None
+
+
+class ProfileResponse(BaseModel):
+    """Response model for a profile."""
+    id: int
+    name: str
+    display_name: str
+    description: Optional[str]
+    permissions: List[str]
+    is_system: bool
+    created_at: Optional[str]
+    updated_at: Optional[str]
+
+
+@router.get("/profiles", response_model=List[ProfileResponse])
+async def list_profiles(
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    List all available profiles.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+    profiles = await rbac.list_profiles()
+
+    return [
+        ProfileResponse(
+            id=p.id,
+            name=p.name,
+            display_name=p.display_name,
+            description=p.description,
+            permissions=list(p.permissions),
+            is_system=p.is_system,
+            created_at=p.created_at,
+            updated_at=p.updated_at,
+        )
+        for p in profiles
+    ]
+
+
+@router.get("/profiles/{profile_name}", response_model=ProfileResponse)
+async def get_profile(
+    profile_name: str,
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    Get a specific profile by name.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+    profile = await rbac.get_profile(profile_name)
+
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Profile '{profile_name}' not found",
+        )
+
+    return ProfileResponse(
+        id=profile.id,
+        name=profile.name,
+        display_name=profile.display_name,
+        description=profile.description,
+        permissions=list(profile.permissions),
+        is_system=profile.is_system,
+        created_at=profile.created_at,
+        updated_at=profile.updated_at,
+    )
+
+
+@router.post("/profiles", response_model=ProfileResponse, status_code=status.HTTP_201_CREATED)
+async def create_profile(
+    profile_data: ProfileCreate,
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    Create a new profile.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+
+    # Check if profile already exists
+    existing = await rbac.get_profile(profile_data.name)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Profile '{profile_data.name}' already exists",
+        )
+
+    profile = await rbac.create_profile(
+        name=profile_data.name,
+        display_name=profile_data.display_name,
+        description=profile_data.description,
+        permissions=profile_data.permissions,
+    )
+
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create profile",
+        )
+
+    logger.info(f"[ADMIN] Profile created: {profile.name} by {user.email}")
+
+    return ProfileResponse(
+        id=profile.id,
+        name=profile.name,
+        display_name=profile.display_name,
+        description=profile.description,
+        permissions=list(profile.permissions),
+        is_system=profile.is_system,
+        created_at=profile.created_at,
+        updated_at=profile.updated_at,
+    )
+
+
+@router.put("/profiles/{profile_name}", response_model=ProfileResponse)
+async def update_profile(
+    profile_name: str,
+    profile_data: ProfileUpdate,
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    Update an existing profile.
+
+    Requires: admin role
+
+    Note: System profiles cannot have their permissions modified.
+    """
+    rbac = get_rbac_client()
+
+    existing = await rbac.get_profile(profile_name)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Profile '{profile_name}' not found",
+        )
+
+    if existing.is_system and profile_data.permissions is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot modify permissions of system profiles",
+        )
+
+    profile = await rbac.update_profile(
+        name=profile_name,
+        display_name=profile_data.display_name,
+        description=profile_data.description,
+        permissions=profile_data.permissions,
+    )
+
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update profile",
+        )
+
+    logger.info(f"[ADMIN] Profile updated: {profile.name} by {user.email}")
+
+    return ProfileResponse(
+        id=profile.id,
+        name=profile.name,
+        display_name=profile.display_name,
+        description=profile.description,
+        permissions=list(profile.permissions),
+        is_system=profile.is_system,
+        created_at=profile.created_at,
+        updated_at=profile.updated_at,
+    )
+
+
+@router.delete("/profiles/{profile_name}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_profile(
+    profile_name: str,
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    Delete a profile.
+
+    Requires: admin role
+
+    Note: System profiles cannot be deleted.
+    """
+    rbac = get_rbac_client()
+
+    existing = await rbac.get_profile(profile_name)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Profile '{profile_name}' not found",
+        )
+
+    if existing.is_system:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot delete system profiles",
+        )
+
+    success = await rbac.delete_profile(profile_name)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete profile",
+        )
+
+    logger.info(f"[ADMIN] Profile deleted: {profile_name} by {user.email}")
+
+
+@router.put("/users/{user_id}/profile", status_code=status.HTTP_200_OK)
+async def assign_user_profile(
+    user_id: str,
+    profile_name: str,
+    user: AuthUser = Depends(require_permission("core:users:manage")),
+):
+    """
+    Assign a profile to a user.
+
+    Requires: core:users:manage permission
+    """
+    rbac = get_rbac_client()
+
+    # Verify profile exists
+    profile = await rbac.get_profile(profile_name)
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Profile '{profile_name}' not found",
+        )
+
+    success = await rbac.assign_profile(user_id, profile_name)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to assign profile",
+        )
+
+    logger.info(f"[ADMIN] Profile '{profile_name}' assigned to user {user_id} by {user.email}")
+
+    return {"success": True, "message": f"Profile '{profile_name}' assigned to user"}
+
+
+# =============================================================================
+# ENTERPRISE RBAC: PERMISSION SET MANAGEMENT
+# =============================================================================
+
+
+class PermissionSetCreate(BaseModel):
+    """Request model for creating a permission set."""
+    name: str = Field(..., min_length=1, max_length=50, pattern=r"^[a-z_]+$")
+    display_name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    permissions: List[str] = Field(default_factory=list)
+
+
+class PermissionSetUpdate(BaseModel):
+    """Request model for updating a permission set."""
+    display_name: Optional[str] = Field(None, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    permissions: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+
+
+class PermissionSetResponse(BaseModel):
+    """Response model for a permission set."""
+    id: int
+    name: str
+    display_name: str
+    description: Optional[str]
+    permissions: List[str]
+    is_active: bool
+    created_at: Optional[str]
+    updated_at: Optional[str]
+
+
+class UserPermissionSetAssign(BaseModel):
+    """Request model for assigning a permission set to a user."""
+    expires_at: Optional[str] = None  # ISO datetime or None for permanent
+
+
+@router.get("/permission-sets", response_model=List[PermissionSetResponse])
+async def list_permission_sets(
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    List all available permission sets.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+    permission_sets = await rbac.list_permission_sets()
+
+    return [
+        PermissionSetResponse(
+            id=ps.id,
+            name=ps.name,
+            display_name=ps.display_name,
+            description=ps.description,
+            permissions=list(ps.permissions),
+            is_active=ps.is_active,
+            created_at=ps.created_at,
+            updated_at=ps.updated_at,
+        )
+        for ps in permission_sets
+    ]
+
+
+@router.get("/permission-sets/{ps_name}", response_model=PermissionSetResponse)
+async def get_permission_set(
+    ps_name: str,
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    Get a specific permission set by name.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+    ps = await rbac.get_permission_set(ps_name)
+
+    if not ps:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Permission set '{ps_name}' not found",
+        )
+
+    return PermissionSetResponse(
+        id=ps.id,
+        name=ps.name,
+        display_name=ps.display_name,
+        description=ps.description,
+        permissions=list(ps.permissions),
+        is_active=ps.is_active,
+        created_at=ps.created_at,
+        updated_at=ps.updated_at,
+    )
+
+
+@router.post("/permission-sets", response_model=PermissionSetResponse, status_code=status.HTTP_201_CREATED)
+async def create_permission_set(
+    ps_data: PermissionSetCreate,
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    Create a new permission set.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+
+    existing = await rbac.get_permission_set(ps_data.name)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Permission set '{ps_data.name}' already exists",
+        )
+
+    ps = await rbac.create_permission_set(
+        name=ps_data.name,
+        display_name=ps_data.display_name,
+        description=ps_data.description,
+        permissions=ps_data.permissions,
+    )
+
+    if not ps:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create permission set",
+        )
+
+    logger.info(f"[ADMIN] Permission set created: {ps.name} by {user.email}")
+
+    return PermissionSetResponse(
+        id=ps.id,
+        name=ps.name,
+        display_name=ps.display_name,
+        description=ps.description,
+        permissions=list(ps.permissions),
+        is_active=ps.is_active,
+        created_at=ps.created_at,
+        updated_at=ps.updated_at,
+    )
+
+
+@router.put("/permission-sets/{ps_name}", response_model=PermissionSetResponse)
+async def update_permission_set(
+    ps_name: str,
+    ps_data: PermissionSetUpdate,
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    Update an existing permission set.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+
+    existing = await rbac.get_permission_set(ps_name)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Permission set '{ps_name}' not found",
+        )
+
+    ps = await rbac.update_permission_set(
+        name=ps_name,
+        display_name=ps_data.display_name,
+        description=ps_data.description,
+        permissions=ps_data.permissions,
+        is_active=ps_data.is_active,
+    )
+
+    if not ps:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update permission set",
+        )
+
+    logger.info(f"[ADMIN] Permission set updated: {ps.name} by {user.email}")
+
+    return PermissionSetResponse(
+        id=ps.id,
+        name=ps.name,
+        display_name=ps.display_name,
+        description=ps.description,
+        permissions=list(ps.permissions),
+        is_active=ps.is_active,
+        created_at=ps.created_at,
+        updated_at=ps.updated_at,
+    )
+
+
+@router.delete("/permission-sets/{ps_name}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_permission_set(
+    ps_name: str,
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    Delete a permission set.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+
+    existing = await rbac.get_permission_set(ps_name)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Permission set '{ps_name}' not found",
+        )
+
+    success = await rbac.delete_permission_set(ps_name)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete permission set",
+        )
+
+    logger.info(f"[ADMIN] Permission set deleted: {ps_name} by {user.email}")
+
+
+@router.post("/users/{user_id}/permission-sets/{ps_name}", status_code=status.HTTP_201_CREATED)
+async def assign_user_permission_set(
+    user_id: str,
+    ps_name: str,
+    data: UserPermissionSetAssign = None,
+    user: AuthUser = Depends(require_permission("core:users:manage")),
+):
+    """
+    Grant a permission set to a user.
+
+    Requires: core:users:manage permission
+    """
+    rbac = get_rbac_client()
+
+    ps = await rbac.get_permission_set(ps_name)
+    if not ps:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Permission set '{ps_name}' not found",
+        )
+
+    expires_at = data.expires_at if data else None
+
+    success = await rbac.assign_permission_set(
+        user_id=user_id,
+        permission_set_name=ps_name,
+        granted_by=user.id,
+        expires_at=expires_at,
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to assign permission set",
+        )
+
+    logger.info(f"[ADMIN] Permission set '{ps_name}' granted to user {user_id} by {user.email}")
+
+    return {"success": True, "message": f"Permission set '{ps_name}' granted to user"}
+
+
+@router.delete("/users/{user_id}/permission-sets/{ps_name}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_user_permission_set(
+    user_id: str,
+    ps_name: str,
+    user: AuthUser = Depends(require_permission("core:users:manage")),
+):
+    """
+    Revoke a permission set from a user.
+
+    Requires: core:users:manage permission
+    """
+    rbac = get_rbac_client()
+
+    success = await rbac.revoke_permission_set(user_id, ps_name)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to revoke permission set",
+        )
+
+    logger.info(f"[ADMIN] Permission set '{ps_name}' revoked from user {user_id} by {user.email}")
+
+
+# =============================================================================
+# ENTERPRISE RBAC: TEAM MANAGEMENT
+# =============================================================================
+
+
+class TeamCreate(BaseModel):
+    """Request model for creating a team."""
+    name: str = Field(..., min_length=1, max_length=100)
+    display_name: Optional[str] = Field(None, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    parent_team_id: Optional[int] = None
+
+
+class TeamUpdate(BaseModel):
+    """Request model for updating a team."""
+    name: Optional[str] = Field(None, max_length=100)
+    display_name: Optional[str] = Field(None, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    parent_team_id: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class TeamResponse(BaseModel):
+    """Response model for a team."""
+    id: int
+    name: str
+    display_name: Optional[str]
+    description: Optional[str]
+    parent_team_id: Optional[int]
+    is_active: bool
+    created_at: Optional[str]
+    updated_at: Optional[str]
+
+
+class TeamMemberAdd(BaseModel):
+    """Request model for adding a member to a team."""
+    user_id: str
+    role: str = Field(default="member", pattern=r"^(member|leader)$")
+
+
+class TeamMemberResponse(BaseModel):
+    """Response model for a team member."""
+    team_id: int
+    user_id: str
+    role: str
+    joined_at: Optional[str]
+
+
+@router.get("/teams", response_model=List[TeamResponse])
+async def list_teams(
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    List all teams.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+    teams = await rbac.list_teams()
+
+    return [
+        TeamResponse(
+            id=t.id,
+            name=t.name,
+            display_name=t.display_name,
+            description=t.description,
+            parent_team_id=t.parent_team_id,
+            is_active=t.is_active,
+            created_at=t.created_at,
+            updated_at=t.updated_at,
+        )
+        for t in teams
+    ]
+
+
+@router.get("/teams/{team_id}", response_model=TeamResponse)
+async def get_team(
+    team_id: int,
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    Get a specific team by ID.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+    team = await rbac.get_team(team_id)
+
+    if not team:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Team {team_id} not found",
+        )
+
+    return TeamResponse(
+        id=team.id,
+        name=team.name,
+        display_name=team.display_name,
+        description=team.description,
+        parent_team_id=team.parent_team_id,
+        is_active=team.is_active,
+        created_at=team.created_at,
+        updated_at=team.updated_at,
+    )
+
+
+@router.post("/teams", response_model=TeamResponse, status_code=status.HTTP_201_CREATED)
+async def create_team(
+    team_data: TeamCreate,
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    Create a new team.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+
+    existing = await rbac.get_team_by_name(team_data.name)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Team '{team_data.name}' already exists",
+        )
+
+    team = await rbac.create_team(
+        name=team_data.name,
+        display_name=team_data.display_name,
+        description=team_data.description,
+        parent_team_id=team_data.parent_team_id,
+    )
+
+    if not team:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create team",
+        )
+
+    logger.info(f"[ADMIN] Team created: {team.name} by {user.email}")
+
+    return TeamResponse(
+        id=team.id,
+        name=team.name,
+        display_name=team.display_name,
+        description=team.description,
+        parent_team_id=team.parent_team_id,
+        is_active=team.is_active,
+        created_at=team.created_at,
+        updated_at=team.updated_at,
+    )
+
+
+@router.put("/teams/{team_id}", response_model=TeamResponse)
+async def update_team(
+    team_id: int,
+    team_data: TeamUpdate,
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    Update an existing team.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+
+    existing = await rbac.get_team(team_id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Team {team_id} not found",
+        )
+
+    team = await rbac.update_team(
+        team_id=team_id,
+        name=team_data.name,
+        display_name=team_data.display_name,
+        description=team_data.description,
+        parent_team_id=team_data.parent_team_id,
+        is_active=team_data.is_active,
+    )
+
+    if not team:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update team",
+        )
+
+    logger.info(f"[ADMIN] Team updated: {team_id} by {user.email}")
+
+    return TeamResponse(
+        id=team.id,
+        name=team.name,
+        display_name=team.display_name,
+        description=team.description,
+        parent_team_id=team.parent_team_id,
+        is_active=team.is_active,
+        created_at=team.created_at,
+        updated_at=team.updated_at,
+    )
+
+
+@router.delete("/teams/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_team(
+    team_id: int,
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    Delete a team.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+
+    existing = await rbac.get_team(team_id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Team {team_id} not found",
+        )
+
+    success = await rbac.delete_team(team_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete team",
+        )
+
+    logger.info(f"[ADMIN] Team deleted: {team_id} by {user.email}")
+
+
+@router.get("/teams/{team_id}/members", response_model=List[TeamMemberResponse])
+async def get_team_members(
+    team_id: int,
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    Get all members of a team.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+
+    team = await rbac.get_team(team_id)
+    if not team:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Team {team_id} not found",
+        )
+
+    members = await rbac.get_team_members(team_id)
+
+    return [
+        TeamMemberResponse(
+            team_id=m.team_id,
+            user_id=m.user_id,
+            role=m.role.value,
+            joined_at=m.joined_at,
+        )
+        for m in members
+    ]
+
+
+@router.post("/teams/{team_id}/members", status_code=status.HTTP_201_CREATED)
+async def add_team_member(
+    team_id: int,
+    member_data: TeamMemberAdd,
+    user: AuthUser = Depends(require_permission("core:users:manage")),
+):
+    """
+    Add a member to a team.
+
+    Requires: core:users:manage permission
+    """
+    rbac = get_rbac_client()
+
+    team = await rbac.get_team(team_id)
+    if not team:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Team {team_id} not found",
+        )
+
+    role = TeamRole.LEADER if member_data.role == "leader" else TeamRole.MEMBER
+
+    success = await rbac.add_user_to_team(
+        user_id=member_data.user_id,
+        team_id=team_id,
+        role=role,
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to add member to team",
+        )
+
+    logger.info(f"[ADMIN] User {member_data.user_id} added to team {team_id} as {role.value} by {user.email}")
+
+    return {"success": True, "message": f"User added to team as {role.value}"}
+
+
+@router.delete("/teams/{team_id}/members/{member_user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_team_member(
+    team_id: int,
+    member_user_id: str,
+    user: AuthUser = Depends(require_permission("core:users:manage")),
+):
+    """
+    Remove a member from a team.
+
+    Requires: core:users:manage permission
+    """
+    rbac = get_rbac_client()
+
+    success = await rbac.remove_user_from_team(member_user_id, team_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to remove member from team",
+        )
+
+    logger.info(f"[ADMIN] User {member_user_id} removed from team {team_id} by {user.email}")
+
+
+@router.put("/users/{user_id}/manager", status_code=status.HTTP_200_OK)
+async def set_user_manager(
+    user_id: str,
+    manager_id: Optional[str] = None,
+    user: AuthUser = Depends(require_permission("core:users:manage")),
+):
+    """
+    Set or remove a user's manager.
+
+    Requires: core:users:manage permission
+    """
+    from db.database import db
+    from utils.time import get_uae_time
+
+    
+    now = get_uae_time().isoformat()
+
+    try:
+        db._backend.execute_query(
+            "UPDATE users SET manager_id = %s, updated_at = %s WHERE id = %s",
+            (manager_id, now, user_id)
+        )
+
+        logger.info(f"[ADMIN] Manager set for user {user_id}: {manager_id or 'None'} by {user.email}")
+
+        return {"success": True, "message": f"Manager {'set' if manager_id else 'removed'} for user"}
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to set manager: {str(e)}",
+        )
+
+
+# =============================================================================
+# ENTERPRISE RBAC: SHARING RULES & RECORD SHARING
+# =============================================================================
+
+
+class SharingRuleCreate(BaseModel):
+    """Request model for creating a sharing rule."""
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = Field(None, max_length=500)
+    object_type: str = Field(..., min_length=1, max_length=50)
+    share_from_type: str = Field(..., pattern=r"^(owner|profile|team)$")
+    share_from_id: Optional[str] = None
+    share_to_type: str = Field(..., pattern=r"^(profile|team|all)$")
+    share_to_id: Optional[str] = None
+    access_level: str = Field(..., pattern=r"^(read|read_write|full)$")
+
+
+class SharingRuleResponse(BaseModel):
+    """Response model for a sharing rule."""
+    id: int
+    name: str
+    description: Optional[str]
+    object_type: str
+    share_from_type: str
+    share_from_id: Optional[str]
+    share_to_type: str
+    share_to_id: Optional[str]
+    access_level: str
+    is_active: bool
+    created_at: Optional[str]
+    updated_at: Optional[str]
+
+
+@router.get("/sharing-rules", response_model=List[SharingRuleResponse])
+async def list_sharing_rules(
+    object_type: Optional[str] = None,
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    List all sharing rules, optionally filtered by object type.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+    rules = await rbac.list_sharing_rules(object_type)
+
+    return [
+        SharingRuleResponse(
+            id=r.id,
+            name=r.name,
+            description=r.description,
+            object_type=r.object_type,
+            share_from_type=r.share_from_type,
+            share_from_id=r.share_from_id,
+            share_to_type=r.share_to_type,
+            share_to_id=r.share_to_id,
+            access_level=r.access_level.value,
+            is_active=r.is_active,
+            created_at=r.created_at,
+            updated_at=r.updated_at,
+        )
+        for r in rules
+    ]
+
+
+@router.post("/sharing-rules", response_model=SharingRuleResponse, status_code=status.HTTP_201_CREATED)
+async def create_sharing_rule(
+    rule_data: SharingRuleCreate,
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    Create a new sharing rule.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+
+    access_level = AccessLevel(rule_data.access_level)
+
+    rule = await rbac.create_sharing_rule(
+        name=rule_data.name,
+        object_type=rule_data.object_type,
+        share_from_type=rule_data.share_from_type,
+        share_to_type=rule_data.share_to_type,
+        access_level=access_level,
+        share_from_id=rule_data.share_from_id,
+        share_to_id=rule_data.share_to_id,
+        description=rule_data.description,
+    )
+
+    if not rule:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create sharing rule",
+        )
+
+    logger.info(f"[ADMIN] Sharing rule created: {rule.name} by {user.email}")
+
+    return SharingRuleResponse(
+        id=rule.id,
+        name=rule.name,
+        description=rule.description,
+        object_type=rule.object_type,
+        share_from_type=rule.share_from_type,
+        share_from_id=rule.share_from_id,
+        share_to_type=rule.share_to_type,
+        share_to_id=rule.share_to_id,
+        access_level=rule.access_level.value,
+        is_active=rule.is_active,
+        created_at=rule.created_at,
+        updated_at=rule.updated_at,
+    )
+
+
+@router.delete("/sharing-rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_sharing_rule(
+    rule_id: int,
+    user: AuthUser = Depends(require_any_profile("system_admin")),
+):
+    """
+    Delete a sharing rule.
+
+    Requires: admin role
+    """
+    rbac = get_rbac_client()
+
+    success = await rbac.delete_sharing_rule(rule_id)
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete sharing rule",
+        )
+
+    logger.info(f"[ADMIN] Sharing rule deleted: {rule_id} by {user.email}")

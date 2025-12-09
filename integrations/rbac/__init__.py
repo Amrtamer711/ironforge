@@ -5,17 +5,23 @@ Provides abstracted access to RBAC providers with a unified interface.
 Follows the same pattern as integrations/llm/, integrations/auth/,
 and integrations/channels/.
 
+Enterprise RBAC Architecture (4 Levels):
+- Level 1: Profiles (base permission templates - one per user)
+- Level 2: Permission Sets (additive permissions - multiple per user, can expire)
+- Level 3: Teams & Hierarchy (organizational structure)
+- Level 4: Record-Level Sharing (manual and rule-based sharing)
+
 Supported Providers:
 - Database (DatabaseRBACProvider): Database-backed RBAC using unified schema
-- Static (StaticRBACProvider): Static configuration (for development)
+- Static (StaticRBACProvider): In-memory configuration (for development/testing)
 
 Usage:
-    from integrations.rbac import get_rbac_client, has_permission, require_role
+    from integrations.rbac import get_rbac_client, has_permission
 
     # Get the configured RBAC client
     rbac = get_rbac_client()
 
-    # Check permissions (new format: module:resource:action)
+    # Check permissions (format: module:resource:action)
     if await rbac.has_permission(user_id, "sales:proposals:create"):
         # User can create proposals
         pass
@@ -27,9 +33,11 @@ Usage:
     # Require permission (raises PermissionError if lacking)
     await require_permission(user_id, "sales:proposals:delete")
 
-    # Get user roles
-    roles = await rbac.get_user_roles(user_id)
-    print(f"User has roles: {[r.name for r in roles]}")
+    # Get user profile
+    profile = await rbac.get_user_profile(user_id)
+
+    # Assign permission set
+    await rbac.assign_permission_set(user_id, "api_access")
 
 Configuration:
     Set RBAC_PROVIDER environment variable:
@@ -41,27 +49,13 @@ Permission Format:
 
     Modules: core, sales, (future: crm, etc.)
     Actions: create, read, update, delete, manage (implies all)
-
-Roles:
-    Company-wide:
-    - admin: Full system access (all modules)
-    - user: Basic authenticated user
-
-    Sales module:
-    - sales:admin: Full sales module access
-    - sales:hos: Head of Sales - team oversight
-    - sales:sales_person: Sales team member
-    - sales:coordinator: Operations coordinator
-    - sales:finance: Finance team member
 """
 
 # Import and register modules FIRST (before importing base types)
 from integrations.rbac.modules import (
     register_module,
     get_all_permissions,
-    get_all_roles,
     get_permissions_for_module,
-    get_roles_for_module,
     CoreModule,
     SalesModule,
 )
@@ -73,20 +67,21 @@ register_module(SalesModule())
 # Now import base types (they will use the registered modules)
 from integrations.rbac.base import (
     RBACProvider,
-    Role,
     Permission,
     PermissionAction,
-    UserRole,
     RBACContext,
-    DEFAULT_ROLES,
-    DEFAULT_PERMISSIONS,
     get_default_permissions,
-    get_default_roles,
-    initialize_default_rbac,
+    # Enterprise RBAC models
+    Profile,
+    PermissionSet,
+    UserPermissionSet,
+    Team,
+    TeamMember,
+    TeamRole,
+    SharingRule,
+    RecordShare,
+    AccessLevel,
 )
-
-# Initialize the defaults from registered modules
-initialize_default_rbac()
 
 from integrations.rbac.client import (
     RBACClient,
@@ -94,9 +89,7 @@ from integrations.rbac.client import (
     set_rbac_client,
     reset_rbac_client,
     has_permission,
-    has_role,
     require_permission,
-    require_role,
 )
 
 from integrations.rbac.providers import (
@@ -107,22 +100,24 @@ from integrations.rbac.providers import (
 __all__ = [
     # Base types
     "RBACProvider",
-    "Role",
     "Permission",
     "PermissionAction",
-    "UserRole",
     "RBACContext",
-    "DEFAULT_ROLES",
-    "DEFAULT_PERMISSIONS",
     "get_default_permissions",
-    "get_default_roles",
-    "initialize_default_rbac",
+    # Enterprise RBAC models
+    "Profile",
+    "PermissionSet",
+    "UserPermissionSet",
+    "Team",
+    "TeamMember",
+    "TeamRole",
+    "SharingRule",
+    "RecordShare",
+    "AccessLevel",
     # Module registry
     "register_module",
     "get_all_permissions",
-    "get_all_roles",
     "get_permissions_for_module",
-    "get_roles_for_module",
     "CoreModule",
     "SalesModule",
     # Client
@@ -132,9 +127,7 @@ __all__ = [
     "reset_rbac_client",
     # Convenience functions
     "has_permission",
-    "has_role",
     "require_permission",
-    "require_role",
     # Providers
     "DatabaseRBACProvider",
     "StaticRBACProvider",

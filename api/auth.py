@@ -17,9 +17,9 @@ Usage:
     async def admin_route(user: AuthUser = Depends(require_permission("core:users:manage"))):
         return {"user_id": user.id}
 
-    # Require specific role
-    @app.get("/api/hos-only")
-    async def hos_route(user: AuthUser = Depends(require_role("sales:hos"))):
+    # Require specific profile
+    @app.get("/api/admin-only")
+    async def admin_route(user: AuthUser = Depends(require_profile("system_admin"))):
         return {"user_id": user.id}
 
     # Optional auth (user may be None)
@@ -179,62 +179,62 @@ def require_permission(permission: str) -> Callable:
     return _require_permission
 
 
-def require_role(role_name: str) -> Callable:
+def require_profile(profile_name: str) -> Callable:
     """
-    Factory for requiring a specific role.
+    Factory for requiring a specific profile.
 
     Usage:
-        @app.get("/api/hos-only")
-        async def hos_only(user: AuthUser = Depends(require_role("hos"))):
+        @app.get("/api/admin-only")
+        async def admin_only(user: AuthUser = Depends(require_profile("system_admin"))):
             return {"user": user.email}
     """
-    async def _require_role(
+    async def _require_profile(
         user: AuthUser = Depends(require_auth),
     ) -> AuthUser:
         rbac = get_rbac_client()
-        has_role = await rbac.has_role(user.id, role_name)
+        profile = await rbac.get_user_profile(user.id)
 
-        if not has_role:
+        if not profile or profile.name != profile_name:
             logger.warning(
-                f"[AUTH] User {user.id} ({user.email}) lacks role: {role_name}"
+                f"[AUTH] User {user.id} ({user.email}) lacks profile: {profile_name}"
             )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Role required: {role_name}",
+                detail=f"Profile required: {profile_name}",
             )
 
         return user
 
-    return _require_role
+    return _require_profile
 
 
-def require_any_role(*role_names: str) -> Callable:
+def require_any_profile(*profile_names: str) -> Callable:
     """
-    Factory for requiring any of the specified roles.
+    Factory for requiring any of the specified profiles.
 
     Usage:
         @app.get("/api/management")
-        async def management(user: AuthUser = Depends(require_any_role("admin", "hos"))):
+        async def management(user: AuthUser = Depends(require_any_profile("system_admin", "sales_manager"))):
             return {"user": user.email}
     """
-    async def _require_any_role(
+    async def _require_any_profile(
         user: AuthUser = Depends(require_auth),
     ) -> AuthUser:
         rbac = get_rbac_client()
+        profile = await rbac.get_user_profile(user.id)
 
-        for role_name in role_names:
-            if await rbac.has_role(user.id, role_name):
-                return user
+        if profile and profile.name in profile_names:
+            return user
 
         logger.warning(
-            f"[AUTH] User {user.id} ({user.email}) lacks roles: {role_names}"
+            f"[AUTH] User {user.id} ({user.email}) lacks profiles: {profile_names}"
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"One of these roles required: {', '.join(role_names)}",
+            detail=f"One of these profiles required: {', '.join(profile_names)}",
         )
 
-    return _require_any_role
+    return _require_any_profile
 
 
 # =============================================================================

@@ -200,8 +200,8 @@ class DatabaseAPIKeyStore(APIKeyStore):
     """
 
     def __init__(self):
-        from db import get_db
-        self._db = get_db()
+        from db.database import db
+        self._db = db
         logger.info("[API_KEY] Using database-backed API key store")
 
     async def get_key_info(self, key_hash: str) -> Optional[APIKeyInfo]:

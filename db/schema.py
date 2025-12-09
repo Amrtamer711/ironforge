@@ -67,6 +67,220 @@ class Table:
 # =============================================================================
 
 CORE_TABLES: Dict[str, Table] = {
+    # =========================================================================
+    # LEVEL 1: PROFILES (Salesforce-style base permission templates)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # PROFILES - Base permission templates (like Salesforce Profiles)
+    # -------------------------------------------------------------------------
+    "profiles": Table(
+        name="profiles",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("name", ColumnType.TEXT, nullable=False, unique=True),  # e.g., 'system_admin', 'sales_user'
+            Column("display_name", ColumnType.TEXT, nullable=False),
+            Column("description", ColumnType.TEXT),
+            Column("is_system", ColumnType.INTEGER, nullable=False, default=0),  # System profiles can't be deleted
+            Column("created_at", ColumnType.TEXT, nullable=False),
+            Column("updated_at", ColumnType.TEXT, nullable=False),
+        ],
+        indexes=[
+            Index("idx_profiles_name", ["name"]),
+            Index("idx_profiles_system", ["is_system"]),
+        ],
+    ),
+
+    # -------------------------------------------------------------------------
+    # PROFILE_PERMISSIONS - Permissions assigned to profiles
+    # -------------------------------------------------------------------------
+    "profile_permissions": Table(
+        name="profile_permissions",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("profile_id", ColumnType.INTEGER, nullable=False),  # FK to profiles
+            Column("permission", ColumnType.TEXT, nullable=False),  # e.g., 'sales:proposals:create'
+            Column("created_at", ColumnType.TEXT, nullable=False),
+        ],
+        indexes=[
+            Index("idx_profile_permissions_profile", ["profile_id"]),
+            Index("idx_profile_permissions_permission", ["permission"]),
+        ],
+        unique_constraints=[["profile_id", "permission"]],
+    ),
+
+    # =========================================================================
+    # LEVEL 2: PERMISSION SETS (Additive permissions on top of profiles)
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # PERMISSION_SETS - Additive permission bundles
+    # -------------------------------------------------------------------------
+    "permission_sets": Table(
+        name="permission_sets",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("name", ColumnType.TEXT, nullable=False, unique=True),  # e.g., 'export_reports', 'api_access'
+            Column("display_name", ColumnType.TEXT, nullable=False),
+            Column("description", ColumnType.TEXT),
+            Column("is_active", ColumnType.INTEGER, nullable=False, default=1),
+            Column("created_at", ColumnType.TEXT, nullable=False),
+            Column("updated_at", ColumnType.TEXT, nullable=False),
+        ],
+        indexes=[
+            Index("idx_permission_sets_name", ["name"]),
+            Index("idx_permission_sets_active", ["is_active"]),
+        ],
+    ),
+
+    # -------------------------------------------------------------------------
+    # PERMISSION_SET_PERMISSIONS - Permissions in each set
+    # -------------------------------------------------------------------------
+    "permission_set_permissions": Table(
+        name="permission_set_permissions",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("permission_set_id", ColumnType.INTEGER, nullable=False),  # FK to permission_sets
+            Column("permission", ColumnType.TEXT, nullable=False),
+            Column("created_at", ColumnType.TEXT, nullable=False),
+        ],
+        indexes=[
+            Index("idx_psp_set", ["permission_set_id"]),
+            Index("idx_psp_permission", ["permission"]),
+        ],
+        unique_constraints=[["permission_set_id", "permission"]],
+    ),
+
+    # -------------------------------------------------------------------------
+    # USER_PERMISSION_SETS - Permission sets assigned to users
+    # -------------------------------------------------------------------------
+    "user_permission_sets": Table(
+        name="user_permission_sets",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("user_id", ColumnType.TEXT, nullable=False),  # FK to users
+            Column("permission_set_id", ColumnType.INTEGER, nullable=False),  # FK to permission_sets
+            Column("granted_by", ColumnType.TEXT),  # FK to users
+            Column("granted_at", ColumnType.TEXT, nullable=False),
+            Column("expires_at", ColumnType.TEXT),  # NULL = permanent
+        ],
+        indexes=[
+            Index("idx_user_permission_sets_user", ["user_id"]),
+            Index("idx_user_permission_sets_set", ["permission_set_id"]),
+            Index("idx_user_permission_sets_expires", ["expires_at"]),
+        ],
+        unique_constraints=[["user_id", "permission_set_id"]],
+    ),
+
+    # =========================================================================
+    # LEVEL 3: TEAMS & HIERARCHY
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # TEAMS - Organizational groups
+    # -------------------------------------------------------------------------
+    "teams": Table(
+        name="teams",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("name", ColumnType.TEXT, nullable=False),  # Unique within company
+            Column("display_name", ColumnType.TEXT),
+            Column("description", ColumnType.TEXT),
+            Column("parent_team_id", ColumnType.INTEGER),  # FK to teams (self-referential)
+            Column("is_active", ColumnType.INTEGER, nullable=False, default=1),
+            Column("created_at", ColumnType.TEXT, nullable=False),
+            Column("updated_at", ColumnType.TEXT, nullable=False),
+        ],
+        indexes=[
+            Index("idx_teams_name", ["name"]),
+            Index("idx_teams_parent", ["parent_team_id"]),
+            Index("idx_teams_active", ["is_active"]),
+        ],
+    ),
+
+    # -------------------------------------------------------------------------
+    # TEAM_MEMBERS - Users in teams
+    # -------------------------------------------------------------------------
+    "team_members": Table(
+        name="team_members",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("team_id", ColumnType.INTEGER, nullable=False),  # FK to teams
+            Column("user_id", ColumnType.TEXT, nullable=False),  # FK to users
+            Column("role", ColumnType.TEXT, nullable=False, default="member",
+                   check="role IN ('member', 'leader')"),
+            Column("joined_at", ColumnType.TEXT, nullable=False),
+        ],
+        indexes=[
+            Index("idx_team_members_team", ["team_id"]),
+            Index("idx_team_members_user", ["user_id"]),
+            Index("idx_team_members_role", ["role"]),
+        ],
+        unique_constraints=[["team_id", "user_id"]],
+    ),
+
+    # =========================================================================
+    # LEVEL 4: RECORD-LEVEL SHARING
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # SHARING_RULES - Automatic sharing rules (org-wide defaults)
+    # -------------------------------------------------------------------------
+    "sharing_rules": Table(
+        name="sharing_rules",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("name", ColumnType.TEXT, nullable=False),
+            Column("description", ColumnType.TEXT),
+            Column("object_type", ColumnType.TEXT, nullable=False),  # e.g., 'proposal', 'booking_order'
+            Column("share_from_type", ColumnType.TEXT, nullable=False,
+                   check="share_from_type IN ('owner', 'profile', 'team')"),
+            Column("share_from_id", ColumnType.TEXT),  # profile_id or team_id
+            Column("share_to_type", ColumnType.TEXT, nullable=False,
+                   check="share_to_type IN ('profile', 'team', 'all')"),
+            Column("share_to_id", ColumnType.TEXT),  # profile_id or team_id, NULL for 'all'
+            Column("access_level", ColumnType.TEXT, nullable=False,
+                   check="access_level IN ('read', 'read_write', 'full')"),
+            Column("is_active", ColumnType.INTEGER, nullable=False, default=1),
+            Column("created_at", ColumnType.TEXT, nullable=False),
+            Column("updated_at", ColumnType.TEXT, nullable=False),
+        ],
+        indexes=[
+            Index("idx_sharing_rules_object", ["object_type"]),
+            Index("idx_sharing_rules_active", ["is_active"]),
+        ],
+    ),
+
+    # -------------------------------------------------------------------------
+    # RECORD_SHARES - Manual record-level sharing
+    # -------------------------------------------------------------------------
+    "record_shares": Table(
+        name="record_shares",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("object_type", ColumnType.TEXT, nullable=False),  # e.g., 'proposal', 'booking_order'
+            Column("record_id", ColumnType.TEXT, nullable=False),  # ID of the shared record
+            Column("shared_with_user_id", ColumnType.TEXT),  # FK to users (one of these must be set)
+            Column("shared_with_team_id", ColumnType.INTEGER),  # FK to teams
+            Column("access_level", ColumnType.TEXT, nullable=False,
+                   check="access_level IN ('read', 'read_write', 'full')"),
+            Column("shared_by", ColumnType.TEXT, nullable=False),  # FK to users
+            Column("shared_at", ColumnType.TEXT, nullable=False),
+            Column("expires_at", ColumnType.TEXT),  # NULL = permanent
+            Column("reason", ColumnType.TEXT),
+        ],
+        indexes=[
+            Index("idx_record_shares_record", ["object_type", "record_id"]),
+            Index("idx_record_shares_user", ["shared_with_user_id"]),
+            Index("idx_record_shares_team", ["shared_with_team_id"]),
+            Index("idx_record_shares_expires", ["expires_at"]),
+        ],
+    ),
+
+    # =========================================================================
+    # USERS - Extended with profile_id and manager_id
+    # =========================================================================
+
     # -------------------------------------------------------------------------
     # USERS - Synced with Supabase Auth (auth.users)
     # -------------------------------------------------------------------------
@@ -78,6 +292,8 @@ CORE_TABLES: Dict[str, Table] = {
             Column("name", ColumnType.TEXT),
             Column("avatar_url", ColumnType.TEXT),
             Column("is_active", ColumnType.INTEGER, nullable=False, default=1),
+            Column("profile_id", ColumnType.INTEGER),  # FK to profiles - base permissions
+            Column("manager_id", ColumnType.TEXT),  # FK to users (self-referential) - for hierarchy
             Column("created_at", ColumnType.TEXT, nullable=False),
             Column("updated_at", ColumnType.TEXT, nullable=False),
             Column("last_login_at", ColumnType.TEXT),
@@ -86,11 +302,39 @@ CORE_TABLES: Dict[str, Table] = {
         indexes=[
             Index("idx_users_email", ["email"]),
             Index("idx_users_is_active", ["is_active"]),
+            Index("idx_users_profile", ["profile_id"]),
+            Index("idx_users_manager", ["manager_id"]),
         ],
     ),
 
     # -------------------------------------------------------------------------
-    # ROLES - Define available roles in the system
+    # USER_PREFERENCES - User-specific settings (renamed from user_profiles)
+    # -------------------------------------------------------------------------
+    "user_preferences": Table(
+        name="user_preferences",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("user_id", ColumnType.TEXT, nullable=False, unique=True),  # FK to users
+            Column("theme", ColumnType.TEXT, default="light"),
+            Column("language", ColumnType.TEXT, default="en"),
+            Column("timezone", ColumnType.TEXT, default="Asia/Dubai"),
+            Column("notification_email", ColumnType.INTEGER, default=1),
+            Column("notification_push", ColumnType.INTEGER, default=1),
+            Column("preferences_json", ColumnType.TEXT),  # Additional preferences
+            Column("created_at", ColumnType.TEXT, nullable=False),
+            Column("updated_at", ColumnType.TEXT, nullable=False),
+        ],
+        indexes=[
+            Index("idx_user_preferences_user", ["user_id"]),
+        ],
+    ),
+
+    # =========================================================================
+    # LEGACY TABLES - For backward compatibility during migration
+    # =========================================================================
+
+    # -------------------------------------------------------------------------
+    # ROLES - Define available roles in the system (LEGACY - kept for migration)
     # -------------------------------------------------------------------------
     "roles": Table(
         name="roles",
@@ -101,16 +345,18 @@ CORE_TABLES: Dict[str, Table] = {
             Column("description", ColumnType.TEXT),
             Column("module", ColumnType.TEXT),  # NULL = system-wide, 'sales' = module-specific
             Column("is_system", ColumnType.INTEGER, nullable=False, default=0),
+            Column("profile_id", ColumnType.INTEGER),  # FK to profiles - for migration
             Column("created_at", ColumnType.TEXT, nullable=False),
         ],
         indexes=[
             Index("idx_roles_name", ["name"]),
             Index("idx_roles_module", ["module"]),
+            Index("idx_roles_profile", ["profile_id"]),
         ],
     ),
 
     # -------------------------------------------------------------------------
-    # USER_ROLES - Junction table for user-role assignments
+    # USER_ROLES - Junction table for user-role assignments (LEGACY)
     # -------------------------------------------------------------------------
     "user_roles": Table(
         name="user_roles",
@@ -152,7 +398,7 @@ CORE_TABLES: Dict[str, Table] = {
     ),
 
     # -------------------------------------------------------------------------
-    # ROLE_PERMISSIONS - Junction table for role-permission assignments
+    # ROLE_PERMISSIONS - Junction table for role-permission assignments (LEGACY)
     # -------------------------------------------------------------------------
     "role_permissions": Table(
         name="role_permissions",
@@ -168,6 +414,10 @@ CORE_TABLES: Dict[str, Table] = {
         ],
         unique_constraints=[["role_id", "permission_id"]],
     ),
+
+    # =========================================================================
+    # MODULES - Application module management
+    # =========================================================================
 
     # -------------------------------------------------------------------------
     # MODULES - Define available application modules
@@ -213,6 +463,10 @@ CORE_TABLES: Dict[str, Table] = {
         unique_constraints=[["user_id", "module_id"]],
     ),
 
+    # =========================================================================
+    # AUTHENTICATION & SECURITY
+    # =========================================================================
+
     # -------------------------------------------------------------------------
     # INVITE_TOKENS - For user signup invitations
     # -------------------------------------------------------------------------
@@ -222,7 +476,9 @@ CORE_TABLES: Dict[str, Table] = {
             Column("id", ColumnType.INTEGER, primary_key=True),
             Column("token", ColumnType.TEXT, nullable=False, unique=True),
             Column("email", ColumnType.TEXT, nullable=False),
-            Column("role_id", ColumnType.INTEGER, nullable=False),
+            Column("profile_name", ColumnType.TEXT),  # Profile name to assign on signup
+            Column("permission_set_ids_json", ColumnType.TEXT),  # JSON array of permission_set IDs
+            Column("team_id", ColumnType.INTEGER),  # FK to teams - auto-add to team
             Column("created_by", ColumnType.TEXT, nullable=False),
             Column("created_at", ColumnType.TEXT, nullable=False),
             Column("expires_at", ColumnType.TEXT, nullable=False),
@@ -234,6 +490,7 @@ CORE_TABLES: Dict[str, Table] = {
             Index("idx_invite_tokens_token", ["token"]),
             Index("idx_invite_tokens_email", ["email"]),
             Index("idx_invite_tokens_expires", ["expires_at"]),
+            Index("idx_invite_tokens_profile", ["profile_name"]),
         ],
     ),
 

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app_settings import settings
 from db.database import db
-from api.auth import require_auth, require_any_role
+from api.auth import require_auth, require_any_profile
 from api.schemas import CallType, Workflow
 from integrations.auth import AuthUser
 from integrations.rbac import get_rbac_client
@@ -48,7 +48,8 @@ async def get_costs(
 
     # Non-admins can only see their own costs
     rbac = get_rbac_client()
-    is_admin = await rbac.has_role(user.id, "admin")
+    profile = await rbac.get_user_profile(user.id)
+    is_admin = profile and profile.name == "system_admin"
     logger.debug(f"[COSTS] User {user.email} is_admin: {is_admin}")
 
     # If filter_user_id is provided but user is not admin, reject
@@ -91,7 +92,7 @@ async def get_costs(
 
 @router.delete("/clear")
 async def clear_costs(
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
     auth_code: Optional[str] = Query(None, min_length=1, max_length=100, description="Authorization code")
 ):
     """

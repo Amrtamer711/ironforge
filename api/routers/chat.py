@@ -36,17 +36,18 @@ class ChatMessageResponse(BaseModel):
     conversation_id: Optional[str] = None
 
 
-async def _get_user_roles(user: AuthUser) -> List[str]:
-    """Get role names for a user from RBAC."""
+async def _get_user_profile(user: AuthUser) -> List[str]:
+    """Get profile name for a user from RBAC."""
     try:
         rbac = get_rbac_client()
-        roles = await rbac.get_user_roles(user.id)
-        role_names = [r.name for r in roles] or [user.metadata.get("role", "sales_person")]
-        logger.debug(f"[CHAT] Got roles for {user.email}: {role_names}")
-        return role_names
+        profile = await rbac.get_user_profile(user.id)
+        profile_name = profile.name if profile else user.metadata.get("role", "sales_user")
+        logger.debug(f"[CHAT] Got profile for {user.email}: {profile_name}")
+        # Return as list for backwards compatibility with chat system
+        return [profile_name]
     except Exception as e:
-        logger.warning(f"[CHAT] Failed to get roles for {user.email}: {e}, using default")
-        return [user.metadata.get("role", "sales_person")]
+        logger.warning(f"[CHAT] Failed to get profile for {user.email}: {e}, using default")
+        return [user.metadata.get("role", "sales_user")]
 
 
 @router.post("/message", response_model=ChatMessageResponse)
@@ -65,7 +66,7 @@ async def chat_message(
     from core.chat_api import process_chat_message
 
     try:
-        roles = await _get_user_roles(user)
+        roles = await _get_user_profile(user)
 
         result = await process_chat_message(
             user_id=user.id,
@@ -106,7 +107,7 @@ async def chat_stream(
 
     from core.chat_api import stream_chat_message
 
-    roles = await _get_user_roles(user)
+    roles = await _get_user_profile(user)
 
     async def event_generator():
         try:

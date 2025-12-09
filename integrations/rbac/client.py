@@ -4,6 +4,12 @@ Unified RBAC Client.
 Provides a single interface to interact with any RBAC provider.
 Follows the same pattern as integrations/llm/client.py (LLMClient)
 and integrations/auth/client.py (AuthClient).
+
+Enterprise RBAC with 4 levels:
+- Level 1: Profiles (base permission templates)
+- Level 2: Permission Sets (additive permissions)
+- Level 3: Teams & Hierarchy
+- Level 4: Record-Level Sharing
 """
 
 import os
@@ -12,8 +18,15 @@ from typing import List, Optional, Set
 
 from integrations.rbac.base import (
     RBACProvider,
-    Role,
     Permission,
+    Profile,
+    PermissionSet,
+    Team,
+    TeamMember,
+    TeamRole,
+    SharingRule,
+    RecordShare,
+    AccessLevel,
     RBACContext,
 )
 
@@ -40,11 +53,11 @@ class RBACClient:
         if await rbac.has_permission(user_id, "sales:proposals:create"):
             # User can create proposals
 
-        # Get user roles
-        roles = await rbac.get_user_roles(user_id)
+        # Get user profile
+        profile = await rbac.get_user_profile(user_id)
 
-        # Assign a role
-        await rbac.assign_role(user_id, "admin", granted_by=admin_user_id)
+        # Assign a permission set
+        await rbac.assign_permission_set(user_id, "api_access", granted_by=admin_user_id)
     """
 
     def __init__(self, provider: RBACProvider):
@@ -91,69 +104,537 @@ class RBACClient:
         return self._provider.name
 
     # =========================================================================
-    # ROLE OPERATIONS
+    # LEVEL 1: PROFILE OPERATIONS
     # =========================================================================
 
-    async def get_user_roles(self, user_id: str) -> List[Role]:
+    async def get_user_profile(self, user_id: str) -> Optional[Profile]:
         """
-        Get all roles assigned to a user.
+        Get the profile assigned to a user.
 
         Args:
             user_id: User's unique identifier
 
         Returns:
-            List of Role objects
+            Profile object or None
         """
-        return await self._provider.get_user_roles(user_id)
+        return await self._provider.get_user_profile(user_id)
 
-    async def assign_role(
+    async def assign_profile(self, user_id: str, profile_name: str) -> bool:
+        """
+        Assign a profile to a user.
+
+        Args:
+            user_id: User's ID
+            profile_name: Name of the profile to assign
+
+        Returns:
+            True if assigned successfully
+        """
+        return await self._provider.assign_profile(user_id, profile_name)
+
+    async def get_profile(self, profile_name: str) -> Optional[Profile]:
+        """
+        Get a profile by name.
+
+        Args:
+            profile_name: Profile name
+
+        Returns:
+            Profile object or None
+        """
+        return await self._provider.get_profile(profile_name)
+
+    async def list_profiles(self) -> List[Profile]:
+        """
+        List all available profiles.
+
+        Returns:
+            List of Profile objects
+        """
+        return await self._provider.list_profiles()
+
+    async def create_profile(
+        self,
+        name: str,
+        display_name: str,
+        description: Optional[str] = None,
+        permissions: Optional[List[str]] = None,
+    ) -> Optional[Profile]:
+        """
+        Create a new profile.
+
+        Args:
+            name: Profile name
+            display_name: Display name
+            description: Description
+            permissions: List of permission names
+
+        Returns:
+            Created Profile or None
+        """
+        return await self._provider.create_profile(name, display_name, description, permissions)
+
+    async def update_profile(
+        self,
+        name: str,
+        display_name: Optional[str] = None,
+        description: Optional[str] = None,
+        permissions: Optional[List[str]] = None,
+    ) -> Optional[Profile]:
+        """
+        Update an existing profile.
+
+        Args:
+            name: Profile name
+            display_name: New display name
+            description: New description
+            permissions: New list of permissions
+
+        Returns:
+            Updated Profile or None
+        """
+        return await self._provider.update_profile(name, display_name, description, permissions)
+
+    async def delete_profile(self, name: str) -> bool:
+        """
+        Delete a profile.
+
+        Args:
+            name: Profile name
+
+        Returns:
+            True if deleted
+        """
+        return await self._provider.delete_profile(name)
+
+    # =========================================================================
+    # LEVEL 2: PERMISSION SET OPERATIONS
+    # =========================================================================
+
+    async def get_user_permission_sets(self, user_id: str) -> List[PermissionSet]:
+        """
+        Get all permission sets assigned to a user.
+
+        Args:
+            user_id: User's unique identifier
+
+        Returns:
+            List of PermissionSet objects
+        """
+        return await self._provider.get_user_permission_sets(user_id)
+
+    async def assign_permission_set(
         self,
         user_id: str,
-        role_name: str,
+        permission_set_name: str,
         granted_by: Optional[str] = None,
         expires_at: Optional[str] = None,
     ) -> bool:
         """
-        Assign a role to a user.
+        Assign a permission set to a user.
 
         Args:
             user_id: User's ID
-            role_name: Name of the role to assign
-            granted_by: ID of user granting the role
+            permission_set_name: Name of the permission set
+            granted_by: ID of user granting
             expires_at: Optional expiration datetime
 
         Returns:
             True if assigned successfully
         """
-        return await self._provider.assign_role(
-            user_id, role_name, granted_by, expires_at
+        return await self._provider.assign_permission_set(
+            user_id, permission_set_name, granted_by, expires_at
         )
 
-    async def revoke_role(self, user_id: str, role_name: str) -> bool:
+    async def revoke_permission_set(self, user_id: str, permission_set_name: str) -> bool:
         """
-        Revoke a role from a user.
+        Revoke a permission set from a user.
 
         Args:
             user_id: User's ID
-            role_name: Name of the role to revoke
+            permission_set_name: Name of the permission set
 
         Returns:
             True if revoked successfully
         """
-        return await self._provider.revoke_role(user_id, role_name)
+        return await self._provider.revoke_permission_set(user_id, permission_set_name)
 
-    async def has_role(self, user_id: str, role_name: str) -> bool:
+    async def get_permission_set(self, name: str) -> Optional[PermissionSet]:
         """
-        Check if user has a specific role.
+        Get a permission set by name.
+
+        Args:
+            name: Permission set name
+
+        Returns:
+            PermissionSet object or None
+        """
+        return await self._provider.get_permission_set(name)
+
+    async def list_permission_sets(self) -> List[PermissionSet]:
+        """
+        List all available permission sets.
+
+        Returns:
+            List of PermissionSet objects
+        """
+        return await self._provider.list_permission_sets()
+
+    async def create_permission_set(
+        self,
+        name: str,
+        display_name: str,
+        description: Optional[str] = None,
+        permissions: Optional[List[str]] = None,
+    ) -> Optional[PermissionSet]:
+        """
+        Create a new permission set.
+
+        Args:
+            name: Permission set name
+            display_name: Display name
+            description: Description
+            permissions: List of permission names
+
+        Returns:
+            Created PermissionSet or None
+        """
+        return await self._provider.create_permission_set(name, display_name, description, permissions)
+
+    async def update_permission_set(
+        self,
+        name: str,
+        display_name: Optional[str] = None,
+        description: Optional[str] = None,
+        permissions: Optional[List[str]] = None,
+        is_active: Optional[bool] = None,
+    ) -> Optional[PermissionSet]:
+        """
+        Update an existing permission set.
+
+        Args:
+            name: Permission set name
+            display_name: New display name
+            description: New description
+            permissions: New list of permissions
+            is_active: Active status
+
+        Returns:
+            Updated PermissionSet or None
+        """
+        return await self._provider.update_permission_set(
+            name, display_name, description, permissions, is_active
+        )
+
+    async def delete_permission_set(self, name: str) -> bool:
+        """
+        Delete a permission set.
+
+        Args:
+            name: Permission set name
+
+        Returns:
+            True if deleted
+        """
+        return await self._provider.delete_permission_set(name)
+
+    # =========================================================================
+    # LEVEL 3: TEAM OPERATIONS
+    # =========================================================================
+
+    async def get_user_teams(self, user_id: str) -> List[Team]:
+        """
+        Get all teams a user belongs to.
+
+        Args:
+            user_id: User's unique identifier
+
+        Returns:
+            List of Team objects
+        """
+        return await self._provider.get_user_teams(user_id)
+
+    async def add_user_to_team(
+        self,
+        user_id: str,
+        team_id: int,
+        role: TeamRole = TeamRole.MEMBER,
+    ) -> bool:
+        """
+        Add a user to a team.
 
         Args:
             user_id: User's ID
-            role_name: Role to check
+            team_id: Team ID
+            role: Role in the team (member or leader)
 
         Returns:
-            True if user has the role
+            True if added successfully
         """
-        return await self._provider.has_role(user_id, role_name)
+        return await self._provider.add_user_to_team(user_id, team_id, role)
+
+    async def remove_user_from_team(self, user_id: str, team_id: int) -> bool:
+        """
+        Remove a user from a team.
+
+        Args:
+            user_id: User's ID
+            team_id: Team ID
+
+        Returns:
+            True if removed successfully
+        """
+        return await self._provider.remove_user_from_team(user_id, team_id)
+
+    async def get_team(self, team_id: int) -> Optional[Team]:
+        """
+        Get a team by ID.
+
+        Args:
+            team_id: Team ID
+
+        Returns:
+            Team object or None
+        """
+        return await self._provider.get_team(team_id)
+
+    async def get_team_by_name(self, name: str) -> Optional[Team]:
+        """
+        Get a team by name.
+
+        Args:
+            name: Team name
+
+        Returns:
+            Team object or None
+        """
+        return await self._provider.get_team_by_name(name)
+
+    async def list_teams(self) -> List[Team]:
+        """
+        List all teams.
+
+        Returns:
+            List of Team objects
+        """
+        return await self._provider.list_teams()
+
+    async def get_team_members(self, team_id: int) -> List[TeamMember]:
+        """
+        Get all members of a team.
+
+        Args:
+            team_id: Team ID
+
+        Returns:
+            List of TeamMember objects
+        """
+        return await self._provider.get_team_members(team_id)
+
+    async def create_team(
+        self,
+        name: str,
+        display_name: Optional[str] = None,
+        description: Optional[str] = None,
+        parent_team_id: Optional[int] = None,
+    ) -> Optional[Team]:
+        """
+        Create a new team.
+
+        Args:
+            name: Team name
+            display_name: Display name
+            description: Description
+            parent_team_id: Parent team for hierarchy
+
+        Returns:
+            Created Team or None
+        """
+        return await self._provider.create_team(name, display_name, description, parent_team_id)
+
+    async def update_team(
+        self,
+        team_id: int,
+        name: Optional[str] = None,
+        display_name: Optional[str] = None,
+        description: Optional[str] = None,
+        parent_team_id: Optional[int] = None,
+        is_active: Optional[bool] = None,
+    ) -> Optional[Team]:
+        """
+        Update an existing team.
+
+        Args:
+            team_id: Team ID
+            name: New name
+            display_name: New display name
+            description: New description
+            parent_team_id: New parent team
+            is_active: Active status
+
+        Returns:
+            Updated Team or None
+        """
+        return await self._provider.update_team(
+            team_id, name, display_name, description, parent_team_id, is_active
+        )
+
+    async def delete_team(self, team_id: int) -> bool:
+        """
+        Delete a team.
+
+        Args:
+            team_id: Team ID
+
+        Returns:
+            True if deleted
+        """
+        return await self._provider.delete_team(team_id)
+
+    # =========================================================================
+    # LEVEL 4: RECORD SHARING OPERATIONS
+    # =========================================================================
+
+    async def share_record(
+        self,
+        object_type: str,
+        record_id: str,
+        shared_by: str,
+        shared_with_user_id: Optional[str] = None,
+        shared_with_team_id: Optional[int] = None,
+        access_level: AccessLevel = AccessLevel.READ,
+        expires_at: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> Optional[RecordShare]:
+        """
+        Share a record with a user or team.
+
+        Args:
+            object_type: Type of record (e.g., "proposal")
+            record_id: ID of the record
+            shared_by: User sharing the record
+            shared_with_user_id: User to share with
+            shared_with_team_id: Team to share with
+            access_level: Level of access
+            expires_at: Optional expiration
+            reason: Reason for sharing
+
+        Returns:
+            Created RecordShare or None
+        """
+        return await self._provider.share_record(
+            object_type, record_id, shared_by,
+            shared_with_user_id, shared_with_team_id,
+            access_level, expires_at, reason
+        )
+
+    async def revoke_record_share(self, share_id: int) -> bool:
+        """
+        Revoke a record share.
+
+        Args:
+            share_id: Share ID
+
+        Returns:
+            True if revoked successfully
+        """
+        return await self._provider.revoke_record_share(share_id)
+
+    async def get_record_shares(
+        self,
+        object_type: str,
+        record_id: str,
+    ) -> List[RecordShare]:
+        """
+        Get all shares for a record.
+
+        Args:
+            object_type: Type of record
+            record_id: ID of the record
+
+        Returns:
+            List of RecordShare objects
+        """
+        return await self._provider.get_record_shares(object_type, record_id)
+
+    async def check_record_access(
+        self,
+        user_id: str,
+        object_type: str,
+        record_id: str,
+        required_access: AccessLevel = AccessLevel.READ,
+    ) -> bool:
+        """
+        Check if user has access to a specific record.
+
+        Args:
+            user_id: User's ID
+            object_type: Type of record
+            record_id: ID of the record
+            required_access: Minimum access level required
+
+        Returns:
+            True if user has access
+        """
+        return await self._provider.check_record_access(
+            user_id, object_type, record_id, required_access
+        )
+
+    async def list_sharing_rules(self, object_type: Optional[str] = None) -> List[SharingRule]:
+        """
+        List sharing rules.
+
+        Args:
+            object_type: Optional filter by object type
+
+        Returns:
+            List of SharingRule objects
+        """
+        return await self._provider.list_sharing_rules(object_type)
+
+    async def create_sharing_rule(
+        self,
+        name: str,
+        object_type: str,
+        share_from_type: str,
+        share_to_type: str,
+        access_level: AccessLevel,
+        share_from_id: Optional[str] = None,
+        share_to_id: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> Optional[SharingRule]:
+        """
+        Create a sharing rule.
+
+        Args:
+            name: Rule name
+            object_type: Type of records
+            share_from_type: "owner", "profile", or "team"
+            share_to_type: "profile", "team", or "all"
+            access_level: Level of access
+            share_from_id: ID for profile/team
+            share_to_id: ID for profile/team
+            description: Rule description
+
+        Returns:
+            Created SharingRule or None
+        """
+        return await self._provider.create_sharing_rule(
+            name, object_type, share_from_type, share_to_type,
+            access_level, share_from_id, share_to_id, description
+        )
+
+    async def delete_sharing_rule(self, rule_id: int) -> bool:
+        """
+        Delete a sharing rule.
+
+        Args:
+            rule_id: Rule ID
+
+        Returns:
+            True if deleted
+        """
+        return await self._provider.delete_sharing_rule(rule_id)
 
     # =========================================================================
     # PERMISSION OPERATIONS
@@ -212,101 +693,6 @@ class RBACClient:
                 f"User {user_id} lacks required permission: {permission}"
             )
 
-    async def require_role(self, user_id: str, role_name: str) -> None:
-        """
-        Require a user to have a role. Raises exception if not.
-
-        Args:
-            user_id: User's ID
-            role_name: Required role
-
-        Raises:
-            PermissionError: If user lacks the role
-        """
-        if not await self.has_role(user_id, role_name):
-            raise PermissionError(
-                f"User {user_id} lacks required role: {role_name}"
-            )
-
-    # =========================================================================
-    # ROLE MANAGEMENT
-    # =========================================================================
-
-    async def get_role(self, role_name: str) -> Optional[Role]:
-        """
-        Get a role by name.
-
-        Args:
-            role_name: Role name
-
-        Returns:
-            Role object or None
-        """
-        return await self._provider.get_role(role_name)
-
-    async def list_roles(self) -> List[Role]:
-        """
-        List all available roles.
-
-        Returns:
-            List of Role objects
-        """
-        return await self._provider.list_roles()
-
-    async def create_role(
-        self,
-        name: str,
-        description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
-    ) -> Optional[Role]:
-        """
-        Create a new role.
-
-        Args:
-            name: Role name
-            description: Role description
-            permissions: List of permission names
-
-        Returns:
-            Created Role or None
-        """
-        return await self._provider.create_role(name, description, permissions)
-
-    async def update_role(
-        self,
-        name: str,
-        description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
-    ) -> Optional[Role]:
-        """
-        Update an existing role.
-
-        Args:
-            name: Role name
-            description: New description
-            permissions: New list of permissions
-
-        Returns:
-            Updated Role or None
-        """
-        return await self._provider.update_role(name, description, permissions)
-
-    async def delete_role(self, name: str) -> bool:
-        """
-        Delete a role.
-
-        Args:
-            name: Role name
-
-        Returns:
-            True if deleted
-        """
-        return await self._provider.delete_role(name)
-
-    # =========================================================================
-    # PERMISSION MANAGEMENT
-    # =========================================================================
-
     async def list_permissions(self) -> List[Permission]:
         """
         List all available permissions.
@@ -322,7 +708,7 @@ class RBACClient:
 
     async def initialize_defaults(self) -> bool:
         """
-        Initialize default roles and permissions.
+        Initialize default profiles and permission sets.
 
         Should be called on first run.
 
@@ -386,20 +772,6 @@ async def has_permission(
     return await get_rbac_client().has_permission(user_id, permission, context)
 
 
-async def has_role(user_id: str, role_name: str) -> bool:
-    """
-    Convenience function to check role using global client.
-
-    Args:
-        user_id: User's ID
-        role_name: Role to check
-
-    Returns:
-        True if user has the role
-    """
-    return await get_rbac_client().has_role(user_id, role_name)
-
-
 async def require_permission(
     user_id: str,
     permission: str,
@@ -417,17 +789,3 @@ async def require_permission(
         PermissionError: If user lacks the permission
     """
     await get_rbac_client().require_permission(user_id, permission, context)
-
-
-async def require_role(user_id: str, role_name: str) -> None:
-    """
-    Convenience function to require role.
-
-    Args:
-        user_id: User's ID
-        role_name: Required role
-
-    Raises:
-        PermissionError: If user lacks the role
-    """
-    await get_rbac_client().require_role(user_id, role_name)

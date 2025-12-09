@@ -85,328 +85,133 @@
 ```
 
 #### Phase 1: Profiles & Base Permissions
-- [ ] **Database Schema Updates** (`db/migrations/ui_schema.sql`)
-  - [ ] Create `profiles` table (replaces simple roles for users)
-    ```sql
-    CREATE TABLE profiles (
-        id BIGSERIAL PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE,         -- 'Sales Rep', 'Sales Manager'
-        description TEXT,
-        is_system BOOLEAN DEFAULT false,   -- System profiles can't be deleted
-        created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-    ```
-  - [ ] Create `profile_permissions` table
-    ```sql
-    CREATE TABLE profile_permissions (
-        id BIGSERIAL PRIMARY KEY,
-        profile_id BIGINT REFERENCES profiles(id) ON DELETE CASCADE,
-        permission TEXT NOT NULL,          -- 'sales:deals:create'
-        UNIQUE(profile_id, permission)
-    );
-    ```
-  - [ ] Add `profile_id` column to `users` table
-  - [ ] Migrate existing roles to profiles
+- [X] **Database Schema Updates** (`db/migrations/ui_schema.sql`)
+  - [X] Create `profiles` table (replaces simple roles for users)
+  - [X] Create `profile_permissions` table
+  - [X] Add `profile_id` column to `users` table
+  - [X] Seed default profiles (admin, sales_manager, sales_rep, coordinator, finance)
 
-- [ ] **Update `db/schema.py`** - Add to `CORE_TABLES`
-  - [ ] Add `profiles` table definition
-  - [ ] Add `profile_permissions` table definition
-  - [ ] Update `users` table with `profile_id` column
+- [X] **Update `db/schema.py`** - Add to `CORE_TABLES`
+  - [X] Add `profiles` table definition
+  - [X] Add `profile_permissions` table definition
+  - [X] Update `users` table with `profile_id` column
 
-- [ ] **Update RBAC Models** (`integrations/rbac/base.py`)
-  - [ ] Add `Profile` model class
-  - [ ] Add `ProfilePermission` model class
-  - [ ] Update `RBACProvider` interface with profile methods
+- [X] **Update RBAC Models** (`integrations/rbac/base.py`)
+  - [X] Add `Profile` model class
+  - [X] Add `ProfilePermission` model class
+  - [X] Update `RBACProvider` interface with profile methods
 
-- [ ] **Update DatabaseRBACProvider** (`integrations/rbac/providers/database.py`)
-  - [ ] Implement `get_user_profile(user_id)` method
-  - [ ] Implement `get_profile_permissions(profile_id)` method
-  - [ ] Update `get_user_permissions()` to resolve from profile
-  - [ ] Implement profile CRUD operations
+- [X] **Update DatabaseRBACProvider** (`integrations/rbac/providers/database.py`)
+  - [X] Implement `get_user_profile(user_id)` method
+  - [X] Implement `get_profile_permissions(profile_id)` method
+  - [X] Update `get_user_permissions()` to resolve from profile
+  - [X] Implement profile CRUD operations
 
-- [ ] **Admin API Endpoints** (`api/routers/admin.py`)
-  - [ ] `GET /api/admin/profiles` - List all profiles
-  - [ ] `POST /api/admin/profiles` - Create profile
-  - [ ] `GET /api/admin/profiles/{id}` - Get profile details
-  - [ ] `PUT /api/admin/profiles/{id}` - Update profile
-  - [ ] `DELETE /api/admin/profiles/{id}` - Delete profile
-  - [ ] `GET /api/admin/profiles/{id}/permissions` - Get profile permissions
-  - [ ] `PUT /api/admin/profiles/{id}/permissions` - Set profile permissions
-  - [ ] `PUT /api/admin/users/{id}/profile` - Assign profile to user
-
-- [ ] **Seed Default Profiles**
-  ```python
-  DEFAULT_PROFILES = {
-      "admin": {
-          "description": "Full system access",
-          "permissions": ["*:*:*"]
-      },
-      "sales_manager": {
-          "description": "Sales team management",
-          "permissions": [
-              "sales:*:*",
-              "core:users:read",
-              "core:ai_costs:read"
-          ]
-      },
-      "sales_rep": {
-          "description": "Sales team member",
-          "permissions": [
-              "sales:proposals:create",
-              "sales:proposals:read:own",
-              "sales:booking_orders:create",
-              "sales:booking_orders:read:own",
-              "sales:mockups:*"
-          ]
-      },
-      "coordinator": {
-          "description": "Operations coordinator",
-          "permissions": [
-              "sales:booking_orders:*"
-          ]
-      },
-      "finance": {
-          "description": "Finance team",
-          "permissions": [
-              "sales:booking_orders:read",
-              "core:ai_costs:read"
-          ]
-      }
-  }
-  ```
+- [X] **Admin API Endpoints** (`api/routers/admin.py`)
+  - [X] `GET /api/admin/profiles` - List all profiles
+  - [X] `POST /api/admin/profiles` - Create profile
+  - [X] `GET /api/admin/profiles/{name}` - Get profile details
+  - [X] `PUT /api/admin/profiles/{name}` - Update profile
+  - [X] `DELETE /api/admin/profiles/{name}` - Delete profile
+  - [X] `PUT /api/admin/users/{id}/profile` - Assign profile to user
 
 #### Phase 2: Permission Sets (Additive Permissions)
-- [ ] **Database Schema** (`db/migrations/ui_schema.sql`)
-  - [ ] Create `permission_sets` table
-    ```sql
-    CREATE TABLE permission_sets (
-        id BIGSERIAL PRIMARY KEY,
-        name TEXT NOT NULL UNIQUE,         -- 'API Access', 'Data Export'
-        description TEXT,
-        is_active BOOLEAN DEFAULT true,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-    ```
-  - [ ] Create `permission_set_permissions` table
-    ```sql
-    CREATE TABLE permission_set_permissions (
-        id BIGSERIAL PRIMARY KEY,
-        permission_set_id BIGINT REFERENCES permission_sets(id) ON DELETE CASCADE,
-        permission TEXT NOT NULL,
-        UNIQUE(permission_set_id, permission)
-    );
-    ```
-  - [ ] Create `user_permission_sets` junction table
-    ```sql
-    CREATE TABLE user_permission_sets (
-        id BIGSERIAL PRIMARY KEY,
-        user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
-        permission_set_id BIGINT REFERENCES permission_sets(id) ON DELETE CASCADE,
-        granted_by TEXT REFERENCES users(id),
-        granted_at TIMESTAMPTZ DEFAULT NOW(),
-        expires_at TIMESTAMPTZ,            -- Optional expiration
-        UNIQUE(user_id, permission_set_id)
-    );
-    ```
+- [X] **Database Schema** (`db/migrations/ui_schema.sql`)
+  - [X] Create `permission_sets` table
+  - [X] Create `permission_set_permissions` table
+  - [X] Create `user_permission_sets` junction table
+  - [X] Seed default permission sets (api_access, data_export, delete_records, view_all_data)
 
-- [ ] **Update `db/schema.py`** - Add to `CORE_TABLES`
-  - [ ] Add `permission_sets` table definition
-  - [ ] Add `permission_set_permissions` table definition
-  - [ ] Add `user_permission_sets` table definition
+- [X] **Update `db/schema.py`** - Add to `CORE_TABLES`
+  - [X] Add `permission_sets` table definition
+  - [X] Add `permission_set_permissions` table definition
+  - [X] Add `user_permission_sets` table definition
 
-- [ ] **Update RBAC Models** (`integrations/rbac/base.py`)
-  - [ ] Add `PermissionSet` model class
-  - [ ] Add `UserPermissionSet` model class
+- [X] **Update RBAC Models** (`integrations/rbac/base.py`)
+  - [X] Add `PermissionSet` model class
+  - [X] Add `UserPermissionSet` model class
 
-- [ ] **Update Permission Resolution** (`integrations/rbac/providers/database.py`)
-  - [ ] Update `get_user_permissions()` to include permission sets
-  - [ ] Implement permission set expiration checking
-  ```python
-  async def get_effective_permissions(self, user_id: str) -> Set[str]:
-      permissions = set()
+- [X] **Update Permission Resolution** (`integrations/rbac/providers/database.py`)
+  - [X] Update `get_user_permissions()` to include permission sets
+  - [X] Implement permission set expiration checking
+  - [X] Implement `get_effective_permissions()` method
 
-      # 1. Get profile permissions
-      profile = await self.get_user_profile(user_id)
-      if profile:
-          permissions.update(await self.get_profile_permissions(profile.id))
-
-      # 2. Add permission set permissions (non-expired)
-      user_perm_sets = await self.get_user_permission_sets(user_id)
-      for ps in user_perm_sets:
-          if not ps.expires_at or ps.expires_at > datetime.now():
-              permissions.update(await self.get_permission_set_permissions(ps.id))
-
-      return permissions
-  ```
-
-- [ ] **Admin API Endpoints** (`api/routers/admin.py`)
-  - [ ] `GET /api/admin/permission-sets` - List all permission sets
-  - [ ] `POST /api/admin/permission-sets` - Create permission set
-  - [ ] `PUT /api/admin/permission-sets/{id}` - Update permission set
-  - [ ] `DELETE /api/admin/permission-sets/{id}` - Delete permission set
-  - [ ] `POST /api/admin/users/{id}/permission-sets` - Grant permission set to user
-  - [ ] `DELETE /api/admin/users/{id}/permission-sets/{ps_id}` - Revoke permission set
-
-- [ ] **Seed Default Permission Sets**
-  ```python
-  DEFAULT_PERMISSION_SETS = {
-      "api_access": {
-          "description": "Programmatic API access",
-          "permissions": ["core:api:access"]
-      },
-      "data_export": {
-          "description": "Export data to CSV/Excel",
-          "permissions": ["core:export:*"]
-      },
-      "delete_records": {
-          "description": "Delete any records",
-          "permissions": ["*:*:delete"]
-      },
-      "view_all_data": {
-          "description": "View all records (bypass ownership)",
-          "permissions": ["*:*:read:all"]
-      }
-  }
-  ```
+- [X] **Admin API Endpoints** (`api/routers/admin.py`)
+  - [X] `GET /api/admin/permission-sets` - List all permission sets
+  - [X] `POST /api/admin/permission-sets` - Create permission set
+  - [X] `GET /api/admin/permission-sets/{name}` - Get permission set
+  - [X] `PUT /api/admin/permission-sets/{name}` - Update permission set
+  - [X] `DELETE /api/admin/permission-sets/{name}` - Delete permission set
+  - [X] `POST /api/admin/users/{id}/permission-sets/{name}` - Grant permission set to user
+  - [X] `DELETE /api/admin/users/{id}/permission-sets/{name}` - Revoke permission set
 
 #### Phase 3: Teams & Hierarchy
-- [ ] **Database Schema** (`db/migrations/ui_schema.sql`)
-  - [ ] Create `teams` table
-    ```sql
-    CREATE TABLE teams (
-        id BIGSERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT,
-        parent_team_id BIGINT REFERENCES teams(id),  -- Hierarchy
-        created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-    ```
-  - [ ] Create `team_members` table
-    ```sql
-    CREATE TABLE team_members (
-        id BIGSERIAL PRIMARY KEY,
-        team_id BIGINT REFERENCES teams(id) ON DELETE CASCADE,
-        user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
-        role TEXT DEFAULT 'member',        -- 'member', 'leader'
-        joined_at TIMESTAMPTZ DEFAULT NOW(),
-        UNIQUE(team_id, user_id)
-    );
-    ```
-  - [ ] Add `manager_id` column to `users` table
-    ```sql
-    ALTER TABLE users ADD COLUMN manager_id TEXT REFERENCES users(id);
-    ```
+- [X] **Database Schema** (`db/migrations/ui_schema.sql`)
+  - [X] Create `teams` table with hierarchy (parent_team_id)
+  - [X] Create `team_members` table with role (member/leader)
+  - [X] Add `manager_id` column to `users` table
 
-- [ ] **Update `db/schema.py`** - Add to `CORE_TABLES`
-  - [ ] Add `teams` table definition
-  - [ ] Add `team_members` table definition
-  - [ ] Update `users` table with `manager_id`
+- [X] **Update `db/schema.py`** - Add to `CORE_TABLES`
+  - [X] Add `teams` table definition
+  - [X] Add `team_members` table definition
+  - [X] Update `users` table with `manager_id`
 
-- [ ] **Update RBAC Models** (`integrations/rbac/base.py`)
-  - [ ] Add `Team` model class
-  - [ ] Add `TeamMember` model class
+- [X] **Update RBAC Models** (`integrations/rbac/base.py`)
+  - [X] Add `Team` model class
+  - [X] Add `TeamMember` model class
+  - [X] Add `TeamRole` enum (member/leader)
 
-- [ ] **Team-Based Permission Resolution** (`integrations/rbac/providers/database.py`)
-  - [ ] Implement `get_user_teams(user_id)` method
-  - [ ] Implement `get_team_hierarchy(team_id)` - Returns parent chain
-  - [ ] Implement `get_subordinates(user_id)` - Direct reports
-  - [ ] Implement `get_all_subordinates(user_id)` - Full hierarchy below
+- [X] **Team-Based Permission Resolution** (`integrations/rbac/providers/database.py`)
+  - [X] Implement `get_user_teams(user_id)` method
+  - [X] Implement `add_user_to_team()` method
+  - [X] Implement `remove_user_from_team()` method
+  - [X] Implement `get_team()`, `get_team_by_name()`, `list_teams()` methods
+  - [X] Implement `get_team_members()` method
+  - [X] Implement `create_team()`, `update_team()`, `delete_team()` methods
 
-- [ ] **Admin API Endpoints** (`api/routers/admin.py`)
-  - [ ] `GET /api/admin/teams` - List all teams
-  - [ ] `POST /api/admin/teams` - Create team
-  - [ ] `PUT /api/admin/teams/{id}` - Update team
-  - [ ] `DELETE /api/admin/teams/{id}` - Delete team
-  - [ ] `GET /api/admin/teams/{id}/members` - Get team members
-  - [ ] `POST /api/admin/teams/{id}/members` - Add member to team
-  - [ ] `DELETE /api/admin/teams/{id}/members/{user_id}` - Remove from team
-  - [ ] `PUT /api/admin/users/{id}/manager` - Set user's manager
+- [X] **Admin API Endpoints** (`api/routers/admin.py`)
+  - [X] `GET /api/admin/teams` - List all teams
+  - [X] `POST /api/admin/teams` - Create team
+  - [X] `GET /api/admin/teams/{id}` - Get team
+  - [X] `PUT /api/admin/teams/{id}` - Update team
+  - [X] `DELETE /api/admin/teams/{id}` - Delete team
+  - [X] `GET /api/admin/teams/{id}/members` - Get team members
+  - [X] `POST /api/admin/teams/{id}/members` - Add member to team
+  - [X] `DELETE /api/admin/teams/{id}/members/{user_id}` - Remove from team
+  - [X] `PUT /api/admin/users/{id}/manager` - Set user's manager
 
 #### Phase 4: Record-Level Access Control
-- [ ] **Database Schema** (`db/migrations/ui_schema.sql`)
-  - [ ] Create `sharing_rules` table (organization-wide rules)
-    ```sql
-    CREATE TABLE sharing_rules (
-        id BIGSERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        object_type TEXT NOT NULL,         -- 'proposal', 'booking_order'
-        share_from TEXT NOT NULL,          -- 'owner', 'team:sales', 'profile:manager'
-        share_to TEXT NOT NULL,            -- 'team:finance', 'profile:admin'
-        access_level TEXT NOT NULL,        -- 'read', 'read_write', 'full'
-        is_active BOOLEAN DEFAULT true,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-    );
-    ```
-  - [ ] Create `record_shares` table (ad-hoc sharing)
-    ```sql
-    CREATE TABLE record_shares (
-        id BIGSERIAL PRIMARY KEY,
-        object_type TEXT NOT NULL,
-        record_id TEXT NOT NULL,
-        shared_with_user_id TEXT REFERENCES users(id),
-        shared_with_team_id BIGINT REFERENCES teams(id),
-        access_level TEXT NOT NULL,        -- 'read', 'read_write', 'full'
-        shared_by TEXT REFERENCES users(id),
-        shared_at TIMESTAMPTZ DEFAULT NOW(),
-        expires_at TIMESTAMPTZ,
-        CONSTRAINT share_target CHECK (
-            (shared_with_user_id IS NOT NULL AND shared_with_team_id IS NULL) OR
-            (shared_with_user_id IS NULL AND shared_with_team_id IS NOT NULL)
-        )
-    );
-    CREATE INDEX idx_record_shares_lookup
-        ON record_shares(object_type, record_id);
-    ```
+- [X] **Database Schema** (`db/migrations/ui_schema.sql`)
+  - [X] Create `sharing_rules` table (organization-wide rules)
+  - [X] Create `record_shares` table (ad-hoc sharing with user/team constraint)
 
-- [ ] **Update `db/schema.py`** - Add to `CORE_TABLES`
-  - [ ] Add `sharing_rules` table definition
-  - [ ] Add `record_shares` table definition
+- [X] **Update `db/schema.py`** - Add to `CORE_TABLES`
+  - [X] Add `sharing_rules` table definition
+  - [X] Add `record_shares` table definition
 
-- [ ] **Record Access Utility** (`integrations/rbac/record_access.py`)
-  - [ ] Create `RecordAccessChecker` class
-    ```python
-    class RecordAccessChecker:
-        async def can_access(
-            self,
-            user_id: str,
-            object_type: str,
-            record_id: str,
-            access_level: str = "read"
-        ) -> bool:
-            """
-            Check if user can access a specific record.
+- [X] **Update RBAC Models** (`integrations/rbac/base.py`)
+  - [X] Add `SharingRule` model class
+  - [X] Add `RecordShare` model class
+  - [X] Add `AccessLevel` enum (read, read_write, full)
 
-            Resolution order:
-            1. Is user the owner? → Yes
-            2. Is user admin? → Yes (bypass)
-            3. Does profile have 'view_all' for object? → Yes
-            4. Does sharing rule grant access? → Check
-            5. Is record directly shared? → Check
-            """
+- [X] **Record Sharing in DatabaseRBACProvider** (`integrations/rbac/providers/database.py`)
+  - [X] Implement `share_record()` method
+  - [X] Implement `revoke_record_share()` method
+  - [X] Implement `get_record_shares()` method
+  - [X] Implement `check_record_access()` method (user + team sharing)
+  - [X] Implement `list_sharing_rules()` method
+  - [X] Implement `create_sharing_rule()` method
+  - [X] Implement `delete_sharing_rule()` method
 
-        async def get_accessible_record_ids(
-            self,
-            user_id: str,
-            object_type: str,
-            access_level: str = "read"
-        ) -> List[str]:
-            """
-            Get all record IDs user can access.
-            Used for filtering queries.
-            """
+- [X] **Admin API Endpoints** (`api/routers/admin.py`)
+  - [X] `GET /api/admin/sharing-rules` - List sharing rules
+  - [X] `POST /api/admin/sharing-rules` - Create sharing rule
+  - [X] `DELETE /api/admin/sharing-rules/{id}` - Delete sharing rule
 
-        async def share_record(
-            self,
-            object_type: str,
-            record_id: str,
-            share_with_user_id: Optional[str] = None,
-            share_with_team_id: Optional[int] = None,
-            access_level: str = "read",
-            shared_by: str,
-            expires_at: Optional[datetime] = None
-        ) -> bool:
-            """Share a record with a user or team."""
-    ```
+- [ ] **Record Sharing API** (future: `api/routers/sharing.py`)
+  - [ ] `GET /api/{object_type}/{id}/shares` - Get shares for a record
+  - [ ] `POST /api/{object_type}/{id}/shares` - Share a record
+  - [ ] `DELETE /api/{object_type}/{id}/shares/{share_id}` - Revoke share
 
 - [ ] **Update Existing Endpoints** - Add record-level checks
   - [ ] `GET /api/proposals` - Filter by accessible records
@@ -1303,6 +1108,20 @@ Production observability.
 > - End with **Impact:** one-liner on why it matters
 > - Link to detailed docs if needed (e.g., `WEEKEND_UPDATE.md`)
 > - Keep entries scannable - your future self will thank you
+
+### Dec 9, 2024 - RBAC Architecture Cleanup
+- Removed legacy Role/UserRole system (backward compatibility removed)
+- StaticProvider now supports full 4-level enterprise RBAC:
+  - Level 1: Profiles (in-memory)
+  - Level 2: Permission Sets (in-memory)
+  - Level 3: Teams & Hierarchy (in-memory)
+  - Level 4: Record-Level Sharing (in-memory)
+- Module system simplified to permissions-only (removed get_roles())
+- Clean interfaces: base.py defines only enterprise RBAC models
+- Both providers (Static/Database) implement the same full interface
+- No separate storage layer needed - providers ARE the abstraction
+
+**Impact:** Clean, modular RBAC ready for any use case (dev/testing/production)
 
 ### Dec 6-7, 2024 - Infrastructure Sprint
 See [RELEASE_NOTES.md](RELEASE_NOTES.md) for full details.

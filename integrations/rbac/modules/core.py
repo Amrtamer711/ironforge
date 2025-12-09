@@ -5,9 +5,9 @@ These are platform-level permissions for user management, system administration,
 and other cross-cutting concerns.
 """
 
-from typing import List, Optional
+from typing import List
 
-from integrations.rbac.base import Permission, Role
+from integrations.rbac.base import Permission
 from integrations.rbac.modules.registry import ModuleDefinition
 
 
@@ -19,10 +19,7 @@ class CoreModule(ModuleDefinition):
     - User management (users:read, users:create, etc.)
     - System administration (system:admin)
     - AI cost tracking (ai_costs:read, ai_costs:manage)
-
-    Also provides generic company-level roles:
-    - admin: Full system access
-    - user: Basic authenticated user (default)
+    - RBAC management (profiles, permission sets, teams)
     """
 
     @property
@@ -54,42 +51,37 @@ class CoreModule(ModuleDefinition):
             Permission.from_name("core:ai_costs:read", "View AI cost reports"),
             Permission.from_name("core:ai_costs:manage", "Manage AI cost tracking"),
 
-            # API Keys
+            # API Keys / API Access
+            Permission.from_name("core:api:access", "API access"),
             Permission.from_name("core:api_keys:read", "View API keys"),
             Permission.from_name("core:api_keys:create", "Create API keys"),
             Permission.from_name("core:api_keys:delete", "Delete API keys"),
             Permission.from_name("core:api_keys:manage", "Full control over API keys"),
 
-            # Roles & Permissions
-            Permission.from_name("core:roles:read", "View roles"),
-            Permission.from_name("core:roles:create", "Create roles"),
-            Permission.from_name("core:roles:update", "Update roles"),
-            Permission.from_name("core:roles:delete", "Delete roles"),
-            Permission.from_name("core:roles:manage", "Full control over roles"),
+            # Profile Management
+            Permission.from_name("core:profiles:read", "View profiles"),
+            Permission.from_name("core:profiles:create", "Create profiles"),
+            Permission.from_name("core:profiles:update", "Update profiles"),
+            Permission.from_name("core:profiles:delete", "Delete profiles"),
+            Permission.from_name("core:profiles:manage", "Full control over profiles"),
+
+            # Permission Set Management
+            Permission.from_name("core:permission_sets:read", "View permission sets"),
+            Permission.from_name("core:permission_sets:create", "Create permission sets"),
+            Permission.from_name("core:permission_sets:update", "Update permission sets"),
+            Permission.from_name("core:permission_sets:delete", "Delete permission sets"),
+            Permission.from_name("core:permission_sets:manage", "Full control over permission sets"),
+
+            # Team Management
+            Permission.from_name("core:teams:read", "View teams"),
+            Permission.from_name("core:teams:create", "Create teams"),
+            Permission.from_name("core:teams:update", "Update teams"),
+            Permission.from_name("core:teams:delete", "Delete teams"),
+            Permission.from_name("core:teams:manage", "Full control over teams"),
+
+            # Sharing Rules Management
+            Permission.from_name("core:sharing_rules:read", "View sharing rules"),
+            Permission.from_name("core:sharing_rules:create", "Create sharing rules"),
+            Permission.from_name("core:sharing_rules:delete", "Delete sharing rules"),
+            Permission.from_name("core:sharing_rules:manage", "Full control over sharing rules"),
         ]
-
-    def get_roles(self) -> List[Role]:
-        return [
-            Role(
-                name="admin",
-                description="Full system access - all modules",
-                permissions=[
-                    Permission.from_name("*:*:manage", "All permissions"),
-                ],
-                is_system=True,
-            ),
-            Role(
-                name="user",
-                description="Basic authenticated user",
-                permissions=[
-                    # Users can read their own profile (enforced via ownership checks)
-                    Permission.from_name("core:users:read", "View users"),
-                ],
-                is_system=True,
-            ),
-        ]
-
-    def get_default_role(self) -> Optional[str]:
-        return "user"
-
-

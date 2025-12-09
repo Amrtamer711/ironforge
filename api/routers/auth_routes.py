@@ -10,7 +10,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from api.auth import get_current_user, require_auth, sync_user_from_token, require_any_role
+from api.auth import get_current_user, require_auth, sync_user_from_token, require_any_profile
 from integrations.auth import AuthUser, get_auth_client
 from integrations.auth.providers.local_dev import LocalDevAuthProvider
 from utils.logging import get_logger
@@ -45,20 +45,20 @@ async def auth_login(request: LoginRequest):
             result = await auth.verify_token(token)
 
             if result.success and result.user:
-                # Get roles from RBAC
+                # Get profile from RBAC
                 from integrations.rbac import get_rbac_client
                 rbac = get_rbac_client()
-                roles = await rbac.get_user_roles(result.user.id)
-                role_names = [r.name for r in roles]
+                profile = await rbac.get_user_profile(result.user.id)
+                profile_name = profile.name if profile else result.user.metadata.get("role", "sales_user")
 
-                logger.info(f"[AUTH] Login successful for: {request.email}, roles: {role_names}")
+                logger.info(f"[AUTH] Login successful for: {request.email}, profile: {profile_name}")
                 return {
                     "token": token,
                     "user": {
                         "id": result.user.id,
                         "name": result.user.name,
                         "email": result.user.email,
-                        "roles": role_names or [result.user.metadata.get("role", "sales_person")]
+                        "profile": profile_name
                     }
                 }
 
@@ -81,19 +81,19 @@ async def auth_me(user: Optional[AuthUser] = Depends(get_current_user)):
         logger.warning("[AUTH] /me called without authentication")
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    # Get roles from RBAC
+    # Get profile from RBAC
     from integrations.rbac import get_rbac_client
     rbac = get_rbac_client()
-    roles = await rbac.get_user_roles(user.id)
-    role_names = [r.name for r in roles]
+    profile = await rbac.get_user_profile(user.id)
+    profile_name = profile.name if profile else user.metadata.get("role", "sales_user")
 
-    logger.info(f"[AUTH] /me returning user {user.email} with roles: {role_names}")
+    logger.info(f"[AUTH] /me returning user {user.email} with profile: {profile_name}")
     return {
         "id": user.id,
         "name": user.name,
         "email": user.email,
         "avatar_url": user.avatar_url,
-        "roles": role_names or [user.metadata.get("role", "sales_person")]
+        "profile": profile_name
     }
 
 
@@ -119,7 +119,7 @@ async def auth_sync(user: AuthUser = Depends(require_auth)):
 class InviteTokenCreate(BaseModel):
     """Request model for creating an invite token."""
     email: str = Field(..., min_length=5, description="Email address for the invite")
-    role_name: str = Field(default="user", description="Role to assign (admin, user, viewer)")
+    profile_name: str = Field(default="sales_user", description="Profile to assign (system_admin, sales_manager, sales_user)")
     expires_in_days: int = Field(default=7, ge=1, le=30, description="Days until token expires")
 
 
@@ -127,7 +127,7 @@ class InviteTokenResponse(BaseModel):
     """Response model for created invite token."""
     token: str
     email: str
-    role_name: str
+    profile_name: str
     expires_at: str
     message: str
 
@@ -136,7 +136,7 @@ class InviteTokenListItem(BaseModel):
     """Response model for listing invite tokens."""
     id: int
     email: str
-    role_name: str
+    profile_name: str
     created_by: str
     created_at: str
     expires_at: str
@@ -154,35 +154,34 @@ class ValidateInviteResponse(BaseModel):
     """Response model for validated invite token."""
     valid: bool
     email: str
-    role_name: str
+    profile_name: str
 
 
 @router.post("/invites", response_model=InviteTokenResponse, status_code=status.HTTP_201_CREATED)
 async def create_invite_token(
     invite_data: InviteTokenCreate,
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     Create an invite token for a new user.
 
-    Requires: admin role
+    Requires: system_admin profile
 
-    The token is tied to a specific email address and role.
+    The token is tied to a specific email address and profile.
     Users must use this token along with the matching email to sign up.
     """
-    from db import get_db
+    from db.database import db
     from integrations.rbac import get_rbac_client
     from utils.time import get_uae_time
 
-    db = get_db()
     rbac = get_rbac_client()
 
-    # Validate role exists
-    role = await rbac.get_role(invite_data.role_name)
-    if not role:
+    # Validate profile exists
+    profile = await rbac.get_profile(invite_data.profile_name)
+    if not profile:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid role: {invite_data.role_name}",
+            detail=f"Invalid profile: {invite_data.profile_name}",
         )
 
     # Check if email already has a pending invite
@@ -203,29 +202,28 @@ async def create_invite_token(
     now = get_uae_time()
     expires_at = now + timedelta(days=invite_data.expires_in_days)
 
-    # Store in database
+    # Store in database - use profile_name directly since profiles are referenced by name
     db.execute_query(
         """
-        INSERT INTO invite_tokens (token, email, role_id, created_by, created_at, expires_at)
-        SELECT ?, ?, r.id, ?, ?, ?
-        FROM roles r WHERE r.name = ?
+        INSERT INTO invite_tokens (token, email, profile_name, created_by, created_at, expires_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         """,
         (
             token,
             invite_data.email.lower(),
+            invite_data.profile_name,
             user.id,
             now.isoformat(),
             expires_at.isoformat(),
-            invite_data.role_name,
         )
     )
 
-    logger.info(f"[AUTH] Invite token created for {invite_data.email} with role {invite_data.role_name} by {user.email}")
+    logger.info(f"[AUTH] Invite token created for {invite_data.email} with profile {invite_data.profile_name} by {user.email}")
 
     return InviteTokenResponse(
         token=token,
         email=invite_data.email.lower(),
-        role_name=invite_data.role_name,
+        profile_name=invite_data.profile_name,
         expires_at=expires_at.isoformat(),
         message=f"Invite token created. Share this token with {invite_data.email} to allow them to sign up.",
     )
@@ -234,33 +232,27 @@ async def create_invite_token(
 @router.get("/invites", response_model=List[InviteTokenListItem])
 async def list_invite_tokens(
     include_used: bool = False,
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     List all invite tokens.
 
-    Requires: admin role
+    Requires: system_admin profile
     """
-    from db import get_db
+    from db.database import db
     from utils.time import get_uae_time
-
-    db = get_db()
 
     if include_used:
         query = """
-            SELECT it.*, r.name as role_name
-            FROM invite_tokens it
-            JOIN roles r ON it.role_id = r.id
-            ORDER BY it.created_at DESC
+            SELECT * FROM invite_tokens
+            ORDER BY created_at DESC
         """
         tokens = db.execute_query(query)
     else:
         query = """
-            SELECT it.*, r.name as role_name
-            FROM invite_tokens it
-            JOIN roles r ON it.role_id = r.id
-            WHERE it.used_at IS NULL AND it.is_revoked = 0
-            ORDER BY it.created_at DESC
+            SELECT * FROM invite_tokens
+            WHERE used_at IS NULL AND is_revoked = 0
+            ORDER BY created_at DESC
         """
         tokens = db.execute_query(query)
 
@@ -268,7 +260,7 @@ async def list_invite_tokens(
         InviteTokenListItem(
             id=t["id"],
             email=t["email"],
-            role_name=t["role_name"],
+            profile_name=t["profile_name"],
             created_by=t["created_by"],
             created_at=t["created_at"],
             expires_at=t["expires_at"],
@@ -282,16 +274,14 @@ async def list_invite_tokens(
 @router.delete("/invites/{token_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_invite_token(
     token_id: int,
-    user: AuthUser = Depends(require_any_role("admin")),
+    user: AuthUser = Depends(require_any_profile("system_admin")),
 ):
     """
     Revoke an invite token.
 
-    Requires: admin role
+    Requires: system_admin profile
     """
-    from db import get_db
-
-    db = get_db()
+    from db.database import db
 
     # Check token exists
     existing = db.execute_query("SELECT * FROM invite_tokens WHERE id = ?", (token_id,))
@@ -319,20 +309,15 @@ async def validate_invite_token(request: ValidateInviteRequest):
     Called by the frontend during signup to verify the token is valid
     before creating the user in Supabase Auth.
     """
-    from db import get_db
+    from db.database import db
     from utils.time import get_uae_time
 
     logger.info(f"[AUTH] Validating invite token for email: {request.email}")
 
-    db = get_db()
-
     # Find the token
     token_data = db.execute_query(
         """
-        SELECT it.*, r.name as role_name
-        FROM invite_tokens it
-        JOIN roles r ON it.role_id = r.id
-        WHERE it.token = ?
+        SELECT * FROM invite_tokens WHERE token = ?
         """,
         (request.token,)
     )
@@ -345,7 +330,7 @@ async def validate_invite_token(request: ValidateInviteRequest):
         )
 
     token_record = token_data[0]
-    logger.info(f"[AUTH] Found token for email: {token_record['email']}, role: {token_record['role_name']}")
+    logger.info(f"[AUTH] Found token for email: {token_record['email']}, profile: {token_record['profile_name']}")
 
     # Check if already used
     if token_record["used_at"]:
@@ -387,10 +372,10 @@ async def validate_invite_token(request: ValidateInviteRequest):
         (now.isoformat(), token_record["id"])
     )
 
-    logger.info(f"[AUTH] Invite token validated successfully for {request.email} with role {token_record['role_name']}")
+    logger.info(f"[AUTH] Invite token validated successfully for {request.email} with profile {token_record['profile_name']}")
 
     return ValidateInviteResponse(
         valid=True,
         email=token_record["email"],
-        role_name=token_record["role_name"],
+        profile_name=token_record["profile_name"],
     )
