@@ -178,6 +178,44 @@ class SQLiteBackend(DatabaseBackend):
         except Exception as e:
             logger.error(f"[DB MIGRATION] Failed to add user_id to booking_orders: {e}")
 
+        # Migration 8: Migrate invite_tokens from profile_id to profile_name
+        # (Part of RBAC v2 migration - roles -> profiles)
+        try:
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='invite_tokens'")
+            if cursor.fetchone():
+                cursor.execute("PRAGMA table_info(invite_tokens)")
+                columns = [row[1] for row in cursor.fetchall()]
+
+                # Check if we still have profile_id (old schema)
+                if 'profile_id' in columns and 'profile_name' not in columns:
+                    logger.info("[DB MIGRATION] Migrating invite_tokens: profile_id -> profile_name")
+                    # SQLite doesn't support DROP COLUMN, so we need to recreate the table
+                    # First backup existing data
+                    cursor.execute("ALTER TABLE invite_tokens RENAME TO invite_tokens_backup")
+                    conn.commit()
+
+                    # Create new table with profile_name (will be created by schema)
+                    # The executescript below will create the new table
+                    logger.info("[DB MIGRATION] invite_tokens table renamed to backup, new table will be created by schema")
+                elif 'profile_id' in columns and 'profile_name' in columns:
+                    # Transitional state - remove old column by recreating table
+                    logger.info("[DB MIGRATION] Cleaning up invite_tokens: removing legacy profile_id column")
+                    cursor.execute("ALTER TABLE invite_tokens RENAME TO invite_tokens_old")
+                    conn.commit()
+        except Exception as e:
+            logger.error(f"[DB MIGRATION] Failed to migrate invite_tokens: {e}")
+
+        # Migration 9: Drop legacy RBAC tables (roles, user_roles, role_permissions)
+        try:
+            for table in ['role_permissions', 'user_roles', 'roles']:
+                cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'")
+                if cursor.fetchone():
+                    logger.info(f"[DB MIGRATION] Dropping legacy table: {table}")
+                    cursor.execute(f"DROP TABLE IF EXISTS {table}")
+                    conn.commit()
+        except Exception as e:
+            logger.error(f"[DB MIGRATION] Failed to drop legacy RBAC tables: {e}")
+
     # =========================================================================
     # PROPOSALS
     # =========================================================================
