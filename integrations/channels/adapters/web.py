@@ -5,6 +5,11 @@ This adapter handles communication with the web-based unified UI,
 storing messages in memory/sessions and returning them via API responses.
 Unlike Slack which pushes messages, the web adapter stores responses
 that are polled/streamed by the frontend.
+
+File Storage:
+- When STORAGE_PROVIDER=supabase, files are stored in Supabase Storage
+- Files persist across deployments/restarts
+- Signed URLs are used for secure access
 """
 
 import asyncio
@@ -29,6 +34,21 @@ from ..base import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Storage metadata for files (maps file_id to storage info)
+@dataclass
+class StoredFileInfo:
+    """Metadata for a stored file."""
+    file_id: str
+    bucket: str
+    key: str
+    filename: str
+    content_type: str
+    size: int
+    user_id: Optional[str] = None
+    local_path: Optional[Path] = None  # For local storage fallback
+    created_at: datetime = field(default_factory=datetime.now)
 
 
 @dataclass
@@ -58,6 +78,11 @@ class WebAdapter(ChannelAdapter):
     - Supports SSE streaming for real-time responses
     - File uploads return URLs accessible by the web frontend
     - No modals (uses frontend UI instead)
+
+    File Storage:
+    - Uses Supabase Storage when STORAGE_PROVIDER=supabase
+    - Falls back to local temp files when local
+    - Files organized by bucket: 'uploads' for user files, 'proposals' for generated docs
     """
 
     def __init__(self, file_base_url: str = "/api/files"):
@@ -70,10 +95,31 @@ class WebAdapter(ChannelAdapter):
         self._sessions: Dict[str, WebSession] = {}
         self._file_base_url = file_base_url
         self._users: Dict[str, User] = {}
-        self._uploaded_files: Dict[str, Path] = {}  # file_id -> path
+        self._uploaded_files: Dict[str, Path] = {}  # Legacy: file_id -> path (for local storage)
+        self._stored_files: Dict[str, StoredFileInfo] = {}  # file_id -> StoredFileInfo
 
         # Callbacks for streaming (set by the API layer)
         self._stream_callbacks: Dict[str, Callable[[str], Awaitable[None]]] = {}
+
+        # Storage client (lazy loaded)
+        self._storage_client = None
+
+    def _get_storage_client(self):
+        """Get or create the storage client."""
+        if self._storage_client is None:
+            try:
+                from integrations.storage import get_storage_client
+                self._storage_client = get_storage_client()
+                logger.info(f"[WebAdapter] Using storage provider: {self._storage_client.provider_name}")
+            except Exception as e:
+                logger.warning(f"[WebAdapter] Failed to initialize storage client: {e}")
+                self._storage_client = None
+        return self._storage_client
+
+    def _is_using_remote_storage(self) -> bool:
+        """Check if we're using remote storage (Supabase/S3)."""
+        client = self._get_storage_client()
+        return client is not None and client.provider_name != "local"
 
     @property
     def channel_type(self) -> ChannelType:
@@ -345,9 +391,24 @@ class WebAdapter(ChannelAdapter):
         title: Optional[str] = None,
         comment: Optional[str] = None,
         thread_id: Optional[str] = None,
+        bucket: str = "uploads",
+        user_id: Optional[str] = None,
     ) -> FileUpload:
         """
         Store a file and return URL for web download.
+
+        When STORAGE_PROVIDER=supabase, uploads to Supabase Storage.
+        Otherwise, stores locally in temp files.
+
+        Args:
+            channel_id: User/channel identifier
+            file_path: Local path to the file
+            filename: Optional override for filename
+            title: Optional title for the file
+            comment: Optional message to add with the file
+            thread_id: Not used in web adapter
+            bucket: Storage bucket ('uploads', 'proposals', etc.)
+            user_id: User who owns this file (for organization)
         """
         path = Path(file_path)
         if not path.exists():
@@ -355,14 +416,92 @@ class WebAdapter(ChannelAdapter):
 
         file_id = str(uuid.uuid4())
         actual_filename = filename or path.name
+        owner_id = user_id or channel_id
 
-        # Store file reference
+        # Determine content type
+        import mimetypes
+        content_type, _ = mimetypes.guess_type(actual_filename)
+        content_type = content_type or "application/octet-stream"
+
+        # Try to use remote storage (Supabase)
+        storage_client = self._get_storage_client()
+        if storage_client and storage_client.provider_name != "local":
+            try:
+                # Generate storage key: {bucket}/{user_id}/{date}/{file_id}_{filename}
+                date_prefix = datetime.now().strftime("%Y/%m/%d")
+                storage_key = f"{owner_id}/{date_prefix}/{file_id}_{actual_filename}"
+
+                # Upload to Supabase Storage
+                result = await storage_client.upload_from_path(
+                    bucket=bucket,
+                    key=storage_key,
+                    local_path=path,
+                    content_type=content_type,
+                )
+
+                if result.success:
+                    # Store metadata for retrieval
+                    self._stored_files[file_id] = StoredFileInfo(
+                        file_id=file_id,
+                        bucket=bucket,
+                        key=storage_key,
+                        filename=actual_filename,
+                        content_type=content_type,
+                        size=path.stat().st_size,
+                        user_id=owner_id,
+                    )
+
+                    # Create download URL (goes through our API for auth)
+                    url = f"{self._file_base_url}/{file_id}/{actual_filename}"
+
+                    logger.info(f"[WebAdapter] File uploaded to {storage_client.provider_name}: {actual_filename} -> {bucket}/{storage_key}")
+
+                    # Add message with attachment if comment provided
+                    if comment:
+                        session = self.get_session(channel_id)
+                        if session:
+                            session.messages.append({
+                                "id": str(uuid.uuid4()),
+                                "role": "assistant",
+                                "content": comment,
+                                "timestamp": datetime.now().isoformat(),
+                                "attachments": [{
+                                    "url": url,
+                                    "filename": actual_filename,
+                                    "title": title
+                                }]
+                            })
+
+                    return FileUpload(
+                        success=True,
+                        url=url,
+                        file_id=file_id,
+                        filename=actual_filename
+                    )
+                else:
+                    logger.error(f"[WebAdapter] Storage upload failed: {result.error}")
+                    # Fall through to local storage
+            except Exception as e:
+                logger.error(f"[WebAdapter] Storage upload error: {e}")
+                # Fall through to local storage
+
+        # Fallback: Local storage (temp files)
         self._uploaded_files[file_id] = path
+        self._stored_files[file_id] = StoredFileInfo(
+            file_id=file_id,
+            bucket=bucket,
+            key=actual_filename,
+            filename=actual_filename,
+            content_type=content_type,
+            size=path.stat().st_size,
+            user_id=owner_id,
+            local_path=path,
+        )
 
         # Create download URL
         url = f"{self._file_base_url}/{file_id}/{actual_filename}"
 
-        logger.info(f"[WebAdapter] File uploaded: {actual_filename} -> {url}")
+        logger.info(f"[WebAdapter] File stored locally: {actual_filename} -> {url}")
 
         # If there's a comment, add as message with attachment
         if comment:
@@ -397,11 +536,85 @@ class WebAdapter(ChannelAdapter):
         comment: Optional[str] = None,
         thread_id: Optional[str] = None,
         mimetype: Optional[str] = None,
+        bucket: str = "uploads",
+        user_id: Optional[str] = None,
     ) -> FileUpload:
-        """Upload file from bytes."""
+        """
+        Upload file from bytes.
+
+        When STORAGE_PROVIDER=supabase, uploads directly to Supabase Storage.
+        Otherwise, writes to temp file first.
+        """
         import tempfile
 
-        # Write to temp file
+        file_id = str(uuid.uuid4())
+        owner_id = user_id or channel_id
+        content_type = mimetype
+
+        # Determine content type if not provided
+        if not content_type:
+            import mimetypes
+            content_type, _ = mimetypes.guess_type(filename)
+            content_type = content_type or "application/octet-stream"
+
+        # Try to use remote storage (Supabase)
+        storage_client = self._get_storage_client()
+        if storage_client and storage_client.provider_name != "local":
+            try:
+                # Generate storage key
+                date_prefix = datetime.now().strftime("%Y/%m/%d")
+                storage_key = f"{owner_id}/{date_prefix}/{file_id}_{filename}"
+
+                # Upload directly from bytes
+                result = await storage_client.upload(
+                    bucket=bucket,
+                    key=storage_key,
+                    data=file_bytes,
+                    content_type=content_type,
+                )
+
+                if result.success:
+                    # Store metadata
+                    self._stored_files[file_id] = StoredFileInfo(
+                        file_id=file_id,
+                        bucket=bucket,
+                        key=storage_key,
+                        filename=filename,
+                        content_type=content_type,
+                        size=len(file_bytes),
+                        user_id=owner_id,
+                    )
+
+                    url = f"{self._file_base_url}/{file_id}/{filename}"
+                    logger.info(f"[WebAdapter] File bytes uploaded to {storage_client.provider_name}: {filename} -> {bucket}/{storage_key}")
+
+                    if comment:
+                        session = self.get_session(channel_id)
+                        if session:
+                            session.messages.append({
+                                "id": str(uuid.uuid4()),
+                                "role": "assistant",
+                                "content": comment,
+                                "timestamp": datetime.now().isoformat(),
+                                "attachments": [{
+                                    "url": url,
+                                    "filename": filename,
+                                    "title": title
+                                }]
+                            })
+
+                    return FileUpload(
+                        success=True,
+                        url=url,
+                        file_id=file_id,
+                        filename=filename
+                    )
+                else:
+                    logger.error(f"[WebAdapter] Storage upload failed: {result.error}")
+            except Exception as e:
+                logger.error(f"[WebAdapter] Storage upload error: {e}")
+
+        # Fallback: Write to temp file
         suffix = Path(filename).suffix
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
             f.write(file_bytes)
@@ -413,12 +626,81 @@ class WebAdapter(ChannelAdapter):
             filename=filename,
             title=title,
             comment=comment,
-            thread_id=thread_id
+            thread_id=thread_id,
+            bucket=bucket,
+            user_id=user_id,
         )
 
     def get_file_path(self, file_id: str) -> Optional[Path]:
-        """Get the path for an uploaded file (for serving)."""
+        """Get the local path for an uploaded file (for local storage only)."""
+        # Check new stored files first
+        stored = self._stored_files.get(file_id)
+        if stored and stored.local_path:
+            return stored.local_path
+        # Legacy fallback
         return self._uploaded_files.get(file_id)
+
+    def get_stored_file_info(self, file_id: str) -> Optional[StoredFileInfo]:
+        """Get storage metadata for a file."""
+        return self._stored_files.get(file_id)
+
+    async def get_file_download_url(self, file_id: str, expires_in: int = 3600) -> Optional[str]:
+        """
+        Get a download URL for a file.
+
+        For Supabase Storage, returns a signed URL.
+        For local storage, returns the API file path.
+        """
+        stored = self._stored_files.get(file_id)
+        if not stored:
+            return None
+
+        # If using remote storage, get signed URL
+        storage_client = self._get_storage_client()
+        if storage_client and storage_client.provider_name != "local" and not stored.local_path:
+            try:
+                signed_url = await storage_client.get_signed_url(
+                    bucket=stored.bucket,
+                    key=stored.key,
+                    expires_in=expires_in,
+                )
+                if signed_url:
+                    return signed_url
+            except Exception as e:
+                logger.error(f"[WebAdapter] Failed to get signed URL: {e}")
+
+        # Fallback to API URL
+        return f"{self._file_base_url}/{file_id}/{stored.filename}"
+
+    async def download_file_bytes(self, file_id: str) -> Optional[bytes]:
+        """
+        Download file contents as bytes.
+
+        For Supabase Storage, downloads from remote.
+        For local storage, reads from disk.
+        """
+        stored = self._stored_files.get(file_id)
+        if not stored:
+            return None
+
+        # If local path exists, read from disk
+        if stored.local_path and stored.local_path.exists():
+            return stored.local_path.read_bytes()
+
+        # Try remote storage
+        storage_client = self._get_storage_client()
+        if storage_client and storage_client.provider_name != "local":
+            try:
+                result = await storage_client.download(
+                    bucket=stored.bucket,
+                    key=stored.key,
+                )
+                if result.success and result.data:
+                    return result.data
+            except Exception as e:
+                logger.error(f"[WebAdapter] Failed to download from storage: {e}")
+
+        return None
 
     async def download_file(
         self,

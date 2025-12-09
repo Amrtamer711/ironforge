@@ -129,12 +129,35 @@ async def periodic_cleanup():
             logger.error(f"[CLEANUP] Error in periodic cleanup: {e}")
 
 
+async def initialize_storage():
+    """Initialize storage client and ensure buckets exist."""
+    try:
+        from integrations.storage import get_storage_client
+        storage = get_storage_client()
+        logger.info(f"[STARTUP] Storage provider: {storage.provider_name}")
+
+        if storage.provider_name != "local":
+            # Ensure required buckets exist for Supabase/S3
+            required_buckets = ["proposals", "uploads"]
+            for bucket in required_buckets:
+                try:
+                    await storage.ensure_bucket(bucket)
+                    logger.info(f"[STARTUP] Storage bucket '{bucket}' ready")
+                except Exception as e:
+                    logger.warning(f"[STARTUP] Could not ensure bucket '{bucket}': {e}")
+    except Exception as e:
+        logger.warning(f"[STARTUP] Storage initialization skipped: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage startup and shutdown events."""
     # Startup
     cleanup_task = asyncio.create_task(periodic_cleanup())
     logger.info("[STARTUP] Started background cleanup task")
+
+    # Initialize storage (for Supabase/S3 bucket setup)
+    await initialize_storage()
 
     # Load active workflows from database to restore state after restart
     from workflows import bo_approval
