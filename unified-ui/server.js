@@ -193,6 +193,13 @@ app.use('/api/sales', createProxyMiddleware({
   timeout: 300000,
   on: {
     proxyReq: (proxyReq, req, res) => {
+      // LOG ALL PROXY REQUESTS
+      console.log(`[PROXY] ========================================`);
+      console.log(`[PROXY] ${req.method} ${req.originalUrl} -> ${SERVICES.sales}${req.path.replace('/api/sales', '/api')}`);
+      console.log(`[PROXY] Has Auth Header: ${!!req.headers.authorization}`);
+      console.log(`[PROXY] Target: ${SERVICES.sales}`);
+      console.log(`[PROXY] ========================================`);
+
       // Forward Authorization header to backend (backend validates)
       const authHeader = req.headers.authorization;
       if (authHeader) {
@@ -205,26 +212,24 @@ app.use('/api/sales', createProxyMiddleware({
       } else if (req.socket.remoteAddress) {
         proxyReq.setHeader('X-Forwarded-For', req.socket.remoteAddress);
       }
-
-      // Log streaming requests
-      if (req.path.includes('/stream')) {
-        console.log(`[UI] Proxying SSE request: ${req.method} ${req.path}`);
-      }
     },
     proxyRes: (proxyRes, req, res) => {
+      console.log(`[PROXY] Response: ${proxyRes.statusCode} for ${req.method} ${req.originalUrl}`);
+
       // For SSE endpoints, ensure no buffering
       if (req.path.includes('/stream') || proxyRes.headers['content-type']?.includes('text/event-stream')) {
-        console.log(`[UI] SSE response detected, disabling buffering`);
-        // Disable compression/buffering for SSE
+        console.log(`[PROXY] SSE response detected, disabling buffering`);
         res.setHeader('X-Accel-Buffering', 'no');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
       }
     },
     error: (err, req, res) => {
-      console.error(`Proxy error to ${SERVICES.sales}:`, err.message);
+      console.error(`[PROXY] ERROR: ${err.message}`);
+      console.error(`[PROXY] Request was: ${req.method} ${req.originalUrl}`);
+      console.error(`[PROXY] Target was: ${SERVICES.sales}`);
       if (!res.headersSent) {
-        res.status(502).json({ error: 'Service unavailable', service: SERVICES.sales });
+        res.status(502).json({ error: 'Service unavailable', details: err.message, target: SERVICES.sales });
       }
     },
   },
