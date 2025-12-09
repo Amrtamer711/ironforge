@@ -236,7 +236,13 @@ app.use('/api/sales', createProxyMiddleware({
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'unified-ui', supabase: !!supabase });
+  res.json({
+    status: 'ok',
+    service: 'unified-ui',
+    supabase: !!supabase,
+    sales_bot_url: SERVICES.sales,
+    environment: ENVIRONMENT,
+  });
 });
 
 // Supabase config endpoint - serves public credentials to frontend as JavaScript
