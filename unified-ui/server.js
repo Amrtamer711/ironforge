@@ -607,6 +607,19 @@ app.get('/api/base/auth/session', async (req, res) => {
   }
 });
 
+// =============================================================================
+// SPA CATCH-ALL - Serve index.html for all non-API routes
+// This enables client-side routing and handles Supabase auth redirects
+// =============================================================================
+app.get('*', (req, res) => {
+  // Don't catch API routes
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  // Serve index.html for all other routes (SPA)
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
