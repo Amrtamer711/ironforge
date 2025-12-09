@@ -101,6 +101,10 @@ async def chat_stream(
     Returns real-time chunks as the LLM generates the response.
     Requires authentication.
     """
+    print(f"========== CHAT STREAM REQUEST RECEIVED ==========")
+    print(f"User: {user.email}")
+    print(f"Message: {request.message}")
+    print(f"==================================================")
     logger.info(f"[CHAT] Stream from {user.email}: {request.message[:50]}...")
 
     from core.chat_api import stream_chat_message
