@@ -214,10 +214,13 @@ const Auth = {
     }
 
     console.log('[Auth] Signup successful for:', email);
+    console.log('[Auth] Signup response data:', JSON.stringify(data, null, 2));
+    console.log('[Auth] User ID from signup:', data.user?.id);
 
     // Step 3: Mark token as used NOW that signup succeeded
     // Also pass user_id so backend can create user in users table with correct profile
-    console.log('[Auth] Consuming invite token...');
+    const userId = data.user?.id || data.session?.user?.id;
+    console.log('[Auth] Consuming invite token with user_id:', userId);
     try {
       const consumeResponse = await fetch('/api/base/auth/consume-invite', {
         method: 'POST',
@@ -225,8 +228,8 @@ const Auth = {
         body: JSON.stringify({
           token,
           email,
-          user_id: data.user?.id,  // Pass the Supabase Auth user ID
-          name: name               // Pass the user's name
+          user_id: userId,  // Pass the Supabase Auth user ID
+          name: name        // Pass the user's name
         })
       });
 
