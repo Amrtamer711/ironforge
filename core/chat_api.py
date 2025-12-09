@@ -215,20 +215,20 @@ async def process_chat_message(
 
             elif tool_call.name in ["get_separate_proposals", "get_combined_proposal"]:
                 # Complex tool - will be handled by API layer
-                result["content"] = "_Generating proposal..._"
+                result["content"] = "📄 _Generating proposal..._"
 
             elif tool_call.name == "generate_mockup":
                 # Complex tool - will be handled by API layer
                 args = tool_call.arguments
                 location = args.get("location", "unknown")
-                result["content"] = f"_Generating mockup for {location}..._"
+                result["content"] = f"🎨 _Generating mockup for {location}..._"
 
             elif tool_call.name == "parse_booking_order":
-                result["content"] = "_Processing booking order..._"
+                result["content"] = "📋 _Processing booking order..._"
 
             else:
                 # Unknown tool
-                result["content"] = f"I'll help you with that. Processing {tool_call.name}..."
+                result["content"] = f"⏳ Processing {tool_call.name}..."
 
             # Add assistant's tool call summary to history
             history.append({

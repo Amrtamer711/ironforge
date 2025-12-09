@@ -218,7 +218,7 @@ async def _handle_booking_order_parse(
     # Classify document
     try:
         channel_adapter = config.get_channel_adapter()
-        await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="_Classifying document..._")
+        await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="🔍 _Classifying document..._")
     except Exception as e:
         logger.error(f"[CHANNEL] Failed to update status message while classifying: {e}", exc_info=True)
         # Continue processing - status update failure shouldn't stop the workflow
@@ -253,7 +253,7 @@ async def _handle_booking_order_parse(
     # Current issue: High reasoning effort can take 10-15+ minutes on complex BOs
     try:
         channel_adapter = config.get_channel_adapter()
-        await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="_Extracting booking order data..._")
+        await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="📋 _Extracting booking order data..._")
     except Exception as e:
         logger.error(f"[CHANNEL] Failed to update status message while parsing: {e}", exc_info=True)
     try:
@@ -298,7 +298,7 @@ async def _handle_booking_order_parse(
     # NEW FLOW: Generate Excel immediately and send with Approve/Reject buttons
     try:
         channel_adapter = config.get_channel_adapter()
-        await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="_Generating Excel file..._")
+        await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="📊 _Generating Excel file..._")
     except Exception as e:
         logger.error(f"[CHANNEL] Failed to update status message while generating Excel: {e}", exc_info=True)
 
@@ -383,7 +383,7 @@ async def _handle_booking_order_parse(
         # NEW FLOW: Post notification in main channel, then file + buttons in thread
         try:
             channel_adapter = config.get_channel_adapter()
-            await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="_Sending to coordinator..._")
+            await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="📤 _Sending to coordinator..._")
         except Exception as e:
             logger.error(f"[CHANNEL] Failed to update status message: {e}", exc_info=True)
 
@@ -753,7 +753,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
     channel_adapter = config.get_channel_adapter()
     status_message = await channel_adapter.send_message(
         channel_id=channel,
-        content="_Please wait..._"
+        content="⏳ _Please wait..._"
     )
     status_ts = status_message.platform_message_id or status_message.id
 
@@ -823,7 +823,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 # Post status message about conversion
                 conversion_status = await channel_adapter.send_message(
                     channel_id=channel,
-                    content="_Converting PDF to PowerPoint with maximum quality (300 DPI)..._"
+                    content="🔄 _Converting PDF to PowerPoint with maximum quality (300 DPI)..._"
                 )
                 conversion_status_ts = conversion_status.platform_message_id or conversion_status.id
 
