@@ -169,9 +169,12 @@ async def process_chat_message(
 
     try:
         # Initialize LLM client
+        logger.info(f"[WebChat] Initializing LLM client...")
         llm_client = LLMClient.from_config()
+        logger.info(f"[WebChat] LLM client initialized: provider={llm_client.provider_name}")
 
         # Call LLM
+        logger.info(f"[WebChat] Calling LLM with {len(llm_messages)} messages and {len(all_tools)} tools...")
         response = await llm_client.complete(
             messages=llm_messages,
             tools=all_tools,
@@ -183,6 +186,7 @@ async def process_chat_message(
             user_id=user_name,
             context=f"Channel: web_ui, User: {user_id}",
         )
+        logger.info(f"[WebChat] LLM response received: has_content={bool(response.content)}, tool_calls={bool(response.tool_calls)}")
 
         result = {
             "content": None,
@@ -299,12 +303,14 @@ async def stream_chat_message(
 
     Yields SSE-formatted strings that can be sent directly to the client.
     """
+    logger.info(f"[WebChat] stream_chat_message called for user={user_id}, message={message[:50]}...")
     collected_response = []
 
     async def collect_chunk(chunk: str):
         collected_response.append(chunk)
 
     try:
+        logger.info(f"[WebChat] Calling process_chat_message...")
         result = await process_chat_message(
             user_id=user_id,
             user_name=user_name,
@@ -313,6 +319,7 @@ async def stream_chat_message(
             files=files,
             stream_callback=collect_chunk
         )
+        logger.info(f"[WebChat] process_chat_message returned: error={result.get('error')}, has_content={bool(result.get('content'))}")
 
         if result.get("error"):
             yield f"data: {json.dumps({'error': result['error']})}\n\n"

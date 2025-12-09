@@ -277,13 +277,6 @@ const AdminUI = {
         <div class="admin-section-header">
           <h3>User Management</h3>
           <span class="admin-badge">${AdminState.users.length}</span>
-          <button class="btn btn-primary btn-sm" id="createUserBtn">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            New User
-          </button>
         </div>
         <div class="users-table-container">
           <table class="admin-table">
@@ -299,7 +292,7 @@ const AdminUI = {
             <tbody>
               ${AdminState.users.length > 0
                 ? AdminState.users.map(user => this.renderUserRow(user)).join('')
-                : '<tr><td colspan="5" class="empty-state">No users found. Create one to get started.</td></tr>'
+                : '<tr><td colspan="5" class="empty-state">No users found. Use the Invites tab to invite new users.</td></tr>'
               }
             </tbody>
           </table>
@@ -1152,12 +1145,6 @@ const AdminUI = {
         document.getElementById(tab.dataset.tab + 'Tab').classList.add('active');
       };
     });
-
-    // Create user button
-    const createUserBtn = document.getElementById('createUserBtn');
-    if (createUserBtn) {
-      createUserBtn.onclick = () => this.showUserEditor();
-    }
 
     // Edit user buttons
     document.querySelectorAll('.edit-user-btn').forEach(btn => {

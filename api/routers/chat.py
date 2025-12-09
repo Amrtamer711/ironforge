@@ -103,14 +103,19 @@ async def chat_stream(
     Returns real-time chunks as the LLM generates the response.
     Requires authentication.
     """
-    logger.info(f"[CHAT] Stream started for {user.email}: {request.message[:50]}...")
+    logger.info(f"[CHAT] === STREAM ENDPOINT HIT ===")
+    logger.info(f"[CHAT] User: {user.email}, ID: {user.id}")
+    logger.info(f"[CHAT] Message: {request.message[:100]}...")
 
     from core.chat_api import stream_chat_message
 
+    logger.info(f"[CHAT] Getting user profile...")
     roles = await _get_user_profile(user)
+    logger.info(f"[CHAT] Roles: {roles}")
 
     async def event_generator():
         try:
+            logger.info(f"[CHAT] Starting stream_chat_message...")
             chunk_count = 0
             async for chunk in stream_chat_message(
                 user_id=user.id,
@@ -119,6 +124,8 @@ async def chat_stream(
                 roles=roles
             ):
                 chunk_count += 1
+                if chunk_count <= 3:
+                    logger.info(f"[CHAT] Chunk {chunk_count}: {chunk[:100]}...")
                 yield chunk
             logger.info(f"[CHAT] Stream completed for {user.email}, {chunk_count} chunks sent")
         except Exception as e:
