@@ -314,6 +314,85 @@ class _DatabaseNamespace:
         )
 
     # =========================================================================
+    # GENERIC QUERY EXECUTION (for invite tokens)
+    # =========================================================================
+
+    def execute_query(
+        self,
+        query: str,
+        params: tuple = (),
+    ) -> Optional[List[Dict[str, Any]]]:
+        """
+        Execute a raw SQL query for invite_tokens table.
+        Bridges SQLite (?) and Supabase syntax.
+        """
+        if self._backend.name == "sqlite":
+            conn = self._connect()
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            if cursor.description:
+                columns = [desc[0] for desc in cursor.description]
+                rows = cursor.fetchall()
+                conn.commit()
+                return [dict(zip(columns, row)) for row in rows]
+            conn.commit()
+            return None
+
+        elif self._backend.name == "supabase":
+            client = self._backend._get_client()
+            query_lower = query.lower().strip()
+
+            # Handle SELECT on invite_tokens
+            if query_lower.startswith("select") and "invite_tokens" in query_lower:
+                builder = client.table("invite_tokens").select("*")
+
+                if "where token = ?" in query_lower and params:
+                    builder = builder.eq("token", params[0])
+                elif "where id = ?" in query_lower and params:
+                    builder = builder.eq("id", params[0])
+                elif "where email = ?" in query_lower and params:
+                    builder = builder.eq("email", params[0])
+                    if "used_at is null" in query_lower:
+                        builder = builder.is_("used_at", "null")
+                    if "is_revoked = 0" in query_lower:
+                        builder = builder.eq("is_revoked", False)
+                    if "expires_at > ?" in query_lower and len(params) >= 2:
+                        builder = builder.gt("expires_at", params[1])
+                elif "used_at is null" in query_lower:
+                    builder = builder.is_("used_at", "null")
+                    if "is_revoked = 0" in query_lower:
+                        builder = builder.eq("is_revoked", False)
+
+                if "order by created_at desc" in query_lower:
+                    builder = builder.order("created_at", desc=True)
+
+                return builder.execute().data or []
+
+            # Handle INSERT into invite_tokens
+            elif query_lower.startswith("insert") and "invite_tokens" in query_lower and len(params) >= 6:
+                client.table("invite_tokens").insert({
+                    "token": params[0],
+                    "email": params[1],
+                    "profile_name": params[2],
+                    "created_by": params[3],
+                    "created_at": params[4],
+                    "expires_at": params[5],
+                }).execute()
+                return None
+
+            # Handle UPDATE invite_tokens
+            elif query_lower.startswith("update") and "invite_tokens" in query_lower:
+                if "is_revoked = 1" in query_lower and params:
+                    client.table("invite_tokens").update({"is_revoked": True}).eq("id", params[0]).execute()
+                elif "used_at = ?" in query_lower and len(params) >= 2:
+                    client.table("invite_tokens").update({"used_at": params[0]}).eq("id", params[1]).execute()
+                return None
+
+            return []
+        else:
+            raise NotImplementedError(f"execute_query not supported for {self._backend.name}")
+
+    # =========================================================================
     # AUDIT LOGGING
     # =========================================================================
 
