@@ -118,7 +118,7 @@ class SlackAdapter(ChannelAdapter):
                     thread_id=thread_id or response.get("thread_ts"),
                     timestamp=response["ts"],
                     platform_message_id=response["ts"],
-                    metadata={"response": dict(response)},
+                    metadata={"ok": response.get("ok", True)},
                 )
 
         except Exception as e:
