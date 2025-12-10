@@ -899,6 +899,7 @@ class SupabaseBackend(DatabaseBackend):
         avatar_url: Optional[str] = None,
         created_at: Optional[str] = None,
         last_login: Optional[str] = None,
+        profile_id: Optional[str] = None,
     ) -> bool:
         if not created_at:
             created_at = datetime.now().isoformat()
@@ -909,7 +910,11 @@ class SupabaseBackend(DatabaseBackend):
 
         try:
             client = self._get_client()
-            client.table("users").upsert({
+
+            # Check if user already exists
+            existing = client.table("users").select("id, profile_id").eq("id", user_id).execute()
+
+            user_data = {
                 "id": user_id,
                 "email": email,
                 "name": full_name,
@@ -918,7 +923,21 @@ class SupabaseBackend(DatabaseBackend):
                 "updated_at": now,
                 "last_login_at": last_login,
                 "is_active": True,
-            }, on_conflict="id").execute()
+            }
+
+            # If new user (no existing record), assign default profile
+            if not existing.data:
+                # Get the default 'sales_user' profile ID
+                if not profile_id:
+                    profile_result = client.table("profiles").select("id").eq("name", "sales_user").execute()
+                    if profile_result.data:
+                        profile_id = profile_result.data[0]["id"]
+                        logger.info(f"[SUPABASE] Assigning default profile 'sales_user' to new user: {email}")
+
+                if profile_id:
+                    user_data["profile_id"] = profile_id
+
+            client.table("users").upsert(user_data, on_conflict="id").execute()
 
             logger.info(f"[SUPABASE] Upserted user: {email}")
             return True
