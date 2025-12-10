@@ -133,7 +133,7 @@ async def get_accessible_modules(user: AuthUser = Depends(require_auth)):
     Returns modules the user has permission to access, along with
     their default module (if set).
     """
-    logger.info(f"[MODULES] Getting accessible modules for user: {user.email}")
+    logger.info(f"[MODULES] Getting accessible modules for user: {user.email} (id={user.id})")
 
     rbac = get_rbac_client()
     accessible_modules = []
@@ -144,10 +144,12 @@ async def get_accessible_modules(user: AuthUser = Depends(require_auth)):
     profile = await rbac.get_user_profile(user.id)
     user_permissions = await rbac.get_user_permissions(user.id)
     profile_name = profile.name if profile else None
-    logger.debug(f"[MODULES] User {user.email} has profile: {profile_name}")
+    logger.info(f"[MODULES] User {user.email} profile={profile_name}, permissions={user_permissions}")
 
     # Check if user is admin (has access to everything)
-    is_admin = profile_name == "system_admin"
+    # Also check user.roles from the auth token
+    is_admin = profile_name == "system_admin" or (user.roles and "admin" in user.roles)
+    logger.info(f"[MODULES] is_admin={is_admin} (profile={profile_name}, roles={user.roles})")
 
     # Check each module
     for module_name, config in MODULE_CONFIGS.items():
@@ -206,7 +208,38 @@ async def get_accessible_modules(user: AuthUser = Depends(require_auth)):
     except Exception as e:
         logger.debug(f"[MODULES] Could not get user default module: {e}")
 
-    logger.info(f"[MODULES] User {user.email} has access to {len(accessible_modules)} modules")
+    logger.info(f"[MODULES] User {user.email} has access to {len(accessible_modules)} modules: {[m.name for m in accessible_modules]}")
+
+    # Fallback: If no modules found but user is authenticated, give them sales module
+    if not accessible_modules:
+        logger.warning(f"[MODULES] No modules found for {user.email}, falling back to sales module")
+        sales_config = MODULE_CONFIGS.get("sales", {})
+        accessible_modules = [
+            ModuleInfo(
+                name="sales",
+                display_name=sales_config.get("display_name", "Sales Bot"),
+                description=sales_config.get("description"),
+                icon=sales_config.get("icon"),
+                is_default=True,
+                sort_order=1,
+                tools=[t["name"] for t in sales_config.get("tools", [])],
+            )
+        ]
+        default_module = "sales"
+        # If admin, also add core module
+        if is_admin:
+            core_config = MODULE_CONFIGS.get("core", {})
+            accessible_modules.append(
+                ModuleInfo(
+                    name="core",
+                    display_name=core_config.get("display_name", "Administration"),
+                    description=core_config.get("description"),
+                    icon=core_config.get("icon"),
+                    is_default=False,
+                    sort_order=100,
+                    tools=[t["name"] for t in core_config.get("tools", [])],
+                )
+            )
 
     return AccessibleModulesResponse(
         modules=accessible_modules,
