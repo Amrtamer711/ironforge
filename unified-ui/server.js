@@ -132,11 +132,11 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],  // Needed for some UI frameworks
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.jsdelivr.net"],  // Needed for some UI frameworks + Supabase CDN
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
-      connectSrc: ["'self'", ...ALLOWED_ORIGINS, supabaseUrl].filter(Boolean),
-      fontSrc: ["'self'", "https:", "data:"],
+      connectSrc: ["'self'", ...ALLOWED_ORIGINS, supabaseUrl, "https://*.supabase.co"].filter(Boolean),
+      fontSrc: ["'self'", "https:", "data:", "https://fonts.gstatic.com"],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: IS_PRODUCTION ? [] : null,
     },
