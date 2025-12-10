@@ -22,6 +22,7 @@ opencv-python-headless==4.8.1.78
 numpy==1.26.2
 PyMuPDF==1.23.8
 supabase>=2.11.0
+python-jose[cryptography]>=3.3.0
 
 # Development & Testing (install with: pip install -r requirements.txt)
 pytest==8.0.0

@@ -3,12 +3,18 @@ Supabase authentication provider.
 
 Implements AuthProvider using Supabase Auth for JWT validation
 and user management.
+
+Uses ES256 (asymmetric JWKS) for JWT verification - the default for
+Supabase projects created after May 2025.
 """
 
 import os
 import logging
+import time
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+import httpx
 
 from integrations.auth.base import (
     AuthProvider,
@@ -21,21 +27,94 @@ from utils.time import UAE_TZ, get_uae_time
 
 logger = logging.getLogger("proposal-bot")
 
+# JWKS cache with TTL
+_jwks_cache: Dict[str, Any] = {}  # keyed by JWKS URL
+_jwks_cache_time: Dict[str, float] = {}
+JWKS_CACHE_TTL = 600  # 10 minutes (matches Supabase edge cache)
+
+
+async def fetch_jwks(jwks_url: str) -> Dict[str, Any]:
+    """
+    Fetch JWKS from Supabase endpoint with caching.
+
+    Args:
+        jwks_url: The JWKS endpoint URL
+
+    Returns:
+        The JWKS response containing public keys
+    """
+    global _jwks_cache, _jwks_cache_time
+
+    now = time.time()
+
+    # Check cache
+    if jwks_url in _jwks_cache:
+        cache_age = now - _jwks_cache_time.get(jwks_url, 0)
+        if cache_age < JWKS_CACHE_TTL:
+            logger.debug(f"[AUTH:SUPABASE] Using cached JWKS (age: {cache_age:.0f}s)")
+            return _jwks_cache[jwks_url]
+
+    # Fetch fresh JWKS
+    logger.info(f"[AUTH:SUPABASE] Fetching JWKS from {jwks_url}")
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(jwks_url, timeout=10.0)
+            response.raise_for_status()
+            jwks = response.json()
+
+            # Cache the result
+            _jwks_cache[jwks_url] = jwks
+            _jwks_cache_time[jwks_url] = now
+
+            logger.info(f"[AUTH:SUPABASE] JWKS fetched successfully, {len(jwks.get('keys', []))} keys found")
+            return jwks
+    except Exception as e:
+        logger.error(f"[AUTH:SUPABASE] Failed to fetch JWKS: {e}")
+        # Return cached version if available (even if stale)
+        if jwks_url in _jwks_cache:
+            logger.warning("[AUTH:SUPABASE] Using stale cached JWKS due to fetch failure")
+            return _jwks_cache[jwks_url]
+        raise
+
+
+def get_signing_key_from_jwks(jwks: Dict[str, Any], kid: str) -> Any:
+    """
+    Find the signing key in JWKS that matches the key ID.
+
+    Args:
+        jwks: The JWKS response
+        kid: The key ID from the JWT header
+
+    Returns:
+        The matching JWK key
+    """
+    from jose import jwk
+
+    keys = jwks.get("keys", [])
+    for key in keys:
+        if key.get("kid") == kid:
+            return jwk.construct(key)
+
+    # If no matching kid, and there's only one key, use it
+    if len(keys) == 1:
+        logger.warning(f"[AUTH:SUPABASE] No key matching kid={kid}, using single available key")
+        return jwk.construct(keys[0])
+
+    raise ValueError(f"No key found in JWKS matching kid: {kid}")
+
 
 class SupabaseAuthProvider(AuthProvider):
     """
-    Supabase Auth provider implementation.
+    Supabase Auth provider implementation using ES256 JWKS.
 
     In a decoupled architecture (4-project setup):
     - UI Supabase handles user authentication and issues JWTs
-    - Sales Bot only needs the JWT secret to validate tokens
+    - Sales Bot fetches the public key from JWKS endpoint to validate tokens
     - User data is extracted from JWT claims (no API calls needed)
 
-    For token validation only, requires one of:
-    - UI_JWT_SECRET (generic)
-    - UI_DEV_JWT_SECRET (development environment)
-    - UI_PROD_JWT_SECRET (production environment)
-    - SUPABASE_JWT_SECRET (legacy backwards compatibility)
+    For token validation, requires:
+    - UI_SUPABASE_URL or UI_DEV_SUPABASE_URL / UI_PROD_SUPABASE_URL
+      (used to construct the JWKS endpoint: {url}/auth/v1/.well-known/jwks.json)
 
     For full user management (optional), also requires:
     - SUPABASE_URL
@@ -46,7 +125,7 @@ class SupabaseAuthProvider(AuthProvider):
         self,
         supabase_url: Optional[str] = None,
         service_key: Optional[str] = None,
-        jwt_secret: Optional[str] = None,
+        ui_supabase_url: Optional[str] = None,
     ):
         """
         Initialize Supabase auth provider.
@@ -54,28 +133,31 @@ class SupabaseAuthProvider(AuthProvider):
         Args:
             supabase_url: Supabase project URL (optional - for user management)
             service_key: Supabase service role key (optional - for user management)
-            jwt_secret: JWT secret for token validation (required)
+            ui_supabase_url: UI Supabase project URL (for JWKS endpoint)
         """
-        # JWT secret is primary requirement
-        # Check in order: explicit param, environment-specific, generic, legacy
         environment = os.getenv("ENVIRONMENT", "development")
 
-        if jwt_secret:
-            self._jwt_secret = jwt_secret
+        # Determine UI Supabase URL for JWKS endpoint
+        if ui_supabase_url:
+            self._ui_supabase_url = ui_supabase_url
         elif environment == "production":
-            # Production: try PROD first, then generic, then legacy
-            self._jwt_secret = (
-                os.getenv("UI_PROD_JWT_SECRET", "")
-                or os.getenv("UI_JWT_SECRET", "")
-                or os.getenv("SUPABASE_JWT_SECRET", "")
+            self._ui_supabase_url = (
+                os.getenv("UI_PROD_SUPABASE_URL", "")
+                or os.getenv("UI_SUPABASE_URL", "")
             )
         else:
-            # Development: try DEV first, then generic, then legacy
-            self._jwt_secret = (
-                os.getenv("UI_DEV_JWT_SECRET", "")
-                or os.getenv("UI_JWT_SECRET", "")
-                or os.getenv("SUPABASE_JWT_SECRET", "")
+            self._ui_supabase_url = (
+                os.getenv("UI_DEV_SUPABASE_URL", "")
+                or os.getenv("UI_SUPABASE_URL", "")
             )
+
+        # Construct JWKS URL from Supabase URL
+        if self._ui_supabase_url:
+            # Remove trailing slash if present
+            base_url = self._ui_supabase_url.rstrip("/")
+            self._jwks_url = f"{base_url}/auth/v1/.well-known/jwks.json"
+        else:
+            self._jwks_url = ""
 
         # Supabase client credentials (optional - only needed for user management APIs)
         self._supabase_url = supabase_url or os.getenv("SUPABASE_URL", "")
@@ -83,10 +165,10 @@ class SupabaseAuthProvider(AuthProvider):
         self._client = None
 
         # Log configuration status
-        if self._jwt_secret:
-            logger.info(f"[AUTH:SUPABASE] JWT secret configured for {environment} - token validation enabled")
+        if self._jwks_url:
+            logger.info(f"[AUTH:SUPABASE] JWKS URL configured for {environment}: {self._jwks_url}")
         else:
-            logger.warning(f"[AUTH:SUPABASE] No JWT secret! Set UI_DEV_JWT_SECRET or UI_PROD_JWT_SECRET env var.")
+            logger.warning(f"[AUTH:SUPABASE] No JWKS URL! Set UI_DEV_SUPABASE_URL or UI_PROD_SUPABASE_URL env var.")
 
         if self._supabase_url and self._service_key:
             logger.info("[AUTH:SUPABASE] Supabase client credentials configured")
@@ -111,38 +193,72 @@ class SupabaseAuthProvider(AuthProvider):
 
     async def verify_token(self, token: str) -> AuthResult:
         """
-        Verify JWT token and extract user data from claims.
+        Verify JWT token using ES256 with JWKS and extract user data from claims.
 
-        This is a stateless verification - no API calls to Supabase needed.
-        User data is extracted directly from the JWT claims.
+        This fetches the public key from Supabase's JWKS endpoint and verifies
+        the token signature. User data is extracted directly from the JWT claims.
         """
         try:
-            import jwt
+            from jose import jwt as jose_jwt
+            from jose.exceptions import ExpiredSignatureError, JWTError
 
-            if not self._jwt_secret:
-                logger.error("[AUTH:SUPABASE] Cannot verify token - no JWT secret configured")
+            if not self._jwks_url:
+                logger.error("[AUTH:SUPABASE] Cannot verify token - no JWKS URL configured")
                 return AuthResult(
                     success=False,
                     status=AuthStatus.INVALID,
-                    error="JWT secret not configured"
+                    error="JWKS URL not configured. Set UI_DEV_SUPABASE_URL or UI_PROD_SUPABASE_URL."
+                )
+
+            # Get the key ID from token header
+            try:
+                unverified_header = jose_jwt.get_unverified_header(token)
+                kid = unverified_header.get("kid")
+                alg = unverified_header.get("alg", "ES256")
+
+                if not kid:
+                    logger.warning("[AUTH:SUPABASE] Token missing key ID (kid) in header")
+                    return AuthResult(
+                        success=False,
+                        status=AuthStatus.INVALID,
+                        error="Token missing key ID (kid)"
+                    )
+            except JWTError as e:
+                logger.warning(f"[AUTH:SUPABASE] Invalid token header: {e}")
+                return AuthResult(
+                    success=False,
+                    status=AuthStatus.INVALID,
+                    error=f"Invalid token header: {e}"
+                )
+
+            # Fetch JWKS and get the signing key
+            try:
+                jwks = await fetch_jwks(self._jwks_url)
+                signing_key = get_signing_key_from_jwks(jwks, kid)
+            except Exception as e:
+                logger.error(f"[AUTH:SUPABASE] Failed to get signing key: {e}")
+                return AuthResult(
+                    success=False,
+                    status=AuthStatus.INVALID,
+                    error=f"Failed to get signing key: {e}"
                 )
 
             # Decode and validate JWT
             try:
-                payload = jwt.decode(
+                payload = jose_jwt.decode(
                     token,
-                    self._jwt_secret,
-                    algorithms=["HS256"],
+                    signing_key,
+                    algorithms=[alg],
                     audience="authenticated",
                 )
-            except jwt.ExpiredSignatureError:
+            except ExpiredSignatureError:
                 logger.debug("[AUTH:SUPABASE] Token expired")
                 return AuthResult(
                     success=False,
                     status=AuthStatus.EXPIRED,
                     error="Token has expired"
                 )
-            except jwt.InvalidTokenError as e:
+            except JWTError as e:
                 logger.warning(f"[AUTH:SUPABASE] Invalid token: {e}")
                 return AuthResult(
                     success=False,
