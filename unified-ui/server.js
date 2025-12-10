@@ -103,7 +103,7 @@ app.use('/api/sales', createProxyMiddleware({
   target: SERVICES.sales,
   changeOrigin: true,
   pathRewrite: {
-    '^/api/sales': '/api', // /api/sales/chat -> /api/chat
+    '^/': '/api/', // Express strips /api/sales, so path is /chat/stream -> /api/chat/stream
   },
   // Increase timeout for LLM operations (5 minutes)
   proxyTimeout: 300000,
@@ -112,7 +112,7 @@ app.use('/api/sales', createProxyMiddleware({
     proxyReq: (proxyReq, req, res) => {
       // LOG ALL PROXY REQUESTS
       console.log(`[PROXY] ========================================`);
-      console.log(`[PROXY] ${req.method} ${req.originalUrl} -> ${SERVICES.sales}${req.path.replace('/api/sales', '/api')}`);
+      console.log(`[PROXY] ${req.method} ${req.originalUrl} -> ${SERVICES.sales}/api${req.path}`);
       console.log(`[PROXY] Has Auth Header: ${!!req.headers.authorization}`);
       console.log(`[PROXY] Target: ${SERVICES.sales}`);
       console.log(`[PROXY] ========================================`);
