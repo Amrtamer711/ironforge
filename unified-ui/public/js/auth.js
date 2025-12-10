@@ -310,6 +310,10 @@ const Auth = {
   },
 
   showLanding() {
+    // Hide loading screen
+    const loadingScreen = document.getElementById('loadingScreen');
+    if (loadingScreen) loadingScreen.classList.add('hidden');
+
     document.getElementById('landingPage').style.display = 'flex';
     document.getElementById('app').style.display = 'none';
     document.getElementById('loginModal').classList.remove('active');
@@ -327,6 +331,10 @@ const Auth = {
   },
 
   async showApp() {
+    // Hide loading screen
+    const loadingScreen = document.getElementById('loadingScreen');
+    if (loadingScreen) loadingScreen.classList.add('hidden');
+
     document.getElementById('landingPage').style.display = 'none';
     document.getElementById('loginModal').classList.remove('active');
     document.body.classList.remove('modal-open');

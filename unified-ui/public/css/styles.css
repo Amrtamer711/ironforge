@@ -1705,6 +1705,34 @@ body.modal-open {
    LAYER 26: LOADING STATES
    ═══════════════════════════════════════════════════════════════════════════════ */
 
+/* Full-page loading screen for auth check */
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--void-base);
+  z-index: 9999;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.loading-screen.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid var(--glass-border);
+  border-top-color: var(--quantum-500);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  box-shadow: var(--shadow-quantum-sm);
+}
+
 .loading {
   text-align: center;
   padding: var(--space-12);
