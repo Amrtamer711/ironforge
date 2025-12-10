@@ -15,7 +15,70 @@ const Chat = {
     this.setupSuggestions();
     this.setupFileUpload();
     this.updateTimeGreeting();
+    // Load chat history after auth is ready
+    this.loadHistory();
     console.log('[Chat] Initialized');
+  },
+
+  async loadHistory() {
+    // Wait for auth to be ready
+    if (!Auth.user) {
+      console.log('[Chat] No user logged in, skipping history load');
+      return;
+    }
+
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      console.log('[Chat] No auth token, skipping history load');
+      return;
+    }
+
+    try {
+      console.log('[Chat] Loading chat history...');
+      const response = await fetch(`${API.baseUrl}/api/sales/chat/history`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        console.warn('[Chat] Failed to load history:', response.status);
+        return;
+      }
+
+      const data = await response.json();
+      const messages = data.messages || [];
+
+      if (messages.length === 0) {
+        console.log('[Chat] No chat history found');
+        return;
+      }
+
+      console.log(`[Chat] Loaded ${messages.length} messages from history`);
+
+      // Hide welcome screen
+      this.hideWelcome();
+
+      // Render each message
+      messages.forEach(msg => {
+        const msgId = this.addMessage(msg.role, msg.content || '', false);
+
+        // Render files if present
+        if (msg.files && msg.files.length > 0 && msgId) {
+          this.appendFiles(msgId, msg.files);
+        }
+      });
+
+      // Set conversation ID if available
+      if (data.session_id) {
+        this.conversationId = data.session_id;
+      }
+
+    } catch (error) {
+      console.error('[Chat] Error loading history:', error);
+    }
   },
 
   updateTimeGreeting() {
@@ -451,7 +514,14 @@ const Chat = {
       const fileEl = document.createElement('a');
       fileEl.className = 'chat-file-link';
       fileEl.dataset.fileId = file.file_id;
-      fileEl.href = file.url || `${API.baseUrl}/api/sales/files/${file.file_id}/${encodeURIComponent(file.filename)}`;
+      // Build URL - persisted URLs are like /api/files/... need to go through /api/sales proxy
+      let fileUrl = file.url;
+      if (fileUrl && fileUrl.startsWith('/api/files/')) {
+        fileUrl = `${API.baseUrl}/api/sales/files/${fileUrl.replace('/api/files/', '')}`;
+      } else if (!fileUrl && file.file_id) {
+        fileUrl = `${API.baseUrl}/api/sales/files/${file.file_id}/${encodeURIComponent(file.filename || 'file')}`;
+      }
+      fileEl.href = fileUrl || '#';
       fileEl.target = '_blank';
       fileEl.rel = 'noopener noreferrer';
 

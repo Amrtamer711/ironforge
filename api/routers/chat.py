@@ -98,11 +98,14 @@ async def chat_message(
             for file_id in request.file_ids:
                 stored_info = web_adapter.get_stored_file_info(file_id)
                 if stored_info:
+                    # Include URL for persistence
+                    url = f"/api/files/{file_id}/{stored_info.filename}" if stored_info.filename else f"/api/files/{file_id}/file"
                     files.append({
                         "file_id": file_id,
                         "filename": stored_info.filename,
                         "mimetype": stored_info.content_type,
                         "size": stored_info.size,
+                        "url": url,
                     })
                 else:
                     logger.warning(f"[CHAT] File not found: {file_id}")
@@ -159,11 +162,14 @@ async def chat_stream(
         for file_id in request.file_ids:
             stored_info = web_adapter.get_stored_file_info(file_id)
             if stored_info:
+                # Include URL for persistence
+                url = f"/api/files/{file_id}/{stored_info.filename}" if stored_info.filename else f"/api/files/{file_id}/file"
                 files.append({
                     "file_id": file_id,
                     "filename": stored_info.filename,
                     "mimetype": stored_info.content_type,
                     "size": stored_info.size,
+                    "url": url,
                 })
 
     async def event_generator():

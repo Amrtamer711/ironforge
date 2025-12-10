@@ -84,13 +84,25 @@ async def process_chat_message(
         except Exception as e:
             logger.warning(f"[WebChat] Failed to load persisted messages: {e}")
 
-    # Add user message to session history
-    session.messages.append({
+    # Add user message to session history (include files if present)
+    user_msg = {
         "id": f"user-{datetime.now().timestamp()}",
         "role": "user",
         "content": message,
         "timestamp": datetime.now().isoformat()
-    })
+    }
+    if files:
+        # Store file metadata for persistence (file_id, filename, url)
+        user_msg["files"] = [
+            {
+                "file_id": f.get("file_id"),
+                "filename": f.get("filename"),
+                "url": f.get("url"),
+                "mimetype": f.get("mimetype"),
+            }
+            for f in files
+        ]
+    session.messages.append(user_msg)
 
     # Check if user is admin (has 'admin' role)
     is_admin = 'admin' in roles
@@ -284,15 +296,18 @@ async def process_chat_message(
         # Update history cache
         user_history[user_id] = history[-10:]
 
-        # Add to session
+        # Add to session (include files if generated)
         if result["content"]:
-            session.messages.append({
+            assistant_msg = {
                 "id": f"assistant-{datetime.now().timestamp()}",
                 "role": "assistant",
                 "content": result["content"],
                 "timestamp": datetime.now().isoformat(),
                 "tool_call": result["tool_call"]
-            })
+            }
+            if result.get("files"):
+                assistant_msg["files"] = result["files"]
+            session.messages.append(assistant_msg)
 
         # Persist messages to database (async-safe)
         try:
