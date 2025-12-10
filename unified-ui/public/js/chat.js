@@ -200,6 +200,32 @@ const Chat = {
     }
   },
 
+  async uploadFile(file) {
+    // Upload file to /api/files/upload and return file_id
+    const token = localStorage.getItem('authToken');
+    const formData = new FormData();
+    formData.append('file', file);
+
+    console.log('[Chat] Uploading file:', file.name, `(${(file.size / 1024 / 1024).toFixed(2)} MB)`);
+
+    const response = await fetch(`${API.baseUrl}/api/sales/files/upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Upload failed' }));
+      throw new Error(error.detail || `Upload failed: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log('[Chat] File uploaded successfully:', result.file_id);
+    return result;
+  },
+
   async apiStreamResponse(msgId, userMessage, file = null) {
     // Get user info from Auth
     const user = Auth.user || {};
@@ -209,6 +235,20 @@ const Chat = {
 
     console.log('[Chat] Stream request - User:', userId, 'Roles:', roles);
 
+    // Upload file first if present
+    let fileIds = null;
+    if (file) {
+      try {
+        this.updateMessage(msgId, '_Uploading file..._');
+        const uploadResult = await this.uploadFile(file);
+        fileIds = [uploadResult.file_id];
+      } catch (error) {
+        console.error('[Chat] File upload failed:', error);
+        this.updateMessage(msgId, `File upload failed: ${error.message}`);
+        return;
+      }
+    }
+
     // Use streaming endpoint (via /api/sales proxy)
     const url = `${API.baseUrl}/api/sales/chat/stream`;
     const token = localStorage.getItem('authToken');
@@ -217,19 +257,12 @@ const Chat = {
     // Build request body
     const requestBody = {
       message: userMessage || (file ? `Please process this file: ${file.name}` : ''),
-      conversation_id: this.conversationId,
-      user_id: userId,
-      user_name: userName,
-      roles: roles
+      conversation_id: this.conversationId
     };
 
-    // If there's a file, add file info (actual upload handled separately)
-    if (file) {
-      requestBody.files = [{
-        filename: file.name,
-        mimetype: file.type,
-        size: file.size
-      }];
+    // Add file_ids if we uploaded a file
+    if (fileIds) {
+      requestBody.file_ids = fileIds;
     }
 
     const response = await fetch(url, {
@@ -280,6 +313,12 @@ const Chat = {
               // Handle tool calls - show processing message
               const toolName = parsed.tool?.name || 'processing';
               this.updateMessage(msgId, `_Processing ${toolName}..._`);
+            } else if (parsed.type === 'files' && parsed.files) {
+              // Handle files returned from backend (proposals, mockups, etc.)
+              this.appendFiles(msgId, parsed.files);
+            } else if (parsed.files) {
+              // Also check for files in final response
+              this.appendFiles(msgId, parsed.files);
             }
           } catch (e) {
             // If not valid JSON, treat as plain text chunk
@@ -378,6 +417,63 @@ const Chat = {
     if (msg) {
       msg.content = content;
     }
+
+    // Scroll to bottom
+    const messagesContainer = document.getElementById('chatMessages');
+    if (messagesContainer) {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+  },
+
+  appendFiles(msgId, files) {
+    // Append file download links to a message
+    if (!files || files.length === 0) return;
+
+    const msgEl = document.getElementById(msgId);
+    if (!msgEl) return;
+
+    const contentEl = msgEl.querySelector('.chat-msg-content');
+    if (!contentEl) return;
+
+    // Check if files container already exists
+    let filesContainer = msgEl.querySelector('.chat-msg-files');
+    if (!filesContainer) {
+      filesContainer = document.createElement('div');
+      filesContainer.className = 'chat-msg-files';
+      contentEl.appendChild(filesContainer);
+    }
+
+    files.forEach(file => {
+      // Skip if already added
+      const existingFile = filesContainer.querySelector(`[data-file-id="${file.file_id}"]`);
+      if (existingFile) return;
+
+      const fileEl = document.createElement('a');
+      fileEl.className = 'chat-file-link';
+      fileEl.dataset.fileId = file.file_id;
+      fileEl.href = file.url || `${API.baseUrl}/api/sales/files/${file.file_id}/${encodeURIComponent(file.filename)}`;
+      fileEl.target = '_blank';
+      fileEl.rel = 'noopener noreferrer';
+
+      // Determine icon based on file type
+      const ext = (file.filename || '').split('.').pop().toLowerCase();
+      let icon = '📄';
+      if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) icon = '🖼️';
+      else if (['pdf'].includes(ext)) icon = '📕';
+      else if (['xlsx', 'xls', 'csv'].includes(ext)) icon = '📊';
+      else if (['pptx', 'ppt'].includes(ext)) icon = '📽️';
+      else if (['docx', 'doc'].includes(ext)) icon = '📝';
+
+      const sizeStr = file.size ? ` (${(file.size / 1024 / 1024).toFixed(1)} MB)` : '';
+
+      fileEl.innerHTML = `
+        <span class="file-icon">${icon}</span>
+        <span class="file-name">${file.filename || 'Download'}${sizeStr}</span>
+        <span class="file-download">⬇️</span>
+      `;
+
+      filesContainer.appendChild(fileEl);
+    });
 
     // Scroll to bottom
     const messagesContainer = document.getElementById('chatMessages');

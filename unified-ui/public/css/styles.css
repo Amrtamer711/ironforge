@@ -3880,6 +3880,56 @@ body.modal-open {
   color: var(--neural-400);
 }
 
+/* File attachments in messages */
+.chat-msg-files {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.chat-file-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: var(--radius-md);
+  color: var(--neural-100);
+  text-decoration: none;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.chat-file-link:hover {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: translateY(-1px);
+}
+
+.chat-file-link .file-icon {
+  font-size: 1.3em;
+}
+
+.chat-file-link .file-name {
+  flex: 1;
+  font-size: 0.9em;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-file-link .file-download {
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.chat-file-link:hover .file-download {
+  opacity: 1;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════════
    LAYER 40: PROPOSALS & MOCKUP PANELS
    ═══════════════════════════════════════════════════════════════════════════════ */
