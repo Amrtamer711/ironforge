@@ -198,7 +198,6 @@ class SupabaseAuthProvider(AuthProvider):
         This fetches the public key from Supabase's JWKS endpoint and verifies
         the token signature. User data is extracted directly from the JWT claims.
         """
-        print(f"[SUPABASE AUTH] verify_token called, jwks_url={self._jwks_url}")
         try:
             from jose import jwt as jose_jwt
             from jose.exceptions import ExpiredSignatureError, JWTError

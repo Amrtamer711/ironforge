@@ -66,13 +66,29 @@ class AuthClient:
 
         Args:
             provider_name: Which provider to use ("supabase" or "local_dev").
-                          If None, uses AUTH_PROVIDER env var or defaults to "local_dev".
+                          If None, uses AUTH_PROVIDER env var.
 
         Returns:
             Configured AuthClient instance
+
+        Raises:
+            RuntimeError: In production if AUTH_PROVIDER is not explicitly set
         """
         # Determine which provider to use
-        provider_name = provider_name or os.getenv("AUTH_PROVIDER", "local_dev")
+        env_provider = os.getenv("AUTH_PROVIDER")
+        provider_name = provider_name or env_provider
+
+        # In production, require explicit AUTH_PROVIDER to prevent accidental dev auth
+        if not provider_name:
+            environment = os.getenv("ENVIRONMENT", "local")
+            if environment == "production":
+                raise RuntimeError(
+                    "[AUTH] AUTH_PROVIDER must be explicitly set in production. "
+                    "Set AUTH_PROVIDER=supabase for production use."
+                )
+            # Default to local_dev only in non-production
+            provider_name = "local_dev"
+            logger.warning("[AUTH] AUTH_PROVIDER not set, defaulting to local_dev (non-production only)")
 
         if provider_name == "supabase":
             from integrations.auth.providers.supabase import SupabaseAuthProvider

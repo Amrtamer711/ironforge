@@ -29,6 +29,7 @@ from utils.logging import setup_logging, get_logger
 
 # Determine if we should use JSON format (production) or console format (development)
 _is_production = os.path.exists("/data/") or os.getenv("ENVIRONMENT") == "production"
+IS_DEVELOPMENT = not _is_production  # Exposed for OpenAI store parameter etc.
 _log_level = os.getenv("LOG_LEVEL", "INFO")
 
 setup_logging(

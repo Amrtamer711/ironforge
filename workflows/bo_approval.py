@@ -1152,6 +1152,7 @@ async def handle_coordinator_thread_message(
             messages=messages,
             json_schema=get_coordinator_response_schema(),
             reasoning=ReasoningEffort.LOW,
+            store=config.IS_DEVELOPMENT,  # Store in OpenAI only in dev mode
             # Prompt caching: coordinator thread system prompt is static
             cache_key="coordinator-thread",
             cache_retention="24h",

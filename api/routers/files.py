@@ -1,15 +1,19 @@
 """
-Static file serving for Unified UI.
+File handling for Unified UI.
 
-File endpoints require authentication to serve user-uploaded files.
+File endpoints require authentication for both uploads and downloads.
 
 Supports both local file storage and Supabase Storage:
 - Local: Serves files from disk via FileResponse
 - Supabase: Redirects to signed URL or streams from storage
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from pathlib import Path
+from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import FileResponse, RedirectResponse, Response
+from pydantic import BaseModel
 
 from api.auth import require_auth
 from integrations.auth import AuthUser
@@ -17,6 +21,179 @@ from utils.logging import get_logger
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 logger = get_logger("api.files")
+
+# Allowed file types for upload
+ALLOWED_EXTENSIONS = {
+    # Images
+    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp",
+    # Documents
+    ".pdf", ".xlsx", ".xls", ".csv", ".docx", ".doc", ".pptx", ".ppt", ".txt",
+}
+
+# Max file size: 200MB (PowerPoints and PDFs can be very large)
+MAX_FILE_SIZE = 200 * 1024 * 1024
+
+
+class UploadResponse(BaseModel):
+    """Response from file upload."""
+    file_id: str
+    filename: str
+    url: str
+    size: int
+    content_type: str
+
+
+class MultiUploadResponse(BaseModel):
+    """Response from multiple file upload."""
+    files: List[UploadResponse]
+    errors: List[str] = []
+
+
+@router.post("/upload", response_model=UploadResponse)
+async def upload_file(
+    file: UploadFile = File(...),
+    user: AuthUser = Depends(require_auth),
+):
+    """
+    Upload a file for use in chat.
+
+    Uploaded files are stored in Supabase Storage (or locally in dev).
+    Returns a file_id that can be passed to the chat endpoint.
+
+    Accepts: images, PDFs, Office documents (up to 200MB)
+    """
+    logger.info(f"[FILES] Upload request from {user.email}: {file.filename}")
+
+    # Validate file extension
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        logger.warning(f"[FILES] Rejected file type: {ext} from {user.email}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type '{ext}' not allowed. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+        )
+
+    # Read file content
+    content = await file.read()
+    file_size = len(content)
+
+    # Check file size
+    if file_size > MAX_FILE_SIZE:
+        logger.warning(f"[FILES] File too large: {file_size} bytes from {user.email}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large. Maximum size is {MAX_FILE_SIZE // (1024*1024)}MB"
+        )
+
+    if file_size == 0:
+        raise HTTPException(status_code=400, detail="Empty file not allowed")
+
+    # Get content type
+    content_type = file.content_type or "application/octet-stream"
+
+    # Upload via WebAdapter
+    from core.chat_api import get_web_adapter
+
+    web_adapter = get_web_adapter()
+
+    try:
+        result = await web_adapter.upload_file_bytes(
+            channel_id=user.id,
+            file_bytes=content,
+            filename=file.filename or "upload",
+            mimetype=content_type,
+            bucket="uploads",
+            user_id=user.id,
+        )
+
+        if not result.success:
+            logger.error(f"[FILES] Upload failed for {user.email}: {result.error}")
+            raise HTTPException(status_code=500, detail=result.error or "Upload failed")
+
+        logger.info(f"[FILES] Upload success: {result.file_id} ({file_size} bytes) for {user.email}")
+
+        return UploadResponse(
+            file_id=result.file_id,
+            filename=file.filename or "upload",
+            url=result.url,
+            size=file_size,
+            content_type=content_type,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[FILES] Upload error for {user.email}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to upload file")
+
+
+@router.post("/upload/multi", response_model=MultiUploadResponse)
+async def upload_multiple_files(
+    files: List[UploadFile] = File(...),
+    user: AuthUser = Depends(require_auth),
+):
+    """
+    Upload multiple files at once.
+
+    Returns list of uploaded files and any errors encountered.
+    """
+    logger.info(f"[FILES] Multi-upload request from {user.email}: {len(files)} files")
+
+    if len(files) > 10:
+        raise HTTPException(status_code=400, detail="Maximum 10 files per upload")
+
+    results = []
+    errors = []
+
+    for file in files:
+        try:
+            # Validate extension
+            ext = Path(file.filename or "").suffix.lower()
+            if ext not in ALLOWED_EXTENSIONS:
+                errors.append(f"{file.filename}: File type '{ext}' not allowed")
+                continue
+
+            # Read and check size
+            content = await file.read()
+            if len(content) > MAX_FILE_SIZE:
+                errors.append(f"{file.filename}: File too large (max {MAX_FILE_SIZE // (1024*1024)}MB)")
+                continue
+
+            if len(content) == 0:
+                errors.append(f"{file.filename}: Empty file")
+                continue
+
+            # Upload
+            from core.chat_api import get_web_adapter
+            web_adapter = get_web_adapter()
+
+            result = await web_adapter.upload_file_bytes(
+                channel_id=user.id,
+                file_bytes=content,
+                filename=file.filename or "upload",
+                mimetype=file.content_type or "application/octet-stream",
+                bucket="uploads",
+                user_id=user.id,
+            )
+
+            if result.success:
+                results.append(UploadResponse(
+                    file_id=result.file_id,
+                    filename=file.filename or "upload",
+                    url=result.url,
+                    size=len(content),
+                    content_type=file.content_type or "application/octet-stream",
+                ))
+            else:
+                errors.append(f"{file.filename}: {result.error or 'Upload failed'}")
+
+        except Exception as e:
+            logger.error(f"[FILES] Error uploading {file.filename}: {e}")
+            errors.append(f"{file.filename}: Upload error")
+
+    logger.info(f"[FILES] Multi-upload complete: {len(results)} success, {len(errors)} errors")
+
+    return MultiUploadResponse(files=results, errors=errors)
 
 
 @router.get("/{file_id}/{filename}")

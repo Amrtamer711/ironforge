@@ -57,14 +57,19 @@ async def _convert_pdf_to_pptx(pdf_path: Path) -> Optional[Path]:
     Returns:
         Path to converted PPTX file, or None if conversion failed
     """
-    try:
-        import fitz  # PyMuPDF
-        from pptx import Presentation
-        from pptx.util import Inches
-        from PIL import Image
-        import tempfile
-        import os
+    import fitz  # PyMuPDF
+    from pptx import Presentation
+    from pptx.util import Inches
+    from PIL import Image
+    import tempfile
+    import os
+    import shutil
 
+    temp_dir = None
+    image_paths = []
+    doc = None
+
+    try:
         config.logger.info(f"[PDF_CONVERT] Starting PDF to PPTX conversion: {pdf_path}")
 
         # Open PDF
@@ -78,7 +83,6 @@ async def _convert_pdf_to_pptx(pdf_path: Path) -> Optional[Path]:
         # Convert pages to high-resolution images (4x zoom = ~300 DPI)
         zoom = 4.0
         matrix = fitz.Matrix(zoom, zoom)
-        image_paths = []
 
         for page_num in range(page_count):
             page = doc[page_num]
@@ -91,6 +95,7 @@ async def _convert_pdf_to_pptx(pdf_path: Path) -> Optional[Path]:
             config.logger.info(f"[PDF_CONVERT] Extracted page {page_num + 1}/{page_count} ({pix.width}x{pix.height}px)")
 
         doc.close()
+        doc = None
 
         # Create PowerPoint presentation
         config.logger.info("[PDF_CONVERT] Creating PowerPoint presentation...")
@@ -135,17 +140,6 @@ async def _convert_pdf_to_pptx(pdf_path: Path) -> Optional[Path]:
         prs.save(pptx_temp.name)
         pptx_temp.close()
 
-        # Cleanup temporary images
-        for img_path in image_paths:
-            try:
-                os.remove(img_path)
-            except OSError as cleanup_err:
-                logger.debug(f"[PDF_CONVERT] Failed to cleanup temp image {img_path}: {cleanup_err}")
-        try:
-            os.rmdir(temp_dir)
-        except OSError as cleanup_err:
-            logger.debug(f"[PDF_CONVERT] Failed to cleanup temp directory {temp_dir}: {cleanup_err}")
-
         file_size_mb = os.path.getsize(pptx_temp.name) / (1024 * 1024)
         config.logger.info(f"[PDF_CONVERT] ✓ Conversion complete: {pptx_temp.name} ({file_size_mb:.1f} MB, {page_count} slides, 300 DPI)")
 
@@ -154,6 +148,20 @@ async def _convert_pdf_to_pptx(pdf_path: Path) -> Optional[Path]:
     except Exception as e:
         config.logger.error(f"[PDF_CONVERT] Conversion failed: {e}", exc_info=True)
         return None
+
+    finally:
+        # Always cleanup temp files, even on error
+        if doc is not None:
+            try:
+                doc.close()
+            except Exception:
+                pass
+        if temp_dir and os.path.exists(temp_dir):
+            try:
+                shutil.rmtree(temp_dir)
+                logger.debug(f"[PDF_CONVERT] Cleaned up temp directory: {temp_dir}")
+            except OSError as cleanup_err:
+                logger.debug(f"[PDF_CONVERT] Failed to cleanup temp directory {temp_dir}: {cleanup_err}")
 
 
 def _validate_powerpoint_file(file_path: Path) -> bool:

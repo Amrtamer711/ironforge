@@ -255,6 +255,7 @@ async def generate_ai_creative(
     from core.bo_messaging import get_user_real_name
     user_name = await get_user_real_name(user_id) if user_id and user_id != "website_mockup" else user_id
 
+    temp_file_path = None
     try:
         # Generate image using unified client with standardized interface
         # Provider handles quality/orientation internally (Google: 4K, OpenAI: HD)
@@ -304,15 +305,22 @@ async def generate_ai_creative(
 
         # Save enhanced image to temp file
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-        cv2.imwrite(temp_file.name, enhanced, [cv2.IMWRITE_PNG_COMPRESSION, 3])
+        temp_file_path = temp_file.name
+        cv2.imwrite(temp_file_path, enhanced, [cv2.IMWRITE_PNG_COMPRESSION, 3])
         temp_file.close()
 
-        logger.info(f"[AI_CREATIVE] Enhanced image saved to: {temp_file.name}")
+        logger.info(f"[AI_CREATIVE] Enhanced image saved to: {temp_file_path}")
 
-        return Path(temp_file.name)
+        return Path(temp_file_path)
 
     except Exception as e:
         logger.error(f"[AI_CREATIVE] Error generating image: {e}", exc_info=True)
+        # Clean up temp file on error
+        if temp_file_path and os.path.exists(temp_file_path):
+            try:
+                os.unlink(temp_file_path)
+            except OSError as cleanup_err:
+                logger.debug(f"[AI_CREATIVE] Failed to cleanup temp file {temp_file_path}: {cleanup_err}")
         return None
 
 

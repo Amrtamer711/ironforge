@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const cors = require('cors');
+const helmet = require('helmet');
 const bodyParser = require('body-parser');
 const crypto = require('crypto');
 const { createProxyMiddleware } = require('http-proxy-middleware');
@@ -92,8 +93,58 @@ setInterval(() => {
   }
 }, RATE_LIMIT_WINDOW_MS);
 
+// =============================================================================
+// CORS CONFIGURATION
+// In production, only allow specific origins. In development, allow localhost.
+// =============================================================================
+const ALLOWED_ORIGINS = IS_PRODUCTION
+  ? (process.env.CORS_ORIGINS || '').split(',').filter(Boolean).map(s => s.trim())
+  : ['http://localhost:3000', 'http://localhost:3005', 'http://127.0.0.1:3000', 'http://127.0.0.1:3005'];
+
+// Warn if production has no CORS origins configured
+if (IS_PRODUCTION && ALLOWED_ORIGINS.length === 0) {
+  console.warn('[UI] WARNING: No CORS_ORIGINS configured in production. CORS will block cross-origin requests.');
+  console.warn('[UI] Set CORS_ORIGINS environment variable (comma-separated list of allowed origins)');
+}
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+
+    if (ALLOWED_ORIGINS.length === 0 || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`[CORS] Blocked request from origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Request-ID'],
+};
+
+console.log(`[UI] CORS allowed origins: ${ALLOWED_ORIGINS.length > 0 ? ALLOWED_ORIGINS.join(', ') : '(all - development mode)'}`);
+
 // Middleware
-app.use(cors());
+// Security headers via Helmet
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],  // Needed for some UI frameworks
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
+      connectSrc: ["'self'", ...ALLOWED_ORIGINS, supabaseUrl].filter(Boolean),
+      fontSrc: ["'self'", "https:", "data:"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: IS_PRODUCTION ? [] : null,
+    },
+  },
+  crossOriginEmbedderPolicy: false,  // May conflict with some integrations
+  crossOriginResourcePolicy: { policy: "cross-origin" },  // Allow cross-origin resources
+}));
+app.use(cors(corsOptions));
 
 // =============================================================================
 // SERVICE PROXY - MUST come BEFORE bodyParser to avoid body consumption issue
@@ -144,15 +195,22 @@ app.use('/api/sales', createProxyMiddleware({
       console.error(`[PROXY] Request was: ${req.method} ${req.originalUrl}`);
       console.error(`[PROXY] Target was: ${SERVICES.sales}`);
       if (!res.headersSent) {
-        res.status(502).json({ error: 'Service unavailable', details: err.message, target: SERVICES.sales });
+        // In production, hide internal error details from client
+        if (IS_PRODUCTION) {
+          res.status(502).json({ error: 'Service temporarily unavailable' });
+        } else {
+          // In development, include details for debugging
+          res.status(502).json({ error: 'Service unavailable', details: err.message, target: SERVICES.sales });
+        }
       }
     },
   },
 }));
 
 // Body parser middleware - AFTER proxy to avoid consuming the body
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+// Reduced body size limit for security (10MB is enough for most uploads)
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
 // Request logging middleware
 app.use((req, res, next) => {
@@ -277,14 +335,23 @@ app.get('/', (req, res) => {
 // Invite tokens are stored in UI Supabase (auth/RBAC database)
 // =============================================================================
 
+// Email validation regex (RFC 5322 simplified)
+const EMAIL_REGEX = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+
+function isValidEmail(email) {
+  if (!email || typeof email !== 'string') return false;
+  if (email.length < 5 || email.length > 254) return false;
+  return EMAIL_REGEX.test(email);
+}
+
 // Create invite token (requires system_admin)
 app.post('/api/base/auth/invites', rateLimiter(20), requireAuth, requireProfile('system_admin'), async (req, res) => {
   console.log('[UI] Create invite request');
 
   const { email, profile_name = 'sales_user', expires_in_days = 7 } = req.body;
 
-  if (!email || email.length < 5) {
-    return res.status(400).json({ error: 'Valid email is required' });
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'Valid email address is required' });
   }
 
   if (expires_in_days < 1 || expires_in_days > 30) {
@@ -294,7 +361,8 @@ app.post('/api/base/auth/invites', rateLimiter(20), requireAuth, requireProfile(
   // Validate profile exists
   const validProfiles = ['system_admin', 'sales_manager', 'sales_user', 'coordinator', 'finance', 'viewer'];
   if (!validProfiles.includes(profile_name)) {
-    return res.status(400).json({ error: `Invalid profile: ${profile_name}` });
+    // Don't echo user input to prevent XSS
+    return res.status(400).json({ error: `Invalid profile. Valid profiles: ${validProfiles.join(', ')}` });
   }
 
   try {
@@ -689,9 +757,12 @@ app.get('*', (req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Server error:', err);
-  res.status(500).json({
-    error: err.message || 'Internal server error'
-  });
+  // In production, hide internal error details from client
+  if (IS_PRODUCTION) {
+    res.status(500).json({ error: 'An internal error occurred' });
+  } else {
+    res.status(500).json({ error: err.message || 'Internal server error' });
+  }
 });
 
 // Start server

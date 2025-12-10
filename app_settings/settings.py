@@ -241,8 +241,8 @@ class Settings(BaseSettings):
     # =========================================================================
 
     rate_limit_enabled: bool = Field(
-        default=False,
-        description="Enable rate limiting on API endpoints",
+        default=True,
+        description="Enable rate limiting on API endpoints (enabled by default for security)",
     )
     rate_limit_backend: Literal["memory", "redis"] = Field(
         default="memory",
@@ -440,6 +440,35 @@ class Settings(BaseSettings):
         """Ensure currency is uppercase."""
         return v.upper()
 
+    def validate_production_secrets(self) -> list[str]:
+        """
+        Validate that required secrets are set in production.
+
+        Returns list of missing secret names, or empty list if all present.
+        Call this at startup to fail fast if misconfigured.
+        """
+        if not self.is_production:
+            return []
+
+        missing = []
+
+        # LLM API keys - at least one must be set
+        if not self.openai_api_key and not self.google_api_key:
+            missing.append("OPENAI_API_KEY or GOOGLE_API_KEY")
+
+        # Database credentials for production
+        if self.db_backend == "supabase":
+            if not self.active_supabase_url:
+                missing.append("SALESBOT_PROD_SUPABASE_URL")
+            if not self.active_supabase_service_key:
+                missing.append("SALESBOT_PROD_SUPABASE_SERVICE_ROLE_KEY")
+
+        # JWT secret for auth
+        if not self.effective_jwt_secret:
+            missing.append("UI_JWT_SECRET or JWT_SECRET")
+
+        return missing
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -453,3 +482,11 @@ def get_settings() -> Settings:
 
 # Global settings instance
 settings = get_settings()
+
+# Validate production secrets at import time
+_missing_secrets = settings.validate_production_secrets()
+if _missing_secrets:
+    import sys
+    print(f"[FATAL] Missing required secrets for production: {', '.join(_missing_secrets)}", file=sys.stderr)
+    print("[FATAL] Set these environment variables or set ENVIRONMENT to 'development' or 'local'", file=sys.stderr)
+    sys.exit(1)

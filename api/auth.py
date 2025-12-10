@@ -92,30 +92,21 @@ async def get_current_user(
     Returns:
         AuthUser if authenticated, None otherwise
     """
-    print(f"[AUTH DEBUG] get_current_user called, has_token={bool(token)}")
-
     if not token:
-        print("[AUTH DEBUG] No token provided")
         return None
 
     try:
         auth = get_auth_client()
-        print(f"[AUTH DEBUG] Auth client provider: {auth.provider_name}")
-
         result = await auth.verify_token(token)
-        print(f"[AUTH DEBUG] verify_token result: success={result.success}, status={result.status}, error={result.error}")
 
         if result.success and result.user:
-            print(f"[AUTH DEBUG] User authenticated: {result.user.email}")
             # Optionally sync user to database on each request
             # await auth.sync_user_to_db(result.user)
             return result.user
 
-        print(f"[AUTH DEBUG] Auth failed: {result.error}")
         return None
 
     except Exception as e:
-        print(f"[AUTH DEBUG] Exception in verify_token: {type(e).__name__}: {e}")
         logger.warning(f"[AUTH] Error verifying token: {e}")
         return None
 

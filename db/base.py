@@ -593,3 +593,53 @@ class DatabaseBackend(ABC):
             List of audit log entries
         """
         pass
+
+    # =========================================================================
+    # CHAT SESSIONS
+    # =========================================================================
+
+    @abstractmethod
+    def save_chat_session(
+        self,
+        user_id: str,
+        messages: List[Dict[str, Any]],
+        session_id: Optional[str] = None,
+    ) -> bool:
+        """
+        Save or update a user's chat session.
+
+        Args:
+            user_id: User's unique ID
+            messages: List of message dictionaries with role, content, timestamp
+            session_id: Optional session ID (generated if not provided)
+
+        Returns:
+            True if successful
+        """
+        pass
+
+    @abstractmethod
+    def get_chat_session(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a user's chat session.
+
+        Args:
+            user_id: User's unique ID
+
+        Returns:
+            Dict with session_id, messages, created_at, updated_at or None
+        """
+        pass
+
+    @abstractmethod
+    def delete_chat_session(self, user_id: str) -> bool:
+        """
+        Delete a user's chat session.
+
+        Args:
+            user_id: User's unique ID
+
+        Returns:
+            True if deleted, False if not found
+        """
+        pass

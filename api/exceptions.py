@@ -286,14 +286,16 @@ def setup_exception_handlers(app: FastAPI) -> None:
         from api.exceptions import setup_exception_handlers
         setup_exception_handlers(app)
     """
+    import os
+
     # Custom API errors
     app.add_exception_handler(APIError, api_error_handler)
 
     # Pydantic validation errors
     app.add_exception_handler(RequestValidationError, validation_error_handler)
 
-    # Catch-all for unhandled exceptions (only in production)
-    # Uncomment to enable:
-    # app.add_exception_handler(Exception, generic_exception_handler)
+    # Catch-all for unhandled exceptions - prevents stack trace leaks
+    # Always enabled to prevent information disclosure
+    app.add_exception_handler(Exception, generic_exception_handler)
 
-    logger.info("[EXCEPTIONS] Registered custom exception handlers")
+    logger.info("[EXCEPTIONS] Registered custom exception handlers (including catch-all)")

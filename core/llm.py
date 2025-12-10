@@ -532,6 +532,7 @@ async def handle_booking_order_edit_flow(channel: str, user_id: str, user_input:
         response = await llm_client.complete(
             messages=[LLMMessage.system(system_prompt)],
             json_schema=get_bo_edit_response_schema(),
+            store=config.IS_DEVELOPMENT,  # Store in OpenAI only in dev mode
             # Prompt caching: BO edit prompts share common structure
             cache_key="bo-edit",
             cache_retention="24h",
@@ -1179,6 +1180,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             messages=llm_messages,
             tools=all_tools,
             tool_choice="auto",
+            store=config.IS_DEVELOPMENT,  # Store in OpenAI only in dev mode
             # Prompt caching: system prompt is static, enable 24h extended cache
             cache_key="main-chat",
             cache_retention="24h",

@@ -1397,3 +1397,71 @@ class SupabaseBackend(DatabaseBackend):
         except Exception as e:
             logger.error(f"[SUPABASE] Error querying audit log: {e}")
             return []
+
+    # =========================================================================
+    # CHAT SESSIONS
+    # =========================================================================
+
+    def save_chat_session(
+        self,
+        user_id: str,
+        messages: List[Dict[str, Any]],
+        session_id: Optional[str] = None,
+    ) -> bool:
+        """Save or update a user's chat session."""
+        import uuid
+
+        now = datetime.now().isoformat()
+        if not session_id:
+            session_id = str(uuid.uuid4())
+
+        try:
+            client = self._get_client()
+
+            # Upsert based on user_id (one session per user)
+            client.table("chat_sessions").upsert({
+                "user_id": user_id,
+                "session_id": session_id,
+                "messages": messages,  # Supabase handles JSON serialization
+                "created_at": now,
+                "updated_at": now,
+            }, on_conflict="user_id").execute()
+
+            logger.debug(f"[SUPABASE] Saved chat session for user: {user_id} ({len(messages)} messages)")
+            return True
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error saving chat session for {user_id}: {e}")
+            return False
+
+    def get_chat_session(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get a user's chat session."""
+        try:
+            client = self._get_client()
+            response = client.table("chat_sessions").select("*").eq("user_id", user_id).single().execute()
+
+            if not response.data:
+                return None
+
+            return {
+                "session_id": response.data.get("session_id"),
+                "messages": response.data.get("messages", []),
+                "created_at": response.data.get("created_at"),
+                "updated_at": response.data.get("updated_at"),
+            }
+        except Exception as e:
+            # single() throws if no row found, which is expected
+            if "PGRST116" in str(e):  # Row not found
+                return None
+            logger.error(f"[SUPABASE] Error getting chat session for {user_id}: {e}")
+            return None
+
+    def delete_chat_session(self, user_id: str) -> bool:
+        """Delete a user's chat session."""
+        try:
+            client = self._get_client()
+            client.table("chat_sessions").delete().eq("user_id", user_id).execute()
+            logger.info(f"[SUPABASE] Deleted chat session for user: {user_id}")
+            return True
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error deleting chat session for {user_id}: {e}")
+            return False

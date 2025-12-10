@@ -195,6 +195,7 @@ class BookingOrderParser:
                     ])
                 ],
                 json_schema=get_classification_schema(),
+                store=config.IS_DEVELOPMENT,  # Store in OpenAI only in dev mode
                 # Prompt caching: classification system prompt is static
                 cache_key="bo-classify",
                 cache_retention="24h",
@@ -293,6 +294,7 @@ The user provided this message with the file: "{user_message}"
                 ],
                 reasoning=ReasoningEffort.HIGH,
                 json_schema=get_booking_order_extraction_schema(),
+                store=config.IS_DEVELOPMENT,  # Store in OpenAI only in dev mode
                 # Prompt caching: data extractor prompt is static
                 cache_key="bo-parse",
                 cache_retention="24h",

@@ -1,83 +1,118 @@
-# Weekend Sprint Summary
-**Dec 6-7, 2024**
+# Release Notes
+
+**Sales CRM Platform - Built December 2024**
 
 ---
 
-## TL;DR
+## December 7-10: Authentication & User Management
 
-Turned a working prototype into a production-ready platform. The bot now has enterprise-grade security, a proper database layer, automated testing, and CI/CD pipelines. It's no longer held together by hopes and dreams.
+### JWT Authentication (ES256 + JWKS)
+- Migrated from HS256 to ES256 JWKS for enterprise-grade security
+- Environment-specific secrets (`UI_DEV_JWT_SECRET` / `UI_PROD_JWT_SECRET`)
+- `/health/auth` debug endpoint for diagnosing auth issues
+- Token-only validation without metadata dependency
+
+### Chat Persistence
+- `chat_sessions` table stores messages per user in database
+- `/api/chat/history` endpoint loads previous conversations on login
+- Supabase Storage integration for file attachments
+- Session create/load/clear operations
+
+### Enterprise RBAC (4-Level)
+- **Profiles** - Named permission bundles (sales_user, sales_admin, super_admin)
+- **Permission Sets** - Granular resource:action mappings
+- **Invite Tokens** - Controlled user onboarding with profile assignment
+- **Module-aware navigation** - Dynamic UI based on user permissions
+
+### Invite Token System
+- Admin UI to generate and manage invite tokens
+- Profile assignment on signup
+- Auto-create users in database with correct profile
+- Token validation prevents unauthorized signups
+
+### Production Fixes
+- Fixed 502 proxy errors (moved middleware before bodyParser)
+- Function-based pathRewrite to avoid double `/api/` prefix
+- SSE heartbeats prevent proxy timeout during LLM generation
+- Comprehensive error handling in Supabase backend
 
 ---
 
-## The Big Wins
+## December 6-7: Security & Infrastructure
 
-### 1. Security Overhaul
-The entire API is now locked down:
-- **JWT Authentication** - No more anonymous access to sensitive endpoints
-- **Role-Based Access Control (RBAC)** - Admin, user, and viewer roles with granular permissions
-- **API Key System** - For external integrations with scoped access and rotation
-- **Security Headers** - XSS protection, clickjacking prevention, HSTS for HTTPS
+### Security Overhaul
+- JWT Authentication on all sensitive endpoints
+- Role-Based Access Control (admin, user, viewer)
+- API Key system for external integrations with scoped access
+- Security headers (XSS protection, clickjacking prevention, HSTS)
 
-*Translation: Bad actors can't just waltz in anymore.*
-
-### 2. Architecture Refactor
-Took the monolithic 1,400-line `server.py` and broke it into clean, modular pieces:
-- 9 separate routers (auth, chat, proposals, mockups, costs, etc.)
+### Architecture Refactor
+- Broke 1,400-line `server.py` into 9 modular routers
 - Centralized error handling
 - Input validation everywhere
 - Proper separation of concerns
 
-*Translation: Code is now maintainable. Future-me won't curse past-me.*
-
-### 3. Database Layer
-Built a proper abstraction that supports multiple backends:
-- **SQLite** for local development
-- **Supabase (PostgreSQL)** for production
-- Full schema with users, roles, permissions, audit logs, AI cost tracking
+### Database Layer
+- SQLite for local development
+- Supabase (PostgreSQL) for production
+- Full schema: users, roles, permissions, audit logs, AI cost tracking
 - Migration system for safe schema updates
 
-*Translation: We can switch databases without rewriting the app.*
-
-### 4. CI/CD Pipeline
-Automated quality gates:
-- **Linting** (Ruff) - Catches code style issues
-- **Security Scanning** (Bandit) - Finds vulnerabilities
-- **Automated Tests** (pytest) - Prevents regressions
-- **Docker Builds** - Ensures deployability
-- Works on both GitHub Actions and GitLab CI
-
-*Translation: Broken code can't make it to production.*
-
-### 5. Multi-LLM Support
-Added Google Gemini alongside OpenAI:
-- Unified interface for both providers
-- Cost tracking across all AI calls
-- Prompt caching for 50% cost reduction on repeated queries
-
-*Translation: Not locked into one AI vendor. Costs are tracked.*
+### CI/CD Pipeline
+- Linting with Ruff
+- Security scanning with Bandit
+- Automated tests with pytest
+- Docker builds
+- GitHub Actions + GitLab CI
 
 ---
 
-## By The Numbers
+## December 4-5: Platform Foundation
 
-| Metric | Before | After |
-|--------|--------|-------|
-| Main server file | 1,400 lines | 170 lines |
-| Protected endpoints | 0 | All of them |
-| Test coverage | None | pytest infrastructure ready |
-| CI/CD pipelines | None | GitHub + GitLab |
-| Database backends | SQLite only | SQLite + Supabase |
-| LLM providers | OpenAI only | OpenAI + Gemini |
+### Unified Web UI
+- React-based web interface replacing Slack-only access
+- Channel abstraction layer (Web + Slack adapters)
+- Modern dark theme design system
+- Responsive layout with sidebar navigation
+
+### Platform-Agnostic Architecture
+- Refactored to support multiple channels (Web, Slack)
+- Shared LLM infrastructure across all channels
+- Microservices architecture with Docker
+- Production-ready deployment configuration
+
+---
+
+## December 1-3: Multi-LLM & Cost Optimization
+
+### Google Gemini Integration
+- Added Gemini alongside OpenAI
+- Unified interface for both providers
+- Token-based pricing for Gemini image generation
+
+### Cost Tracking
+- Comprehensive AI cost tracking infrastructure
+- Per-user and per-workflow cost attribution
+- OpenAI prompt caching for 50% cost reduction
+- Updated pricing to January 2025 rates
+
+### LLM Abstraction Layer
+- Centralized prompts module
+- Unified cost tracking architecture
+- Model configuration per task type
 
 ---
 
 ## Key Commits
 
 ```
-80d38d5 - Auth, RBAC, security middleware, CI infrastructure
-3404dfd - Microservices architecture with Docker
-02396b2 - Platform-agnostic architecture refactor
+5e21f02 - JWT auth migration to ES256 JWKS
+a0948f3 - Chat sessions table for persistent history
+fdaa467 - Enterprise 4-level RBAC architecture
+8ef06b5 - Token-based invite system
+80d38d5 - Auth, RBAC, security middleware, CI
 2a54ae7 - Channel abstraction + unified web UI
+02396b2 - Platform-agnostic architecture refactor
 6614b68 - Google Gemini provider + cost tracking
 ```
 
@@ -85,33 +120,8 @@ Added Google Gemini alongside OpenAI:
 
 ## What's Next
 
-**Immediate:**
-- [ ] Supabase cloud setup (I handle the schema, you create the project)
-- [ ] Frontend polish (template editing, visual picker)
-
-**Coming Soon:**
-- [ ] Booking Order workflow completion
-- [ ] CRM modules (companies, contacts, leads)
-- [ ] Email integration
-- [ ] Error monitoring (Sentry)
+See [BACKLOG.md](BACKLOG.md) for prioritized security fixes and infrastructure improvements.
 
 ---
 
-## Files Changed
-
-73 files modified/created with ~18,000 lines of new infrastructure code.
-
-Key new files:
-- `api/auth.py` - Authentication system
-- `api/middleware/` - Security headers, rate limiting, API keys
-- `integrations/auth/` - Auth provider abstraction
-- `integrations/rbac/` - Role-based access control
-- `db/backends/` - Database abstraction layer
-- `tests/` - Test infrastructure
-- `.github/workflows/ci.yml` - GitHub Actions
-- `.gitlab-ci.yml` - GitLab CI (ready for migration)
-- `db/supabase_schema.sql` - Production database schema
-
----
-
-*Built over a weekend. Runs like it took months.*
+*From Slack bot to full CRM platform in 10 days.*

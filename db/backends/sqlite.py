@@ -1674,3 +1674,85 @@ class SQLiteBackend(DatabaseBackend):
             return []
         finally:
             conn.close()
+
+    # =========================================================================
+    # CHAT SESSIONS
+    # =========================================================================
+
+    def save_chat_session(
+        self,
+        user_id: str,
+        messages: List[Dict[str, Any]],
+        session_id: Optional[str] = None,
+    ) -> bool:
+        """Save or update a user's chat session."""
+        import uuid
+        from datetime import datetime
+
+        now = datetime.now().isoformat()
+        if not session_id:
+            session_id = str(uuid.uuid4())
+
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN")
+            conn.execute(
+                """
+                INSERT INTO chat_sessions (user_id, session_id, messages, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    messages = excluded.messages,
+                    updated_at = excluded.updated_at
+                """,
+                (user_id, session_id, json.dumps(messages), now, now),
+            )
+            conn.execute("COMMIT")
+            logger.debug(f"[DB] Saved chat session for user: {user_id} ({len(messages)} messages)")
+            return True
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            logger.error(f"[DB] Error saving chat session for {user_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_chat_session(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get a user's chat session."""
+        conn = self._connect()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT session_id, messages, created_at, updated_at FROM chat_sessions WHERE user_id = ?",
+                (user_id,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+
+            return {
+                "session_id": row[0],
+                "messages": json.loads(row[1]) if row[1] else [],
+                "created_at": row[2],
+                "updated_at": row[3],
+            }
+        except Exception as e:
+            logger.error(f"[DB] Error getting chat session for {user_id}: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def delete_chat_session(self, user_id: str) -> bool:
+        """Delete a user's chat session."""
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN")
+            conn.execute("DELETE FROM chat_sessions WHERE user_id = ?", (user_id,))
+            conn.execute("COMMIT")
+            logger.info(f"[DB] Deleted chat session for user: {user_id}")
+            return True
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            logger.error(f"[DB] Error deleting chat session for {user_id}: {e}")
+            return False
+        finally:
+            conn.close()

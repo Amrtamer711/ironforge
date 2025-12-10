@@ -7,9 +7,9 @@ authenticated user token rather than being passed in the request body.
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from api.auth import require_auth
 from integrations.auth import AuthUser
@@ -20,11 +20,33 @@ logger = get_logger("api.chat")
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
+# Security limits
+MAX_MESSAGE_LENGTH = 10_000  # 10k characters max per message
+
 
 class ChatMessageRequest(BaseModel):
     """Request model for chat messages."""
     message: str
     conversation_id: Optional[str] = None
+    file_ids: Optional[List[str]] = None  # IDs from /api/files/upload
+
+    @field_validator("message")
+    @classmethod
+    def validate_message_length(cls, v: str) -> str:
+        """Validate message is not too long (DoS protection, cost control)."""
+        if len(v) > MAX_MESSAGE_LENGTH:
+            raise ValueError(f"Message too long. Maximum {MAX_MESSAGE_LENGTH} characters allowed.")
+        if not v.strip():
+            raise ValueError("Message cannot be empty")
+        return v
+
+    @field_validator("file_ids")
+    @classmethod
+    def validate_file_ids(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        """Validate file_ids list."""
+        if v is not None and len(v) > 10:
+            raise ValueError("Maximum 10 files per message")
+        return v
 
 
 class ChatMessageResponse(BaseModel):
@@ -58,19 +80,39 @@ async def chat_message(
 
     This endpoint connects the Unified UI to the same LLM infrastructure
     used by the Slack bot. Requires authentication.
-    """
-    logger.info(f"[CHAT] Message from {user.email}: {request.message[:50]}...")
 
-    from core.chat_api import process_chat_message
+    Optionally include file_ids from /api/files/upload to attach files.
+    """
+    logger.info(f"[CHAT] Message from {user.email}: {request.message[:50]}... (files: {len(request.file_ids or [])})")
+
+    from core.chat_api import process_chat_message, get_web_adapter
 
     try:
         roles = await _get_user_profile(user)
+
+        # Convert file_ids to file info dicts for processing
+        files = None
+        if request.file_ids:
+            web_adapter = get_web_adapter()
+            files = []
+            for file_id in request.file_ids:
+                stored_info = web_adapter.get_stored_file_info(file_id)
+                if stored_info:
+                    files.append({
+                        "file_id": file_id,
+                        "filename": stored_info.filename,
+                        "mimetype": stored_info.content_type,
+                        "size": stored_info.size,
+                    })
+                else:
+                    logger.warning(f"[CHAT] File not found: {file_id}")
 
         result = await process_chat_message(
             user_id=user.id,
             user_name=user.name or user.email,
             message=request.message,
-            roles=roles
+            roles=roles,
+            files=files,
         )
 
         logger.info(f"[CHAT] Response generated for {user.email}")
@@ -100,16 +142,29 @@ async def chat_stream(
 
     Returns real-time chunks as the LLM generates the response.
     Requires authentication.
-    """
-    print(f"========== CHAT STREAM REQUEST RECEIVED ==========")
-    print(f"User: {user.email}")
-    print(f"Message: {request.message}")
-    print(f"==================================================")
-    logger.info(f"[CHAT] Stream from {user.email}: {request.message[:50]}...")
 
-    from core.chat_api import stream_chat_message
+    Optionally include file_ids from /api/files/upload to attach files.
+    """
+    logger.info(f"[CHAT] Stream from {user.email}: {request.message[:50]}... (files: {len(request.file_ids or [])})")
+
+    from core.chat_api import stream_chat_message, get_web_adapter
 
     roles = await _get_user_profile(user)
+
+    # Convert file_ids to file info dicts
+    files = None
+    if request.file_ids:
+        web_adapter = get_web_adapter()
+        files = []
+        for file_id in request.file_ids:
+            stored_info = web_adapter.get_stored_file_info(file_id)
+            if stored_info:
+                files.append({
+                    "file_id": file_id,
+                    "filename": stored_info.filename,
+                    "mimetype": stored_info.content_type,
+                    "size": stored_info.size,
+                })
 
     async def event_generator():
         try:
@@ -117,7 +172,8 @@ async def chat_stream(
                 user_id=user.id,
                 user_name=user.name or user.email,
                 message=request.message,
-                roles=roles
+                roles=roles,
+                files=files,
             ):
                 yield chunk
             logger.info(f"[CHAT] Stream completed for {user.email}")
@@ -171,3 +227,40 @@ async def delete_conversation(
 
     clear_conversation(user.id)
     return {"success": True, "conversation_id": conversation_id}
+
+
+@router.get("/history")
+async def get_chat_history(user: AuthUser = Depends(require_auth)):
+    """
+    Load persisted chat history for the authenticated user.
+
+    This endpoint loads chat messages from the database, which persist
+    across server restarts. Use this on login to restore previous conversations.
+
+    Returns:
+        messages: List of message objects with role, content, timestamp
+        session_id: The conversation session ID
+        message_count: Total number of messages
+    """
+    from core.chat_persistence import load_chat_messages, get_chat_session_info
+
+    try:
+        messages = load_chat_messages(user.id)
+        session_info = get_chat_session_info(user.id)
+
+        logger.info(f"[CHAT] Loaded {len(messages)} persisted messages for {user.email}")
+
+        return {
+            "messages": messages,
+            "session_id": session_info.get("session_id") if session_info else None,
+            "message_count": len(messages),
+            "last_updated": session_info.get("updated_at") if session_info else None,
+        }
+    except Exception as e:
+        logger.error(f"[CHAT] Error loading history for {user.email}: {e}", exc_info=True)
+        return {
+            "messages": [],
+            "session_id": None,
+            "message_count": 0,
+            "error": str(e)
+        }

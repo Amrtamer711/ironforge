@@ -18,6 +18,7 @@ from db.cache import user_history, mockup_history, get_mockup_history
 from integrations.llm import LLMClient, LLMMessage
 from integrations.llm.prompts.chat import get_main_system_prompt
 from core.tools import get_base_tools, get_admin_tools
+from core.chat_persistence import save_chat_messages, load_chat_messages, clear_chat_messages
 from integrations.channels import WebAdapter, ChannelType
 
 logger = config.logger
@@ -72,6 +73,16 @@ async def process_chat_message(
 
     # Get or create session
     session = web_adapter.get_or_create_session(user_id, user_name, roles=roles)
+
+    # Load persisted history if session is new (no messages yet)
+    if not session.messages:
+        try:
+            persisted_messages = load_chat_messages(user_id)
+            if persisted_messages:
+                session.messages = persisted_messages
+                logger.info(f"[WebChat] Loaded {len(persisted_messages)} persisted messages for {user_id}")
+        except Exception as e:
+            logger.warning(f"[WebChat] Failed to load persisted messages: {e}")
 
     # Add user message to session history
     session.messages.append({
@@ -179,7 +190,7 @@ async def process_chat_message(
             messages=llm_messages,
             tools=all_tools,
             tool_choice="auto",
-            store=True,  # Store in OpenAI for debugging
+            store=config.IS_DEVELOPMENT,  # Store in OpenAI only in dev mode
             cache_key="web-chat",
             cache_retention="24h",
             call_type="main_llm",
@@ -279,6 +290,12 @@ async def process_chat_message(
                 "timestamp": datetime.now().isoformat(),
                 "tool_call": result["tool_call"]
             })
+
+        # Persist messages to database (async-safe)
+        try:
+            save_chat_messages(user_id, session.messages, session.conversation_id)
+        except Exception as persist_err:
+            logger.warning(f"[WebChat] Failed to persist messages: {persist_err}")
 
         return result
 
@@ -381,3 +398,9 @@ def clear_conversation(user_id: str) -> None:
     # Also clear from user_history cache
     if user_id in user_history:
         del user_history[user_id]
+
+    # Clear from database
+    try:
+        clear_chat_messages(user_id)
+    except Exception as e:
+        logger.warning(f"[WebChat] Failed to clear persisted messages for {user_id}: {e}")

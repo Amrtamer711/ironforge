@@ -764,6 +764,25 @@ SALES_TABLES: Dict[str, Table] = {
             Index("idx_ai_costs_model", ["model"]),
         ],
     ),
+
+    # -------------------------------------------------------------------------
+    # CHAT_SESSIONS - Persistent chat history per user
+    # -------------------------------------------------------------------------
+    "chat_sessions": Table(
+        name="chat_sessions",
+        columns=[
+            Column("id", ColumnType.INTEGER, primary_key=True),
+            Column("user_id", ColumnType.TEXT, nullable=False, unique=True),
+            Column("session_id", ColumnType.TEXT, nullable=False),
+            Column("messages", ColumnType.JSON, nullable=False),  # Array of message objects
+            Column("created_at", ColumnType.TEXT, nullable=False),
+            Column("updated_at", ColumnType.TEXT, nullable=False),
+        ],
+        indexes=[
+            Index("idx_chat_sessions_user", ["user_id"]),
+            Index("idx_chat_sessions_updated", ["updated_at"]),
+        ],
+    ),
 }
 
 

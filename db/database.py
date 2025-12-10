@@ -41,7 +41,13 @@ def _get_backend() -> DatabaseBackend:
 
     Returns:
         DatabaseBackend instance based on DB_BACKEND environment variable.
+
+    Raises:
+        RuntimeError: In production if Supabase credentials are missing
     """
+    environment = os.getenv("ENVIRONMENT", "local")
+    is_production = environment == "production"
+
     if DB_BACKEND == "supabase":
         # Check if credentials are available using app_settings (handles dev/prod env vars)
         try:
@@ -54,7 +60,14 @@ def _get_backend() -> DatabaseBackend:
             supabase_key = os.getenv("SUPABASE_SERVICE_KEY", "") or os.getenv("SALESBOT_DEV_SUPABASE_SERVICE_ROLE_KEY", "")
 
         if not supabase_url or not supabase_key:
-            logger.warning("[DB] Supabase credentials not set, falling back to SQLite")
+            # In production, fail loudly - don't silently fall back to SQLite
+            if is_production:
+                raise RuntimeError(
+                    "[DB] FATAL: Supabase credentials missing in production. "
+                    "Set SALESBOT_PROD_SUPABASE_URL and SALESBOT_PROD_SUPABASE_SERVICE_ROLE_KEY, "
+                    "or set DB_BACKEND=sqlite if SQLite is intended."
+                )
+            logger.warning("[DB] Supabase credentials not set, falling back to SQLite (non-production only)")
             return SQLiteBackend()
 
         try:
@@ -62,9 +75,13 @@ def _get_backend() -> DatabaseBackend:
             logger.info("[DB] Using Supabase backend")
             return SupabaseBackend()
         except ImportError as e:
+            if is_production:
+                raise RuntimeError(f"[DB] FATAL: Supabase package not installed in production: {e}")
             logger.warning(f"[DB] Supabase package not installed ({e}), falling back to SQLite")
             return SQLiteBackend()
         except Exception as e:
+            if is_production:
+                raise RuntimeError(f"[DB] FATAL: Failed to initialize Supabase backend in production: {e}")
             logger.error(f"[DB] Failed to initialize Supabase backend: {e}")
             logger.info("[DB] Falling back to SQLite backend")
             return SQLiteBackend()
