@@ -65,6 +65,51 @@ TEMP_FILE_EXTENSIONS = {".pptx", ".pdf", ".bin", ".tmp"}
 
 
 # =============================================================================
+# MIME TYPE CONSTANTS (exact whitelist - no .startswith() for security)
+# =============================================================================
+
+# Allowed image MIME types (exact match only)
+ALLOWED_IMAGE_MIMETYPES = frozenset({
+    "image/jpeg",
+    "image/png",
+    "image/gif",
+    "image/bmp",
+    "image/webp",
+})
+
+# Allowed document MIME types (exact match only)
+ALLOWED_DOCUMENT_MIMETYPES = frozenset({
+    "application/pdf",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.ms-powerpoint",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/csv",
+    "text/plain",
+})
+
+# Combined set of all allowed MIME types
+ALLOWED_MIMETYPES = ALLOWED_IMAGE_MIMETYPES | ALLOWED_DOCUMENT_MIMETYPES
+
+
+def is_image_mimetype(mimetype: str) -> bool:
+    """Check if MIME type is an allowed image type (exact match)."""
+    return mimetype in ALLOWED_IMAGE_MIMETYPES
+
+
+def is_document_mimetype(mimetype: str) -> bool:
+    """Check if MIME type is an allowed document type (exact match)."""
+    return mimetype in ALLOWED_DOCUMENT_MIMETYPES
+
+
+def is_allowed_mimetype(mimetype: str) -> bool:
+    """Check if MIME type is allowed (exact match)."""
+    return mimetype in ALLOWED_MIMETYPES
+
+
+# =============================================================================
 # HTTP STATUS MESSAGES
 # =============================================================================
 

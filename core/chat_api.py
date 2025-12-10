@@ -121,13 +121,16 @@ async def process_chat_message(
     document_files = []
 
     if files:
+        from utils.constants import is_image_mimetype, is_document_mimetype
+
         for f in files:
             filename = f.get("filename", "").lower()
             mimetype = f.get("mimetype", "")
 
-            if mimetype.startswith("image/") or any(filename.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp"]):
+            # Use exact MIME type matching (security: no .startswith())
+            if is_image_mimetype(mimetype) or any(filename.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp"]):
                 image_files.append(f.get("filename", "image"))
-            elif mimetype.startswith("application/") or any(filename.endswith(ext) for ext in [".pdf", ".xlsx", ".xls", ".csv", ".docx", ".doc"]):
+            elif is_document_mimetype(mimetype) or any(filename.endswith(ext) for ext in [".pdf", ".xlsx", ".xls", ".csv", ".docx", ".doc"]):
                 document_files.append(f.get("filename", "document"))
 
         if image_files:

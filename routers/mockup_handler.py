@@ -202,6 +202,8 @@ async def _extract_uploaded_images(
     if "files" not in slack_event and slack_event.get("subtype") != "file_share":
         return uploaded_creatives
 
+    from utils.constants import is_image_mimetype
+
     files = slack_event.get("files", [])
     if not files and slack_event.get("subtype") == "file_share" and "file" in slack_event:
         files = [slack_event["file"]]
@@ -211,9 +213,10 @@ async def _extract_uploaded_images(
         mimetype = f.get("mimetype", "")
         filename = f.get("name", "").lower()
 
+        # Use exact MIME type matching for security (no .startswith())
         is_image = (
             filetype in ["jpg", "jpeg", "png", "gif", "bmp"]
-            or mimetype.startswith("image/")
+            or is_image_mimetype(mimetype)
             or any(filename.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp"])
         )
 

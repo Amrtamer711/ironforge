@@ -1034,6 +1034,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
     document_files = []  # For PDFs, Excel, etc.
 
     if has_files and slack_event:
+        from utils.constants import is_image_mimetype, is_document_mimetype
+
         files = slack_event.get("files", [])
         if not files and slack_event.get("subtype") == "file_share" and "file" in slack_event:
             files = [slack_event["file"]]
@@ -1044,14 +1046,14 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             mimetype = f.get("mimetype", "")
             filename = f.get("name", "").lower()
 
-            # Image files (for mockups)
+            # Image files (for mockups) - use exact MIME type matching for security
             if (filetype in ["jpg", "jpeg", "png", "gif", "bmp"] or
-                mimetype.startswith("image/") or
+                is_image_mimetype(mimetype) or
                 any(filename.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp"])):
                 image_files.append(f.get("name", "image"))
             # Document files (for booking orders, proposals, etc.)
             elif (filetype in ["pdf", "xlsx", "xls", "csv", "docx", "doc"] or
-                  mimetype in ["application/pdf", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"] or
+                  is_document_mimetype(mimetype) or
                   any(filename.endswith(ext) for ext in [".pdf", ".xlsx", ".xls", ".csv", ".docx", ".doc"])):
                 document_files.append(f.get("name", "document"))
 

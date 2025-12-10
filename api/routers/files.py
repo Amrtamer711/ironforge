@@ -196,6 +196,19 @@ async def upload_multiple_files(
     return MultiUploadResponse(files=results, errors=errors)
 
 
+def _validate_filename(filename: str) -> bool:
+    """Validate filename doesn't contain path traversal attempts."""
+    if not filename:
+        return False
+    # Block path traversal patterns
+    if ".." in filename or "/" in filename or "\\" in filename:
+        return False
+    # Block null bytes
+    if "\x00" in filename:
+        return False
+    return True
+
+
 @router.get("/{file_id}/{filename}")
 async def serve_uploaded_file(
     file_id: str,
@@ -217,6 +230,11 @@ async def serve_uploaded_file(
     """
     logger.info(f"[FILES] File request: {file_id}/{filename} by {user.email}")
 
+    # Validate filename for path traversal
+    if not _validate_filename(filename):
+        logger.warning(f"[FILES] Invalid filename rejected: {filename!r} from {user.email}")
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
     from core.chat_api import get_web_adapter
 
     web_adapter = get_web_adapter()
@@ -225,6 +243,11 @@ async def serve_uploaded_file(
     stored_info = web_adapter.get_stored_file_info(file_id)
 
     if stored_info:
+        # Validate filename matches stored metadata (security check)
+        if stored_info.filename and stored_info.filename != filename:
+            logger.warning(f"[FILES] Filename mismatch: requested '{filename}', stored '{stored_info.filename}'")
+            raise HTTPException(status_code=404, detail="File not found")
+
         # Check if file is in remote storage (no local_path)
         if not stored_info.local_path:
             # File is in Supabase Storage

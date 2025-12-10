@@ -77,12 +77,9 @@ Each item in this backlog is tagged with its relevance:
 - **File:** `requirements.txt`
 - **Fix Applied:** Updated `aiohttp>=3.9.5`, `reportlab>=4.0.9`, `psutil>=6.0.0`
 
-### 11. File Download Path Validation ✅ Essential 🎯 Your Setup
-- **File:** `api/routers/files.py:22-95`
-- **Issue:** Filename from URL not validated against stored metadata
-- **Risk:** Potential path traversal if backend doesn't validate
-- **Fix:** Validate filename matches stored file metadata
-- [ ] **TODO**
+### 11. File Download Path Validation ✅ Essential 🎯 Your Setup ✅ DONE
+- **File:** `api/routers/files.py`
+- **Fix Applied:** Added `_validate_filename()` function to block path traversal patterns (`..`, `/`, `\`, null bytes). Also validates filename matches stored metadata.
 
 ### 12. DB Fallback to SQLite Silently ✅ Essential 🎯 Your Setup ✅ DONE
 - **File:** `db/database.py`
@@ -92,12 +89,9 @@ Each item in this backlog is tagged with its relevance:
 - **File:** `unified-ui/server.js`
 - **Fix Applied:** Changed to generic error message without echoing user input
 
-### 14. Content-Type Validation in File Uploads ✅ Essential 🎯 Your Setup
-- **File:** `core/chat_api.py:112-125`
-- **Issue:** Uses `.startswith("image/")` for MIME check
-- **Risk:** Could match malformed MIME types like `image/jpeg; x-malware`
-- **Fix:** Use exact MIME type whitelist
-- [ ] **TODO**
+### 14. Content-Type Validation in File Uploads ✅ Essential 🎯 Your Setup ✅ DONE
+- **Files:** `utils/constants.py`, `core/chat_api.py`, `core/llm.py`, `routers/mockup_handler.py`
+- **Fix Applied:** Added exact MIME type whitelist (`ALLOWED_IMAGE_MIMETYPES`, `ALLOWED_DOCUMENT_MIMETYPES`) and helper functions (`is_image_mimetype()`, `is_document_mimetype()`). Replaced all `.startswith("image/")` with exact match checks.
 
 ### 15. Missing Security Headers (Helmet) ✅ Essential 🎯 Your Setup ✅ DONE
 - **File:** `unified-ui/server.js`, `unified-ui/package.json`
@@ -496,8 +490,9 @@ These are directly relevant to your current Render + Supabase setup:
 - [x] #1-3 HIGH Security (Auth, Secrets) ✅
 - [x] #5-7, #9-10, #12-13, #15-16 MEDIUM Security (Validation, CORS, Headers) ✅
 - [x] #18, #20 LOW Security (Temp files, Error details) ✅
-- [ ] #4, #11, #14 Remaining MEDIUM Security items (JWT decode, file validation)
-- [ ] #41 Database Connection Pooling (Supabase)
+- [x] #11, #14 File validation (path traversal, MIME type whitelist) ✅
+- [ ] #4 JWT decode verification (lower priority - current impl is safe)
+- [ ] #41 Database Connection Pooling (skip for single instance)
 - [ ] #45 Verify Supabase Backups
 
 ### 🚀 Phase 1: Growth - When Scaling (Redis + Multi-Instance)
