@@ -102,9 +102,7 @@ app.use(cors());
 app.use('/api/sales', createProxyMiddleware({
   target: SERVICES.sales,
   changeOrigin: true,
-  pathRewrite: {
-    '^/': '/api/', // Express strips /api/sales, so path is /chat/stream -> /api/chat/stream
-  },
+  pathRewrite: (path) => `/api${path}`, // /chat/stream -> /api/chat/stream
   // Increase timeout for LLM operations (5 minutes)
   proxyTimeout: 300000,
   timeout: 300000,
