@@ -8,16 +8,42 @@ const Chat = {
   messages: [],
   isStreaming: false,
   pendingFile: null,
+  initialized: false,
 
   init() {
+    // Prevent duplicate event listeners from multiple init calls
+    if (this.initialized) {
+      console.log('[Chat] Already initialized, skipping');
+      return;
+    }
+
     console.log('[Chat] Initializing...');
+
+    // Verify required elements exist
+    const chatInput = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('chatSendBtn');
+    const attachBtn = document.getElementById('chatAttachBtn');
+
+    console.log('[Chat] Elements check:', {
+      chatInput: !!chatInput,
+      sendBtn: !!sendBtn,
+      attachBtn: !!attachBtn
+    });
+
+    if (!chatInput || !sendBtn) {
+      console.error('[Chat] CRITICAL: Required elements not found!');
+      return;
+    }
+
     this.setupInput();
     this.setupSuggestions();
     this.setupFileUpload();
     this.updateTimeGreeting();
     // Load chat history after auth is ready
     this.loadHistory();
-    console.log('[Chat] Initialized');
+
+    this.initialized = true;
+    console.log('[Chat] Initialized successfully');
   },
 
   async loadHistory() {
@@ -676,6 +702,16 @@ const Chat = {
     if (Auth.user) {
       API.chat.deleteConversation(this.conversationId).catch(() => {});
     }
+  },
+
+  // Reset state (for logout)
+  reset() {
+    this.messages = [];
+    this.conversationId = null;
+    this.isStreaming = false;
+    this.pendingFile = null;
+    this.initialized = false;
+    console.log('[Chat] Reset');
   }
 };
 
