@@ -187,12 +187,22 @@ async def health_auth():
     auth_provider = os.getenv("AUTH_PROVIDER", "local_dev")
     environment = os.getenv("ENVIRONMENT", "development")
 
-    # Check all possible JWT secret env vars
+    # Helper to show secret info without exposing it
+    def secret_info(val):
+        if not val:
+            return {"set": False}
+        return {
+            "set": True,
+            "length": len(val),
+            "preview": f"{val[:4]}...{val[-4:]}" if len(val) > 8 else "***"
+        }
+
+    # Check all possible JWT secret env vars with details
     jwt_secrets = {
-        "UI_DEV_JWT_SECRET": bool(os.getenv("UI_DEV_JWT_SECRET", "")),
-        "UI_PROD_JWT_SECRET": bool(os.getenv("UI_PROD_JWT_SECRET", "")),
-        "UI_JWT_SECRET": bool(os.getenv("UI_JWT_SECRET", "")),
-        "SUPABASE_JWT_SECRET": bool(os.getenv("SUPABASE_JWT_SECRET", "")),
+        "UI_DEV_JWT_SECRET": secret_info(os.getenv("UI_DEV_JWT_SECRET", "")),
+        "UI_PROD_JWT_SECRET": secret_info(os.getenv("UI_PROD_JWT_SECRET", "")),
+        "UI_JWT_SECRET": secret_info(os.getenv("UI_JWT_SECRET", "")),
+        "SUPABASE_JWT_SECRET": secret_info(os.getenv("SUPABASE_JWT_SECRET", "")),
     }
 
     # Get the actual auth client to see what's configured
@@ -201,16 +211,20 @@ async def health_auth():
         provider_name = client.provider_name
 
         # Check if JWT secret is configured in the provider
-        has_jwt_secret = bool(getattr(client._provider, '_jwt_secret', None))
+        provider_secret = getattr(client._provider, '_jwt_secret', None)
+        has_jwt_secret = bool(provider_secret)
+        active_secret_info = secret_info(provider_secret) if provider_secret else {"set": False}
     except Exception as e:
         provider_name = f"error: {e}"
         has_jwt_secret = False
+        active_secret_info = {"set": False, "error": str(e)}
 
     return {
         "auth_provider_env": auth_provider,
         "environment": environment,
         "active_provider": provider_name,
-        "jwt_secrets_set": jwt_secrets,
+        "jwt_secrets_available": jwt_secrets,
+        "active_jwt_secret": active_secret_info,
         "provider_has_jwt_secret": has_jwt_secret,
         "timestamp": get_uae_time().isoformat(),
     }
