@@ -94,6 +94,65 @@ setInterval(() => {
 
 // Middleware
 app.use(cors());
+
+// =============================================================================
+// SERVICE PROXY - MUST come BEFORE bodyParser to avoid body consumption issue
+// Forward /api/sales/* to Sales Bot (proposal-bot)
+// =============================================================================
+app.use('/api/sales', createProxyMiddleware({
+  target: SERVICES.sales,
+  changeOrigin: true,
+  pathRewrite: {
+    '^/api/sales': '/api', // /api/sales/chat -> /api/chat
+  },
+  // Increase timeout for LLM operations (5 minutes)
+  proxyTimeout: 300000,
+  timeout: 300000,
+  on: {
+    proxyReq: (proxyReq, req, res) => {
+      // LOG ALL PROXY REQUESTS
+      console.log(`[PROXY] ========================================`);
+      console.log(`[PROXY] ${req.method} ${req.originalUrl} -> ${SERVICES.sales}${req.path.replace('/api/sales', '/api')}`);
+      console.log(`[PROXY] Has Auth Header: ${!!req.headers.authorization}`);
+      console.log(`[PROXY] Target: ${SERVICES.sales}`);
+      console.log(`[PROXY] ========================================`);
+
+      // Forward Authorization header to backend (backend validates)
+      const authHeader = req.headers.authorization;
+      if (authHeader) {
+        proxyReq.setHeader('Authorization', authHeader);
+      }
+
+      // Forward IP for logging/rate limiting
+      if (req.headers['x-forwarded-for']) {
+        proxyReq.setHeader('X-Forwarded-For', req.headers['x-forwarded-for']);
+      } else if (req.socket.remoteAddress) {
+        proxyReq.setHeader('X-Forwarded-For', req.socket.remoteAddress);
+      }
+    },
+    proxyRes: (proxyRes, req, res) => {
+      console.log(`[PROXY] Response: ${proxyRes.statusCode} for ${req.method} ${req.originalUrl}`);
+
+      // For SSE endpoints, ensure no buffering
+      if (req.path.includes('/stream') || proxyRes.headers['content-type']?.includes('text/event-stream')) {
+        console.log(`[PROXY] SSE response detected, disabling buffering`);
+        res.setHeader('X-Accel-Buffering', 'no');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+      }
+    },
+    error: (err, req, res) => {
+      console.error(`[PROXY] ERROR: ${err.message}`);
+      console.error(`[PROXY] Request was: ${req.method} ${req.originalUrl}`);
+      console.error(`[PROXY] Target was: ${SERVICES.sales}`);
+      if (!res.headersSent) {
+        res.status(502).json({ error: 'Service unavailable', details: err.message, target: SERVICES.sales });
+      }
+    },
+  },
+}));
+
+// Body parser middleware - AFTER proxy to avoid consuming the body
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 
@@ -176,64 +235,6 @@ function requireProfile(...allowedProfiles) {
 }
 
 app.use(express.static('public'));
-
-// =============================================================================
-// SERVICE PROXY - Forward /api/sales/* to Sales Bot (proposal-bot)
-// Sales module only: chat, mockup, templates, proposals, bo, etc.
-// NO auth validation here - just forward headers, let backend handle auth
-// =============================================================================
-app.use('/api/sales', createProxyMiddleware({
-  target: SERVICES.sales,
-  changeOrigin: true,
-  pathRewrite: {
-    '^/api/sales': '/api', // /api/sales/chat -> /api/chat
-  },
-  // Increase timeout for LLM operations (5 minutes)
-  proxyTimeout: 300000,
-  timeout: 300000,
-  on: {
-    proxyReq: (proxyReq, req, res) => {
-      // LOG ALL PROXY REQUESTS
-      console.log(`[PROXY] ========================================`);
-      console.log(`[PROXY] ${req.method} ${req.originalUrl} -> ${SERVICES.sales}${req.path.replace('/api/sales', '/api')}`);
-      console.log(`[PROXY] Has Auth Header: ${!!req.headers.authorization}`);
-      console.log(`[PROXY] Target: ${SERVICES.sales}`);
-      console.log(`[PROXY] ========================================`);
-
-      // Forward Authorization header to backend (backend validates)
-      const authHeader = req.headers.authorization;
-      if (authHeader) {
-        proxyReq.setHeader('Authorization', authHeader);
-      }
-
-      // Forward IP for logging/rate limiting
-      if (req.headers['x-forwarded-for']) {
-        proxyReq.setHeader('X-Forwarded-For', req.headers['x-forwarded-for']);
-      } else if (req.socket.remoteAddress) {
-        proxyReq.setHeader('X-Forwarded-For', req.socket.remoteAddress);
-      }
-    },
-    proxyRes: (proxyRes, req, res) => {
-      console.log(`[PROXY] Response: ${proxyRes.statusCode} for ${req.method} ${req.originalUrl}`);
-
-      // For SSE endpoints, ensure no buffering
-      if (req.path.includes('/stream') || proxyRes.headers['content-type']?.includes('text/event-stream')) {
-        console.log(`[PROXY] SSE response detected, disabling buffering`);
-        res.setHeader('X-Accel-Buffering', 'no');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-      }
-    },
-    error: (err, req, res) => {
-      console.error(`[PROXY] ERROR: ${err.message}`);
-      console.error(`[PROXY] Request was: ${req.method} ${req.originalUrl}`);
-      console.error(`[PROXY] Target was: ${SERVICES.sales}`);
-      if (!res.headersSent) {
-        res.status(502).json({ error: 'Service unavailable', details: err.message, target: SERVICES.sales });
-      }
-    },
-  },
-}));
 
 // =============================================================================
 // LOCAL ROUTES - /api/base/* handled by this server (Auth only)
