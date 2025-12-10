@@ -147,9 +147,10 @@ async def get_accessible_modules(user: AuthUser = Depends(require_auth)):
     logger.info(f"[MODULES] User {user.email} profile={profile_name}, permissions={user_permissions}")
 
     # Check if user is admin (has access to everything)
-    # Also check user.roles from the auth token
-    is_admin = profile_name == "system_admin" or (user.roles and "admin" in user.roles)
-    logger.info(f"[MODULES] is_admin={is_admin} (profile={profile_name}, roles={user.roles})")
+    # Check profile name and also user metadata for roles
+    user_roles = getattr(user, 'roles', None) or user.metadata.get('roles', [])
+    is_admin = profile_name == "system_admin" or (user_roles and "admin" in user_roles)
+    logger.info(f"[MODULES] is_admin={is_admin} (profile={profile_name}, roles={user_roles})")
 
     # Check each module
     for module_name, config in MODULE_CONFIGS.items():
