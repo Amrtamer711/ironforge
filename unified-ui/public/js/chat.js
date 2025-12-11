@@ -59,6 +59,9 @@ const Chat = {
       return;
     }
 
+    // Show loading state
+    this.showLoadingState();
+
     try {
       console.log('[Chat] Loading chat history...');
       const response = await fetch(`${API.baseUrl}/api/sales/chat/history`, {
@@ -71,6 +74,7 @@ const Chat = {
 
       if (!response.ok) {
         console.warn('[Chat] Failed to load history:', response.status);
+        this.hideLoadingState();
         return;
       }
 
@@ -79,13 +83,15 @@ const Chat = {
 
       if (messages.length === 0) {
         console.log('[Chat] No chat history found');
+        this.hideLoadingState();
         return;
       }
 
       console.log(`[Chat] Loaded ${messages.length} messages from history`);
 
-      // Hide welcome screen
+      // Hide welcome screen and loading
       this.hideWelcome();
+      this.hideLoadingState();
 
       // Render each message
       messages.forEach(msg => {
@@ -104,6 +110,36 @@ const Chat = {
 
     } catch (error) {
       console.error('[Chat] Error loading history:', error);
+      this.hideLoadingState();
+    }
+  },
+
+  showLoadingState() {
+    const messagesContainer = document.getElementById('chatMessages');
+    if (!messagesContainer) return;
+
+    // Hide welcome screen first
+    const welcome = messagesContainer.querySelector('.chat-welcome');
+    if (welcome) {
+      welcome.style.display = 'none';
+    }
+
+    // Add loading overlay if not exists
+    if (!messagesContainer.querySelector('.chat-loading')) {
+      const loadingHtml = `
+        <div class="chat-loading">
+          <div class="chat-loading-spinner"></div>
+          <p>Loading conversation...</p>
+        </div>
+      `;
+      messagesContainer.insertAdjacentHTML('afterbegin', loadingHtml);
+    }
+  },
+
+  hideLoadingState() {
+    const loading = document.querySelector('.chat-loading');
+    if (loading) {
+      loading.remove();
     }
   },
 
@@ -455,6 +491,16 @@ const Chat = {
     }
   },
 
+  formatContent(content) {
+    // Convert markdown-like formatting to HTML
+    if (!content) return '';
+    return content
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/_(.*?)_/g, '<em>$1</em>')
+      .replace(/\n/g, '<br>');
+  },
+
   addMessage(role, content, isStreaming = false) {
     const messagesContainer = document.getElementById('chatMessages');
     if (!messagesContainer) return null;
@@ -466,11 +512,14 @@ const Chat = {
       ? `<span>${Auth.user?.name?.charAt(0) || 'U'}</span>`
       : 'AI';
 
+    // Format content (convert newlines, markdown, etc.)
+    const formattedContent = isStreaming ? content : this.formatContent(content);
+
     const msgHtml = `
       <div class="chat-msg ${role}" id="${msgId}">
         <div class="chat-msg-avatar">${avatar}</div>
         <div class="chat-msg-content">
-          <div class="chat-msg-bubble">${content}${isStreaming && !content ? '<span class="typing-indicator">...</span>' : ''}</div>
+          <div class="chat-msg-bubble">${formattedContent}${isStreaming && !content ? '<span class="typing-indicator">...</span>' : ''}</div>
         </div>
       </div>
     `;
@@ -491,13 +540,7 @@ const Chat = {
     if (msgEl) {
       const bubble = msgEl.querySelector('.chat-msg-bubble');
       if (bubble) {
-        // Convert markdown-like formatting
-        let formatted = content
-          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-          .replace(/`([^`]+)`/g, '<code>$1</code>')
-          .replace(/_(.*?)_/g, '<em>$1</em>')
-          .replace(/\n/g, '<br>');
-        bubble.innerHTML = formatted;
+        bubble.innerHTML = this.formatContent(content);
       }
     }
 
