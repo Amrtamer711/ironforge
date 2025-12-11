@@ -187,8 +187,12 @@ class EnvAPIKeyStore(APIKeyStore):
             logger.info(f"[API_KEY] Loaded {len(self._keys)} API keys from environment")
 
     async def get_key_info(self, key_hash: str) -> Optional[APIKeyInfo]:
-        """Retrieve key info by hash."""
-        return self._keys.get(key_hash)
+        """Retrieve key info by hash with constant-time comparison."""
+        # Use constant-time comparison to prevent timing attacks
+        for stored_hash, key_info in self._keys.items():
+            if hmac.compare_digest(key_hash, stored_hash):
+                return key_info
+        return None
 
 
 class DatabaseAPIKeyStore(APIKeyStore):
@@ -205,9 +209,14 @@ class DatabaseAPIKeyStore(APIKeyStore):
         logger.info("[API_KEY] Using database-backed API key store")
 
     async def get_key_info(self, key_hash: str) -> Optional[APIKeyInfo]:
-        """Retrieve key info by hash."""
+        """Retrieve key info by hash with constant-time comparison."""
         record = self._db.get_api_key_by_hash(key_hash)
         if not record:
+            return None
+
+        # Constant-time comparison to prevent timing attacks
+        stored_hash = record.get("key_hash", "")
+        if not hmac.compare_digest(key_hash, stored_hash):
             return None
 
         # Check if active
