@@ -265,16 +265,10 @@ async def process_chat_message(
             })
 
         elif response.content:
-            # Text response
+            # Text response - store raw markdown, frontend handles formatting
             reply = response.content
 
-            # Format markdown
-            formatted_reply = reply
-            formatted_reply = formatted_reply.replace('\n- ', '\n• ')
-            formatted_reply = formatted_reply.replace('\n* ', '\n• ')
-            formatted_reply = re.sub(r'^(For .+:)$', r'**\1**', formatted_reply, flags=re.MULTILINE)
-
-            result["content"] = formatted_reply
+            result["content"] = reply
 
             # Add to history
             history.append({
@@ -285,7 +279,7 @@ async def process_chat_message(
 
             # Stream if callback provided
             if stream_callback:
-                words = formatted_reply.split(' ')
+                words = reply.split(' ')
                 for word in words:
                     await stream_callback(word + ' ')
                     await asyncio.sleep(0.02)

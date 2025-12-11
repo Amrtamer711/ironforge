@@ -494,15 +494,72 @@ const Chat = {
   formatContent(content) {
     // Convert markdown-like formatting to HTML
     if (!content) return '';
-    return content
+
+    // Process line by line for better list handling
+    const lines = content.split('\n');
+    let inList = false;
+    let result = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i];
+
+      // Check if line is a bullet point (-, *, or •)
+      const bulletMatch = line.match(/^(\s*)([-*•])\s+(.*)$/);
+
+      if (bulletMatch) {
+        const text = bulletMatch[3];
+        if (!inList) {
+          result.push('<ul class="chat-list">');
+          inList = true;
+        }
+        // Format the text content of the bullet
+        const formattedText = this.formatInline(text);
+        result.push(`<li>${formattedText}</li>`);
+      } else {
+        // Close list if we were in one
+        if (inList) {
+          result.push('</ul>');
+          inList = false;
+        }
+
+        // Check for numbered list (1. 2. etc)
+        const numberedMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
+        if (numberedMatch) {
+          const [, , , text] = numberedMatch;
+          const formattedText = this.formatInline(text);
+          result.push(`<div class="chat-numbered-item">${formattedText}</div>`);
+        } else if (line.trim() === '') {
+          // Empty line - add break only if not after a list
+          result.push('<br>');
+        } else {
+          // Regular line
+          result.push(this.formatInline(line));
+          // Add <br> for line breaks unless it's the last line
+          if (i < lines.length - 1) {
+            result.push('<br>');
+          }
+        }
+      }
+    }
+
+    // Close list if still open
+    if (inList) {
+      result.push('</ul>');
+    }
+
+    return result.join('');
+  },
+
+  formatInline(text) {
+    // Format inline elements (bold, italic, code)
+    if (!text) return '';
+    return text
       // Bold: **text**
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      // Inline code: `code` (must come before italic to protect underscores in code)
+      // Inline code: `code`
       .replace(/`([^`]+)`/g, '<code>$1</code>')
-      // Italic: *text* (single asterisk, not underscore to avoid matching snake_case)
-      .replace(/(?<!\*)\*(?!\*)([^*]+)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
-      // Newlines to <br>
-      .replace(/\n/g, '<br>');
+      // Italic: *text* (lookbehind/ahead to avoid matching **)
+      .replace(/(?<!\*)\*(?!\*)([^*]+)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
   },
 
   addMessage(role, content, isStreaming = false) {

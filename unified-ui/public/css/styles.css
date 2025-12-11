@@ -3902,6 +3902,28 @@ body.modal-open {
   font-weight: 600;
 }
 
+.chat-msg-bubble em {
+  font-style: italic;
+}
+
+/* Chat lists */
+.chat-msg-bubble .chat-list {
+  margin: 8px 0;
+  padding-left: 20px;
+  list-style-type: disc;
+}
+
+.chat-msg-bubble .chat-list li {
+  margin: 4px 0;
+  line-height: 1.5;
+}
+
+.chat-msg-bubble .chat-numbered-item {
+  margin: 4px 0;
+  padding-left: 8px;
+  line-height: 1.5;
+}
+
 /* Typing indicator */
 .typing-indicator {
   display: inline-block;
