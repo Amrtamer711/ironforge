@@ -495,9 +495,13 @@ const Chat = {
     // Convert markdown-like formatting to HTML
     if (!content) return '';
     return content
+      // Bold: **text**
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      // Inline code: `code` (must come before italic to protect underscores in code)
       .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/_(.*?)_/g, '<em>$1</em>')
+      // Italic: *text* (single asterisk, not underscore to avoid matching snake_case)
+      .replace(/(?<!\*)\*(?!\*)([^*]+)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
+      // Newlines to <br>
       .replace(/\n/g, '<br>');
   },
 
