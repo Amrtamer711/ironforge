@@ -445,6 +445,27 @@ class _DatabaseNamespace:
             start_date, end_date, limit, offset
         )
 
+    # =========================================================================
+    # CHAT SESSIONS
+    # =========================================================================
+
+    def save_chat_session(
+        self,
+        user_id: str,
+        messages: List[Dict[str, Any]],
+        session_id: Optional[str] = None,
+    ) -> bool:
+        """Save or update a user's chat session."""
+        return self._backend.save_chat_session(user_id, messages, session_id)
+
+    def get_chat_session(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get a user's chat session."""
+        return self._backend.get_chat_session(user_id)
+
+    def delete_chat_session(self, user_id: str) -> bool:
+        """Delete a user's chat session."""
+        return self._backend.delete_chat_session(user_id)
+
 
 # Create the singleton database interface
 db = _DatabaseNamespace(_backend)
