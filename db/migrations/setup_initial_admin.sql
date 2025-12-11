@@ -68,8 +68,8 @@ BEGIN
     END IF;
 END $$;
 
--- Generate a secure token using PostgreSQL's gen_random_uuid()
--- We'll use two UUIDs concatenated and base64-encoded for extra security
+-- Generate a secure token using PostgreSQL's gen_random_bytes()
+-- Using hex encoding (not base64) to avoid newline characters in the token
 INSERT INTO invite_tokens (
     token,
     email,
@@ -79,10 +79,9 @@ INSERT INTO invite_tokens (
     expires_at,
     is_revoked
 ) VALUES (
-    -- Generate a secure token: encode(gen_random_bytes(32), 'base64') equivalent
-    replace(replace(
-        encode(gen_random_uuid()::text::bytea || gen_random_uuid()::text::bytea, 'base64'),
-        '+', '-'), '/', '_'),
+    -- Generate a secure 64-character hex token (32 random bytes)
+    -- Hex encoding never inserts newlines or special characters
+    encode(gen_random_bytes(32), 'hex'),
     -- CHANGE THIS TO YOUR ADMIN EMAIL
     'admin@example.com',
     'system_admin',

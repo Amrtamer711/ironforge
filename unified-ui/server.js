@@ -695,6 +695,126 @@ app.delete('/api/base/auth/invites/:tokenId', rateLimiter(20), requireAuth, requ
   }
 });
 
+// Delete a user from auth.users (requires system_admin)
+// This is useful to clean up stuck users from failed signup attempts
+app.delete('/api/base/auth/users/:userId', rateLimiter(10), requireAuth, requireProfile('system_admin'), async (req, res) => {
+  const userId = req.params.userId;
+  console.log(`[UI] Delete auth user request for: ${userId}`);
+
+  if (!userId) {
+    return res.status(400).json({ error: 'User ID is required' });
+  }
+
+  // Prevent deleting yourself
+  if (userId === req.user.id) {
+    return res.status(400).json({ error: 'Cannot delete your own account' });
+  }
+
+  try {
+    // Use Supabase admin API to delete user
+    const { error } = await supabase.auth.admin.deleteUser(userId);
+
+    if (error) {
+      console.error('[UI] Failed to delete auth user:', error.message);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // Also delete from users table if exists
+    await supabase.from('users').delete().eq('id', userId);
+
+    console.log(`[UI] Auth user ${userId} deleted by ${req.user.email}`);
+    res.json({ success: true, message: `User ${userId} deleted from auth.users` });
+  } catch (err) {
+    console.error('[UI] Error deleting auth user:', err);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// Delete a user by email from auth.users (requires system_admin)
+// Convenience endpoint when you only have the email
+app.delete('/api/base/auth/users-by-email/:email', rateLimiter(10), requireAuth, requireProfile('system_admin'), async (req, res) => {
+  const email = decodeURIComponent(req.params.email);
+  console.log(`[UI] Delete auth user by email request for: ${email}`);
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
+  // Prevent deleting yourself
+  if (email.toLowerCase() === req.user.email.toLowerCase()) {
+    return res.status(400).json({ error: 'Cannot delete your own account' });
+  }
+
+  try {
+    // First find the user in auth.users via admin API
+    const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
+
+    if (listError) {
+      console.error('[UI] Failed to list users:', listError.message);
+      return res.status(500).json({ error: listError.message });
+    }
+
+    const user = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+    if (!user) {
+      return res.status(404).json({ error: `No user found with email: ${email}` });
+    }
+
+    // Delete the user
+    const { error } = await supabase.auth.admin.deleteUser(user.id);
+
+    if (error) {
+      console.error('[UI] Failed to delete auth user:', error.message);
+      return res.status(500).json({ error: error.message });
+    }
+
+    // Also delete from users table if exists
+    await supabase.from('users').delete().eq('id', user.id);
+
+    console.log(`[UI] Auth user ${email} (${user.id}) deleted by ${req.user.email}`);
+    res.json({ success: true, message: `User ${email} deleted from auth.users`, userId: user.id });
+  } catch (err) {
+    console.error('[UI] Error deleting auth user by email:', err);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// Resend confirmation email for a user stuck in auth.users (requires system_admin)
+// This is useful when a user exists in auth.users but never confirmed their email
+app.post('/api/base/auth/resend-confirmation', rateLimiter(5), requireAuth, requireProfile('system_admin'), async (req, res) => {
+  const { email } = req.body;
+  console.log(`[UI] Resend confirmation request for: ${email}`);
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
+  try {
+    // Use Supabase's resend method to send a new confirmation email
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email.toLowerCase(),
+    });
+
+    if (error) {
+      console.error('[UI] Failed to resend confirmation:', error.message);
+      // Check for common errors
+      if (error.message.includes('already confirmed')) {
+        return res.status(400).json({ error: 'User has already confirmed their email' });
+      }
+      if (error.message.includes('not found')) {
+        return res.status(404).json({ error: 'No pending signup found for this email' });
+      }
+      return res.status(500).json({ error: error.message });
+    }
+
+    console.log(`[UI] Confirmation email resent to ${email}`);
+    res.json({ success: true, message: `Confirmation email resent to ${email}` });
+  } catch (err) {
+    console.error('[UI] Error resending confirmation:', err);
+    res.status(500).json({ error: 'Failed to resend confirmation email' });
+  }
+});
+
 // Validate invite token (PUBLIC - for signup flow)
 // Rate limited heavily to prevent brute force
 app.post('/api/base/auth/validate-invite', rateLimiter(5), async (req, res) => {
@@ -705,10 +825,6 @@ app.post('/api/base/auth/validate-invite', rateLimiter(5), async (req, res) => {
     return res.status(400).json({ error: 'Invalid or expired invite token' });
   }
 
-  console.log(`[UI] Validating invite token for email: ${email}`);
-  console.log(`[UI] Token received (first 20 chars): ${token.substring(0, 20)}...`);
-  console.log(`[UI] Token length: ${token.length}`);
-
   try {
     // Find the token
     const { data: tokens, error: fetchError } = await supabase
@@ -716,13 +832,7 @@ app.post('/api/base/auth/validate-invite', rateLimiter(5), async (req, res) => {
       .select('*')
       .eq('token', token);
 
-    console.log(`[UI] Query result - found: ${tokens?.length || 0}, error: ${fetchError?.message || 'none'}`);
-
     if (fetchError || !tokens || tokens.length === 0) {
-      // Debug: list all tokens in DB
-      const { data: allTokens } = await supabase.from('invite_tokens').select('token, email');
-      console.log(`[UI] All tokens in DB:`, allTokens?.map(t => ({ email: t.email, tokenStart: t.token.substring(0, 20) })));
-
       console.warn(`[UI] Invalid invite token attempted for: ${email}`);
       // Generic error - don't reveal if token exists
       return res.status(400).json({ error: 'Invalid or expired invite token' });

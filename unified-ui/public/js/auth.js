@@ -259,6 +259,13 @@ const Auth = {
       throw new Error(error.message);
     }
 
+    // Check if user already exists (Supabase returns user with identities: [] for existing users)
+    // This happens when email exists in auth.users but hasn't confirmed yet
+    if (data.user && data.user.identities && data.user.identities.length === 0) {
+      console.warn('[Auth] User already exists in auth.users - may need to resend confirmation');
+      throw new Error('An account with this email already exists. Please check your email for the confirmation link, or contact an administrator to resend it.');
+    }
+
     console.log('[Auth] Signup successful for:', email);
     console.log('[Auth] Signup response data:', JSON.stringify(data, null, 2));
     console.log('[Auth] User ID from signup:', data.user?.id);
