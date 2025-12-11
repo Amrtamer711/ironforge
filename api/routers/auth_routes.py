@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from api.auth import get_current_user, require_auth, sync_user_from_token
+from api.auth import get_current_user, require_auth
 from integrations.auth import AuthUser, get_auth_client
 from integrations.auth.providers.local_dev import LocalDevAuthProvider
 from utils.logging import get_logger
@@ -97,15 +97,6 @@ async def auth_me(user: Optional[AuthUser] = Depends(get_current_user)):
     }
 
 
-@router.post("/sync")
-async def auth_sync(user: AuthUser = Depends(require_auth)):
-    """
-    Sync authenticated user to application database.
-
-    Called by frontend after successful Supabase login to ensure
-    user exists in our database with current profile data.
-    """
-    logger.info(f"[AUTH] Syncing user to database: {user.email}")
-    result = await sync_user_from_token(user)
-    logger.info(f"[AUTH] User sync completed for: {user.email}")
-    return result
+# NOTE: User sync is now handled by unified-ui during signup/login.
+# The sales-api no longer manages users directly - it reads user context
+# from trusted proxy headers set by unified-ui.
