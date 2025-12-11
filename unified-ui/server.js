@@ -162,8 +162,10 @@ app.use(cors(corsOptions));
 // =============================================================================
 
 // Helper: Fetch user's RBAC data from UI Supabase
+// Returns null if user not found (should be rejected)
 async function getUserRBACData(userId) {
   if (!supabase) {
+    // Dev mode fallback
     return { profile: 'sales_user', permissions: ['sales:*:*'] };
   }
 
@@ -171,13 +173,19 @@ async function getUserRBACData(userId) {
     // Get user with profile
     const { data: userData, error } = await supabase
       .from('users')
-      .select('id, email, name, profile_id, profiles(id, name, display_name)')
+      .select('id, email, name, profile_id, is_active, profiles(id, name, display_name)')
       .eq('id', userId)
       .single();
 
     if (error || !userData) {
-      console.warn(`[RBAC] User ${userId} not in users table, using defaults`);
-      return { profile: 'sales_user', permissions: ['sales:*:*'] };
+      console.warn(`[RBAC] User ${userId} not found in users table - ACCESS DENIED`);
+      return null; // User doesn't exist - reject access
+    }
+
+    // Check if user is active
+    if (userData.is_active === false) {
+      console.warn(`[RBAC] User ${userId} is deactivated - ACCESS DENIED`);
+      return null; // User is deactivated - reject access
     }
 
     const profile = userData.profiles;
@@ -225,7 +233,7 @@ async function getUserRBACData(userId) {
 
   } catch (err) {
     console.error(`[RBAC] Error fetching RBAC for ${userId}:`, err.message);
-    return { profile: 'sales_user', permissions: ['sales:*:*'] };
+    return null; // Error fetching - reject access for safety
   }
 }
 
@@ -263,6 +271,16 @@ async function proxyAuthMiddleware(req, res, next) {
     } else {
       rbac = await getUserRBACData(user.id);
       rbacCache.set(user.id, { data: rbac, ts: Date.now() });
+    }
+
+    // If RBAC is null, user doesn't exist or is deactivated - reject
+    if (!rbac) {
+      console.warn(`[PROXY AUTH] User ${user.id} (${user.email}) not authorized - not in users table or deactivated`);
+      return res.status(403).json({
+        error: 'Account not found or deactivated',
+        code: 'USER_NOT_FOUND',
+        requiresLogout: true  // Signal frontend to clear session
+      });
     }
 
     // Attach to request for proxy to inject as headers
@@ -887,21 +905,31 @@ app.get('/api/base/auth/me', requireAuth, async (req, res) => {
     // Get user's profile from users table
     const { data: userData, error } = await supabase
       .from('users')
-      .select('id, email, name, profile_id, profiles(name, display_name)')
+      .select('id, email, name, profile_id, is_active, profiles(name, display_name)')
       .eq('id', req.user.id)
       .single();
 
     if (error || !userData) {
-      console.warn(`[UI] User ${req.user.email} not found in users table`);
-      // Return basic info from auth, no profile
-      return res.json({
-        id: req.user.id,
-        email: req.user.email,
-        name: req.user.user_metadata?.name || req.user.email?.split('@')[0],
-        profile_name: null,
-        profile_display_name: null
+      console.warn(`[UI] User ${req.user.email} not found in users table - rejecting`);
+      return res.status(403).json({
+        error: 'Account not found',
+        code: 'USER_NOT_FOUND',
+        requiresLogout: true
       });
     }
+
+    // Check if user is deactivated
+    if (userData.is_active === false) {
+      console.warn(`[UI] User ${req.user.email} is deactivated - rejecting`);
+      return res.status(403).json({
+        error: 'Account deactivated',
+        code: 'USER_DEACTIVATED',
+        requiresLogout: true
+      });
+    }
+
+    // Clear RBAC cache for this user to pick up any changes
+    rbacCache.delete(req.user.id);
 
     console.log(`[UI] User profile fetched: ${userData.email} -> ${userData.profiles?.name}`);
     res.json({

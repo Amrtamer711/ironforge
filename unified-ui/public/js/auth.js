@@ -105,6 +105,20 @@ const Auth = {
           'Authorization': `Bearer ${session.access_token}`
         }
       });
+
+      // Check if user was deleted/deactivated
+      if (response.status === 403) {
+        const errorData = await response.json();
+        if (errorData.requiresLogout) {
+          console.error('[Auth] User account not found or deactivated - logging out');
+          await this.logout();
+          if (window.Toast) {
+            Toast.error(errorData.error || 'Your account has been removed or deactivated');
+          }
+          return;
+        }
+      }
+
       if (response.ok) {
         const data = await response.json();
         profileName = data.profile_name || data.profile || 'sales_user';
