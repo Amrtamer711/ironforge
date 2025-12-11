@@ -706,6 +706,8 @@ app.post('/api/base/auth/validate-invite', rateLimiter(5), async (req, res) => {
   }
 
   console.log(`[UI] Validating invite token for email: ${email}`);
+  console.log(`[UI] Token received (first 20 chars): ${token.substring(0, 20)}...`);
+  console.log(`[UI] Token length: ${token.length}`);
 
   try {
     // Find the token
@@ -714,7 +716,13 @@ app.post('/api/base/auth/validate-invite', rateLimiter(5), async (req, res) => {
       .select('*')
       .eq('token', token);
 
+    console.log(`[UI] Query result - found: ${tokens?.length || 0}, error: ${fetchError?.message || 'none'}`);
+
     if (fetchError || !tokens || tokens.length === 0) {
+      // Debug: list all tokens in DB
+      const { data: allTokens } = await supabase.from('invite_tokens').select('token, email');
+      console.log(`[UI] All tokens in DB:`, allTokens?.map(t => ({ email: t.email, tokenStart: t.token.substring(0, 20) })));
+
       console.warn(`[UI] Invalid invite token attempted for: ${email}`);
       // Generic error - don't reveal if token exists
       return res.status(400).json({ error: 'Invalid or expired invite token' });
