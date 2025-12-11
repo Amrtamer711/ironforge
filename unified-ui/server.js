@@ -322,12 +322,18 @@ app.use('/api/sales', proxyAuthMiddleware);
 app.use('/api/sales', createProxyMiddleware({
   target: SERVICES.sales,
   changeOrigin: true,
-  pathRewrite: (path) => `/api${path}`,
+  pathRewrite: (path) => {
+    // path comes in as /api/sales/chat/history
+    // We want to forward to /api/chat/history (strip /sales, keep /api)
+    const newPath = path.replace('/api/sales', '/api');
+    console.log(`[PROXY] pathRewrite: ${path} -> ${newPath}`);
+    return newPath;
+  },
   proxyTimeout: 300000,
   timeout: 300000,
   on: {
     proxyReq: (proxyReq, req, res) => {
-      console.log(`[PROXY] ${req.method} ${req.originalUrl} -> ${SERVICES.sales}/api${req.path}`);
+      console.log(`[PROXY] ${req.method} ${req.originalUrl} -> ${SERVICES.sales}${req.originalUrl.replace('/api/sales', '/api')}`);
       console.log(`[PROXY] User: ${req.trustedUser?.email} | Profile: ${req.trustedUser?.profile}`);
 
       // INJECT TRUSTED USER HEADERS - proposal-bot reads these instead of validating tokens
