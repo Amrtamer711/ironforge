@@ -323,9 +323,10 @@ app.use('/api/sales', createProxyMiddleware({
   target: SERVICES.sales,
   changeOrigin: true,
   pathRewrite: (path) => {
-    // path comes in as /api/sales/chat/history
-    // We want to forward to /api/chat/history (strip /sales, keep /api)
-    const newPath = path.replace('/api/sales', '/api');
+    // When mounted at /api/sales, path comes in ALREADY STRIPPED of the mount point
+    // e.g., /api/sales/chat/history -> path = /chat/history
+    // We want to forward to /api/chat/history on the target
+    const newPath = '/api' + path;
     console.log(`[PROXY] pathRewrite: ${path} -> ${newPath}`);
     return newPath;
   },
@@ -333,7 +334,8 @@ app.use('/api/sales', createProxyMiddleware({
   timeout: 300000,
   on: {
     proxyReq: (proxyReq, req, res) => {
-      console.log(`[PROXY] ${req.method} ${req.originalUrl} -> ${SERVICES.sales}${req.originalUrl.replace('/api/sales', '/api')}`);
+      const targetPath = '/api' + req.originalUrl.replace('/api/sales', '');
+      console.log(`[PROXY] ${req.method} ${req.originalUrl} -> ${SERVICES.sales}${targetPath}`);
       console.log(`[PROXY] User: ${req.trustedUser?.email} | Profile: ${req.trustedUser?.profile}`);
 
       // INJECT TRUSTED USER HEADERS - proposal-bot reads these instead of validating tokens
