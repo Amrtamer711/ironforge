@@ -368,13 +368,17 @@ const Chat = {
 
     console.log('[Chat] Stream request - User:', userId, 'Roles:', roles);
 
+    // Show thinking indicator immediately
+    this.showThinking(msgId);
+
     // Upload file first if present
     let fileIds = null;
     if (file) {
       try {
-        this.updateMessage(msgId, '_Uploading file..._');
+        this.showThinking(msgId, 'Uploading file...');
         const uploadResult = await this.uploadFile(file);
         fileIds = [uploadResult.file_id];
+        this.showThinking(msgId); // Back to "Thinking..."
       } catch (error) {
         console.error('[Chat] File upload failed:', error);
         this.updateMessage(msgId, `File upload failed: ${error.message}`);
@@ -445,7 +449,7 @@ const Chat = {
             } else if (parsed.type === 'tool_call') {
               // Handle tool calls - show processing message
               const toolName = parsed.tool?.name || 'processing';
-              this.updateMessage(msgId, `_Processing ${toolName}..._`);
+              this.showThinking(msgId, `Processing ${toolName}...`);
             } else if (parsed.type === 'files' && parsed.files) {
               // Handle files returned from backend (proposals, mockups, etc.)
               this.appendFiles(msgId, parsed.files);
@@ -467,6 +471,16 @@ const Chat = {
     // If we got no content, show a default message
     if (!fullContent) {
       this.updateMessage(msgId, 'I\'m ready to help. What would you like to do?');
+    }
+  },
+
+  showThinking(msgId, message = 'Thinking...') {
+    const msgEl = document.getElementById(msgId);
+    if (msgEl) {
+      const bubble = msgEl.querySelector('.chat-msg-bubble');
+      if (bubble) {
+        bubble.innerHTML = `<span class="chat-thinking"><span class="thinking-dots"></span>${message}</span>`;
+      }
     }
   },
 

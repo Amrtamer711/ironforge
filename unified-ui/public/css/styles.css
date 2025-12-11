@@ -4016,6 +4016,39 @@ body.modal-open {
   color: var(--neural-400);
 }
 
+/* Thinking indicator with animated dots */
+.chat-thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--neural-400);
+}
+
+.thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 2px;
+}
+
+.thinking-dots::before {
+  content: '• • •';
+  letter-spacing: 2px;
+  animation: thinking-dots 1.4s ease-in-out infinite;
+}
+
+@keyframes thinking-dots {
+  0%, 20% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+  80%, 100% {
+    opacity: 0.3;
+  }
+}
+
 /* File attachments in messages */
 .chat-msg-files {
   display: flex;
