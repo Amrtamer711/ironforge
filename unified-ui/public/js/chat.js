@@ -492,74 +492,179 @@ const Chat = {
   },
 
   formatContent(content) {
-    // Convert markdown-like formatting to HTML
+    // Comprehensive markdown to HTML converter
     if (!content) return '';
 
-    // Process line by line for better list handling
-    const lines = content.split('\n');
-    let inList = false;
+    // Step 1: Extract and protect code blocks (``` ... ```)
+    const codeBlocks = [];
+    let processed = content.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+      const index = codeBlocks.length;
+      codeBlocks.push({ lang: lang || '', code: code.trim() });
+      return `__CODE_BLOCK_${index}__`;
+    });
+
+    // Step 2: Extract and protect inline code (` ... `)
+    const inlineCodes = [];
+    processed = processed.replace(/`([^`]+)`/g, (_, code) => {
+      const index = inlineCodes.length;
+      inlineCodes.push(code);
+      return `__INLINE_CODE_${index}__`;
+    });
+
+    // Step 3: Process line by line
+    const lines = processed.split('\n');
     let result = [];
+    let inBulletList = false;
+    let inNumberedList = false;
+    let inBlockquote = false;
 
     for (let i = 0; i < lines.length; i++) {
       let line = lines[i];
 
-      // Check if line is a bullet point (-, *, or •)
+      // Check for code block placeholder
+      const codeBlockMatch = line.match(/^__CODE_BLOCK_(\d+)__$/);
+      if (codeBlockMatch) {
+        // Close any open lists
+        if (inBulletList) { result.push('</ul>'); inBulletList = false; }
+        if (inNumberedList) { result.push('</ol>'); inNumberedList = false; }
+        if (inBlockquote) { result.push('</blockquote>'); inBlockquote = false; }
+
+        const block = codeBlocks[parseInt(codeBlockMatch[1])];
+        const langClass = block.lang ? ` class="language-${block.lang}"` : '';
+        result.push(`<pre class="chat-code-block"><code${langClass}>${this.escapeHtml(block.code)}</code></pre>`);
+        continue;
+      }
+
+      // Check for headers (# ## ### etc)
+      const headerMatch = line.match(/^(#{1,6})\s+(.*)$/);
+      if (headerMatch) {
+        if (inBulletList) { result.push('</ul>'); inBulletList = false; }
+        if (inNumberedList) { result.push('</ol>'); inNumberedList = false; }
+        if (inBlockquote) { result.push('</blockquote>'); inBlockquote = false; }
+
+        const level = headerMatch[1].length;
+        const text = this.formatInline(headerMatch[2]);
+        result.push(`<h${level} class="chat-header chat-h${level}">${text}</h${level}>`);
+        continue;
+      }
+
+      // Check for horizontal rule (---, ***, ___)
+      if (/^[-*_]{3,}\s*$/.test(line)) {
+        if (inBulletList) { result.push('</ul>'); inBulletList = false; }
+        if (inNumberedList) { result.push('</ol>'); inNumberedList = false; }
+        if (inBlockquote) { result.push('</blockquote>'); inBlockquote = false; }
+        result.push('<hr class="chat-hr">');
+        continue;
+      }
+
+      // Check for blockquote (> text)
+      const blockquoteMatch = line.match(/^>\s*(.*)$/);
+      if (blockquoteMatch) {
+        if (inBulletList) { result.push('</ul>'); inBulletList = false; }
+        if (inNumberedList) { result.push('</ol>'); inNumberedList = false; }
+
+        if (!inBlockquote) {
+          result.push('<blockquote class="chat-blockquote">');
+          inBlockquote = true;
+        }
+        result.push(this.formatInline(blockquoteMatch[1]) + '<br>');
+        continue;
+      } else if (inBlockquote) {
+        result.push('</blockquote>');
+        inBlockquote = false;
+      }
+
+      // Check for bullet list (-, *, •)
       const bulletMatch = line.match(/^(\s*)([-*•])\s+(.*)$/);
-
       if (bulletMatch) {
-        const text = bulletMatch[3];
-        if (!inList) {
-          result.push('<ul class="chat-list">');
-          inList = true;
-        }
-        // Format the text content of the bullet
-        const formattedText = this.formatInline(text);
-        result.push(`<li>${formattedText}</li>`);
-      } else {
-        // Close list if we were in one
-        if (inList) {
-          result.push('</ul>');
-          inList = false;
-        }
+        if (inNumberedList) { result.push('</ol>'); inNumberedList = false; }
 
-        // Check for numbered list (1. 2. etc)
-        const numberedMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
-        if (numberedMatch) {
-          const [, , , text] = numberedMatch;
-          const formattedText = this.formatInline(text);
-          result.push(`<div class="chat-numbered-item">${formattedText}</div>`);
-        } else if (line.trim() === '') {
-          // Empty line - add break only if not after a list
-          result.push('<br>');
-        } else {
-          // Regular line
-          result.push(this.formatInline(line));
-          // Add <br> for line breaks unless it's the last line
-          if (i < lines.length - 1) {
-            result.push('<br>');
-          }
+        if (!inBulletList) {
+          result.push('<ul class="chat-list">');
+          inBulletList = true;
         }
+        const text = this.formatInline(bulletMatch[3]);
+        result.push(`<li>${text}</li>`);
+        continue;
+      } else if (inBulletList) {
+        result.push('</ul>');
+        inBulletList = false;
+      }
+
+      // Check for numbered list (1. 2. etc)
+      const numberedMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
+      if (numberedMatch) {
+        if (inBulletList) { result.push('</ul>'); inBulletList = false; }
+
+        if (!inNumberedList) {
+          result.push('<ol class="chat-numbered-list">');
+          inNumberedList = true;
+        }
+        const text = this.formatInline(numberedMatch[3]);
+        result.push(`<li>${text}</li>`);
+        continue;
+      } else if (inNumberedList) {
+        result.push('</ol>');
+        inNumberedList = false;
+      }
+
+      // Empty line
+      if (line.trim() === '') {
+        result.push('<br>');
+        continue;
+      }
+
+      // Regular line
+      result.push(this.formatInline(line));
+      if (i < lines.length - 1) {
+        result.push('<br>');
       }
     }
 
-    // Close list if still open
-    if (inList) {
-      result.push('</ul>');
-    }
+    // Close any remaining open tags
+    if (inBulletList) result.push('</ul>');
+    if (inNumberedList) result.push('</ol>');
+    if (inBlockquote) result.push('</blockquote>');
 
-    return result.join('');
+    let html = result.join('');
+
+    // Step 4: Restore inline code
+    inlineCodes.forEach((code, index) => {
+      html = html.replace(`__INLINE_CODE_${index}__`, `<code class="chat-inline-code">${this.escapeHtml(code)}</code>`);
+    });
+
+    return html;
   },
 
   formatInline(text) {
-    // Format inline elements (bold, italic, code)
+    // Format inline elements (bold, italic, links, strikethrough)
     if (!text) return '';
+
     return text
-      // Bold: **text**
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      // Inline code: `code`
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      // Italic: *text* (lookbehind/ahead to avoid matching **)
-      .replace(/(?<!\*)\*(?!\*)([^*]+)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+      // Links: [text](url)
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="chat-link">$1</a>')
+      // Images: ![alt](url) - render as linked text since we can't embed arbitrary images
+      .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="chat-link">[Image: $1]</a>')
+      // Bold + Italic: ***text*** or ___text___
+      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
+      .replace(/___(.+?)___/g, '<strong><em>$1</em></strong>')
+      // Bold: **text** or __text__
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/__(.+?)__/g, '<strong>$1</strong>')
+      // Italic: *text* or _text_ (but not within words for underscore)
+      .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
+      .replace(/(?<!\w)_(?!_)(.+?)(?<!_)_(?!\w)/g, '<em>$1</em>')
+      // Strikethrough: ~~text~~
+      .replace(/~~(.+?)~~/g, '<del>$1</del>')
+      // Highlight/mark: ==text==
+      .replace(/==(.+?)==/g, '<mark class="chat-highlight">$1</mark>');
+  },
+
+  escapeHtml(text) {
+    // Escape HTML entities to prevent XSS in code blocks
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   },
 
   addMessage(role, content, isStreaming = false) {
