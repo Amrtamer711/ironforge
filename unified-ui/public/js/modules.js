@@ -82,7 +82,8 @@ const ModuleRegistry = {
         return null;
       }
 
-      const response = await fetch('/api/sales/modules/accessible', {
+      // Use unified-ui's own RBAC endpoint (not proxied to proposal-bot)
+      const response = await fetch('/api/modules/accessible', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'

@@ -289,6 +289,15 @@ class Settings(BaseSettings):
     )
 
     # =========================================================================
+    # PROXY SECURITY
+    # =========================================================================
+
+    proxy_secret: Optional[str] = Field(
+        default=None,
+        description="Shared secret for trusted proxy communication (unified-ui -> proposal-bot)",
+    )
+
+    # =========================================================================
     # API SETTINGS
     # =========================================================================
 
@@ -466,6 +475,10 @@ class Settings(BaseSettings):
         # JWT secret for auth
         if not self.effective_jwt_secret:
             missing.append("UI_JWT_SECRET or JWT_SECRET")
+
+        # Proxy secret for secure communication with unified-ui
+        if not self.proxy_secret:
+            missing.append("PROXY_SECRET")
 
         return missing
 

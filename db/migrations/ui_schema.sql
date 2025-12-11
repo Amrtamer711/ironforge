@@ -186,15 +186,32 @@ CREATE INDEX IF NOT EXISTS idx_users_profile ON users(profile_id);
 CREATE INDEX IF NOT EXISTS idx_users_manager ON users(manager_id);
 
 -- Sync users table from auth.users on insert/update
+-- Assigns default 'sales_user' profile to new users if no profile is set
 CREATE OR REPLACE FUNCTION public.sync_user_from_auth()
 RETURNS TRIGGER AS $$
+DECLARE
+    default_profile_id BIGINT;
+    existing_profile_id BIGINT;
 BEGIN
-    INSERT INTO public.users (id, email, name, avatar_url, created_at, updated_at)
+    -- Check if user already exists and has a profile
+    SELECT profile_id INTO existing_profile_id
+    FROM public.users
+    WHERE id = NEW.id::TEXT;
+
+    -- Get default profile ID (sales_user) only if needed for new users
+    IF existing_profile_id IS NULL THEN
+        SELECT id INTO default_profile_id
+        FROM public.profiles
+        WHERE name = 'sales_user';
+    END IF;
+
+    INSERT INTO public.users (id, email, name, avatar_url, profile_id, created_at, updated_at)
     VALUES (
         NEW.id::TEXT,
         NEW.email,
         COALESCE(NEW.raw_user_meta_data->>'name', NEW.raw_user_meta_data->>'full_name'),
         NEW.raw_user_meta_data->>'avatar_url',
+        default_profile_id,  -- Will be NULL for existing users (preserving their profile)
         NOW(),
         NOW()
     )
@@ -203,6 +220,7 @@ BEGIN
         name = EXCLUDED.name,
         avatar_url = EXCLUDED.avatar_url,
         updated_at = NOW();
+        -- Note: profile_id is NOT updated on conflict, preserving existing profile
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

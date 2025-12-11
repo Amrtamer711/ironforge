@@ -67,6 +67,9 @@ services:
       # UI JWT Secret (for validating tokens issued by UI Supabase)
       - key: UI_JWT_SECRET
         sync: false
+      # Proxy secret (shared with unified-ui to prevent header spoofing)
+      - key: PROXY_SECRET
+        sync: false
     disk:
       name: proposal-bot-data
       mountPath: /data
@@ -101,6 +104,9 @@ services:
       - key: UI_PROD_SUPABASE_ANON_KEY
         sync: false
       - key: UI_PROD_SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Proxy secret (must match proposal-bot's PROXY_SECRET)
+      - key: PROXY_SECRET
         sync: false
 
   # ==========================================================================

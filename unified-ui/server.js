@@ -6,6 +6,7 @@ const bodyParser = require('body-parser');
 const crypto = require('crypto');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const { createClient } = require('@supabase/supabase-js');
+const { sendInviteEmail, sendWelcomeEmail, EMAIL_PROVIDER } = require('./email-service');
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -52,6 +53,13 @@ const supabase = supabaseUrl && supabaseServiceKey
 const SERVICES = {
   sales: process.env.SALES_BOT_URL || 'http://localhost:8000',
 };
+
+// Shared secret for trusted proxy communication
+const PROXY_SECRET = process.env.PROXY_SECRET || null;
+if (!PROXY_SECRET) {
+  console.warn('[UI] WARNING: PROXY_SECRET not set. Trusted headers may be vulnerable to spoofing.');
+  console.warn('[UI] Set PROXY_SECRET environment variable (same value in both unified-ui and proposal-bot)');
+}
 
 // =============================================================================
 // RATE LIMITING (Simple in-memory rate limiter)
@@ -147,59 +155,187 @@ app.use(helmet({
 app.use(cors(corsOptions));
 
 // =============================================================================
-// SERVICE PROXY - MUST come BEFORE bodyParser to avoid body consumption issue
-// Forward /api/sales/* to Sales Bot (proposal-bot)
+// UNIFIED-UI IS THE AUTH/RBAC GATEWAY
+// All requests to backend services go through here. We validate the JWT,
+// fetch user profile/permissions from UI Supabase, and inject trusted headers.
+// Backend services (proposal-bot) trust these headers - no token validation needed.
+// =============================================================================
+
+// Helper: Fetch user's RBAC data from UI Supabase
+async function getUserRBACData(userId) {
+  if (!supabase) {
+    return { profile: 'sales_user', permissions: ['sales:*:*'] };
+  }
+
+  try {
+    // Get user with profile
+    const { data: userData, error } = await supabase
+      .from('users')
+      .select('id, email, name, profile_id, profiles(id, name, display_name)')
+      .eq('id', userId)
+      .single();
+
+    if (error || !userData) {
+      console.warn(`[RBAC] User ${userId} not in users table, using defaults`);
+      return { profile: 'sales_user', permissions: ['sales:*:*'] };
+    }
+
+    const profile = userData.profiles;
+    const profileName = profile?.name || 'sales_user';
+
+    // Get permissions from profile
+    let permissions = [];
+    if (profile?.id) {
+      const { data: perms } = await supabase
+        .from('profile_permissions')
+        .select('permission')
+        .eq('profile_id', profile.id);
+
+      if (perms) {
+        permissions = perms.map(p => p.permission);
+      }
+    }
+
+    // Get permissions from permission sets
+    const { data: userPermSets } = await supabase
+      .from('user_permission_sets')
+      .select('permission_sets(id)')
+      .eq('user_id', userId);
+
+    if (userPermSets) {
+      for (const ups of userPermSets) {
+        if (ups.permission_sets?.id) {
+          const { data: psPerms } = await supabase
+            .from('permission_set_permissions')
+            .select('permission')
+            .eq('permission_set_id', ups.permission_sets.id);
+
+          if (psPerms) {
+            permissions.push(...psPerms.map(p => p.permission));
+          }
+        }
+      }
+    }
+
+    // Dedupe and return
+    return {
+      profile: profileName,
+      permissions: [...new Set(permissions)]
+    };
+
+  } catch (err) {
+    console.error(`[RBAC] Error fetching RBAC for ${userId}:`, err.message);
+    return { profile: 'sales_user', permissions: ['sales:*:*'] };
+  }
+}
+
+// RBAC cache (1 minute TTL)
+const rbacCache = new Map();
+const RBAC_CACHE_TTL = 60000;
+
+// Auth middleware for proxy - validates JWT, injects trusted headers
+async function proxyAuthMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  if (!supabase) {
+    return res.status(500).json({ error: 'Auth service not configured' });
+  }
+
+  try {
+    const token = authHeader.substring(7);
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+
+    if (error || !user) {
+      console.warn(`[PROXY AUTH] Invalid token: ${error?.message || 'no user'}`);
+      return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+
+    // Check cache for RBAC
+    const cached = rbacCache.get(user.id);
+    let rbac;
+
+    if (cached && Date.now() - cached.ts < RBAC_CACHE_TTL) {
+      rbac = cached.data;
+    } else {
+      rbac = await getUserRBACData(user.id);
+      rbacCache.set(user.id, { data: rbac, ts: Date.now() });
+    }
+
+    // Attach to request for proxy to inject as headers
+    req.trustedUser = {
+      id: user.id,
+      email: user.email,
+      name: user.user_metadata?.name || user.user_metadata?.full_name || '',
+      profile: rbac.profile,
+      permissions: rbac.permissions
+    };
+
+    next();
+  } catch (err) {
+    console.error(`[PROXY AUTH] Error:`, err.message);
+    return res.status(401).json({ error: 'Authentication failed' });
+  }
+}
+
+// Apply auth middleware before proxy
+app.use('/api/sales', proxyAuthMiddleware);
+
+// =============================================================================
+// SERVICE PROXY - Forward to proposal-bot with trusted user headers
+// proposal-bot trusts X-Trusted-User-* headers (only from this proxy)
 // =============================================================================
 app.use('/api/sales', createProxyMiddleware({
   target: SERVICES.sales,
   changeOrigin: true,
-  pathRewrite: (path) => `/api${path}`, // /chat/stream -> /api/chat/stream
-  // Increase timeout for LLM operations (5 minutes)
+  pathRewrite: (path) => `/api${path}`,
   proxyTimeout: 300000,
   timeout: 300000,
   on: {
     proxyReq: (proxyReq, req, res) => {
-      // LOG ALL PROXY REQUESTS
-      console.log(`[PROXY] ========================================`);
       console.log(`[PROXY] ${req.method} ${req.originalUrl} -> ${SERVICES.sales}/api${req.path}`);
-      console.log(`[PROXY] Has Auth Header: ${!!req.headers.authorization}`);
-      console.log(`[PROXY] Target: ${SERVICES.sales}`);
-      console.log(`[PROXY] ========================================`);
+      console.log(`[PROXY] User: ${req.trustedUser?.email} | Profile: ${req.trustedUser?.profile}`);
 
-      // Forward Authorization header to backend (backend validates)
-      const authHeader = req.headers.authorization;
-      if (authHeader) {
-        proxyReq.setHeader('Authorization', authHeader);
+      // INJECT TRUSTED USER HEADERS - proposal-bot reads these instead of validating tokens
+      if (req.trustedUser) {
+        // Send proxy secret to prove request is from unified-ui
+        if (PROXY_SECRET) {
+          proxyReq.setHeader('X-Proxy-Secret', PROXY_SECRET);
+        }
+        proxyReq.setHeader('X-Trusted-User-Id', req.trustedUser.id);
+        proxyReq.setHeader('X-Trusted-User-Email', req.trustedUser.email);
+        proxyReq.setHeader('X-Trusted-User-Name', req.trustedUser.name);
+        proxyReq.setHeader('X-Trusted-User-Profile', req.trustedUser.profile);
+        proxyReq.setHeader('X-Trusted-User-Permissions', JSON.stringify(req.trustedUser.permissions));
       }
 
-      // Forward IP for logging/rate limiting
-      if (req.headers['x-forwarded-for']) {
-        proxyReq.setHeader('X-Forwarded-For', req.headers['x-forwarded-for']);
-      } else if (req.socket.remoteAddress) {
-        proxyReq.setHeader('X-Forwarded-For', req.socket.remoteAddress);
+      // Also forward original auth header (backward compat during transition)
+      if (req.headers.authorization) {
+        proxyReq.setHeader('Authorization', req.headers.authorization);
       }
+
+      // Forward IP
+      const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+      if (ip) proxyReq.setHeader('X-Forwarded-For', ip);
     },
     proxyRes: (proxyRes, req, res) => {
       console.log(`[PROXY] Response: ${proxyRes.statusCode} for ${req.method} ${req.originalUrl}`);
 
-      // For SSE endpoints, ensure no buffering
       if (req.path.includes('/stream') || proxyRes.headers['content-type']?.includes('text/event-stream')) {
-        console.log(`[PROXY] SSE response detected, disabling buffering`);
         res.setHeader('X-Accel-Buffering', 'no');
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
       }
     },
     error: (err, req, res) => {
-      console.error(`[PROXY] ERROR: ${err.message}`);
-      console.error(`[PROXY] Request was: ${req.method} ${req.originalUrl}`);
-      console.error(`[PROXY] Target was: ${SERVICES.sales}`);
+      console.error(`[PROXY] ERROR: ${err.message} for ${req.method} ${req.originalUrl}`);
       if (!res.headersSent) {
-        // In production, hide internal error details from client
         if (IS_PRODUCTION) {
           res.status(502).json({ error: 'Service temporarily unavailable' });
         } else {
-          // In development, include details for debugging
           res.status(502).json({ error: 'Service unavailable', details: err.message, target: SERVICES.sales });
         }
       }
@@ -348,7 +484,7 @@ function isValidEmail(email) {
 app.post('/api/base/auth/invites', rateLimiter(20), requireAuth, requireProfile('system_admin'), async (req, res) => {
   console.log('[UI] Create invite request');
 
-  const { email, profile_name = 'sales_user', expires_in_days = 7 } = req.body;
+  const { email, profile_name = 'sales_user', expires_in_days = 7, send_email = true } = req.body;
 
   if (!isValidEmail(email)) {
     return res.status(400).json({ error: 'Valid email address is required' });
@@ -406,12 +542,40 @@ app.post('/api/base/auth/invites', rateLimiter(20), requireAuth, requireProfile(
 
     console.log(`[UI] Invite token created for ${email} with profile ${profile_name} by ${req.user.email}`);
 
+    // Send invite email if requested
+    let emailSent = false;
+    let emailError = null;
+
+    if (send_email) {
+      try {
+        await sendInviteEmail({
+          recipientEmail: email.toLowerCase(),
+          inviterName: req.user.user_metadata?.name || req.user.email,
+          inviterEmail: req.user.email,
+          token,
+          profileName: profile_name,
+          expiresAt: expiresAt.toISOString(),
+        });
+        emailSent = true;
+        console.log(`[UI] Invite email sent to ${email}`);
+      } catch (emailErr) {
+        console.error(`[UI] Failed to send invite email to ${email}:`, emailErr.message);
+        emailError = emailErr.message;
+        // Don't fail the request - invite was created, just email failed
+      }
+    }
+
     res.status(201).json({
       token,
       email: email.toLowerCase(),
       profile_name,
       expires_at: expiresAt.toISOString(),
-      message: `Invite token created. Share this token with ${email} to allow them to sign up.`,
+      email_sent: emailSent,
+      email_error: emailError,
+      email_provider: EMAIL_PROVIDER,
+      message: emailSent
+        ? `Invite created and email sent to ${email}.`
+        : `Invite token created. ${emailError ? 'Email failed: ' + emailError + '. ' : ''}Share this token with ${email} to allow them to sign up.`,
     });
   } catch (err) {
     console.error('[UI] Error creating invite:', err);
@@ -611,7 +775,7 @@ app.post('/api/base/auth/consume-invite', rateLimiter(5), async (req, res) => {
     // Mark token as used
     const { error: updateError } = await supabase
       .from('invite_tokens')
-      .update({ used_at: now.toISOString() })
+      .update({ used_at: now.toISOString(), used_by_user_id: user_id || null })
       .eq('id', tokenRecord.id);
 
     if (updateError) {
@@ -652,6 +816,18 @@ app.post('/api/base/auth/consume-invite', rateLimiter(5), async (req, res) => {
       }
     } else {
       console.warn(`[UI] No user_id provided for ${email} - user will need manual profile assignment`);
+    }
+
+    // Send welcome email (best effort - don't fail if it doesn't send)
+    try {
+      await sendWelcomeEmail({
+        recipientEmail: email.toLowerCase(),
+        recipientName: name || email.split('@')[0],
+      });
+      console.log(`[UI] Welcome email sent to ${email}`);
+    } catch (emailErr) {
+      console.error(`[UI] Failed to send welcome email to ${email}:`, emailErr.message);
+      // Don't fail the request - user is created, just email failed
     }
 
     console.log(`[UI] Invite token consumed for ${email}`);
@@ -738,6 +914,379 @@ app.get('/api/base/auth/me', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('[UI] Error fetching user profile:', err.message);
     res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+});
+
+// =============================================================================
+// MODULES ENDPOINT - Get accessible modules for current user (RBAC)
+// This replaces the proxied /api/sales/modules/accessible endpoint
+// =============================================================================
+app.get('/api/modules/accessible', requireAuth, async (req, res) => {
+  console.log(`[UI RBAC] Getting accessible modules for user: ${req.user.email}`);
+
+  try {
+    // Get user's profile from users table
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('id, email, profile_id, profiles(id, name, display_name)')
+      .eq('id', req.user.id)
+      .single();
+
+    if (userError) {
+      console.warn(`[UI RBAC] Error fetching user: ${userError.message}`);
+    }
+
+    const profile = userData?.profiles;
+    const profileName = profile?.name || null;
+
+    console.log(`[UI RBAC] User profile: ${profileName || 'none'}`);
+
+    // Get user's permissions from profile_permissions
+    let permissions = new Set();
+    if (profile?.id) {
+      const { data: profilePerms, error: permError } = await supabase
+        .from('profile_permissions')
+        .select('permission')
+        .eq('profile_id', profile.id);
+
+      if (permError) {
+        console.warn(`[UI RBAC] Error fetching permissions: ${permError.message}`);
+      } else if (profilePerms) {
+        profilePerms.forEach(p => permissions.add(p.permission));
+      }
+    }
+
+    console.log(`[UI RBAC] User permissions: ${Array.from(permissions).join(', ') || 'none'}`);
+
+    // Check if user is admin (has wildcard permission)
+    const isAdmin = permissions.has('*:*:*') || profileName === 'system_admin';
+
+    // Get all active modules
+    const { data: allModules, error: modulesError } = await supabase
+      .from('modules')
+      .select('*')
+      .eq('is_active', true)
+      .order('sort_order');
+
+    if (modulesError) {
+      console.error(`[UI RBAC] Error fetching modules: ${modulesError.message}`);
+      return res.status(500).json({ error: 'Failed to fetch modules' });
+    }
+
+    // Filter modules based on permissions
+    const accessibleModules = [];
+
+    for (const module of allModules || []) {
+      // Admins can access everything
+      if (isAdmin) {
+        accessibleModules.push(module);
+        continue;
+      }
+
+      // Check if user has required permission for this module
+      const requiredPerm = module.required_permission;
+      if (!requiredPerm) {
+        // No permission required, module is accessible
+        accessibleModules.push(module);
+        continue;
+      }
+
+      // Check if user has the required permission (exact match or wildcard)
+      const hasAccess = permissions.has(requiredPerm) ||
+        permissions.has('*:*:*') ||
+        Array.from(permissions).some(p => {
+          // Check wildcard patterns like 'sales:*:*' matches 'sales:proposals:read'
+          if (p.includes('*')) {
+            const pattern = p.replace(/\*/g, '.*');
+            return new RegExp(`^${pattern}$`).test(requiredPerm);
+          }
+          return false;
+        });
+
+      if (hasAccess) {
+        accessibleModules.push(module);
+      }
+    }
+
+    console.log(`[UI RBAC] Accessible modules: ${accessibleModules.map(m => m.name).join(', ') || 'none'}`);
+
+    // If no modules found but user is authenticated, give them at least sales module as fallback
+    if (accessibleModules.length === 0) {
+      console.warn(`[UI RBAC] No modules found for user ${req.user.email}, providing fallback`);
+      accessibleModules.push({
+        name: 'sales',
+        display_name: 'Sales Bot',
+        description: 'Sales proposal generation, mockups, and booking orders',
+        icon: 'chart-bar',
+        is_default: true,
+        sort_order: 1,
+        tools: ['chat', 'mockup', 'proposals']
+      });
+    }
+
+    // Format response to match what frontend expects
+    const defaultModule = accessibleModules.find(m => m.is_default)?.name || accessibleModules[0]?.name;
+
+    // Check for user-specific default module
+    const { data: userModule } = await supabase
+      .from('user_modules')
+      .select('modules(name)')
+      .eq('user_id', req.user.id)
+      .eq('is_default', true)
+      .single();
+
+    const userDefaultModule = userModule?.modules?.name || null;
+
+    res.json({
+      modules: accessibleModules.map(m => ({
+        name: m.name,
+        display_name: m.display_name,
+        description: m.description,
+        icon: m.icon,
+        is_default: m.is_default,
+        sort_order: m.sort_order,
+        tools: m.config_json?.tools || (m.name === 'sales' ? ['chat', 'mockup', 'proposals'] : ['admin'])
+      })),
+      default_module: defaultModule,
+      user_default_module: userDefaultModule
+    });
+
+  } catch (err) {
+    console.error(`[UI RBAC] Error getting modules: ${err.message}`);
+    res.status(500).json({ error: 'Failed to get accessible modules' });
+  }
+});
+
+// =============================================================================
+// RBAC API ENDPOINTS - Admin only
+// These endpoints expose RBAC data and require system_admin profile
+// =============================================================================
+
+// Get user's profile and permissions (admin only)
+app.get('/api/rbac/user/:userId', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  const userId = req.params.userId;
+  console.log(`[UI RBAC API] Getting RBAC info for user: ${userId}`);
+
+  try {
+    // Get user's profile
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('id, email, name, profile_id, profiles(id, name, display_name)')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !userData) {
+      console.warn(`[UI RBAC API] User not found: ${userId}`);
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const profile = userData.profiles;
+    const profileName = profile?.name || null;
+
+    // Get user's permissions from profile
+    let permissions = [];
+    if (profile?.id) {
+      const { data: profilePerms } = await supabase
+        .from('profile_permissions')
+        .select('permission')
+        .eq('profile_id', profile.id);
+
+      if (profilePerms) {
+        permissions = profilePerms.map(p => p.permission);
+      }
+    }
+
+    // Get user's permission sets
+    const { data: userPermSets } = await supabase
+      .from('user_permission_sets')
+      .select('permission_sets(id, name, display_name)')
+      .eq('user_id', userId);
+
+    const permissionSets = userPermSets?.map(ups => ups.permission_sets) || [];
+
+    // Get permissions from permission sets
+    for (const ps of permissionSets) {
+      if (ps?.id) {
+        const { data: psPerms } = await supabase
+          .from('permission_set_permissions')
+          .select('permission')
+          .eq('permission_set_id', ps.id);
+
+        if (psPerms) {
+          permissions.push(...psPerms.map(p => p.permission));
+        }
+      }
+    }
+
+    // Deduplicate permissions
+    permissions = [...new Set(permissions)];
+
+    res.json({
+      user_id: userId,
+      email: userData.email,
+      name: userData.name,
+      profile: profileName,
+      profile_display_name: profile?.display_name || null,
+      permissions: permissions,
+      permission_sets: permissionSets.map(ps => ps?.name).filter(Boolean),
+    });
+
+  } catch (err) {
+    console.error(`[UI RBAC API] Error getting user RBAC: ${err.message}`);
+    res.status(500).json({ error: 'Failed to get user RBAC info' });
+  }
+});
+
+// Check if user has a specific permission (admin only)
+app.get('/api/rbac/check', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  const { user_id, permission } = req.query;
+
+  if (!user_id || !permission) {
+    return res.status(400).json({ error: 'user_id and permission are required' });
+  }
+
+  console.log(`[UI RBAC API] Checking permission ${permission} for user ${user_id}`);
+
+  try {
+    // Get user's profile
+    const { data: userData } = await supabase
+      .from('users')
+      .select('profile_id, profiles(id, name)')
+      .eq('id', user_id)
+      .single();
+
+    const profile = userData?.profiles;
+
+    // Get user's permissions
+    let permissions = new Set();
+    if (profile?.id) {
+      const { data: profilePerms } = await supabase
+        .from('profile_permissions')
+        .select('permission')
+        .eq('profile_id', profile.id);
+
+      if (profilePerms) {
+        profilePerms.forEach(p => permissions.add(p.permission));
+      }
+    }
+
+    // Check permission (exact match or wildcard)
+    const hasPermission = permissions.has(permission) ||
+      permissions.has('*:*:*') ||
+      Array.from(permissions).some(p => {
+        if (p.includes('*')) {
+          const pattern = p.replace(/\*/g, '.*');
+          return new RegExp(`^${pattern}$`).test(permission);
+        }
+        return false;
+      });
+
+    res.json({
+      user_id,
+      permission,
+      has_permission: hasPermission,
+      profile: profile?.name || null,
+    });
+
+  } catch (err) {
+    console.error(`[UI RBAC API] Error checking permission: ${err.message}`);
+    res.status(500).json({ error: 'Failed to check permission' });
+  }
+});
+
+// List all profiles (admin only)
+app.get('/api/rbac/profiles', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  console.log(`[UI RBAC API] Listing profiles`);
+
+  try {
+    const { data: profiles, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .order('name');
+
+    if (error) {
+      throw error;
+    }
+
+    // Get permissions for each profile
+    const result = [];
+    for (const profile of profiles || []) {
+      const { data: perms } = await supabase
+        .from('profile_permissions')
+        .select('permission')
+        .eq('profile_id', profile.id);
+
+      result.push({
+        id: profile.id,
+        name: profile.name,
+        display_name: profile.display_name,
+        description: profile.description,
+        is_system: profile.is_system,
+        permissions: perms?.map(p => p.permission) || [],
+        created_at: profile.created_at,
+        updated_at: profile.updated_at,
+      });
+    }
+
+    res.json(result);
+
+  } catch (err) {
+    console.error(`[UI RBAC API] Error listing profiles: ${err.message}`);
+    res.status(500).json({ error: 'Failed to list profiles' });
+  }
+});
+
+// List all permissions (admin only)
+app.get('/api/rbac/permissions', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  console.log(`[UI RBAC API] Listing permissions`);
+
+  try {
+    const { data: permissions, error } = await supabase
+      .from('permissions')
+      .select('*')
+      .order('module, resource, action');
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(permissions || []);
+
+  } catch (err) {
+    console.error(`[UI RBAC API] Error listing permissions: ${err.message}`);
+    res.status(500).json({ error: 'Failed to list permissions' });
+  }
+});
+
+// Get permissions grouped by resource (admin only)
+app.get('/api/rbac/permissions/grouped', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  console.log(`[UI RBAC API] Listing permissions grouped`);
+
+  try {
+    const { data: permissions, error } = await supabase
+      .from('permissions')
+      .select('*')
+      .order('module, resource, action');
+
+    if (error) {
+      throw error;
+    }
+
+    // Group by resource (module:resource)
+    const grouped = {};
+    for (const perm of permissions || []) {
+      const key = `${perm.module}:${perm.resource}`;
+      if (!grouped[key]) {
+        grouped[key] = [];
+      }
+      grouped[key].push(perm);
+    }
+
+    res.json(grouped);
+
+  } catch (err) {
+    console.error(`[UI RBAC API] Error listing permissions: ${err.message}`);
+    res.status(500).json({ error: 'Failed to list permissions' });
   }
 });
 

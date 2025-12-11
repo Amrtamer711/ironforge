@@ -1,0 +1,116 @@
+<!--
+SUPABASE EMAIL TEMPLATE: Magic Link Email
+==========================================
+Go to: Supabase Dashboard > Authentication > Email Templates > Magic Link
+
+This template is used when a user requests a passwordless login link.
+
+Variables available:
+- {{ .ConfirmationURL }} - The magic link URL
+- {{ .Email }} - The user's email address
+- {{ .Token }} - The login token
+- {{ .TokenHash }} - The hashed token
+- {{ .SiteURL }} - Your site URL
+
+Copy everything below this comment into the Supabase template editor:
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Your login link</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+  <!-- Preheader -->
+  <div style="display: none; max-height: 0; overflow: hidden; font-size: 1px; line-height: 1px; color: #f8fafc;">
+    Your secure login link for Sales Proposals - valid for 1 hour
+  </div>
+
+  <!-- Email wrapper -->
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f8fafc;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <!-- Email container -->
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding: 40px 40px 20px; text-align: center; border-bottom: 1px solid #e2e8f0;">
+              <div style="width: 60px; height: 60px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 12px; display: inline-block; line-height: 60px; margin-bottom: 20px;">
+                <span style="color: white; font-size: 28px;">&#128279;</span>
+              </div>
+              <h1 style="margin: 0; color: #1e293b; font-size: 24px; font-weight: 700; line-height: 1.3;">
+                Your Login Link
+              </h1>
+            </td>
+          </tr>
+
+          <!-- Main content -->
+          <tr>
+            <td style="padding: 40px;">
+              <p style="margin: 0 0 20px; color: #1e293b; font-size: 16px; line-height: 1.6;">
+                Hi there,
+              </p>
+
+              <p style="margin: 0 0 20px; color: #1e293b; font-size: 16px; line-height: 1.6;">
+                Click the button below to securely sign in to your <strong>Sales Proposals</strong> account.
+              </p>
+
+              <p style="margin: 0 0 30px; color: #1e293b; font-size: 16px; line-height: 1.6;">
+                This link will expire in <strong>1 hour</strong> and can only be used once.
+              </p>
+
+              <!-- CTA Button -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                <tr>
+                  <td align="center" style="padding: 20px 0 30px;">
+                    <a href="{{ .ConfirmationURL }}" target="_blank" style="display: inline-block; padding: 16px 48px; background-color: #10b981; color: #ffffff; text-decoration: none; font-size: 16px; font-weight: 600; border-radius: 8px;">
+                      Sign In to Sales Proposals
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Security note -->
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                <tr>
+                  <td style="padding: 20px; background-color: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 0 8px 8px 0;">
+                    <p style="margin: 0; color: #1e293b; font-size: 14px; line-height: 1.6;">
+                      <strong>Security notice:</strong> If you didn't request this login link, someone may be trying to access your account. You can safely ignore this email, and the link will expire automatically.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 30px 0 15px; color: #64748b; font-size: 14px; line-height: 1.6;">
+                If the button doesn't work, copy and paste this link into your browser:
+              </p>
+              <p style="margin: 0; color: #2563eb; font-size: 13px; line-height: 1.6; word-break: break-all;">
+                <a href="{{ .ConfirmationURL }}" style="color: #2563eb; text-decoration: underline;">
+                  {{ .ConfirmationURL }}
+                </a>
+              </p>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Footer -->
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width: 600px;">
+          <tr>
+            <td style="padding: 30px 40px; text-align: center;">
+              <p style="margin: 0 0 10px; color: #64748b; font-size: 13px; line-height: 1.5;">
+                This email was sent by Sales Proposals
+              </p>
+              <p style="margin: 0; color: #64748b; font-size: 13px; line-height: 1.5;">
+                &copy; 2024 Your Company. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

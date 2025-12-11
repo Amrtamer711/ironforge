@@ -1,114 +1,76 @@
 """
 FastAPI Authentication & Authorization Dependencies.
 
-Provides FastAPI dependencies for protecting endpoints using the
-integrations/auth and integrations/rbac providers.
+Reads authenticated user context from trusted proxy headers.
+unified-ui handles all JWT validation and RBAC - these dependencies
+simply extract the pre-validated user data from request headers.
+
+Trusted Headers (set by unified-ui proxy):
+- X-Trusted-User-Id: User's UUID
+- X-Trusted-User-Email: User's email
+- X-Trusted-User-Name: User's display name
+- X-Trusted-User-Profile: User's RBAC profile name
+- X-Trusted-User-Permissions: JSON array of permission strings
 
 Usage:
-    from api.auth import get_current_user, require_auth, require_permission
+    from api.auth import require_auth, require_permission
 
-    # Require authentication
     @app.get("/api/protected")
     async def protected_route(user: AuthUser = Depends(require_auth)):
         return {"user_id": user.id}
 
-    # Require specific permission (format: module:resource:action)
     @app.get("/api/admin")
     async def admin_route(user: AuthUser = Depends(require_permission("core:users:manage"))):
         return {"user_id": user.id}
-
-    # Require specific profile
-    @app.get("/api/admin-only")
-    async def admin_route(user: AuthUser = Depends(require_profile("system_admin"))):
-        return {"user_id": user.id}
-
-    # Optional auth (user may be None)
-    @app.get("/api/public")
-    async def public_route(user: Optional[AuthUser] = Depends(get_current_user)):
-        if user:
-            return {"authenticated": True, "user_id": user.id}
-        return {"authenticated": False}
 """
 
+import json
 import logging
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from integrations.auth import (
-    AuthUser,
-    AuthResult,
-    AuthStatus,
-    get_auth_client,
-)
-from integrations.rbac import (
-    get_rbac_client,
-    RBACContext,
-)
+from integrations.auth.base import AuthUser
 
 logger = logging.getLogger("proposal-bot")
 
-# HTTP Bearer scheme for extracting tokens
-_bearer_scheme = HTTPBearer(auto_error=False)
 
-
-async def get_token_from_request(
-    request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
-) -> Optional[str]:
+async def get_current_user(request: Request) -> Optional[AuthUser]:
     """
-    Extract JWT token from request.
+    Get the current authenticated user from trusted proxy headers.
 
-    Checks in order:
-    1. Authorization: Bearer <token> header
-    2. X-Request-User-ID header (from proxy for tracing)
-
-    Returns:
-        Token string or None
-    """
-    # Primary: Bearer token from Authorization header
-    if credentials and credentials.credentials:
-        return credentials.credentials
-
-    # Fallback: Check raw Authorization header
-    auth_header = request.headers.get("Authorization", "")
-    if auth_header.startswith("Bearer "):
-        return auth_header[7:]
-
-    return None
-
-
-async def get_current_user(
-    request: Request,
-    token: Optional[str] = Depends(get_token_from_request),
-) -> Optional[AuthUser]:
-    """
-    Get the current authenticated user (if any).
-
-    This dependency does NOT raise an exception if unauthenticated.
-    Use require_auth for protected endpoints.
+    unified-ui validates the JWT and injects these headers.
 
     Returns:
         AuthUser if authenticated, None otherwise
     """
-    if not token:
+    user_id = request.headers.get("x-trusted-user-id")
+
+    if not user_id:
         return None
 
+    email = request.headers.get("x-trusted-user-email", "")
+    name = request.headers.get("x-trusted-user-name")
+    profile = request.headers.get("x-trusted-user-profile")
+    permissions_json = request.headers.get("x-trusted-user-permissions", "[]")
+
+    # Parse permissions
     try:
-        auth = get_auth_client()
-        result = await auth.verify_token(token)
+        permissions = json.loads(permissions_json)
+    except json.JSONDecodeError:
+        permissions = []
 
-        if result.success and result.user:
-            # Optionally sync user to database on each request
-            # await auth.sync_user_to_db(result.user)
-            return result.user
-
-        return None
-
-    except Exception as e:
-        logger.warning(f"[AUTH] Error verifying token: {e}")
-        return None
+    return AuthUser(
+        id=user_id,
+        email=email,
+        name=name,
+        is_active=True,
+        supabase_id=user_id,
+        metadata={
+            "profile": profile,
+            "permissions": permissions,
+        },
+    )
 
 
 async def require_auth(
@@ -133,9 +95,45 @@ async def require_auth(
     return user
 
 
+def _matches_wildcard(pattern: str, permission: str) -> bool:
+    """Check if a wildcard pattern matches a permission."""
+    if pattern == "*:*:*":
+        return True
+
+    pattern_parts = pattern.split(":")
+    perm_parts = permission.split(":")
+
+    if len(pattern_parts) != 3 or len(perm_parts) != 3:
+        return False
+
+    for i, (p, t) in enumerate(zip(pattern_parts, perm_parts)):
+        if p != "*" and p != t:
+            # "manage" action implies all other actions
+            if i == 2 and p == "manage":
+                return True
+            return False
+
+    return True
+
+
+def _has_permission(permissions: List[str], required: str) -> bool:
+    """Check if user has a permission (direct match or wildcard)."""
+    if required in permissions:
+        return True
+
+    for perm in permissions:
+        if _matches_wildcard(perm, required):
+            return True
+
+    return False
+
+
 def require_permission(permission: str) -> Callable:
     """
     Factory for requiring a specific permission.
+
+    Permissions are provided by unified-ui in the X-Trusted-User-Permissions header.
+    Supports wildcard patterns like "sales:*:*" or "*:*:*".
 
     Permission format: {module}:{resource}:{action}
     e.g., "core:users:manage", "sales:proposals:create"
@@ -146,26 +144,11 @@ def require_permission(permission: str) -> Callable:
             return {"user": user.email}
     """
     async def _require_permission(
-        request: Request,
         user: AuthUser = Depends(require_auth),
     ) -> AuthUser:
-        rbac = get_rbac_client()
+        permissions: List[str] = user.metadata.get("permissions", [])
 
-        # Build context for ownership checks
-        context = None
-        if request:
-            # Extract resource info from path if available
-            path_params = getattr(request, "path_params", {})
-            resource_id = path_params.get("id") or path_params.get("resource_id")
-            if resource_id:
-                context = RBACContext(
-                    user_id=user.id,
-                    resource_id=resource_id,
-                )
-
-        has_perm = await rbac.has_permission(user.id, permission, context)
-
-        if not has_perm:
+        if not _has_permission(permissions, permission):
             logger.warning(
                 f"[AUTH] User {user.id} ({user.email}) lacks permission: {permission}"
             )
@@ -183,6 +166,8 @@ def require_profile(profile_name: str) -> Callable:
     """
     Factory for requiring a specific profile.
 
+    Profile is provided by unified-ui in the X-Trusted-User-Profile header.
+
     Usage:
         @app.get("/api/admin-only")
         async def admin_only(user: AuthUser = Depends(require_profile("system_admin"))):
@@ -191,10 +176,9 @@ def require_profile(profile_name: str) -> Callable:
     async def _require_profile(
         user: AuthUser = Depends(require_auth),
     ) -> AuthUser:
-        rbac = get_rbac_client()
-        profile = await rbac.get_user_profile(user.id)
+        user_profile = user.metadata.get("profile")
 
-        if not profile or profile.name != profile_name:
+        if user_profile != profile_name:
             logger.warning(
                 f"[AUTH] User {user.id} ({user.email}) lacks profile: {profile_name}"
             )
@@ -220,10 +204,9 @@ def require_any_profile(*profile_names: str) -> Callable:
     async def _require_any_profile(
         user: AuthUser = Depends(require_auth),
     ) -> AuthUser:
-        rbac = get_rbac_client()
-        profile = await rbac.get_user_profile(user.id)
+        user_profile = user.metadata.get("profile")
 
-        if profile and profile.name in profile_names:
+        if user_profile in profile_names:
             return user
 
         logger.warning(
@@ -235,34 +218,3 @@ def require_any_profile(*profile_names: str) -> Callable:
         )
 
     return _require_any_profile
-
-
-# =============================================================================
-# AUTH SYNC ENDPOINT
-# =============================================================================
-
-
-async def sync_user_from_token(
-    user: AuthUser = Depends(require_auth),
-) -> dict:
-    """
-    Sync authenticated user to the application database.
-
-    Called by frontend after successful Supabase login to ensure
-    user exists in our database with current profile data.
-    """
-    try:
-        auth = get_auth_client()
-        success = await auth.sync_user_to_db(user)
-
-        return {
-            "success": success,
-            "user": user.to_dict(),
-        }
-
-    except Exception as e:
-        logger.error(f"[AUTH] Sync user failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to sync user",
-        )

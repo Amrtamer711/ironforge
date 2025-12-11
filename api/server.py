@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from api.middleware.security_headers import SecurityHeadersMiddleware
 import config
@@ -197,6 +198,90 @@ logger.info("[SECURITY] Security headers middleware enabled")
 async def logging_middleware(request: Request, call_next):
     """Log all HTTP requests with request ID tracking."""
     return await logging_middleware_helper(request, call_next)
+
+
+# Paths that don't require proxy secret (have their own auth)
+PROXY_SECRET_EXEMPT_PATHS = {
+    "/health",
+    "/slack/events",
+    "/slack/interactions",
+    "/slack/commands",
+}
+
+
+def _is_proxy_secret_exempt(path: str) -> bool:
+    """Check if path is exempt from proxy secret validation."""
+    # Exact matches
+    if path in PROXY_SECRET_EXEMPT_PATHS:
+        return True
+    # Prefix matches for slack routes
+    if path.startswith("/slack/"):
+        return True
+    return False
+
+
+# Add trusted user context middleware (set RBAC context from unified-ui headers)
+@app.middleware("http")
+async def trusted_user_middleware(request: Request, call_next):
+    """
+    Extract trusted user context from proxy headers.
+
+    Security: Only trusts X-Trusted-User-* headers if accompanied by valid X-Proxy-Secret.
+    This prevents header spoofing attacks when proposal-bot is publicly accessible.
+
+    Exempt paths (Slack webhooks, health checks) have their own authentication.
+
+    unified-ui validates JWT and injects these headers:
+    - X-Proxy-Secret: Shared secret to verify request is from unified-ui
+    - X-Trusted-User-Id
+    - X-Trusted-User-Email
+    - X-Trusted-User-Name
+    - X-Trusted-User-Profile
+    - X-Trusted-User-Permissions
+    """
+    import json
+    from integrations.rbac.providers.database import set_user_context, clear_user_context
+
+    path = request.url.path
+
+    # Skip proxy secret validation for exempt paths
+    if not _is_proxy_secret_exempt(path):
+        # Validate proxy secret if configured
+        expected_secret = settings.proxy_secret
+        if expected_secret:
+            provided_secret = request.headers.get("x-proxy-secret")
+            if provided_secret != expected_secret:
+                # If trusted user headers are present without valid secret, reject
+                if request.headers.get("x-trusted-user-id"):
+                    logger.warning(f"[SECURITY] Blocked spoofed trusted headers on {path}")
+                    return JSONResponse(
+                        status_code=403,
+                        content={"error": "Invalid proxy secret"}
+                    )
+
+    user_id = request.headers.get("x-trusted-user-id")
+
+    if user_id:
+        # Only set context if proxy secret is valid (or not configured)
+        expected_secret = settings.proxy_secret
+        provided_secret = request.headers.get("x-proxy-secret")
+
+        if not expected_secret or provided_secret == expected_secret:
+            profile = request.headers.get("x-trusted-user-profile", "")
+            permissions_json = request.headers.get("x-trusted-user-permissions", "[]")
+
+            try:
+                permissions = json.loads(permissions_json)
+            except json.JSONDecodeError:
+                permissions = []
+
+            set_user_context(user_id, profile, permissions)
+
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        clear_user_context()
 
 # Setup centralized exception handlers
 from api.exceptions import setup_exception_handlers
