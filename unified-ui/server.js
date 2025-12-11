@@ -153,7 +153,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.jsdelivr.net"],  // Needed for some UI frameworks + Supabase CDN
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],  // unsafe-inline for inline handlers, CDN for Supabase
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: ["'self'", ...ALLOWED_ORIGINS, supabaseUrl, "https://*.supabase.co"].filter(Boolean),
