@@ -144,7 +144,7 @@ const Chat = {
   showWelcome() {
     const welcome = document.querySelector('.chat-welcome');
     if (welcome) {
-      welcome.style.display = '';
+      welcome.classList.add('visible');
       // Re-setup suggestions since they might need event listeners
       this.setupSuggestions();
       this.updateTimeGreeting();
@@ -509,7 +509,7 @@ const Chat = {
   hideWelcome() {
     const welcome = document.querySelector('.chat-welcome');
     if (welcome) {
-      welcome.style.display = 'none';
+      welcome.classList.remove('visible');
     }
   },
 

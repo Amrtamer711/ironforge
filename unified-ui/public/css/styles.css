@@ -3235,7 +3235,7 @@ body.modal-open {
 
 .chat-welcome {
   position: relative;
-  display: flex;
+  display: none; /* Hidden by default - shown via JS after history check */
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -3245,6 +3245,11 @@ body.modal-open {
   max-width: 800px;
   margin: 0 auto;
   overflow: hidden;
+}
+
+/* Show welcome when explicitly activated */
+.chat-welcome.visible {
+  display: flex;
 }
 
 /* Floating Orbs Background */
