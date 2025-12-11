@@ -59,7 +59,9 @@ const Chat = {
       return;
     }
 
-    // Show loading state
+    // IMPORTANT: Hide welcome and show loading IMMEDIATELY before any async work
+    // This prevents the flash of the welcome screen
+    this.hideWelcome();
     this.showLoadingState();
 
     try {
@@ -75,6 +77,7 @@ const Chat = {
       if (!response.ok) {
         console.warn('[Chat] Failed to load history:', response.status);
         this.hideLoadingState();
+        this.showWelcome(); // Show welcome on error
         return;
       }
 
@@ -84,13 +87,13 @@ const Chat = {
       if (messages.length === 0) {
         console.log('[Chat] No chat history found');
         this.hideLoadingState();
+        this.showWelcome(); // Show welcome when no history
         return;
       }
 
       console.log(`[Chat] Loaded ${messages.length} messages from history`);
 
-      // Hide welcome screen and loading
-      this.hideWelcome();
+      // Hide loading (welcome already hidden)
       this.hideLoadingState();
 
       // Render each message
@@ -111,18 +114,13 @@ const Chat = {
     } catch (error) {
       console.error('[Chat] Error loading history:', error);
       this.hideLoadingState();
+      this.showWelcome(); // Show welcome on error
     }
   },
 
   showLoadingState() {
     const messagesContainer = document.getElementById('chatMessages');
     if (!messagesContainer) return;
-
-    // Hide welcome screen first
-    const welcome = messagesContainer.querySelector('.chat-welcome');
-    if (welcome) {
-      welcome.style.display = 'none';
-    }
 
     // Add loading overlay if not exists
     if (!messagesContainer.querySelector('.chat-loading')) {
@@ -140,6 +138,16 @@ const Chat = {
     const loading = document.querySelector('.chat-loading');
     if (loading) {
       loading.remove();
+    }
+  },
+
+  showWelcome() {
+    const welcome = document.querySelector('.chat-welcome');
+    if (welcome) {
+      welcome.style.display = '';
+      // Re-setup suggestions since they might need event listeners
+      this.setupSuggestions();
+      this.updateTimeGreeting();
     }
   },
 
