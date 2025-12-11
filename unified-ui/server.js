@@ -103,16 +103,29 @@ setInterval(() => {
 
 // =============================================================================
 // CORS CONFIGURATION
-// In production, only allow specific origins. In development, allow localhost.
+// local = localhost only, development/production = Render URL + optional CORS_ORIGINS
 // =============================================================================
-const ALLOWED_ORIGINS = IS_PRODUCTION
-  ? (process.env.CORS_ORIGINS || '').split(',').filter(Boolean).map(s => s.trim())
-  : ['http://localhost:3000', 'http://localhost:3005', 'http://127.0.0.1:3000', 'http://127.0.0.1:3005'];
+const IS_LOCAL = ENVIRONMENT === 'local';
+const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL; // Auto-set by Render
 
-// Warn if production has no CORS origins configured
-if (IS_PRODUCTION && ALLOWED_ORIGINS.length === 0) {
-  console.warn('[UI] WARNING: No CORS_ORIGINS configured in production. CORS will block cross-origin requests.');
-  console.warn('[UI] Set CORS_ORIGINS environment variable (comma-separated list of allowed origins)');
+let ALLOWED_ORIGINS = [];
+
+if (IS_LOCAL) {
+  // Local environment - only localhost
+  ALLOWED_ORIGINS = ['http://localhost:3000', 'http://localhost:3005', 'http://127.0.0.1:3000', 'http://127.0.0.1:3005'];
+} else {
+  // Development or Production on Render - allow the Render URL
+  if (RENDER_EXTERNAL_URL) {
+    ALLOWED_ORIGINS.push(RENDER_EXTERNAL_URL);
+  }
+  // Also allow any additional origins from CORS_ORIGINS env var
+  const extraOrigins = (process.env.CORS_ORIGINS || '').split(',').filter(Boolean).map(s => s.trim());
+  ALLOWED_ORIGINS.push(...extraOrigins);
+}
+
+// Warn if no origins configured on Render
+if (!IS_LOCAL && ALLOWED_ORIGINS.length === 0) {
+  console.warn('[UI] WARNING: No CORS origins configured. Ensure RENDER_EXTERNAL_URL is set or add CORS_ORIGINS.');
 }
 
 const corsOptions = {
