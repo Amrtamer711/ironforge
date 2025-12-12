@@ -1,6 +1,7 @@
 /**
- * Auth Module - Handles authentication via Supabase
- * Supports: Local dev (simple auth) and Supabase (production)
+ * Auth Module - Handles authentication via Microsoft SSO (Supabase)
+ * Production: Microsoft SSO only
+ * Local Dev: Simple email/password for testing
  */
 
 const Auth = {
@@ -8,7 +9,7 @@ const Auth = {
   supabaseClient: null,
   isLocalDev: window.location.hostname === 'localhost' && !window.SUPABASE_URL,
 
-  // Dev users for local testing (when Supabase is not configured)
+  // Dev users for local testing only (when Supabase is not configured)
   devUsers: {
     'admin@mmg.com': {
       password: 'admin123',
@@ -38,7 +39,7 @@ const Auth = {
     console.log('[Auth] SUPABASE_URL:', window.SUPABASE_URL ? 'configured' : 'not set');
     console.log('[Auth] SUPABASE_ANON_KEY:', window.SUPABASE_ANON_KEY ? 'configured' : 'not set');
 
-    // Check for auth errors in URL hash (e.g., expired email links)
+    // Check for auth errors in URL hash (e.g., from OAuth redirects)
     this.handleAuthHashError();
 
     // Initialize Supabase client if configured
@@ -47,7 +48,7 @@ const Auth = {
       this.supabaseClient = supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
       this.isLocalDev = false;
 
-      // Listen for auth state changes
+      // Listen for auth state changes (handles OAuth redirect callback)
       this.supabaseClient.auth.onAuthStateChange((event, session) => {
         console.log('[Auth] Auth state changed:', event);
         if (event === 'SIGNED_IN' && session) {
@@ -68,7 +69,7 @@ const Auth = {
       }
       console.log('[Auth] No existing session found');
     } else {
-      console.log('[Auth] Running in local dev mode');
+      console.log('[Auth] Running in local dev mode (no Supabase)');
       // Local dev mode - check localStorage
       const token = localStorage.getItem('authToken');
       const userData = localStorage.getItem('userData');
@@ -106,11 +107,18 @@ const Auth = {
         }
       });
 
-      // Check if user was deleted/deactivated
+      // Check if user was deleted/deactivated/pending approval
       if (response.status === 403) {
         const errorData = await response.json();
         if (errorData.requiresLogout) {
-          console.error('[Auth] User account not found or deactivated - logging out');
+          console.error('[Auth] User account issue:', errorData.code);
+
+          // Handle pending approval specially - show the pending screen instead of logout
+          if (errorData.code === 'USER_PENDING_APPROVAL') {
+            this.showAccessPending(user.email, errorData.error);
+            return;
+          }
+
           await this.logout();
           if (window.Toast) {
             Toast.error(errorData.error || 'Your account has been removed or deactivated');
@@ -209,7 +217,146 @@ const Auth = {
     return this.user;
   },
 
+  /**
+   * Sign in with Microsoft SSO via Supabase OAuth
+   */
+  async loginWithMicrosoft() {
+    console.log('[Auth] Initiating Microsoft SSO login...');
+
+    if (!this.supabaseClient) {
+      console.error('[Auth] Supabase client not configured');
+      throw new Error('Supabase not configured. Please contact your administrator.');
+    }
+
+    const { data, error } = await this.supabaseClient.auth.signInWithOAuth({
+      provider: 'azure',
+      options: {
+        scopes: 'email profile openid',
+        redirectTo: window.location.origin  // Redirect back to this origin after SSO
+      }
+    });
+
+    if (error) {
+      console.error('[Auth] Microsoft SSO failed:', error.message);
+      throw new Error(error.message);
+    }
+
+    // User will be redirected to Microsoft, then back to our app
+    // onAuthStateChange will handle the session when they return
+    console.log('[Auth] Redirecting to Microsoft for authentication...');
+    return data;
+  },
+
+  /**
+   * Show the access pending screen for unapproved users
+   */
+  showAccessPending(email, message) {
+    console.log('[Auth] Showing access pending screen for:', email);
+
+    // Hide loading screen
+    const loadingScreen = document.getElementById('loadingScreen');
+    if (loadingScreen) loadingScreen.classList.add('hidden');
+
+    // Hide landing, login modal, and app
+    document.getElementById('landingPage').style.display = 'none';
+    document.getElementById('loginModal').classList.remove('active');
+    document.body.classList.remove('modal-open');
+    document.getElementById('app').style.display = 'none';
+
+    // Show access pending screen (create it if it doesn't exist)
+    let pendingScreen = document.getElementById('accessPendingScreen');
+    if (!pendingScreen) {
+      pendingScreen = document.createElement('div');
+      pendingScreen.id = 'accessPendingScreen';
+      pendingScreen.innerHTML = `
+        <div class="pending-container">
+          <div class="pending-icon">
+            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+          </div>
+          <h1>Access Pending</h1>
+          <p class="pending-message">${message || 'Your account is pending administrator approval.'}</p>
+          <p class="pending-email">Signed in as: <strong>${email}</strong></p>
+          <p class="pending-instructions">
+            Please contact your administrator to request access to the platform.
+            Once approved, you'll be able to sign in and use the system.
+          </p>
+          <button class="btn btn-secondary" onclick="Auth.logout()">
+            Sign Out
+          </button>
+        </div>
+      `;
+      pendingScreen.style.cssText = `
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        background: var(--neural-950);
+        color: var(--neural-100);
+      `;
+      const style = document.createElement('style');
+      style.textContent = `
+        #accessPendingScreen .pending-container {
+          text-align: center;
+          max-width: 480px;
+          padding: 3rem;
+        }
+        #accessPendingScreen .pending-icon {
+          color: var(--accent-amber);
+          margin-bottom: 1.5rem;
+        }
+        #accessPendingScreen h1 {
+          font-size: 2rem;
+          font-weight: 700;
+          margin-bottom: 1rem;
+        }
+        #accessPendingScreen .pending-message {
+          color: var(--neural-300);
+          font-size: 1.1rem;
+          margin-bottom: 1rem;
+        }
+        #accessPendingScreen .pending-email {
+          color: var(--neural-400);
+          margin-bottom: 1.5rem;
+        }
+        #accessPendingScreen .pending-instructions {
+          color: var(--neural-500);
+          font-size: 0.9rem;
+          margin-bottom: 2rem;
+          line-height: 1.6;
+        }
+      `;
+      document.head.appendChild(style);
+      document.body.appendChild(pendingScreen);
+    } else {
+      // Update existing screen
+      pendingScreen.querySelector('.pending-message').textContent = message || 'Your account is pending administrator approval.';
+      pendingScreen.querySelector('.pending-email strong').textContent = email;
+    }
+
+    pendingScreen.style.display = 'flex';
+  },
+
+  /**
+   * Hide the access pending screen
+   */
+  hideAccessPending() {
+    const pendingScreen = document.getElementById('accessPendingScreen');
+    if (pendingScreen) {
+      pendingScreen.style.display = 'none';
+    }
+  },
+
+  /**
+   * DEPRECATED: Sign up with invite token
+   * This method is deprecated in favor of Microsoft SSO authentication.
+   * New users should sign in via Microsoft SSO. If pre-approved by admin,
+   * they get immediate access. If not, they see the "Access Pending" screen.
+   */
   async signUpWithToken(token, email, password, name) {
+    console.warn('[Auth] signUpWithToken is DEPRECATED - use Microsoft SSO instead');
     console.log('[Auth] Starting signup with token for:', email);
 
     if (this.isLocalDev) {
@@ -313,6 +460,9 @@ const Auth = {
     if (window.ModuleRegistry) {
       ModuleRegistry.reset();
     }
+
+    // Hide access pending screen if shown
+    this.hideAccessPending();
 
     this.showLanding();
   },
@@ -495,48 +645,58 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Auth tab switching
-  const signInTab = document.getElementById('signInTab');
-  const signUpTab = document.getElementById('signUpTab');
-  const loginForm = document.getElementById('loginForm');
-  const signupForm = document.getElementById('signupForm');
+  // Determine which login section to show based on environment
+  const ssoLoginSection = document.getElementById('ssoLoginSection');
+  const devLoginSection = document.getElementById('devLoginSection');
   const authSubtitle = document.getElementById('authSubtitle');
-  const devModeHint = document.getElementById('devModeHint');
+  const isDevMode = window.location.hostname === 'localhost' && !window.SUPABASE_URL;
 
-  function switchToSignIn() {
-    signInTab.classList.add('active');
-    signInTab.style.background = 'var(--neural-800)';
-    signInTab.style.color = 'var(--neural-100)';
-    signUpTab.classList.remove('active');
-    signUpTab.style.background = 'var(--neural-900)';
-    signUpTab.style.color = 'var(--neural-500)';
-    loginForm.style.display = 'block';
-    signupForm.style.display = 'none';
-    authSubtitle.textContent = 'Sign in to continue to your workspace';
-    if (devModeHint) devModeHint.style.display = 'block';
+  if (isDevMode) {
+    // Show dev login form, hide SSO button
+    if (ssoLoginSection) ssoLoginSection.style.display = 'none';
+    if (devLoginSection) devLoginSection.style.display = 'block';
+    if (authSubtitle) authSubtitle.textContent = 'Sign in to continue (Dev Mode)';
+  } else {
+    // Show SSO button, hide dev login form
+    if (ssoLoginSection) ssoLoginSection.style.display = 'block';
+    if (devLoginSection) devLoginSection.style.display = 'none';
   }
 
-  function switchToSignUp() {
-    signUpTab.classList.add('active');
-    signUpTab.style.background = 'var(--neural-800)';
-    signUpTab.style.color = 'var(--neural-100)';
-    signInTab.classList.remove('active');
-    signInTab.style.background = 'var(--neural-900)';
-    signInTab.style.color = 'var(--neural-500)';
-    signupForm.style.display = 'block';
-    loginForm.style.display = 'none';
-    authSubtitle.textContent = 'Create your account with an invite token';
-    if (devModeHint) devModeHint.style.display = 'none';
+  // Microsoft SSO button click handler
+  const microsoftSsoBtn = document.getElementById('microsoftSsoBtn');
+  if (microsoftSsoBtn) {
+    microsoftSsoBtn.addEventListener('click', async () => {
+      try {
+        microsoftSsoBtn.disabled = true;
+        microsoftSsoBtn.innerHTML = `
+          <svg class="spinner" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation: spin 1s linear infinite;">
+            <circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="32"/>
+          </svg>
+          Connecting to Microsoft...
+        `;
+
+        await Auth.loginWithMicrosoft();
+        // User will be redirected to Microsoft, so we don't need to do anything else here
+      } catch (error) {
+        if (window.Toast) {
+          Toast.error(error.message || 'Microsoft sign-in failed');
+        }
+        microsoftSsoBtn.disabled = false;
+        microsoftSsoBtn.innerHTML = `
+          <svg width="21" height="21" viewBox="0 0 21 21" fill="none">
+            <rect width="10" height="10" fill="#f25022"/>
+            <rect x="11" width="10" height="10" fill="#7fba00"/>
+            <rect y="11" width="10" height="10" fill="#00a4ef"/>
+            <rect x="11" y="11" width="10" height="10" fill="#ffb900"/>
+          </svg>
+          Sign in with Microsoft
+        `;
+      }
+    });
   }
 
-  if (signInTab) {
-    signInTab.addEventListener('click', switchToSignIn);
-  }
-  if (signUpTab) {
-    signUpTab.addEventListener('click', switchToSignUp);
-  }
-
-  // Login form submission
+  // Dev mode login form submission
+  const loginForm = document.getElementById('loginForm');
   if (loginForm) {
     loginForm.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -552,56 +712,12 @@ document.addEventListener('DOMContentLoaded', () => {
         await Auth.login(email, password);
         Auth.showApp();
 
-        Toast.success('Welcome back!');
+        if (window.Toast) Toast.success('Welcome back!');
       } catch (error) {
-        Toast.error(error.message || 'Login failed');
+        if (window.Toast) Toast.error(error.message || 'Login failed');
       } finally {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Sign In';
-      }
-    });
-  }
-
-  // Sign up form submission
-  if (signupForm) {
-    signupForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-
-      const token = document.getElementById('signupTokenInput').value.trim();
-      const email = document.getElementById('signupEmailInput').value.trim();
-      const name = document.getElementById('signupNameInput').value.trim();
-      const password = document.getElementById('signupPasswordInput').value;
-      const confirmPassword = document.getElementById('signupConfirmPasswordInput').value;
-      const submitBtn = signupForm.querySelector('button[type="submit"]');
-
-      // Validate passwords match
-      if (password !== confirmPassword) {
-        Toast.error('Passwords do not match');
-        return;
-      }
-
-      // Validate password length
-      if (password.length < 8) {
-        Toast.error('Password must be at least 8 characters');
-        return;
-      }
-
-      try {
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Creating account...';
-
-        await Auth.signUpWithToken(token, email, password, name);
-
-        Toast.success('Account created! Please check your email to verify, then sign in.');
-
-        // Switch to sign in tab
-        switchToSignIn();
-        document.getElementById('emailInput').value = email;
-      } catch (error) {
-        Toast.error(error.message || 'Sign up failed');
-      } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Create Account';
       }
     });
   }
@@ -611,7 +727,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
       await Auth.logout();
-      Toast.success('Logged out successfully');
+      if (window.Toast) Toast.success('Logged out successfully');
     });
   }
 

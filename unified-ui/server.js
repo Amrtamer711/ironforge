@@ -705,8 +705,19 @@ app.get('/', (req, res) => {
 // =============================================================================
 
 // =============================================================================
-// INVITE TOKEN ENDPOINTS
-// Invite tokens are stored in UI Supabase (auth/RBAC database)
+// INVITE TOKEN ENDPOINTS (DEPRECATED)
+// =============================================================================
+// NOTE: These endpoints are DEPRECATED in favor of Microsoft SSO with admin
+// pre-approval workflow. New users should be created via:
+//   - POST /api/admin/users/create (admin pre-creates user)
+//   - User signs in via Microsoft SSO
+//   - Trigger links auth.users to pre-created user
+//
+// For unapproved SSO users:
+//   - POST /api/admin/users/:userId/approve (admin approves)
+//
+// These invite token endpoints are kept for backward compatibility but
+// should not be used for new implementations.
 // =============================================================================
 
 // Email validation regex (RFC 5322 simplified)
@@ -1261,14 +1272,28 @@ app.get('/api/base/auth/me', requireAuth, async (req, res) => {
       });
     }
 
-    // Check if user is deactivated
+    // Check if user is inactive (awaiting admin approval)
     if (userData.is_active === false) {
-      console.warn(`[UI] User ${req.user.email} is deactivated - rejecting`);
-      return res.status(403).json({
-        error: 'Account deactivated',
-        code: 'USER_DEACTIVATED',
-        requiresLogout: true
-      });
+      // Check if this is a pending SSO user (signed in but not approved)
+      const isPendingSso = userData.id?.startsWith('pending-') ||
+                           !userData.profile_id ||
+                           userData.profiles?.name === 'viewer';
+
+      if (isPendingSso) {
+        console.warn(`[UI] User ${req.user.email} is pending admin approval`);
+        return res.status(403).json({
+          error: 'Your account is pending administrator approval. Please contact your administrator.',
+          code: 'USER_PENDING_APPROVAL',
+          requiresLogout: true
+        });
+      } else {
+        console.warn(`[UI] User ${req.user.email} has been deactivated`);
+        return res.status(403).json({
+          error: 'Your account has been deactivated. Please contact your administrator.',
+          code: 'USER_DEACTIVATED',
+          requiresLogout: true
+        });
+      }
     }
 
     // Clear RBAC cache for this user to pick up any changes
@@ -1365,6 +1390,393 @@ app.post('/api/base/auth/force-logout/:userId', requireAuth, requireProfile('sys
   } catch (err) {
     console.error(`[UI AUTH] Force logout error: ${err.message}`);
     res.status(500).json({ error: 'Failed to force logout user' });
+  }
+});
+
+// =============================================================================
+// ADMIN USER MANAGEMENT ENDPOINTS
+// =============================================================================
+
+// Get all users (admin only)
+app.get('/api/admin/users', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  try {
+    const { data: users, error } = await supabase
+      .from('users')
+      .select(`
+        id, email, name, is_active, created_at, updated_at, last_login_at,
+        profile_id, profiles(id, name, display_name),
+        team_members(team_id, role, teams(id, name))
+      `)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ users });
+  } catch (err) {
+    console.error('[UI Admin] Error fetching users:', err.message);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Get pending users awaiting approval (admin only)
+app.get('/api/admin/users/pending', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  try {
+    const { data: users, error } = await supabase
+      .from('users')
+      .select(`
+        id, email, name, is_active, created_at, metadata_json,
+        profile_id, profiles(id, name, display_name)
+      `)
+      .eq('is_active', false)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({ users });
+  } catch (err) {
+    console.error('[UI Admin] Error fetching pending users:', err.message);
+    res.status(500).json({ error: 'Failed to fetch pending users' });
+  }
+});
+
+// Pre-create a user (admin only) - for pre-approval flow
+app.post('/api/admin/users/create', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  const { email, name, profile_name, team_id } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
+  try {
+    // Check if user already exists
+    const { data: existing } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email.toLowerCase())
+      .single();
+
+    if (existing) {
+      return res.status(409).json({ error: 'User with this email already exists' });
+    }
+
+    // Get profile ID
+    const profileToUse = profile_name || 'sales_user';
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('name', profileToUse)
+      .single();
+
+    if (profileError || !profile) {
+      return res.status(400).json({ error: `Profile not found: ${profileToUse}` });
+    }
+
+    // Generate a pending ID (will be replaced when user signs in via SSO)
+    const pendingId = `pending-${crypto.randomUUID()}`;
+
+    // Create the pending user
+    const { data: newUser, error: createError } = await supabase
+      .from('users')
+      .insert({
+        id: pendingId,
+        email: email.toLowerCase(),
+        name: name || null,
+        profile_id: profile.id,
+        is_active: true, // Pre-created users are active
+        metadata_json: {
+          created_by: req.user.id,
+          created_by_email: req.user.email,
+          pending_sso: true
+        }
+      })
+      .select()
+      .single();
+
+    if (createError) throw createError;
+
+    // Add to team if specified
+    if (team_id) {
+      await supabase.from('team_members').insert({
+        team_id: team_id,
+        user_id: pendingId,
+        role: 'member',
+        joined_at: new Date().toISOString()
+      });
+    }
+
+    // Audit log
+    await supabase.from('audit_log').insert({
+      user_id: req.user.id,
+      user_email: req.user.email,
+      action: 'admin.user_created',
+      action_category: 'admin',
+      resource_type: 'user',
+      resource_id: pendingId,
+      details: { email: email.toLowerCase(), profile_name: profileToUse, team_id },
+      success: true
+    });
+
+    console.log(`[UI Admin] User pre-created: ${email} by ${req.user.email}`);
+    res.json({
+      success: true,
+      user: newUser,
+      message: `User ${email} created. They can now sign in with Microsoft SSO.`
+    });
+
+  } catch (err) {
+    console.error('[UI Admin] Error creating user:', err.message);
+    res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+// Approve a pending user (admin only)
+app.post('/api/admin/users/:userId/approve', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  const { userId } = req.params;
+  const { profile_name } = req.body;
+
+  try {
+    // Get the user
+    const { data: user, error: fetchError } = await supabase
+      .from('users')
+      .select('id, email, is_active')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError || !user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (user.is_active) {
+      return res.status(400).json({ error: 'User is already active' });
+    }
+
+    // Get new profile if specified
+    let profileId = null;
+    if (profile_name) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('name', profile_name)
+        .single();
+
+      if (profile) {
+        profileId = profile.id;
+      }
+    }
+
+    // Approve the user
+    const updateData = {
+      is_active: true,
+      updated_at: new Date().toISOString(),
+      metadata_json: supabase.raw(`COALESCE(metadata_json, '{}'::jsonb) || '{"approved_by": "${req.user.id}", "approved_at": "${new Date().toISOString()}"}'::jsonb`)
+    };
+
+    if (profileId) {
+      updateData.profile_id = profileId;
+    }
+
+    // Simple update without raw JSON
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({
+        is_active: true,
+        profile_id: profileId || undefined,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+
+    if (updateError) throw updateError;
+
+    // Audit log
+    await supabase.from('audit_log').insert({
+      user_id: req.user.id,
+      user_email: req.user.email,
+      action: 'admin.user_approved',
+      action_category: 'admin',
+      resource_type: 'user',
+      resource_id: userId,
+      target_user_id: userId,
+      details: { profile_name },
+      success: true
+    });
+
+    console.log(`[UI Admin] User approved: ${user.email} by ${req.user.email}`);
+    res.json({
+      success: true,
+      message: `User ${user.email} has been approved and can now access the platform.`
+    });
+
+  } catch (err) {
+    console.error('[UI Admin] Error approving user:', err.message);
+    res.status(500).json({ error: 'Failed to approve user' });
+  }
+});
+
+// Deactivate a user (admin only)
+app.post('/api/admin/users/:userId/deactivate', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    // Prevent self-deactivation
+    if (userId === req.user.id) {
+      return res.status(400).json({ error: 'Cannot deactivate your own account' });
+    }
+
+    const { data: user, error: fetchError } = await supabase
+      .from('users')
+      .select('id, email')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError || !user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Deactivate
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({
+        is_active: false,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+
+    if (updateError) throw updateError;
+
+    // Force logout the user
+    invalidateRBACCache(userId);
+    await supabase.auth.admin.signOut(userId).catch(() => {});
+
+    // Audit log
+    await supabase.from('audit_log').insert({
+      user_id: req.user.id,
+      user_email: req.user.email,
+      action: 'admin.user_deactivated',
+      action_category: 'admin',
+      resource_type: 'user',
+      resource_id: userId,
+      target_user_id: userId,
+      success: true
+    });
+
+    console.log(`[UI Admin] User deactivated: ${user.email} by ${req.user.email}`);
+    res.json({
+      success: true,
+      message: `User ${user.email} has been deactivated.`
+    });
+
+  } catch (err) {
+    console.error('[UI Admin] Error deactivating user:', err.message);
+    res.status(500).json({ error: 'Failed to deactivate user' });
+  }
+});
+
+// Update user's profile/role (admin only)
+app.patch('/api/admin/users/:userId', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  const { userId } = req.params;
+  const { profile_name, name, team_id } = req.body;
+
+  try {
+    const updates = {
+      updated_at: new Date().toISOString()
+    };
+
+    if (name !== undefined) {
+      updates.name = name;
+    }
+
+    if (profile_name) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('name', profile_name)
+        .single();
+
+      if (!profile) {
+        return res.status(400).json({ error: `Profile not found: ${profile_name}` });
+      }
+      updates.profile_id = profile.id;
+    }
+
+    const { error: updateError } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', userId);
+
+    if (updateError) throw updateError;
+
+    // Update team membership if specified
+    if (team_id !== undefined) {
+      // Remove from all teams first
+      await supabase.from('team_members').delete().eq('user_id', userId);
+
+      // Add to new team if specified
+      if (team_id) {
+        await supabase.from('team_members').insert({
+          team_id: team_id,
+          user_id: userId,
+          role: 'member',
+          joined_at: new Date().toISOString()
+        });
+      }
+    }
+
+    // Invalidate RBAC cache for this user
+    invalidateRBACCache(userId);
+
+    // Audit log
+    await supabase.from('audit_log').insert({
+      user_id: req.user.id,
+      user_email: req.user.email,
+      action: 'admin.user_updated',
+      action_category: 'admin',
+      resource_type: 'user',
+      resource_id: userId,
+      target_user_id: userId,
+      details: { profile_name, name, team_id },
+      success: true
+    });
+
+    console.log(`[UI Admin] User updated: ${userId} by ${req.user.email}`);
+    res.json({ success: true });
+
+  } catch (err) {
+    console.error('[UI Admin] Error updating user:', err.message);
+    res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
+// Get available profiles (for admin UI dropdowns)
+app.get('/api/admin/profiles', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  try {
+    const { data: profiles, error } = await supabase
+      .from('profiles')
+      .select('id, name, display_name, description')
+      .order('display_name');
+
+    if (error) throw error;
+
+    res.json({ profiles });
+  } catch (err) {
+    console.error('[UI Admin] Error fetching profiles:', err.message);
+    res.status(500).json({ error: 'Failed to fetch profiles' });
+  }
+});
+
+// Get available teams (for admin UI dropdowns)
+app.get('/api/admin/teams', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  try {
+    const { data: teams, error } = await supabase
+      .from('teams')
+      .select('id, name, description')
+      .order('name');
+
+    if (error) throw error;
+
+    res.json({ teams });
+  } catch (err) {
+    console.error('[UI Admin] Error fetching teams:', err.message);
+    res.status(500).json({ error: 'Failed to fetch teams' });
   }
 });
 
