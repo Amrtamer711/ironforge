@@ -149,10 +149,22 @@ const Auth = {
     };
 
     // Build user object from Supabase user
+    // Microsoft Azure sends name in various fields depending on config
+    console.log('[Auth] User metadata from SSO:', JSON.stringify(user.user_metadata, null, 2));
+    console.log('[Auth] User identities:', JSON.stringify(user.identities, null, 2));
+
+    const userName = user.user_metadata?.name
+      || user.user_metadata?.full_name
+      || user.user_metadata?.preferred_username
+      || user.identities?.[0]?.identity_data?.name
+      || user.identities?.[0]?.identity_data?.full_name
+      || user.email?.split('@')[0]
+      || 'User';
+
     this.user = {
       id: user.id,
       email: user.email,
-      name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+      name: userName,
       profile: profileName,
       roles: profileToRoles[profileName] || ['sales_person']
     };
