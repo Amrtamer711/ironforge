@@ -5,13 +5,19 @@ Reads permissions from trusted proxy headers.
 unified-ui handles all RBAC queries and injects permissions into request headers.
 This provider reads from the current user context (set by middleware).
 
+Enterprise RBAC - 4 Levels:
+- Level 1: Profiles (base permissions for job function)
+- Level 2: Permission Sets (additive, can be temporary with expiration)
+- Level 3: Teams & Hierarchy (team-based access, manager sees subordinates)
+- Level 4: Record Sharing (share specific records with users/teams)
+
 NOTE: All RBAC management (profiles, teams, permission sets) is handled by unified-ui.
-This provider only implements permission checking from trusted headers.
+This provider reads from trusted headers and performs permission checks.
 """
 
 import logging
 from contextvars import ContextVar
-from typing import List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from integrations.rbac.base import (
     RBACProvider,
@@ -35,17 +41,43 @@ logger = logging.getLogger("proposal-bot")
 _current_user_context: ContextVar[dict] = ContextVar("user_context", default={})
 
 
-def set_user_context(user_id: str, profile: str, permissions: List[str]) -> None:
+def set_user_context(
+    user_id: str,
+    profile: str,
+    permissions: List[str],
+    permission_sets: Optional[List[Dict[str, Any]]] = None,
+    teams: Optional[List[Dict[str, Any]]] = None,
+    team_ids: Optional[List[int]] = None,
+    manager_id: Optional[str] = None,
+    subordinate_ids: Optional[List[str]] = None,
+) -> None:
     """
     Set the current user context for RBAC checks.
 
     Called by FastAPI middleware after reading trusted headers.
     Uses contextvars for async-safe isolation between requests.
+
+    Args:
+        user_id: User's UUID from UI Supabase
+        profile: Profile name (e.g., 'system_admin', 'sales_user')
+        permissions: Combined permissions from profile + permission sets
+        permission_sets: Level 2 - Active permission sets [{id, name, expiresAt}]
+        teams: Level 3 - Teams user belongs to [{id, name, role, ...}]
+        team_ids: Level 3 - Just team IDs for quick lookups
+        manager_id: Level 3 - User's manager ID for hierarchy
+        subordinate_ids: Level 3 - IDs of user's direct reports + team members
     """
     _current_user_context.set({
         "user_id": user_id,
         "profile": profile,
         "permissions": set(permissions),
+        # Level 2: Permission Sets
+        "permission_sets": permission_sets or [],
+        # Level 3: Teams & Hierarchy
+        "teams": teams or [],
+        "team_ids": team_ids or [],
+        "manager_id": manager_id,
+        "subordinate_ids": subordinate_ids or [],
     })
 
 
@@ -57,6 +89,68 @@ def clear_user_context() -> None:
 def get_user_context() -> dict:
     """Get current user context."""
     return _current_user_context.get()
+
+
+def can_access_user_data(target_user_id: str) -> bool:
+    """
+    Check if current user can access another user's data.
+
+    Returns True if:
+    - Current user is system_admin
+    - Target is current user (self)
+    - Target is a subordinate (direct report or team member)
+    - Current user has '*:*:*' permission
+    """
+    ctx = get_user_context()
+    if not ctx:
+        return False
+
+    current_user_id = ctx.get("user_id")
+    profile = ctx.get("profile")
+    permissions = ctx.get("permissions", set())
+    subordinate_ids = ctx.get("subordinate_ids", [])
+
+    # System admin can access all
+    if profile == "system_admin" or "*:*:*" in permissions:
+        return True
+
+    # Self access
+    if current_user_id == target_user_id:
+        return True
+
+    # Subordinate access (manager can see direct reports and team members)
+    if target_user_id in subordinate_ids:
+        return True
+
+    return False
+
+
+def get_accessible_user_ids() -> List[str]:
+    """
+    Get list of user IDs the current user can access data for.
+
+    Returns:
+        - [current_user_id] for regular users
+        - [current_user_id, ...subordinate_ids] for managers/team leaders
+        - None for admins (access to all)
+    """
+    ctx = get_user_context()
+    if not ctx:
+        return []
+
+    current_user_id = ctx.get("user_id")
+    profile = ctx.get("profile")
+    permissions = ctx.get("permissions", set())
+    subordinate_ids = ctx.get("subordinate_ids", [])
+
+    # System admin can access all - return None to indicate "all"
+    if profile == "system_admin" or "*:*:*" in permissions:
+        return None  # type: ignore
+
+    # Return self + subordinates
+    accessible = [current_user_id] if current_user_id else []
+    accessible.extend(subordinate_ids)
+    return list(set(accessible))
 
 
 class DatabaseRBACProvider(RBACProvider):
@@ -257,7 +351,44 @@ class DatabaseRBACProvider(RBACProvider):
         return False
 
     async def get_user_teams(self, user_id: str) -> List[Team]:
+        """Get user's teams from context (populated by trusted headers)."""
+        ctx = get_user_context()
+        if ctx.get("user_id") == user_id:
+            teams_data = ctx.get("teams", [])
+            return [
+                Team(
+                    id=t.get("id"),
+                    name=t.get("name", ""),
+                    display_name=t.get("displayName"),
+                    parent_team_id=t.get("parentTeamId"),
+                )
+                for t in teams_data
+            ]
         return []
+
+    def get_user_team_ids(self, user_id: str) -> List[int]:
+        """Get just team IDs for a user (sync helper)."""
+        ctx = get_user_context()
+        if ctx.get("user_id") == user_id:
+            return ctx.get("team_ids", [])
+        return []
+
+    def get_subordinate_ids(self, user_id: str) -> List[str]:
+        """Get subordinate IDs for a user (sync helper)."""
+        ctx = get_user_context()
+        if ctx.get("user_id") == user_id:
+            return ctx.get("subordinate_ids", [])
+        return []
+
+    def is_team_leader(self, user_id: str, team_id: int) -> bool:
+        """Check if user is a leader of a specific team."""
+        ctx = get_user_context()
+        if ctx.get("user_id") == user_id:
+            teams_data = ctx.get("teams", [])
+            for t in teams_data:
+                if t.get("id") == team_id and t.get("role") == "leader":
+                    return True
+        return False
 
     async def add_user_to_team(
         self,

@@ -244,6 +244,8 @@ CREATE TABLE IF NOT EXISTS user_permission_sets (
 CREATE INDEX IF NOT EXISTS idx_ups_user ON user_permission_sets(user_id);
 CREATE INDEX IF NOT EXISTS idx_ups_set ON user_permission_sets(permission_set_id);
 CREATE INDEX IF NOT EXISTS idx_ups_expires ON user_permission_sets(expires_at);
+-- Composite index for fetching active (non-expired) permission sets for a user
+CREATE INDEX IF NOT EXISTS idx_ups_user_expires ON user_permission_sets(user_id, expires_at);
 
 -- Team membership (Level 3)
 CREATE TABLE IF NOT EXISTS team_members (
@@ -312,6 +314,10 @@ CREATE INDEX IF NOT EXISTS idx_record_shares_lookup ON record_shares(object_type
 CREATE INDEX IF NOT EXISTS idx_record_shares_user ON record_shares(shared_with_user_id);
 CREATE INDEX IF NOT EXISTS idx_record_shares_team ON record_shares(shared_with_team_id);
 CREATE INDEX IF NOT EXISTS idx_record_shares_expires ON record_shares(expires_at);
+-- Composite index for checking active shares for a user
+CREATE INDEX IF NOT EXISTS idx_record_shares_user_expires ON record_shares(shared_with_user_id, expires_at);
+-- Composite index for access checks on specific records
+CREATE INDEX IF NOT EXISTS idx_record_shares_access_check ON record_shares(object_type, record_id, shared_with_user_id);
 
 -- =============================================================================
 -- PERMISSIONS TABLE (for audit/reference - actual permission checks use RBAC layer)
@@ -387,24 +393,213 @@ CREATE INDEX IF NOT EXISTS idx_invite_tokens_expires ON invite_tokens(expires_at
 CREATE INDEX IF NOT EXISTS idx_invite_tokens_profile ON invite_tokens(profile_name);
 
 -- =============================================================================
--- AUDIT LOG
+-- AUDIT LOG (Extended for RBAC tracking)
 -- =============================================================================
+-- Tracks all RBAC and security-related changes for compliance and debugging
 CREATE TABLE IF NOT EXISTS audit_log (
     id BIGSERIAL PRIMARY KEY,
     timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    user_id TEXT REFERENCES users(id),
-    action TEXT NOT NULL,
-    resource_type TEXT,
-    resource_id TEXT,
-    details_json JSONB,
+
+    -- Who performed the action
+    user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    user_email TEXT,                            -- Snapshot in case user is deleted
+
+    -- What action was performed
+    action TEXT NOT NULL,                       -- e.g., 'profile.assign', 'team.add_member', 'permission_set.grant'
+    action_category TEXT NOT NULL DEFAULT 'other' CHECK (action_category IN (
+        'auth',              -- login, logout, password_reset
+        'rbac',              -- profile/permission/team changes
+        'sharing',           -- record sharing
+        'user_management',   -- user create/update/deactivate
+        'data_access',       -- sensitive data access
+        'admin',             -- admin actions
+        'other'
+    )),
+
+    -- What resource was affected
+    resource_type TEXT,                         -- e.g., 'user', 'team', 'permission_set', 'profile'
+    resource_id TEXT,                           -- ID of affected resource
+
+    -- Target user (for actions affecting another user)
+    target_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    target_user_email TEXT,                     -- Snapshot
+
+    -- Details
+    old_value JSONB,                            -- Previous state (for updates)
+    new_value JSONB,                            -- New state (for creates/updates)
+    details_json JSONB,                         -- Additional context
+
+    -- Request context
     ip_address TEXT,
-    user_agent TEXT
+    user_agent TEXT,
+    request_id TEXT,                            -- For correlating related actions
+
+    -- Outcome
+    success BOOLEAN NOT NULL DEFAULT true,
+    error_message TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp);
 CREATE INDEX IF NOT EXISTS idx_audit_log_user ON audit_log(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action);
+CREATE INDEX IF NOT EXISTS idx_audit_log_category ON audit_log(action_category);
 CREATE INDEX IF NOT EXISTS idx_audit_log_resource ON audit_log(resource_type, resource_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_target_user ON audit_log(target_user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_log_success ON audit_log(success);
+
+-- Function to create audit log entry (for triggers and manual calls)
+CREATE OR REPLACE FUNCTION create_audit_log(
+    p_user_id TEXT,
+    p_action TEXT,
+    p_action_category TEXT,
+    p_resource_type TEXT DEFAULT NULL,
+    p_resource_id TEXT DEFAULT NULL,
+    p_target_user_id TEXT DEFAULT NULL,
+    p_old_value JSONB DEFAULT NULL,
+    p_new_value JSONB DEFAULT NULL,
+    p_details JSONB DEFAULT NULL
+)
+RETURNS BIGINT AS $$
+DECLARE
+    v_user_email TEXT;
+    v_target_email TEXT;
+    v_id BIGINT;
+BEGIN
+    -- Get user emails for snapshots
+    SELECT email INTO v_user_email FROM users WHERE id = p_user_id;
+    IF p_target_user_id IS NOT NULL THEN
+        SELECT email INTO v_target_email FROM users WHERE id = p_target_user_id;
+    END IF;
+
+    INSERT INTO audit_log (
+        user_id, user_email, action, action_category,
+        resource_type, resource_id, target_user_id, target_user_email,
+        old_value, new_value, details_json
+    ) VALUES (
+        p_user_id, v_user_email, p_action, p_action_category,
+        p_resource_type, p_resource_id, p_target_user_id, v_target_email,
+        p_old_value, p_new_value, p_details
+    ) RETURNING id INTO v_id;
+
+    RETURN v_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger to audit profile assignments
+CREATE OR REPLACE FUNCTION audit_profile_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'UPDATE' AND OLD.profile_id IS DISTINCT FROM NEW.profile_id THEN
+        PERFORM create_audit_log(
+            NULL,  -- System or will be set by app
+            'profile.assign',
+            'rbac',
+            'user',
+            NEW.id,
+            NEW.id,
+            jsonb_build_object('profile_id', OLD.profile_id),
+            jsonb_build_object('profile_id', NEW.profile_id),
+            NULL
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS audit_user_profile_change ON users;
+CREATE TRIGGER audit_user_profile_change
+    AFTER UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION audit_profile_change();
+
+-- Trigger to audit team membership changes
+CREATE OR REPLACE FUNCTION audit_team_membership()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        PERFORM create_audit_log(
+            NULL,
+            'team.add_member',
+            'rbac',
+            'team',
+            NEW.team_id::TEXT,
+            NEW.user_id,
+            NULL,
+            jsonb_build_object('role', NEW.role),
+            NULL
+        );
+    ELSIF TG_OP = 'UPDATE' AND OLD.role IS DISTINCT FROM NEW.role THEN
+        PERFORM create_audit_log(
+            NULL,
+            'team.update_role',
+            'rbac',
+            'team',
+            NEW.team_id::TEXT,
+            NEW.user_id,
+            jsonb_build_object('role', OLD.role),
+            jsonb_build_object('role', NEW.role),
+            NULL
+        );
+    ELSIF TG_OP = 'DELETE' THEN
+        PERFORM create_audit_log(
+            NULL,
+            'team.remove_member',
+            'rbac',
+            'team',
+            OLD.team_id::TEXT,
+            OLD.user_id,
+            jsonb_build_object('role', OLD.role),
+            NULL,
+            NULL
+        );
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS audit_team_membership_changes ON team_members;
+CREATE TRIGGER audit_team_membership_changes
+    AFTER INSERT OR UPDATE OR DELETE ON team_members
+    FOR EACH ROW EXECUTE FUNCTION audit_team_membership();
+
+-- Trigger to audit permission set grants/revokes
+CREATE OR REPLACE FUNCTION audit_permission_set_assignment()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        PERFORM create_audit_log(
+            NEW.granted_by,
+            'permission_set.grant',
+            'rbac',
+            'permission_set',
+            NEW.permission_set_id::TEXT,
+            NEW.user_id,
+            NULL,
+            jsonb_build_object('expires_at', NEW.expires_at),
+            NULL
+        );
+    ELSIF TG_OP = 'DELETE' THEN
+        PERFORM create_audit_log(
+            NULL,
+            'permission_set.revoke',
+            'rbac',
+            'permission_set',
+            OLD.permission_set_id::TEXT,
+            OLD.user_id,
+            jsonb_build_object('granted_by', OLD.granted_by, 'expires_at', OLD.expires_at),
+            NULL,
+            NULL
+        );
+        RETURN OLD;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS audit_permission_set_changes ON user_permission_sets;
+CREATE TRIGGER audit_permission_set_changes
+    AFTER INSERT OR DELETE ON user_permission_sets
+    FOR EACH ROW EXECUTE FUNCTION audit_permission_set_assignment();
 
 -- =============================================================================
 -- API KEYS
@@ -498,8 +693,21 @@ CREATE POLICY "Authenticated can view active sharing_rules" ON sharing_rules FOR
 CREATE POLICY "Service role manages sharing_rules" ON sharing_rules FOR ALL USING (auth.role() = 'service_role');
 
 ALTER TABLE record_shares ENABLE ROW LEVEL SECURITY;
+-- Users can view shares they created or are shared with
 CREATE POLICY "Users can view shares involving them" ON record_shares FOR SELECT TO authenticated USING (
     shared_with_user_id = auth.uid()::TEXT OR shared_by = auth.uid()::TEXT
+);
+-- Users can update shares they created
+CREATE POLICY "Users can update own shares" ON record_shares FOR UPDATE TO authenticated USING (
+    shared_by = auth.uid()::TEXT
+);
+-- Users can delete shares they created
+CREATE POLICY "Users can delete own shares" ON record_shares FOR DELETE TO authenticated USING (
+    shared_by = auth.uid()::TEXT
+);
+-- Users can create shares (will be validated by app layer for ownership)
+CREATE POLICY "Authenticated can create shares" ON record_shares FOR INSERT TO authenticated WITH CHECK (
+    shared_by = auth.uid()::TEXT
 );
 CREATE POLICY "Service role manages record_shares" ON record_shares FOR ALL USING (auth.role() = 'service_role');
 

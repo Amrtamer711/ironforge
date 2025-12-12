@@ -237,7 +237,12 @@ async def trusted_user_middleware(request: Request, call_next):
     - X-Trusted-User-Email
     - X-Trusted-User-Name
     - X-Trusted-User-Profile
-    - X-Trusted-User-Permissions
+    - X-Trusted-User-Permissions (Level 1+2: combined profile + permission set permissions)
+    - X-Trusted-User-Permission-Sets (Level 2: active permission sets)
+    - X-Trusted-User-Teams (Level 3: user's teams)
+    - X-Trusted-User-Team-Ids (Level 3: team IDs)
+    - X-Trusted-User-Manager-Id (Level 3: user's manager)
+    - X-Trusted-User-Subordinate-Ids (Level 3: user's direct reports + team members)
     """
     import json
     from integrations.rbac.providers.database import set_user_context, clear_user_context
@@ -268,14 +273,54 @@ async def trusted_user_middleware(request: Request, call_next):
 
         if not expected_secret or provided_secret == expected_secret:
             profile = request.headers.get("x-trusted-user-profile", "")
-            permissions_json = request.headers.get("x-trusted-user-permissions", "[]")
 
+            # Level 1+2: Combined permissions (profile + permission sets)
+            permissions_json = request.headers.get("x-trusted-user-permissions", "[]")
             try:
                 permissions = json.loads(permissions_json)
             except json.JSONDecodeError:
                 permissions = []
 
-            set_user_context(user_id, profile, permissions)
+            # Level 2: Active permission sets
+            permission_sets_json = request.headers.get("x-trusted-user-permission-sets", "[]")
+            try:
+                permission_sets = json.loads(permission_sets_json)
+            except json.JSONDecodeError:
+                permission_sets = []
+
+            # Level 3: Teams
+            teams_json = request.headers.get("x-trusted-user-teams", "[]")
+            try:
+                teams = json.loads(teams_json)
+            except json.JSONDecodeError:
+                teams = []
+
+            team_ids_json = request.headers.get("x-trusted-user-team-ids", "[]")
+            try:
+                team_ids = json.loads(team_ids_json)
+            except json.JSONDecodeError:
+                team_ids = []
+
+            # Level 3: Hierarchy
+            manager_id = request.headers.get("x-trusted-user-manager-id")
+
+            subordinate_ids_json = request.headers.get("x-trusted-user-subordinate-ids", "[]")
+            try:
+                subordinate_ids = json.loads(subordinate_ids_json)
+            except json.JSONDecodeError:
+                subordinate_ids = []
+
+            # Set full RBAC context (all 4 levels)
+            set_user_context(
+                user_id=user_id,
+                profile=profile,
+                permissions=permissions,
+                permission_sets=permission_sets,
+                teams=teams,
+                team_ids=team_ids,
+                manager_id=manager_id,
+                subordinate_ids=subordinate_ids,
+            )
 
     try:
         response = await call_next(request)
