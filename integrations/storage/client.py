@@ -3,9 +3,14 @@ Unified Storage Client.
 
 Provides a single interface to interact with any storage provider.
 Follows the same pattern as integrations/auth/client.py (AuthClient).
+
+Extended with DB-aware operations that track files in the database
+for the sales module (documents, mockup_files, proposal_files).
 """
 
 import logging
+import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO, Dict, List, Optional, Union
 
@@ -509,3 +514,739 @@ async def delete_file(bucket: str, key: str) -> bool:
         True if deleted
     """
     return await get_storage_client().delete(bucket, key)
+
+
+# =============================================================================
+# DB-AWARE FILE OPERATIONS
+# =============================================================================
+# These functions combine storage operations with database tracking.
+# They store file metadata in the appropriate table (documents, mockup_files,
+# proposal_files) and handle file hashing for integrity.
+
+
+@dataclass
+class TrackedFile:
+    """Result from DB-aware file operations."""
+    file_id: str
+    storage_provider: str
+    storage_bucket: str
+    storage_key: str
+    original_filename: str
+    file_size: int
+    file_type: str
+    file_hash: Optional[str] = None
+    url: Optional[str] = None
+    success: bool = True
+    error: Optional[str] = None
+    is_duplicate: bool = False  # True if file already existed (same hash)
+
+
+# File size limits for different file types
+FILE_SIZE_LIMITS = {
+    "bo_document": 100 * 1024 * 1024,      # 100 MB for BO documents
+    "original_bo": 100 * 1024 * 1024,      # 100 MB
+    "combined_bo_pdf": 150 * 1024 * 1024,  # 150 MB for combined PDFs
+    "proposal_pptx": 200 * 1024 * 1024,    # 200 MB for proposals
+    "proposal_pdf": 200 * 1024 * 1024,     # 200 MB
+    "mockup_image": 50 * 1024 * 1024,      # 50 MB for mockups
+    "location_photo": 50 * 1024 * 1024,    # 50 MB
+    "default": 100 * 1024 * 1024,          # 100 MB default
+}
+
+
+def _validate_file_size(file_size: int, file_type: str) -> Optional[str]:
+    """
+    Validate file size against limits.
+
+    Returns error message if invalid, None if valid.
+    """
+    from utils.files import format_file_size
+
+    max_size = FILE_SIZE_LIMITS.get(file_type, FILE_SIZE_LIMITS["default"])
+
+    if file_size <= 0:
+        return "File is empty"
+
+    if file_size > max_size:
+        return f"File too large ({format_file_size(file_size)}). Maximum size is {format_file_size(max_size)}"
+
+    return None
+
+
+async def _check_duplicate_by_hash(
+    file_hash: str,
+    table: str = "documents",
+) -> Optional[TrackedFile]:
+    """
+    Check if a file with the same hash already exists.
+
+    Returns existing TrackedFile if duplicate found, None otherwise.
+    """
+    from db.database import db
+
+    try:
+        client = db._get_client()
+        response = client.table(table).select("*").eq(
+            "file_hash", file_hash
+        ).eq(
+            "is_deleted", False
+        ).limit(1).execute()
+
+        if response.data:
+            record = response.data[0]
+            storage = get_storage_client()
+
+            # Get fresh signed URL
+            url = await storage.get_signed_url(
+                record.get("storage_bucket"),
+                record.get("storage_key"),
+            )
+
+            return TrackedFile(
+                file_id=record.get("file_id"),
+                storage_provider=record.get("storage_provider"),
+                storage_bucket=record.get("storage_bucket"),
+                storage_key=record.get("storage_key"),
+                original_filename=record.get("original_filename"),
+                file_size=record.get("file_size", 0),
+                file_type=record.get("file_type", ""),
+                file_hash=record.get("file_hash"),
+                url=url,
+                success=True,
+                is_duplicate=True,
+            )
+
+        return None
+
+    except Exception as e:
+        logger.debug(f"[STORAGE] Duplicate check failed (non-critical): {e}")
+        return None
+
+
+async def store_bo_file(
+    data: Union[bytes, BinaryIO, Path],
+    filename: str,
+    bo_id: int,
+    user_id: Optional[str] = None,
+    file_type: str = "bo_document",
+    content_type: Optional[str] = None,
+    skip_duplicate_check: bool = False,
+) -> TrackedFile:
+    """
+    Store a file associated with a BO and track it in the database.
+
+    This is the primary method for storing BO-related files (uploaded documents,
+    generated PDFs, etc.). It:
+    1. Validates file size
+    2. Calculates file hash for integrity
+    3. Checks for duplicates (returns existing file if found)
+    4. Uploads to storage provider
+    5. Records metadata in documents table
+
+    Args:
+        data: File contents (bytes, file-like object, or Path to local file)
+        filename: Original filename
+        bo_id: Associated BO ID
+        user_id: User who uploaded (optional)
+        file_type: Type of document (e.g., "bo_document", "supporting_doc")
+        content_type: MIME type (auto-detected if not provided)
+        skip_duplicate_check: If True, skip duplicate detection (for regenerated files)
+
+    Returns:
+        TrackedFile with storage info and file_id
+    """
+    from db.database import db
+    from utils.files import calculate_sha256, get_mime_type
+
+    storage = get_storage_client()
+    file_id = str(uuid.uuid4())
+
+    # Handle different input types
+    if isinstance(data, Path):
+        file_bytes = data.read_bytes()
+        if not filename:
+            filename = data.name
+    elif isinstance(data, (bytes, bytearray)):
+        file_bytes = bytes(data)
+    else:
+        # File-like object
+        file_bytes = data.read()
+        if hasattr(data, 'seek'):
+            data.seek(0)
+
+    file_size = len(file_bytes)
+
+    # Validate file size
+    size_error = _validate_file_size(file_size, file_type)
+    if size_error:
+        return TrackedFile(
+            file_id=file_id,
+            storage_provider=storage.provider_name,
+            storage_bucket="",
+            storage_key="",
+            original_filename=filename,
+            file_size=file_size,
+            file_type=file_type,
+            success=False,
+            error=size_error,
+        )
+
+    file_hash = calculate_sha256(file_bytes)
+
+    # Check for duplicate (same content already uploaded)
+    if not skip_duplicate_check:
+        existing = await _check_duplicate_by_hash(file_hash, "documents")
+        if existing:
+            logger.info(f"[STORAGE] Duplicate BO file detected: {filename} -> existing {existing.file_id}")
+            return existing
+
+    if not content_type:
+        content_type = get_mime_type(filename)
+
+    # Generate storage key: bo_files/{bo_id}/{file_id}_{filename}
+    safe_filename = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
+    storage_key = f"bo_files/{bo_id}/{file_id}_{safe_filename}"
+    bucket = StorageType.UPLOADS.value
+
+    try:
+        # Upload to storage
+        result = await storage.upload(bucket, storage_key, file_bytes, content_type)
+
+        if not result.success:
+            return TrackedFile(
+                file_id=file_id,
+                storage_provider=storage.provider_name,
+                storage_bucket=bucket,
+                storage_key=storage_key,
+                original_filename=filename,
+                file_size=file_size,
+                file_type=file_type,
+                file_hash=file_hash,
+                success=False,
+                error=result.error or "Upload failed",
+            )
+
+        # Track in database
+        db.create_document(
+            file_id=file_id,
+            user_id=user_id,
+            original_filename=filename,
+            file_type=file_type,
+            storage_provider=storage.provider_name,
+            storage_bucket=bucket,
+            storage_key=storage_key,
+            file_size=file_size,
+            mime_type=content_type,
+            file_hash=file_hash,
+            bo_id=bo_id,
+        )
+
+        # Get URL
+        url = result.file.url if result.file else None
+        if not url:
+            url = await storage.get_signed_url(bucket, storage_key)
+
+        logger.info(f"[STORAGE] Stored BO file: {filename} -> {storage_key}")
+
+        return TrackedFile(
+            file_id=file_id,
+            storage_provider=storage.provider_name,
+            storage_bucket=bucket,
+            storage_key=storage_key,
+            original_filename=filename,
+            file_size=file_size,
+            file_type=file_type,
+            file_hash=file_hash,
+            url=url,
+            success=True,
+        )
+
+    except Exception as e:
+        logger.error(f"[STORAGE] Failed to store BO file {filename}: {e}")
+        return TrackedFile(
+            file_id=file_id,
+            storage_provider=storage.provider_name,
+            storage_bucket=bucket,
+            storage_key=storage_key,
+            original_filename=filename,
+            file_size=file_size,
+            file_type=file_type,
+            file_hash=file_hash,
+            success=False,
+            error=str(e),
+        )
+
+
+async def store_proposal_file(
+    data: Union[bytes, BinaryIO, Path],
+    filename: str,
+    user_id: str,
+    proposal_id: Optional[int] = None,
+    client_name: Optional[str] = None,
+    locations_count: Optional[int] = None,
+    file_type: str = "proposal_pptx",
+    content_type: Optional[str] = None,
+    skip_duplicate_check: bool = False,
+) -> TrackedFile:
+    """
+    Store a generated proposal file and track it in the database.
+
+    Args:
+        data: File contents
+        filename: Filename for the proposal
+        user_id: User who generated the proposal (required)
+        proposal_id: Associated proposal ID from proposals_log (optional)
+        client_name: Client name for the proposal (optional)
+        locations_count: Number of locations in proposal (optional)
+        file_type: Type (e.g., "proposal_pptx", "proposal_pdf")
+        content_type: MIME type
+        skip_duplicate_check: If True, skip duplicate detection
+
+    Returns:
+        TrackedFile with storage info
+    """
+    from db.database import db
+    from utils.files import calculate_sha256, get_mime_type
+    from datetime import datetime
+
+    storage = get_storage_client()
+    file_id = str(uuid.uuid4())
+
+    # Handle different input types
+    if isinstance(data, Path):
+        file_bytes = data.read_bytes()
+        if not filename:
+            filename = data.name
+    elif isinstance(data, (bytes, bytearray)):
+        file_bytes = bytes(data)
+    else:
+        file_bytes = data.read()
+        if hasattr(data, 'seek'):
+            data.seek(0)
+
+    file_size = len(file_bytes)
+
+    # Validate file size
+    size_error = _validate_file_size(file_size, file_type)
+    if size_error:
+        return TrackedFile(
+            file_id=file_id,
+            storage_provider=storage.provider_name,
+            storage_bucket="",
+            storage_key="",
+            original_filename=filename,
+            file_size=file_size,
+            file_type=file_type,
+            success=False,
+            error=size_error,
+        )
+
+    file_hash = calculate_sha256(file_bytes)
+
+    # Check for duplicate
+    if not skip_duplicate_check:
+        existing = await _check_duplicate_by_hash(file_hash, "proposal_files")
+        if existing:
+            logger.info(f"[STORAGE] Duplicate proposal file detected: {filename} -> existing {existing.file_id}")
+            return existing
+
+    if not content_type:
+        content_type = get_mime_type(filename)
+
+    # Generate storage key: proposals/{user_id}/{date}/{file_id}_{filename}
+    safe_filename = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
+    date_prefix = datetime.utcnow().strftime("%Y/%m/%d")
+    storage_key = f"proposals/{user_id}/{date_prefix}/{file_id}_{safe_filename}"
+    bucket = StorageType.PROPOSALS.value
+
+    try:
+        result = await storage.upload(bucket, storage_key, file_bytes, content_type)
+
+        if not result.success:
+            return TrackedFile(
+                file_id=file_id,
+                storage_provider=storage.provider_name,
+                storage_bucket=bucket,
+                storage_key=storage_key,
+                original_filename=filename,
+                file_size=file_size,
+                file_type=file_type,
+                file_hash=file_hash,
+                success=False,
+                error=result.error or "Upload failed",
+            )
+
+        # Track in proposal_files table (matches schema)
+        client = db._get_client()
+        insert_data = {
+            "file_id": file_id,
+            "user_id": user_id,
+            "original_filename": filename,
+            "storage_provider": storage.provider_name,
+            "storage_bucket": bucket,
+            "storage_key": storage_key,
+            "file_size": file_size,
+            "file_hash": file_hash,
+        }
+        if proposal_id:
+            insert_data["proposal_id"] = proposal_id
+        if client_name:
+            insert_data["client_name"] = client_name
+        if locations_count:
+            insert_data["locations_count"] = locations_count
+
+        client.table("proposal_files").insert(insert_data).execute()
+
+        url = result.file.url if result.file else None
+        if not url:
+            url = await storage.get_signed_url(bucket, storage_key)
+
+        logger.info(f"[STORAGE] Stored proposal file: {filename} -> {storage_key}")
+
+        return TrackedFile(
+            file_id=file_id,
+            storage_provider=storage.provider_name,
+            storage_bucket=bucket,
+            storage_key=storage_key,
+            original_filename=filename,
+            file_size=file_size,
+            file_type=file_type,
+            file_hash=file_hash,
+            url=url,
+            success=True,
+        )
+
+    except Exception as e:
+        logger.error(f"[STORAGE] Failed to store proposal file {filename}: {e}")
+        return TrackedFile(
+            file_id=file_id,
+            storage_provider=storage.provider_name,
+            storage_bucket=bucket,
+            storage_key=storage_key,
+            original_filename=filename,
+            file_size=file_size,
+            file_type=file_type,
+            file_hash=file_hash,
+            success=False,
+            error=str(e),
+        )
+
+
+async def store_mockup_file(
+    data: Union[bytes, BinaryIO, Path],
+    filename: str,
+    location_key: str,
+    time_of_day: str = "day",
+    finish: str = "gold",
+    file_type: str = "mockup_image",
+    content_type: Optional[str] = None,
+    user_id: Optional[str] = None,
+    mockup_usage_id: Optional[int] = None,
+    skip_duplicate_check: bool = False,
+) -> TrackedFile:
+    """
+    Store a generated mockup file and track it in the database.
+
+    Args:
+        data: File contents (image bytes)
+        filename: Filename for the mockup
+        location_key: Location identifier (e.g., "DUBAI_MALL_01")
+        time_of_day: "day" or "night"
+        finish: Billboard finish (e.g., "gold", "silver")
+        file_type: Type (e.g., "mockup_image", "location_photo")
+        content_type: MIME type
+        user_id: User who created the mockup (optional)
+        mockup_usage_id: Reference to mockup_usage table (optional)
+        skip_duplicate_check: If True, skip duplicate detection
+
+    Returns:
+        TrackedFile with storage info
+    """
+    from db.database import db
+    from utils.files import calculate_sha256, get_mime_type
+
+    storage = get_storage_client()
+    file_id = str(uuid.uuid4())
+
+    # Handle different input types
+    if isinstance(data, Path):
+        file_bytes = data.read_bytes()
+        if not filename:
+            filename = data.name
+    elif isinstance(data, (bytes, bytearray)):
+        file_bytes = bytes(data)
+    else:
+        file_bytes = data.read()
+        if hasattr(data, 'seek'):
+            data.seek(0)
+
+    file_size = len(file_bytes)
+
+    # Validate file size
+    size_error = _validate_file_size(file_size, file_type)
+    if size_error:
+        return TrackedFile(
+            file_id=file_id,
+            storage_provider=storage.provider_name,
+            storage_bucket="",
+            storage_key="",
+            original_filename=filename,
+            file_size=file_size,
+            file_type=file_type,
+            success=False,
+            error=size_error,
+        )
+
+    file_hash = calculate_sha256(file_bytes)
+
+    # Check for duplicate (mockup images with same content)
+    if not skip_duplicate_check:
+        existing = await _check_duplicate_by_hash(file_hash, "mockup_files")
+        if existing:
+            logger.info(f"[STORAGE] Duplicate mockup file detected: {filename} -> existing {existing.file_id}")
+            return existing
+
+    if not content_type:
+        content_type = get_mime_type(filename)
+
+    # Generate storage key: mockups/{location_key}/{time_of_day}/{finish}/{file_id}_{filename}
+    safe_filename = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
+    storage_key = f"mockups/{location_key}/{time_of_day}/{finish}/{file_id}_{safe_filename}"
+    bucket = StorageType.MOCKUPS.value
+
+    try:
+        result = await storage.upload(bucket, storage_key, file_bytes, content_type)
+
+        if not result.success:
+            return TrackedFile(
+                file_id=file_id,
+                storage_provider=storage.provider_name,
+                storage_bucket=bucket,
+                storage_key=storage_key,
+                original_filename=filename,
+                file_size=file_size,
+                file_type=file_type,
+                file_hash=file_hash,
+                success=False,
+                error=result.error or "Upload failed",
+            )
+
+        # Track in mockup_files table (matches schema)
+        client = db._get_client()
+        insert_data = {
+            "file_id": file_id,
+            "location_key": location_key,
+            "time_of_day": time_of_day,
+            "finish": finish,
+            "photo_filename": filename,
+            "original_filename": filename,
+            "storage_provider": storage.provider_name,
+            "storage_bucket": bucket,
+            "storage_key": storage_key,
+            "file_size": file_size,
+            "file_hash": file_hash,
+        }
+        if user_id:
+            insert_data["user_id"] = user_id
+        if mockup_usage_id:
+            insert_data["mockup_usage_id"] = mockup_usage_id
+
+        client.table("mockup_files").insert(insert_data).execute()
+
+        url = result.file.url if result.file else None
+        if not url:
+            url = await storage.get_signed_url(bucket, storage_key)
+
+        logger.info(f"[STORAGE] Stored mockup file: {filename} -> {storage_key}")
+
+        return TrackedFile(
+            file_id=file_id,
+            storage_provider=storage.provider_name,
+            storage_bucket=bucket,
+            storage_key=storage_key,
+            original_filename=filename,
+            file_size=file_size,
+            file_type=file_type,
+            file_hash=file_hash,
+            url=url,
+            success=True,
+        )
+
+    except Exception as e:
+        logger.error(f"[STORAGE] Failed to store mockup file {filename}: {e}")
+        return TrackedFile(
+            file_id=file_id,
+            storage_provider=storage.provider_name,
+            storage_bucket=bucket,
+            storage_key=storage_key,
+            original_filename=filename,
+            file_size=file_size,
+            file_type=file_type,
+            file_hash=file_hash,
+            success=False,
+            error=str(e),
+        )
+
+
+async def get_tracked_file(
+    file_id: str,
+    table: str = "documents",
+) -> Optional[TrackedFile]:
+    """
+    Get a tracked file's info from database.
+
+    Args:
+        file_id: The file's UUID
+        table: Which table to look in (documents, mockup_files, proposal_files)
+
+    Returns:
+        TrackedFile with info or None if not found
+    """
+    from db.database import db
+
+    try:
+        client = db._get_client()
+        response = client.table(table).select("*").eq("file_id", file_id).execute()
+
+        if not response.data:
+            return None
+
+        record = response.data[0]
+        storage = get_storage_client()
+
+        # Get URL
+        url = await storage.get_signed_url(
+            record.get("storage_bucket"),
+            record.get("storage_key"),
+        )
+
+        return TrackedFile(
+            file_id=record.get("file_id"),
+            storage_provider=record.get("storage_provider"),
+            storage_bucket=record.get("storage_bucket"),
+            storage_key=record.get("storage_key"),
+            original_filename=record.get("original_filename"),
+            file_size=record.get("file_size", 0),
+            file_type=record.get("file_type"),
+            file_hash=record.get("file_hash"),
+            url=url,
+            success=True,
+        )
+
+    except Exception as e:
+        logger.error(f"[STORAGE] Failed to get tracked file {file_id}: {e}")
+        return None
+
+
+async def download_tracked_file(
+    file_id: str,
+    table: str = "documents",
+) -> Optional[bytes]:
+    """
+    Download a tracked file's contents.
+
+    Args:
+        file_id: The file's UUID
+        table: Which table to look in
+
+    Returns:
+        File bytes or None if not found
+    """
+    tracked = await get_tracked_file(file_id, table)
+    if not tracked:
+        return None
+
+    storage = get_storage_client()
+    result = await storage.download(tracked.storage_bucket, tracked.storage_key)
+
+    if result.success:
+        return result.data
+    return None
+
+
+async def soft_delete_tracked_file(
+    file_id: str,
+    table: str = "documents",
+) -> bool:
+    """
+    Soft-delete a tracked file (mark as deleted, keep in storage).
+
+    Args:
+        file_id: The file's UUID
+        table: Which table to update
+
+    Returns:
+        True if deleted
+    """
+    from db.database import db
+    from datetime import datetime
+
+    try:
+        client = db._get_client()
+        client.table(table).update({
+            "is_deleted": True,
+            "deleted_at": datetime.utcnow().isoformat(),
+        }).eq("file_id", file_id).execute()
+
+        logger.info(f"[STORAGE] Soft-deleted file {file_id} from {table}")
+        return True
+
+    except Exception as e:
+        logger.error(f"[STORAGE] Failed to soft-delete {file_id}: {e}")
+        return False
+
+
+async def soft_delete_mockup_by_location(
+    location_key: str,
+    photo_filename: str,
+    time_of_day: str = "day",
+    finish: str = "gold",
+) -> bool:
+    """
+    Soft-delete a mockup file by location info (for delete_location_photo).
+
+    Args:
+        location_key: Location identifier
+        photo_filename: Original photo filename
+        time_of_day: "day" or "night"
+        finish: Billboard finish
+
+    Returns:
+        True if deleted
+    """
+    from db.database import db
+    from datetime import datetime
+
+    try:
+        client = db._get_client()
+        # Find the file by location info
+        response = client.table("mockup_files").select("file_id").eq(
+            "location_key", location_key
+        ).eq(
+            "photo_filename", photo_filename
+        ).eq(
+            "time_of_day", time_of_day
+        ).eq(
+            "finish", finish
+        ).eq(
+            "is_deleted", False
+        ).execute()
+
+        if not response.data:
+            logger.debug(f"[STORAGE] No mockup file found for {location_key}/{photo_filename}")
+            return False
+
+        # Soft-delete all matching records (usually just one)
+        for record in response.data:
+            file_id = record.get("file_id")
+            client.table("mockup_files").update({
+                "is_deleted": True,
+                "deleted_at": datetime.utcnow().isoformat(),
+            }).eq("file_id", file_id).execute()
+            logger.info(f"[STORAGE] Soft-deleted mockup file {file_id}")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"[STORAGE] Failed to soft-delete mockup by location: {e}")
+        return False

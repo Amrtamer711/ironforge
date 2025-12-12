@@ -33,7 +33,10 @@ def get_location_photos_dir(location_key: str, time_of_day: str = "day", finish:
 
 
 def save_location_photo(location_key: str, photo_filename: str, photo_data: bytes, time_of_day: str = "day", finish: str = "gold") -> Path:
-    """Save a location photo to disk with time_of_day and finish."""
+    """Save a location photo to disk with time_of_day and finish.
+
+    Also tracks the file in the storage system for database consistency.
+    """
     location_dir = get_location_photos_dir(location_key, time_of_day, finish)
 
     logger.info(f"[MOCKUP] Creating directory: {location_dir}")
@@ -58,6 +61,45 @@ def save_location_photo(location_key: str, photo_filename: str, photo_data: byte
                 logger.error(f"[MOCKUP] ✗ Photo size mismatch! Written: {len(photo_data)}, Read: {len(test_read)}")
         else:
             logger.error(f"[MOCKUP] ✗ Photo path does not exist after write: {photo_path}")
+
+        # Track in storage system (async operation with error handling)
+        try:
+            import asyncio
+            from integrations.storage import store_mockup_file
+
+            async def _track_photo():
+                try:
+                    result = await store_mockup_file(
+                        data=photo_data,
+                        filename=photo_filename,
+                        location_key=location_key,
+                        time_of_day=time_of_day,
+                        finish=finish,
+                        file_type="location_photo",
+                    )
+                    if result.success:
+                        if result.is_duplicate:
+                            logger.debug(f"[MOCKUP] Photo already tracked (duplicate): {result.file_id}")
+                        else:
+                            logger.info(f"[MOCKUP] Photo tracked in storage: {result.file_id}")
+                    else:
+                        logger.warning(f"[MOCKUP] Failed to track photo in storage: {result.error}")
+                except Exception as e:
+                    logger.warning(f"[MOCKUP] Storage tracking error: {e}")
+
+            # Run async tracking if we're in an event loop
+            try:
+                loop = asyncio.get_running_loop()
+                # Create task with error handling callback
+                task = asyncio.create_task(_track_photo())
+                task.add_done_callback(lambda t: t.exception() if not t.cancelled() and t.exception() else None)
+            except RuntimeError:
+                # No running loop - skip DB tracking for sync context
+                logger.debug(f"[MOCKUP] No event loop - skipping storage tracking")
+        except Exception as track_err:
+            logger.warning(f"[MOCKUP] Failed to setup storage tracking: {track_err}")
+            # Don't fail the save if tracking fails
+
     except Exception as e:
         logger.error(f"[MOCKUP] ✗ Failed to save photo: {e}", exc_info=True)
         raise
@@ -472,15 +514,40 @@ def generate_mockup(
 
 
 def delete_location_photo(location_key: str, photo_filename: str, time_of_day: str = "day", finish: str = "gold") -> bool:
-    """Delete a location photo and its frame data."""
+    """Delete a location photo and its frame data.
+
+    Note: This performs a hard delete of the local file but the storage
+    system maintains a soft-deleted record for audit purposes.
+    """
     try:
-        # Delete from database
+        # Delete from database (frame data)
         db.delete_mockup_frame(location_key, photo_filename, time_of_day, finish)
 
-        # Delete file
+        # Delete local file
         photo_path = get_location_photos_dir(location_key, time_of_day, finish) / photo_filename
         if photo_path.exists():
             photo_path.unlink()
+
+        # Soft-delete from storage system if tracked
+        try:
+            import asyncio
+            from integrations.storage import soft_delete_mockup_by_location
+
+            async def _soft_delete():
+                await soft_delete_mockup_by_location(
+                    location_key=location_key,
+                    photo_filename=photo_filename,
+                    time_of_day=time_of_day,
+                    finish=finish,
+                )
+
+            try:
+                loop = asyncio.get_running_loop()
+                asyncio.create_task(_soft_delete())
+            except RuntimeError:
+                pass
+        except Exception as track_err:
+            logger.debug(f"[MOCKUP] Storage soft-delete skipped: {track_err}")
 
         logger.info(f"[MOCKUP] Deleted photo '{photo_filename}' for location '{location_key}/{time_of_day}/{finish}'")
         return True

@@ -9,6 +9,17 @@ from utils.audit import (
     audit_logger,
     audit_action,
 )
+from utils.files import (
+    calculate_file_hash,
+    calculate_sha256,
+    validate_file_size,
+    format_file_size,
+    get_file_extension,
+    get_mime_type,
+    MAX_FILE_SIZE_DEFAULT,
+    MAX_FILE_SIZE_IMAGE,
+    MAX_FILE_SIZE_DOCUMENT,
+)
 
 __all__ = [
     # Memory utilities
@@ -24,4 +35,14 @@ __all__ = [
     "AuditLogger",
     "audit_logger",
     "audit_action",
+    # File utilities
+    "calculate_file_hash",
+    "calculate_sha256",
+    "validate_file_size",
+    "format_file_size",
+    "get_file_extension",
+    "get_mime_type",
+    "MAX_FILE_SIZE_DEFAULT",
+    "MAX_FILE_SIZE_IMAGE",
+    "MAX_FILE_SIZE_DOCUMENT",
 ]

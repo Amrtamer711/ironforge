@@ -643,3 +643,151 @@ class DatabaseBackend(ABC):
             True if deleted, False if not found
         """
         pass
+
+    # =========================================================================
+    # DOCUMENT MANAGEMENT (File Storage Tracking)
+    # =========================================================================
+
+    @abstractmethod
+    def create_document(
+        self,
+        file_id: str,
+        user_id: str,
+        original_filename: str,
+        file_type: str,
+        storage_provider: str,
+        storage_bucket: str,
+        storage_key: str,
+        file_size: Optional[int] = None,
+        file_extension: Optional[str] = None,
+        file_hash: Optional[str] = None,
+        document_type: Optional[str] = None,
+        bo_id: Optional[int] = None,
+        proposal_id: Optional[int] = None,
+        metadata_json: Optional[Dict[str, Any]] = None,
+    ) -> Optional[int]:
+        """
+        Create a new document record.
+
+        Args:
+            file_id: Unique file identifier (UUID)
+            user_id: User who uploaded the file
+            original_filename: Original filename
+            file_type: MIME type
+            storage_provider: 'local', 'supabase', or 's3'
+            storage_bucket: Storage bucket name
+            storage_key: Path within bucket
+            file_size: File size in bytes
+            file_extension: File extension (e.g., '.pdf')
+            file_hash: SHA256 hash of file contents
+            document_type: Classification ('bo_pdf', 'creative', etc.)
+            bo_id: Link to booking order
+            proposal_id: Link to proposal
+            metadata_json: Additional metadata
+
+        Returns:
+            Document ID if created, None if failed
+        """
+        pass
+
+    @abstractmethod
+    def get_document(self, file_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a document by file_id.
+
+        Args:
+            file_id: Unique file identifier
+
+        Returns:
+            Document record or None if not found
+        """
+        pass
+
+    @abstractmethod
+    def get_document_by_hash(self, file_hash: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a document by file hash (for deduplication).
+
+        Args:
+            file_hash: SHA256 hash
+
+        Returns:
+            Document record or None if not found
+        """
+        pass
+
+    @abstractmethod
+    def soft_delete_document(self, file_id: str) -> bool:
+        """
+        Soft delete a document (set is_deleted=true and deleted_at=now()).
+
+        Args:
+            file_id: Unique file identifier
+
+        Returns:
+            True if deleted, False if not found
+        """
+        pass
+
+    @abstractmethod
+    def list_documents(
+        self,
+        user_id: Optional[str] = None,
+        document_type: Optional[str] = None,
+        bo_id: Optional[int] = None,
+        proposal_id: Optional[int] = None,
+        include_deleted: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """
+        List documents with optional filters.
+
+        Args:
+            user_id: Filter by user
+            document_type: Filter by type
+            bo_id: Filter by booking order
+            proposal_id: Filter by proposal
+            include_deleted: Include soft-deleted documents
+            limit: Maximum results
+            offset: Number to skip
+
+        Returns:
+            List of document records
+        """
+        pass
+
+    @abstractmethod
+    def get_soft_deleted_documents(
+        self,
+        older_than_days: int = 30,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get soft-deleted documents older than specified days.
+
+        Used by cleanup job to find files to permanently delete.
+
+        Args:
+            older_than_days: Minimum days since deletion
+            limit: Maximum results
+
+        Returns:
+            List of document records ready for permanent deletion
+        """
+        pass
+
+    @abstractmethod
+    def hard_delete_document(self, file_id: str) -> bool:
+        """
+        Permanently delete a document record.
+
+        Only call this after deleting the actual file from storage.
+
+        Args:
+            file_id: Unique file identifier
+
+        Returns:
+            True if deleted, False if not found
+        """
+        pass

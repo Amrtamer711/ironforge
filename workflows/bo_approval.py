@@ -230,6 +230,7 @@ async def create_approval_workflow(
     Returns workflow_id
     """
     from workflows.bo_parser import ORIGINAL_BOS_DIR
+    from integrations.storage import store_bo_file
     import shutil
 
     workflow_id = create_workflow_id(company)
@@ -237,9 +238,29 @@ async def create_approval_workflow(
     # Copy original file to permanent storage (prevents loss if temp files are cleaned up)
     # This ensures the original BO is preserved throughout the entire workflow lifecycle
     permanent_original_path = ORIGINAL_BOS_DIR / f"{workflow_id}_{original_filename}"
+    original_file_size = None
+    original_file_id = None
     try:
         shutil.copy2(original_file_path, permanent_original_path)
+        original_file_size = permanent_original_path.stat().st_size
         logger.info(f"[BO APPROVAL] Copied original BO to permanent storage: {permanent_original_path}")
+
+        # Track in storage system (creates DB record with hash)
+        # Note: We use a placeholder bo_id of 0 since the actual BO isn't saved yet
+        # This will be updated when the BO is finalized
+        tracked = await store_bo_file(
+            data=permanent_original_path,
+            filename=original_filename,
+            bo_id=0,  # Placeholder - will be associated with actual BO after approval
+            user_id=user_id,
+            file_type="original_bo",
+        )
+        if tracked.success:
+            original_file_id = tracked.file_id
+            logger.info(f"[BO APPROVAL] Tracked original BO in storage system: {tracked.file_id}")
+        else:
+            logger.warning(f"[BO APPROVAL] Failed to track in storage system: {tracked.error}")
+
     except Exception as e:
         logger.error(f"[BO APPROVAL] Failed to copy original BO to permanent storage: {e}")
         # Fall back to temp path if copy fails
@@ -254,6 +275,8 @@ async def create_approval_workflow(
         "missing_required": missing_required,
         "original_file_path": str(permanent_original_path),  # Store permanent path, not temp
         "original_filename": original_filename,
+        "original_file_size": original_file_size,
+        "original_file_id": original_file_id,  # Storage system file_id for tracking
         "file_type": file_type,
         "user_notes": user_notes,
         "stage": "coordinator",  # Current stage: coordinator, hos, finance
@@ -280,7 +303,10 @@ async def create_approval_workflow(
 
         # Final BO reference (only set after finance stage)
         "bo_ref": None,
-        "saved_to_db": False
+        "saved_to_db": False,
+
+        # Storage tracking
+        "combined_pdf_file_id": None,  # Set when combined PDF is generated
     }
 
     # Cache and persist
@@ -637,6 +663,31 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
         apply_stamp=True  # Apply HoS approval stamp
     )
 
+    # Track combined PDF in storage system
+    combined_pdf_file_id = None
+    try:
+        from integrations.storage import store_bo_file, soft_delete_tracked_file
+
+        # Store combined PDF
+        tracked = await store_bo_file(
+            data=final_combined_pdf,
+            filename=f"{bo_ref}_combined.pdf",
+            bo_id=0,  # Placeholder - BO record created after this
+            user_id=workflow.get("sales_user_id"),
+            file_type="combined_bo_pdf",
+        )
+        if tracked.success:
+            combined_pdf_file_id = tracked.file_id
+            logger.info(f"[BO APPROVAL] Tracked combined PDF in storage: {tracked.file_id}")
+
+        # Soft-delete original BO from storage (keep for audit trail)
+        if workflow.get("original_file_id"):
+            await soft_delete_tracked_file(workflow["original_file_id"])
+            logger.info(f"[BO APPROVAL] Soft-deleted original BO from storage: {workflow['original_file_id']}")
+
+    except Exception as e:
+        logger.warning(f"[BO APPROVAL] Failed to track combined PDF in storage: {e}")
+
     # Clean up permanent original file (we now have the final combined PDF)
     if permanent_original_path.exists():
         try:
@@ -658,6 +709,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
         "warnings": workflow["warnings"],
         "missing_required": workflow["missing_required"],
         "user_notes": workflow.get("user_notes", ""),
+        "combined_pdf_file_id": combined_pdf_file_id,  # Storage system file_id
         # Copy all fields from workflow["data"]
         **workflow["data"]
     }

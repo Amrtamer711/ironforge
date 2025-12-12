@@ -67,6 +67,16 @@ from integrations.storage.client import (
     download_file,
     get_file_url,
     delete_file,
+    # DB-aware file operations
+    TrackedFile,
+    FILE_SIZE_LIMITS,
+    store_bo_file,
+    store_proposal_file,
+    store_mockup_file,
+    get_tracked_file,
+    download_tracked_file,
+    soft_delete_tracked_file,
+    soft_delete_mockup_by_location,
 )
 
 from integrations.storage.providers import (
@@ -92,6 +102,16 @@ __all__ = [
     "download_file",
     "get_file_url",
     "delete_file",
+    # DB-aware file operations
+    "TrackedFile",
+    "FILE_SIZE_LIMITS",
+    "store_bo_file",
+    "store_proposal_file",
+    "store_mockup_file",
+    "get_tracked_file",
+    "download_tracked_file",
+    "soft_delete_tracked_file",
+    "soft_delete_mockup_by_location",
     # Providers
     "LocalStorageProvider",
     "SupabaseStorageProvider",

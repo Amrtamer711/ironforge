@@ -393,12 +393,17 @@ class WebAdapter(ChannelAdapter):
         thread_id: Optional[str] = None,
         bucket: str = "uploads",
         user_id: Optional[str] = None,
+        document_type: Optional[str] = None,
+        bo_id: Optional[int] = None,
+        proposal_id: Optional[int] = None,
     ) -> FileUpload:
         """
         Store a file and return URL for web download.
 
         When STORAGE_PROVIDER=supabase, uploads to Supabase Storage.
         Otherwise, stores locally in temp files.
+
+        Also records file in documents table with hash for integrity/deduplication.
 
         Args:
             channel_id: User/channel identifier
@@ -409,6 +414,9 @@ class WebAdapter(ChannelAdapter):
             thread_id: Not used in web adapter
             bucket: Storage bucket ('uploads', 'proposals', etc.)
             user_id: User who owns this file (for organization)
+            document_type: Classification ('bo_pdf', 'creative', etc.)
+            bo_id: Link to booking order
+            proposal_id: Link to proposal
         """
         path = Path(file_path)
         if not path.exists():
@@ -422,6 +430,17 @@ class WebAdapter(ChannelAdapter):
         import mimetypes
         content_type, _ = mimetypes.guess_type(actual_filename)
         content_type = content_type or "application/octet-stream"
+
+        # Calculate file hash for integrity/deduplication
+        file_hash = None
+        file_size = path.stat().st_size
+        try:
+            from utils.files import calculate_sha256, get_file_extension
+            file_hash = calculate_sha256(path)
+            file_extension = get_file_extension(actual_filename)
+        except Exception as e:
+            logger.warning(f"[WebAdapter] Failed to calculate file hash: {e}")
+            file_extension = path.suffix.lower()
 
         # Try to use remote storage (Supabase)
         storage_client = self._get_storage_client()
@@ -440,21 +459,42 @@ class WebAdapter(ChannelAdapter):
                 )
 
                 if result.success:
-                    # Store metadata for retrieval
+                    # Store metadata in memory cache
                     self._stored_files[file_id] = StoredFileInfo(
                         file_id=file_id,
                         bucket=bucket,
                         key=storage_key,
                         filename=actual_filename,
                         content_type=content_type,
-                        size=path.stat().st_size,
+                        size=file_size,
                         user_id=owner_id,
                     )
+
+                    # Store document record in database
+                    try:
+                        from db.database import db
+                        db.create_document(
+                            file_id=file_id,
+                            user_id=owner_id,
+                            original_filename=actual_filename,
+                            file_type=content_type,
+                            storage_provider=storage_client.provider_name,
+                            storage_bucket=bucket,
+                            storage_key=storage_key,
+                            file_size=file_size,
+                            file_extension=file_extension,
+                            file_hash=file_hash,
+                            document_type=document_type,
+                            bo_id=bo_id,
+                            proposal_id=proposal_id,
+                        )
+                    except Exception as db_err:
+                        logger.warning(f"[WebAdapter] Failed to store document in DB (file still uploaded): {db_err}")
 
                     # Create download URL (goes through our API for auth)
                     url = f"{self._file_base_url}/{file_id}/{actual_filename}"
 
-                    logger.info(f"[WebAdapter] File uploaded to {storage_client.provider_name}: {actual_filename} -> {bucket}/{storage_key}")
+                    logger.info(f"[WebAdapter] File uploaded to {storage_client.provider_name}: {actual_filename} -> {bucket}/{storage_key} (hash={file_hash[:16] if file_hash else 'N/A'}...)")
 
                     # Add message with attachment if comment provided
                     if comment:
@@ -493,15 +533,36 @@ class WebAdapter(ChannelAdapter):
             key=actual_filename,
             filename=actual_filename,
             content_type=content_type,
-            size=path.stat().st_size,
+            size=file_size,
             user_id=owner_id,
             local_path=path,
         )
 
+        # Store document record in database (even for local storage)
+        try:
+            from db.database import db
+            db.create_document(
+                file_id=file_id,
+                user_id=owner_id,
+                original_filename=actual_filename,
+                file_type=content_type,
+                storage_provider="local",
+                storage_bucket=bucket,
+                storage_key=str(path),
+                file_size=file_size,
+                file_extension=file_extension,
+                file_hash=file_hash,
+                document_type=document_type,
+                bo_id=bo_id,
+                proposal_id=proposal_id,
+            )
+        except Exception as db_err:
+            logger.warning(f"[WebAdapter] Failed to store document in DB (file still stored): {db_err}")
+
         # Create download URL
         url = f"{self._file_base_url}/{file_id}/{actual_filename}"
 
-        logger.info(f"[WebAdapter] File stored locally: {actual_filename} -> {url}")
+        logger.info(f"[WebAdapter] File stored locally: {actual_filename} -> {url} (hash={file_hash[:16] if file_hash else 'N/A'}...)")
 
         # If there's a comment, add as message with attachment
         if comment:
@@ -538,12 +599,17 @@ class WebAdapter(ChannelAdapter):
         mimetype: Optional[str] = None,
         bucket: str = "uploads",
         user_id: Optional[str] = None,
+        document_type: Optional[str] = None,
+        bo_id: Optional[int] = None,
+        proposal_id: Optional[int] = None,
     ) -> FileUpload:
         """
         Upload file from bytes.
 
         When STORAGE_PROVIDER=supabase, uploads directly to Supabase Storage.
         Otherwise, writes to temp file first.
+
+        Also records file in documents table with hash for integrity/deduplication.
         """
         import tempfile
 
@@ -556,6 +622,16 @@ class WebAdapter(ChannelAdapter):
             import mimetypes
             content_type, _ = mimetypes.guess_type(filename)
             content_type = content_type or "application/octet-stream"
+
+        # Calculate file hash for integrity/deduplication
+        file_hash = None
+        try:
+            from utils.files import calculate_sha256, get_file_extension
+            file_hash = calculate_sha256(file_bytes)
+            file_extension = get_file_extension(filename)
+        except Exception as e:
+            logger.warning(f"[WebAdapter] Failed to calculate file hash: {e}")
+            file_extension = Path(filename).suffix.lower()
 
         # Try to use remote storage (Supabase)
         storage_client = self._get_storage_client()
@@ -574,7 +650,7 @@ class WebAdapter(ChannelAdapter):
                 )
 
                 if result.success:
-                    # Store metadata
+                    # Store metadata in memory cache
                     self._stored_files[file_id] = StoredFileInfo(
                         file_id=file_id,
                         bucket=bucket,
@@ -585,8 +661,29 @@ class WebAdapter(ChannelAdapter):
                         user_id=owner_id,
                     )
 
+                    # Store document record in database
+                    try:
+                        from db.database import db
+                        db.create_document(
+                            file_id=file_id,
+                            user_id=owner_id,
+                            original_filename=filename,
+                            file_type=content_type,
+                            storage_provider=storage_client.provider_name,
+                            storage_bucket=bucket,
+                            storage_key=storage_key,
+                            file_size=len(file_bytes),
+                            file_extension=file_extension,
+                            file_hash=file_hash,
+                            document_type=document_type,
+                            bo_id=bo_id,
+                            proposal_id=proposal_id,
+                        )
+                    except Exception as db_err:
+                        logger.warning(f"[WebAdapter] Failed to store document in DB (file still uploaded): {db_err}")
+
                     url = f"{self._file_base_url}/{file_id}/{filename}"
-                    logger.info(f"[WebAdapter] File bytes uploaded to {storage_client.provider_name}: {filename} -> {bucket}/{storage_key}")
+                    logger.info(f"[WebAdapter] File bytes uploaded to {storage_client.provider_name}: {filename} -> {bucket}/{storage_key} (hash={file_hash[:16] if file_hash else 'N/A'}...)")
 
                     if comment:
                         session = self.get_session(channel_id)

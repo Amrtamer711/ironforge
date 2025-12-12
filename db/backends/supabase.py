@@ -1484,3 +1484,180 @@ class SupabaseBackend(DatabaseBackend):
         except Exception as e:
             logger.error(f"[SUPABASE] Error deleting chat session for {user_id}: {e}")
             return False
+
+    # =========================================================================
+    # DOCUMENT MANAGEMENT (File Storage Tracking)
+    # =========================================================================
+
+    def create_document(
+        self,
+        file_id: str,
+        user_id: str,
+        original_filename: str,
+        file_type: str,
+        storage_provider: str,
+        storage_bucket: str,
+        storage_key: str,
+        file_size: Optional[int] = None,
+        file_extension: Optional[str] = None,
+        file_hash: Optional[str] = None,
+        document_type: Optional[str] = None,
+        bo_id: Optional[int] = None,
+        proposal_id: Optional[int] = None,
+        metadata_json: Optional[Dict[str, Any]] = None,
+    ) -> Optional[int]:
+        """Create a new document record."""
+        try:
+            client = self._get_client()
+
+            data = {
+                "file_id": file_id,
+                "user_id": user_id,
+                "original_filename": original_filename,
+                "file_type": file_type,
+                "storage_provider": storage_provider,
+                "storage_bucket": storage_bucket,
+                "storage_key": storage_key,
+            }
+
+            if file_size is not None:
+                data["file_size"] = file_size
+            if file_extension:
+                data["file_extension"] = file_extension
+            if file_hash:
+                data["file_hash"] = file_hash
+            if document_type:
+                data["document_type"] = document_type
+            if bo_id:
+                data["bo_id"] = bo_id
+            if proposal_id:
+                data["proposal_id"] = proposal_id
+            if metadata_json:
+                data["metadata_json"] = metadata_json
+
+            response = client.table("documents").insert(data).execute()
+
+            if response.data:
+                doc_id = response.data[0].get("id")
+                logger.info(f"[SUPABASE] Created document: {file_id} (id={doc_id})")
+                return doc_id
+            return None
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error creating document: {e}")
+            return None
+
+    def get_document(self, file_id: str) -> Optional[Dict[str, Any]]:
+        """Get a document by file_id."""
+        try:
+            client = self._get_client()
+            response = client.table("documents").select("*").eq("file_id", file_id).single().execute()
+            return response.data
+        except Exception as e:
+            if "PGRST116" in str(e):  # Row not found
+                return None
+            logger.error(f"[SUPABASE] Error getting document {file_id}: {e}")
+            return None
+
+    def get_document_by_hash(self, file_hash: str) -> Optional[Dict[str, Any]]:
+        """Get a document by file hash (for deduplication)."""
+        try:
+            client = self._get_client()
+            response = (
+                client.table("documents")
+                .select("*")
+                .eq("file_hash", file_hash)
+                .eq("is_deleted", False)
+                .limit(1)
+                .execute()
+            )
+            return response.data[0] if response.data else None
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error getting document by hash: {e}")
+            return None
+
+    def soft_delete_document(self, file_id: str) -> bool:
+        """Soft delete a document (set is_deleted=true and deleted_at=now())."""
+        try:
+            client = self._get_client()
+            now = datetime.now().isoformat()
+            response = (
+                client.table("documents")
+                .update({"is_deleted": True, "deleted_at": now})
+                .eq("file_id", file_id)
+                .execute()
+            )
+            if response.data:
+                logger.info(f"[SUPABASE] Soft-deleted document: {file_id}")
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error soft-deleting document {file_id}: {e}")
+            return False
+
+    def list_documents(
+        self,
+        user_id: Optional[str] = None,
+        document_type: Optional[str] = None,
+        bo_id: Optional[int] = None,
+        proposal_id: Optional[int] = None,
+        include_deleted: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """List documents with optional filters."""
+        try:
+            client = self._get_client()
+            query = client.table("documents").select("*")
+
+            if user_id:
+                query = query.eq("user_id", user_id)
+            if document_type:
+                query = query.eq("document_type", document_type)
+            if bo_id:
+                query = query.eq("bo_id", bo_id)
+            if proposal_id:
+                query = query.eq("proposal_id", proposal_id)
+            if not include_deleted:
+                query = query.eq("is_deleted", False)
+
+            query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
+            response = query.execute()
+            return response.data or []
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error listing documents: {e}")
+            return []
+
+    def get_soft_deleted_documents(
+        self,
+        older_than_days: int = 30,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Get soft-deleted documents older than specified days."""
+        try:
+            client = self._get_client()
+            from datetime import timedelta
+            cutoff_date = (datetime.now() - timedelta(days=older_than_days)).isoformat()
+
+            response = (
+                client.table("documents")
+                .select("*")
+                .eq("is_deleted", True)
+                .lt("deleted_at", cutoff_date)
+                .limit(limit)
+                .execute()
+            )
+            return response.data or []
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error getting soft-deleted documents: {e}")
+            return []
+
+    def hard_delete_document(self, file_id: str) -> bool:
+        """Permanently delete a document record."""
+        try:
+            client = self._get_client()
+            client.table("documents").delete().eq("file_id", file_id).execute()
+            logger.info(f"[SUPABASE] Hard-deleted document: {file_id}")
+            return True
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error hard-deleting document {file_id}: {e}")
+            return False
