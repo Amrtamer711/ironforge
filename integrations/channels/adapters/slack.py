@@ -40,16 +40,18 @@ class SlackAdapter(ChannelAdapter):
     Wraps slack_sdk's AsyncWebClient with the unified channel interface.
     """
 
-    def __init__(self, client: AsyncWebClient, bot_token: str):
+    def __init__(self, client: AsyncWebClient, bot_token: str, workspace_id: Optional[str] = None):
         """
         Initialize Slack adapter.
 
         Args:
             client: Slack AsyncWebClient instance
             bot_token: Slack bot token for file downloads
+            workspace_id: Slack workspace ID (for identity tracking)
         """
         self._client = client
         self._bot_token = bot_token
+        self._workspace_id = workspace_id
         self._user_cache: Dict[str, User] = {}
 
     @property
@@ -372,6 +374,23 @@ class SlackAdapter(ChannelAdapter):
 
             # Cache the result
             self._user_cache[user_id] = user
+
+            # Record identity (fire-and-forget, doesn't block)
+            if not user.is_bot:
+                try:
+                    from integrations.channel_identity import ChannelIdentity
+                    ChannelIdentity.record_fire_and_forget(
+                        provider="slack",
+                        provider_user_id=user_id,
+                        provider_team_id=self._workspace_id,
+                        email=user.email,
+                        display_name=user.display_name,
+                        real_name=user.name,
+                        avatar_url=user.avatar_url,
+                    )
+                except Exception as e:
+                    logger.debug(f"[SlackAdapter] Identity recording skipped: {e}")
+
             return user
 
         except Exception as e:

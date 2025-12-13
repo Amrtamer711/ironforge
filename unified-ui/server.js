@@ -3810,6 +3810,202 @@ app.get('/api/rbac/check-access/:objectType/:recordId', requireAuth, async (req,
 });
 
 // =============================================================================
+// CHANNEL IDENTITY APIs (Slack, Teams, etc.)
+// =============================================================================
+// Endpoints for channel adapters (Slack bot, Teams bot, etc.) to record user
+// interactions and link channel identities to platform users.
+
+// Record a channel user interaction (called by bot on every event)
+// No auth required - called by bot services internally
+app.post('/api/channel-identity/record', async (req, res) => {
+  const {
+    provider,           // 'slack', 'teams', etc.
+    provider_user_id,
+    provider_team_id,
+    email,
+    display_name,
+    real_name,
+    avatar_url
+  } = req.body;
+
+  if (!provider || !provider_user_id) {
+    return res.status(400).json({ error: 'provider and provider_user_id are required' });
+  }
+
+  console.log(`[Channel Identity] Recording ${provider} user: ${provider_user_id}`);
+
+  try {
+    const { data, error } = await supabase.rpc('record_slack_interaction', {
+      p_slack_user_id: provider_user_id,
+      p_slack_workspace_id: provider_team_id || 'unknown',
+      p_slack_email: email || null,
+      p_slack_display_name: display_name || null,
+      p_slack_real_name: real_name || null,
+      p_slack_avatar_url: avatar_url || null
+    });
+
+    if (error) {
+      console.warn(`[Channel Identity] DB error: ${error.message}`);
+      return res.json({ recorded: false, is_authorized: true });
+    }
+
+    const result = data?.[0] || {};
+    res.json({
+      recorded: true,
+      identity_id: result.identity_id,
+      platform_user_id: result.platform_user_id,
+      is_linked: result.is_linked || false,
+      is_blocked: result.is_blocked || false,
+      is_authorized: !result.is_blocked && (!result.require_auth || result.is_linked)
+    });
+  } catch (err) {
+    console.error(`[Channel Identity] Error: ${err.message}`);
+    res.json({ recorded: false, is_authorized: true });
+  }
+});
+
+// Check authorization status
+app.get('/api/channel-identity/check/:provider/:providerId', async (req, res) => {
+  const { providerId } = req.params;
+
+  try {
+    const { data, error } = await supabase.rpc('check_slack_authorization', {
+      p_slack_user_id: providerId
+    });
+
+    if (error) {
+      return res.json({ is_authorized: true, reason: 'check_failed' });
+    }
+
+    res.json(data?.[0] || { is_authorized: true, reason: 'open_access' });
+  } catch (err) {
+    res.json({ is_authorized: true, reason: 'check_failed' });
+  }
+});
+
+// Admin: List all channel identities
+app.get('/api/channel-identity/list', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  const { linked, page = 1, limit = 50 } = req.query;
+  const offset = (parseInt(page) - 1) * parseInt(limit);
+
+  try {
+    let query = supabase.from('slack_identities_full').select('*', { count: 'exact' });
+
+    if (linked === 'true') query = query.not('user_id', 'is', null);
+    else if (linked === 'false') query = query.is('user_id', null);
+
+    const { data, error, count } = await query
+      .order('last_seen_at', { ascending: false })
+      .range(offset, offset + parseInt(limit) - 1);
+
+    if (error) throw error;
+    res.json({ identities: data || [], total: count || 0, page: parseInt(page), limit: parseInt(limit) });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list identities' });
+  }
+});
+
+// Admin: Get pending links
+app.get('/api/channel-identity/pending-links', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  try {
+    const { data, error } = await supabase.from('slack_pending_links').select('*');
+    if (error) throw error;
+    res.json(data || []);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get pending links' });
+  }
+});
+
+// Admin: Link identity to platform user
+app.post('/api/channel-identity/link', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  const { provider_user_id, platform_user_id } = req.body;
+
+  if (!provider_user_id || !platform_user_id) {
+    return res.status(400).json({ error: 'provider_user_id and platform_user_id required' });
+  }
+
+  try {
+    const { error } = await supabase.rpc('link_slack_identity', {
+      p_slack_user_id: provider_user_id,
+      p_platform_user_id: platform_user_id,
+      p_linked_by: req.user.id
+    });
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin: Auto-link by email
+app.post('/api/channel-identity/auto-link', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  try {
+    const { data, error } = await supabase.rpc('auto_link_slack_by_email');
+    if (error) throw error;
+    res.json({ linked: data || [], count: data?.length || 0 });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to auto-link' });
+  }
+});
+
+// Admin: Block/unblock channel user
+app.post('/api/channel-identity/block', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  const { provider_user_id, blocked, reason } = req.body;
+
+  if (!provider_user_id || blocked === undefined) {
+    return res.status(400).json({ error: 'provider_user_id and blocked required' });
+  }
+
+  try {
+    const { error } = await supabase.rpc('set_slack_blocked', {
+      p_slack_user_id: provider_user_id,
+      p_blocked: blocked,
+      p_reason: reason || null,
+      p_blocked_by: req.user.id
+    });
+    if (error) throw error;
+    res.json({ success: true, blocked });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update block status' });
+  }
+});
+
+// Admin: Get/update require_platform_auth setting
+app.get('/api/channel-identity/settings', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  try {
+    const { data } = await supabase
+      .from('system_settings')
+      .select('*')
+      .eq('key', 'slack_require_platform_auth')
+      .single();
+
+    res.json({ require_platform_auth: data?.value === true || data?.value === 'true' });
+  } catch (err) {
+    res.json({ require_platform_auth: false });
+  }
+});
+
+app.put('/api/channel-identity/settings', requireAuth, requireProfile('system_admin'), async (req, res) => {
+  const { require_platform_auth } = req.body;
+
+  try {
+    const { error } = await supabase
+      .from('system_settings')
+      .upsert({
+        key: 'slack_require_platform_auth',
+        value: require_platform_auth,
+        updated_at: new Date().toISOString(),
+        updated_by: req.user.id
+      });
+
+    if (error) throw error;
+    res.json({ success: true, require_platform_auth });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update settings' });
+  }
+});
+
+// =============================================================================
 // SPA CATCH-ALL - Serve index.html for all non-API routes
 // This enables client-side routing and handles Supabase auth redirects
 // =============================================================================
