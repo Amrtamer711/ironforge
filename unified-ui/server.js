@@ -390,15 +390,27 @@ async function getUserRBACData(userId) {
     // =========================================================================
     // LEVEL 5: Company Access (for data filtering in proposal-bot)
     // =========================================================================
+    // Get user's assigned companies with hierarchy info
     const { data: userCompanies } = await supabase
       .from('user_companies')
-      .select('companies(code)')
+      .select('company_id, companies(id, code, is_group)')
       .eq('user_id', userId);
 
-    // Extract company codes (schema names like 'backlite_dubai', 'viola')
-    const companies = userCompanies
-      ? userCompanies.map(uc => uc.companies?.code).filter(Boolean)
-      : [];
+    // Expand group companies to their leaf schemas (non-group children)
+    // Group companies (mmg, backlite) have no data schemas - only leaf companies do
+    let companies = [];
+    if (userCompanies && userCompanies.length > 0) {
+      const assignedCompanyIds = userCompanies.map(uc => uc.company_id).filter(Boolean);
+
+      // Use recursive CTE to get all accessible schemas (leaf companies only)
+      const { data: accessibleSchemas } = await supabase.rpc('get_accessible_schemas', {
+        p_company_ids: assignedCompanyIds
+      });
+
+      if (accessibleSchemas) {
+        companies = accessibleSchemas.map(s => s.schema_name).filter(Boolean);
+      }
+    }
 
     // Get user IDs whose records are accessible via sharing rules
     // (e.g., rule: "share proposals FROM sales_user profile TO sales_manager profile")
