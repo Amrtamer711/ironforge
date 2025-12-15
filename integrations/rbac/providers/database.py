@@ -50,6 +50,9 @@ def set_user_context(
     team_ids: Optional[List[int]] = None,
     manager_id: Optional[str] = None,
     subordinate_ids: Optional[List[str]] = None,
+    sharing_rules: Optional[List[Dict[str, Any]]] = None,
+    shared_records: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    shared_from_user_ids: Optional[List[str]] = None,
 ) -> None:
     """
     Set the current user context for RBAC checks.
@@ -66,6 +69,9 @@ def set_user_context(
         team_ids: Level 3 - Just team IDs for quick lookups
         manager_id: Level 3 - User's manager ID for hierarchy
         subordinate_ids: Level 3 - IDs of user's direct reports + team members
+        sharing_rules: Level 4 - Applicable sharing rules
+        shared_records: Level 4 - Records directly shared with user {objectType: [{recordId, accessLevel}]}
+        shared_from_user_ids: Level 4 - User IDs whose records are accessible via sharing rules
     """
     _current_user_context.set({
         "user_id": user_id,
@@ -78,6 +84,10 @@ def set_user_context(
         "team_ids": team_ids or [],
         "manager_id": manager_id,
         "subordinate_ids": subordinate_ids or [],
+        # Level 4: Sharing Rules & Record Shares
+        "sharing_rules": sharing_rules or [],
+        "shared_records": shared_records or {},
+        "shared_from_user_ids": shared_from_user_ids or [],
     })
 
 
@@ -99,6 +109,7 @@ def can_access_user_data(target_user_id: str) -> bool:
     - Current user is system_admin
     - Target is current user (self)
     - Target is a subordinate (direct report or team member)
+    - Target is accessible via sharing rules (sharedFromUserIds)
     - Current user has '*:*:*' permission
     """
     ctx = get_user_context()
@@ -109,6 +120,7 @@ def can_access_user_data(target_user_id: str) -> bool:
     profile = ctx.get("profile")
     permissions = ctx.get("permissions", set())
     subordinate_ids = ctx.get("subordinate_ids", [])
+    shared_from_user_ids = ctx.get("shared_from_user_ids", [])
 
     # System admin can access all
     if profile == "system_admin" or "*:*:*" in permissions:
@@ -122,7 +134,54 @@ def can_access_user_data(target_user_id: str) -> bool:
     if target_user_id in subordinate_ids:
         return True
 
+    # Sharing rules - user can access data from these users
+    if target_user_id in shared_from_user_ids:
+        return True
+
     return False
+
+
+def can_access_record(object_type: str, record_id: str, record_owner_id: str = None) -> bool:
+    """
+    Check if current user can access a specific record.
+
+    Returns True if:
+    - User can access the owner's data (via can_access_user_data)
+    - Record is directly shared with user (via sharedRecords)
+    """
+    ctx = get_user_context()
+    if not ctx:
+        return False
+
+    # First check owner-based access
+    if record_owner_id and can_access_user_data(record_owner_id):
+        return True
+
+    # Check direct record shares
+    shared_records = ctx.get("shared_records", {})
+    if object_type in shared_records:
+        for share in shared_records[object_type]:
+            if str(share.get("recordId")) == str(record_id):
+                return True
+
+    return False
+
+
+def get_shared_record_ids(object_type: str) -> List[str]:
+    """
+    Get list of record IDs directly shared with the current user for an object type.
+
+    Returns list of record IDs that have been explicitly shared.
+    """
+    ctx = get_user_context()
+    if not ctx:
+        return []
+
+    shared_records = ctx.get("shared_records", {})
+    if object_type in shared_records:
+        return [str(share.get("recordId")) for share in shared_records[object_type]]
+
+    return []
 
 
 def get_accessible_user_ids() -> List[str]:
@@ -131,7 +190,7 @@ def get_accessible_user_ids() -> List[str]:
 
     Returns:
         - [current_user_id] for regular users
-        - [current_user_id, ...subordinate_ids] for managers/team leaders
+        - [current_user_id, ...subordinate_ids, ...sharedFromUserIds] for managers/users with sharing
         - None for admins (access to all)
     """
     ctx = get_user_context()
@@ -142,14 +201,16 @@ def get_accessible_user_ids() -> List[str]:
     profile = ctx.get("profile")
     permissions = ctx.get("permissions", set())
     subordinate_ids = ctx.get("subordinate_ids", [])
+    shared_from_user_ids = ctx.get("shared_from_user_ids", [])
 
     # System admin can access all - return None to indicate "all"
     if profile == "system_admin" or "*:*:*" in permissions:
         return None  # type: ignore
 
-    # Return self + subordinates
+    # Return self + subordinates + sharing rule users
     accessible = [current_user_id] if current_user_id else []
     accessible.extend(subordinate_ids)
+    accessible.extend(shared_from_user_ids)
     return list(set(accessible))
 
 

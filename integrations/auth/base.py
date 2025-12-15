@@ -42,6 +42,32 @@ class AuthUser:
     supabase_id: Optional[str] = None
     local_id: Optional[str] = None
 
+    @property
+    def companies(self) -> List[str]:
+        """
+        Get list of company schema names user has access to.
+
+        Returns empty list if no companies assigned (user cannot access any company data).
+        """
+        return self.metadata.get("companies", [])
+
+    @property
+    def has_company_access(self) -> bool:
+        """Check if user has access to at least one company."""
+        return len(self.companies) > 0
+
+    def can_access_company(self, company_schema: str) -> bool:
+        """
+        Check if user can access a specific company's data.
+
+        Args:
+            company_schema: The schema name (e.g., 'backlite_dubai', 'viola')
+
+        Returns:
+            True if user has access to this company
+        """
+        return company_schema in self.companies
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
@@ -51,6 +77,7 @@ class AuthUser:
             "avatar_url": self.avatar_url,
             "is_active": self.is_active,
             "metadata": self.metadata,
+            "companies": self.companies,
         }
 
 

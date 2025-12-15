@@ -15,7 +15,7 @@ import os
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from db.base import DatabaseBackend
 from db.schema import get_postgres_schema, get_table_names
@@ -203,16 +203,19 @@ class SupabaseBackend(DatabaseBackend):
         self,
         limit: int = 50,
         offset: int = 0,
-        user_id: Optional[str] = None,
+        user_ids: Optional[Union[str, List[str]]] = None,
         client_name: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Get proposals with optional filtering."""
+        """Get proposals with optional filtering. user_ids supports single ID or list for team access."""
         try:
             client = self._get_client()
             query = client.table("proposals_log").select("*")
 
-            if user_id:
-                query = query.eq("user_id", user_id)
+            if user_ids:
+                if isinstance(user_ids, str):
+                    query = query.eq("user_id", user_ids)
+                else:
+                    query = query.in_("user_id", user_ids)
             if client_name:
                 query = query.ilike("client_name", f"%{client_name}%")
 
@@ -1716,3 +1719,94 @@ class SupabaseBackend(DatabaseBackend):
         except Exception as e:
             logger.error(f"[SUPABASE] Error hard-deleting document {file_id}: {e}")
             return False
+
+    # =========================================================================
+    # COMPANY-SCOPED LOCATIONS
+    # =========================================================================
+
+    def get_locations_for_companies(
+        self,
+        company_schemas: List[str],
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all locations from the specified company schemas.
+
+        Queries each company's locations table and aggregates results.
+        Each location includes its source company schema.
+
+        Args:
+            company_schemas: List of company schema names (e.g., ['backlite_dubai', 'viola'])
+
+        Returns:
+            List of location dicts with 'company_schema' field added
+        """
+        if not company_schemas:
+            return []
+
+        all_locations = []
+
+        try:
+            client = self._get_client()
+
+            for schema in company_schemas:
+                try:
+                    # Query locations from this company's schema
+                    response = client.schema(schema).table("locations").select("*").execute()
+
+                    if response.data:
+                        # Add company_schema to each location for reference
+                        for loc in response.data:
+                            loc["company_schema"] = schema
+                        all_locations.extend(response.data)
+                        logger.debug(f"[SUPABASE] Found {len(response.data)} locations in schema: {schema}")
+                except Exception as schema_err:
+                    # Log but continue - some schemas may not have locations yet
+                    logger.warning(f"[SUPABASE] Error querying locations from {schema}: {schema_err}")
+                    continue
+
+            logger.info(f"[SUPABASE] Retrieved {len(all_locations)} total locations from {len(company_schemas)} schemas")
+            return all_locations
+
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error getting locations for companies: {e}", exc_info=True)
+            return []
+
+    def get_location_by_key(
+        self,
+        location_key: str,
+        company_schemas: List[str],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific location by key from the user's accessible company schemas.
+
+        Args:
+            location_key: The location key to look up
+            company_schemas: List of company schema names user can access
+
+        Returns:
+            Location dict with 'company_schema' field if found, None otherwise
+        """
+        if not company_schemas or not location_key:
+            return None
+
+        try:
+            client = self._get_client()
+
+            for schema in company_schemas:
+                try:
+                    response = client.schema(schema).table("locations").select("*").eq(
+                        "location_key", location_key
+                    ).single().execute()
+
+                    if response.data:
+                        response.data["company_schema"] = schema
+                        return response.data
+                except Exception:
+                    # Not found in this schema, continue to next
+                    continue
+
+            return None
+
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error getting location {location_key}: {e}", exc_info=True)
+            return None

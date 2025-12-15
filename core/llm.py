@@ -668,6 +668,7 @@ async def main_llm_loop(
     user_input: str,
     channel_event: Dict[str, Any] = None,
     is_admin_override: bool = None,
+    user_companies: Optional[List[str]] = None,
 ):
     """
     Main LLM processing loop - channel-agnostic.
@@ -684,6 +685,7 @@ async def main_llm_loop(
             - thread_ts: Thread ID for Slack (optional)
             - subtype: Event subtype (optional)
         is_admin_override: Override admin check (for web UI where roles are passed separately)
+        user_companies: List of company schemas user can access (for data filtering)
     """
     logger = config.logger
 
@@ -1236,6 +1238,7 @@ async def main_llm_loop(
                 handle_booking_order_parse_func=_handle_booking_order_parse,
                 generate_mockup_queued_func=_generate_mockup_queued,
                 generate_ai_mockup_queued_func=_generate_ai_mockup_queued,
+                user_companies=user_companies,
             )
             if handled:
                 user_history[user_id] = history[-10:]

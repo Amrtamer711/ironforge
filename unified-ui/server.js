@@ -327,6 +327,109 @@ async function getUserRBACData(userId) {
     const allSubordinateIds = [...new Set([...subordinateIds, ...teamMemberIds])];
 
     // =========================================================================
+    // LEVEL 4: Sharing Rules & Record Shares
+    // =========================================================================
+
+    // Get team IDs for sharing rule evaluation
+    const userTeamIds = teams.map(t => t.id);
+
+    // Get records directly shared with this user or their teams
+    const recordShares = await getUserRecordShares(userId, userTeamIds);
+
+    // Group shared records by object type for efficient lookups
+    // Format: { proposals: [{recordId, accessLevel}], booking_orders: [...] }
+    const sharedRecords = {};
+    for (const share of recordShares) {
+      const objType = share.object_type;
+      if (!sharedRecords[objType]) {
+        sharedRecords[objType] = [];
+      }
+      sharedRecords[objType].push({
+        recordId: share.record_id,
+        accessLevel: share.access_level, // 'read', 'read_write', 'full'
+        sharedBy: share.shared_by,
+        reason: share.reason,
+      });
+    }
+
+    // Get sharing rules that grant this user access
+    // Rules can share TO: profile, team, or all
+    const { data: allSharingRules } = await supabase
+      .from('sharing_rules')
+      .select('*')
+      .eq('is_active', true);
+
+    // Evaluate which sharing rules apply to this user
+    const applicableRules = [];
+    if (allSharingRules) {
+      for (const rule of allSharingRules) {
+        let applies = false;
+
+        // Check if rule shares TO this user
+        if (rule.share_to_type === 'all') {
+          applies = true;
+        } else if (rule.share_to_type === 'profile' && rule.share_to_id === profileName) {
+          applies = true;
+        } else if (rule.share_to_type === 'team' && userTeamIds.includes(parseInt(rule.share_to_id))) {
+          applies = true;
+        }
+
+        if (applies) {
+          applicableRules.push({
+            id: rule.id,
+            name: rule.name,
+            objectType: rule.object_type,
+            shareFromType: rule.share_from_type,
+            shareFromId: rule.share_from_id,
+            accessLevel: rule.access_level,
+          });
+        }
+      }
+    }
+
+    // =========================================================================
+    // LEVEL 5: Company Access (for data filtering in proposal-bot)
+    // =========================================================================
+    const { data: userCompanies } = await supabase
+      .from('user_companies')
+      .select('companies(code)')
+      .eq('user_id', userId);
+
+    // Extract company codes (schema names like 'backlite_dubai', 'viola')
+    const companies = userCompanies
+      ? userCompanies.map(uc => uc.companies?.code).filter(Boolean)
+      : [];
+
+    // Get user IDs whose records are accessible via sharing rules
+    // (e.g., rule: "share proposals FROM sales_user profile TO sales_manager profile")
+    const sharedFromUserIds = [];
+    for (const rule of applicableRules) {
+      if (rule.shareFromType === 'profile') {
+        // Get all users with this profile
+        const { data: profileUsers } = await supabase
+          .from('users')
+          .select('id, profiles!inner(name)')
+          .eq('profiles.name', rule.shareFromId)
+          .eq('is_active', true);
+
+        if (profileUsers) {
+          sharedFromUserIds.push(...profileUsers.map(u => u.id));
+        }
+      } else if (rule.shareFromType === 'team') {
+        // Get all users in this team
+        const { data: teamUsers } = await supabase
+          .from('team_members')
+          .select('user_id')
+          .eq('team_id', parseInt(rule.shareFromId));
+
+        if (teamUsers) {
+          sharedFromUserIds.push(...teamUsers.map(u => u.user_id));
+        }
+      }
+      // 'owner' type means the rule applies to record owners - handled at query time
+    }
+
+    // =========================================================================
     // Return complete RBAC context
     // =========================================================================
     return {
@@ -336,6 +439,12 @@ async function getUserRBACData(userId) {
       teams: teams,
       managerId: userData.manager_id,
       subordinateIds: allSubordinateIds,
+      // Level 4: Sharing context
+      sharingRules: applicableRules,
+      sharedRecords: sharedRecords,
+      sharedFromUserIds: [...new Set(sharedFromUserIds)],
+      // Level 5: Company access (for proposal-bot data filtering)
+      companies: companies,
     };
 
   } catch (err) {
@@ -467,7 +576,7 @@ async function proxyAuthMiddleware(req, res, next) {
     }
 
     // Attach to request for proxy to inject as headers
-    // Includes full 4-level RBAC context
+    // Includes full 5-level RBAC context
     req.trustedUser = {
       id: user.id,
       email: user.email,
@@ -484,6 +593,12 @@ async function proxyAuthMiddleware(req, res, next) {
       // Level 3: Hierarchy
       managerId: rbac.managerId,
       subordinateIds: rbac.subordinateIds || [],
+      // Level 4: Sharing Rules & Record Shares
+      sharingRules: rbac.sharingRules || [],
+      sharedRecords: rbac.sharedRecords || {},
+      sharedFromUserIds: rbac.sharedFromUserIds || [],
+      // Level 5: Company access (for proposal-bot data filtering)
+      companies: rbac.companies || [],
     };
 
     next();
@@ -548,6 +663,14 @@ app.use('/api/sales', createProxyMiddleware({
           proxyReq.setHeader('X-Trusted-User-Manager-Id', req.trustedUser.managerId);
         }
         proxyReq.setHeader('X-Trusted-User-Subordinate-Ids', JSON.stringify(req.trustedUser.subordinateIds));
+
+        // Level 4: Sharing Rules & Record Shares
+        proxyReq.setHeader('X-Trusted-User-Sharing-Rules', JSON.stringify(req.trustedUser.sharingRules || []));
+        proxyReq.setHeader('X-Trusted-User-Shared-Records', JSON.stringify(req.trustedUser.sharedRecords || {}));
+        proxyReq.setHeader('X-Trusted-User-Shared-From-User-Ids', JSON.stringify(req.trustedUser.sharedFromUserIds || []));
+
+        // Level 5: Company access (for proposal-bot data filtering)
+        proxyReq.setHeader('X-Trusted-User-Companies', JSON.stringify(req.trustedUser.companies || []));
       }
 
       // Also forward original auth header (backward compat during transition)

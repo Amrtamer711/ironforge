@@ -8,7 +8,7 @@ import os
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from db.base import DatabaseBackend
 from db.schema import get_sqlite_schema
@@ -319,18 +319,23 @@ class SQLiteBackend(DatabaseBackend):
         self,
         limit: int = 50,
         offset: int = 0,
-        user_id: Optional[str] = None,
+        user_ids: Optional[Union[str, List[str]]] = None,
         client_name: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Get proposals with optional filtering."""
+        """Get proposals with optional filtering. user_ids supports single ID or list for team access."""
         conn = self._connect()
         try:
             query = "SELECT * FROM proposals_log WHERE 1=1"
             params = []
 
-            if user_id:
-                query += " AND submitted_by = ?"
-                params.append(user_id)
+            if user_ids:
+                if isinstance(user_ids, str):
+                    query += " AND submitted_by = ?"
+                    params.append(user_ids)
+                else:
+                    placeholders = ",".join("?" * len(user_ids))
+                    query += f" AND submitted_by IN ({placeholders})"
+                    params.extend(user_ids)
             if client_name:
                 query += " AND client_name LIKE ?"
                 params.append(f"%{client_name}%")

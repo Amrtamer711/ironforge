@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from api.auth import require_auth
 from integrations.auth import AuthUser
+from integrations.rbac import has_permission
 from utils.logging import get_logger
 
 router = APIRouter(prefix="/api/files", tags=["files"])
@@ -243,6 +244,15 @@ async def serve_uploaded_file(
     stored_info = web_adapter.get_stored_file_info(file_id)
 
     if stored_info:
+        # RBAC: Check file ownership - user must own the file or have admin permission
+        file_owner = getattr(stored_info, 'user_id', None) or getattr(stored_info, 'owner_id', None)
+        if file_owner and file_owner != user.id:
+            # User doesn't own this file - check if they have admin permission
+            can_access_all = await has_permission(user.id, "core:files:read")
+            if not can_access_all:
+                logger.warning(f"[FILES] Access denied: {user.email} tried to access file owned by {file_owner}")
+                raise HTTPException(status_code=403, detail="Not authorized to access this file")
+
         # Validate filename matches stored metadata (security check)
         if stored_info.filename and stored_info.filename != filename:
             logger.warning(f"[FILES] Filename mismatch: requested '{filename}', stored '{stored_info.filename}'")
@@ -307,12 +317,25 @@ async def get_file_download_url(
 
     For Supabase Storage, returns a signed URL that expires.
     For local storage, returns the API endpoint URL.
+
+    Access: Own files or core:files:read permission.
     """
     logger.info(f"[FILES] URL request for {file_id} by {user.email}")
 
     from core.chat_api import get_web_adapter
 
     web_adapter = get_web_adapter()
+
+    # RBAC: Check file ownership
+    stored_info = web_adapter.get_stored_file_info(file_id)
+    if stored_info:
+        file_owner = getattr(stored_info, 'user_id', None) or getattr(stored_info, 'owner_id', None)
+        if file_owner and file_owner != user.id:
+            can_access_all = await has_permission(user.id, "core:files:read")
+            if not can_access_all:
+                logger.warning(f"[FILES] Access denied: {user.email} tried to get URL for file owned by {file_owner}")
+                raise HTTPException(status_code=403, detail="Not authorized to access this file")
+
     url = await web_adapter.get_file_download_url(file_id, expires_in=expires_in)
 
     if not url:

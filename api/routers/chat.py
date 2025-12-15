@@ -116,6 +116,7 @@ async def chat_message(
             message=request.message,
             roles=roles,
             files=files,
+            companies=user.companies,
         )
 
         logger.info(f"[CHAT] Response generated for {user.email}")
@@ -180,6 +181,7 @@ async def chat_stream(
                 message=request.message,
                 roles=roles,
                 files=files,
+                companies=user.companies,
             ):
                 yield chunk
             logger.info(f"[CHAT] Stream completed for {user.email}")

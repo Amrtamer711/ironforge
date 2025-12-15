@@ -4,6 +4,7 @@ Tool Router - Handles dispatching LLM function calls to appropriate handlers.
 
 import os
 from datetime import datetime
+from typing import List, Optional, Tuple
 
 import config
 from db.database import db
@@ -14,6 +15,56 @@ from integrations.llm import ToolCall
 from routers.mockup_handler import handle_mockup_generation
 
 logger = config.logger
+
+
+def _validate_company_access(user_companies: Optional[List[str]]) -> Tuple[bool, str]:
+    """
+    Validate that user has company access for data operations.
+
+    Security: Users without company assignments cannot access any company-specific data.
+    No backwards compatibility - this prevents accidental data leaks.
+
+    Args:
+        user_companies: List of company schemas user can access
+
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    if user_companies is None or len(user_companies) == 0:
+        return False, (
+            "❌ **Access Denied**\n\n"
+            "You don't have access to any company data. "
+            "Please contact your administrator to be assigned to a company."
+        )
+    return True, ""
+
+
+def _validate_location_access(
+    location_key: str,
+    user_companies: List[str],
+) -> Tuple[bool, str, Optional[str]]:
+    """
+    Validate that a specific location belongs to user's accessible companies.
+
+    Security: Prevents users from accessing locations outside their assigned companies,
+    even if they know the location key.
+
+    Args:
+        location_key: The location key to validate
+        user_companies: List of company schemas user can access
+
+    Returns:
+        Tuple of (is_valid, error_message, company_schema)
+        company_schema is the schema where the location was found (if valid)
+    """
+    location = db.get_location_by_key(location_key, user_companies)
+    if location is None:
+        return False, (
+            f"❌ **Location Not Found**\n\n"
+            f"Location `{location_key}` was not found in your accessible companies. "
+            f"Use 'list locations' to see available locations."
+        ), None
+    return True, "", location.get("company_schema")
 
 
 async def handle_tool_call(
@@ -27,6 +78,7 @@ async def handle_tool_call(
     handle_booking_order_parse_func=None,
     generate_mockup_queued_func=None,
     generate_ai_mockup_queued_func=None,
+    user_companies: list = None,
 ):
     """
     Main tool router - dispatches function calls to appropriate handlers.
@@ -44,6 +96,7 @@ async def handle_tool_call(
         handle_booking_order_parse_func: Function to handle BO parsing
         generate_mockup_queued_func: Function for queued mockup generation
         generate_ai_mockup_queued_func: Function for queued AI mockup generation
+        user_companies: List of company schemas user can access (for data filtering)
 
     Returns:
         True if handled as function call, False otherwise
@@ -55,12 +108,12 @@ async def handle_tool_call(
     channel_adapter = config.get_channel_adapter()
 
     if tool_name == "get_separate_proposals":
-        # Update status to Building Proposal
-        await channel_adapter.update_message(
-            channel_id=channel,
-            message_id=status_ts,
-            content="⏳ _Building Proposal..._"
-        )
+        # Company access validation (security - no backwards compatibility)
+        has_access, error_msg = _validate_company_access(user_companies)
+        if not has_access:
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content=error_msg)
+            return True
 
         args = args
         proposals_data = args.get("proposals", [])
@@ -73,20 +126,38 @@ async def handle_tool_call(
         logger.info(f"[SEPARATE] Client: {client_name}, User: {user_id}")
         logger.info(f"[SEPARATE] Payment terms: {payment_terms}")
         logger.info(f"[SEPARATE] Currency: {currency or 'AED'}")
+        logger.info(f"[SEPARATE] User companies: {user_companies}")
 
         if not proposals_data:
             await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
             await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** No proposals data provided")
             return True
 
-        result = await process_proposals(proposals_data, "separate", None, user_id, client_name, payment_terms, currency)
-    elif tool_name == "get_combined_proposal":
+        # Validate all requested locations belong to user's companies
+        for proposal in proposals_data:
+            location_key = proposal.get("location", "").strip().lower().replace(" ", "_")
+            if location_key:
+                is_valid, loc_error, _ = _validate_location_access(location_key, user_companies)
+                if not is_valid:
+                    await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                    await channel_adapter.send_message(channel_id=channel, content=loc_error)
+                    return True
+
         # Update status to Building Proposal
         await channel_adapter.update_message(
             channel_id=channel,
             message_id=status_ts,
             content="⏳ _Building Proposal..._"
         )
+
+        result = await process_proposals(proposals_data, "separate", None, user_id, client_name, payment_terms, currency)
+    elif tool_name == "get_combined_proposal":
+        # Company access validation (security - no backwards compatibility)
+        has_access, error_msg = _validate_company_access(user_companies)
+        if not has_access:
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content=error_msg)
+            return True
 
         args = args
         proposals_data = args.get("proposals", [])
@@ -101,6 +172,7 @@ async def handle_tool_call(
         logger.info(f"[COMBINED] Client: {client_name}, User: {user_id}")
         logger.info(f"[COMBINED] Payment terms: {payment_terms}")
         logger.info(f"[COMBINED] Currency: {currency or 'AED'}")
+        logger.info(f"[COMBINED] User companies: {user_companies}")
 
         if not proposals_data:
             await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
@@ -114,6 +186,23 @@ async def handle_tool_call(
             await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
             await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** Combined package requires at least 2 locations")
             return True
+
+        # Validate all requested locations belong to user's companies
+        for proposal in proposals_data:
+            location_key = proposal.get("location", "").strip().lower().replace(" ", "_")
+            if location_key:
+                is_valid, loc_error, _ = _validate_location_access(location_key, user_companies)
+                if not is_valid:
+                    await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                    await channel_adapter.send_message(channel_id=channel, content=loc_error)
+                    return True
+
+        # Update status to Building Proposal
+        await channel_adapter.update_message(
+            channel_id=channel,
+            message_id=status_ts,
+            content="⏳ _Building Proposal..._"
+        )
 
         # Transform proposals data for combined package (add durations as list with single item)
         for proposal in proposals_data:
@@ -324,13 +413,39 @@ async def handle_tool_call(
         return True
 
     elif tool_name == "list_locations":
-        names = config.available_location_names()
+        # Company access validation (security - no backwards compatibility)
+        has_access, error_msg = _validate_company_access(user_companies)
+        if not has_access:
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content=error_msg)
+            return True
+
+        # Query locations from user's accessible company schemas
+        locations = db.get_locations_for_companies(user_companies)
         await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        if not names:
-            await channel_adapter.send_message(channel_id=channel, content="📍 No locations available. Use **'add location'** to add one.")
+
+        if not locations:
+            await channel_adapter.send_message(channel_id=channel, content="📍 No locations available for your companies.")
         else:
-            listing = "\n".join(f"• {n}" for n in names)
-            await channel_adapter.send_message(channel_id=channel, content=f"📍 **Current locations:**\n{listing}")
+            # Group locations by company for clearer display
+            by_company = {}
+            for loc in locations:
+                company = loc.get("company_schema", "Unknown")
+                if company not in by_company:
+                    by_company[company] = []
+                display_name = loc.get("display_name", loc.get("location_key", "Unknown"))
+                by_company[company].append(display_name)
+
+            # Format the listing
+            listing_parts = []
+            for company, names in sorted(by_company.items()):
+                company_display = company.replace("_", " ").title()
+                listing_parts.append(f"\n**{company_display}:**")
+                for name in sorted(names):
+                    listing_parts.append(f"• {name}")
+
+            listing = "\n".join(listing_parts)
+            await channel_adapter.send_message(channel_id=channel, content=f"📍 **Available locations:**{listing}")
 
     elif tool_name == "delete_location":
         # Admin permission gate
@@ -719,9 +834,26 @@ async def handle_tool_call(
         return True
 
     elif tool_name == "generate_mockup":
+        # Company access validation (security - no backwards compatibility)
+        has_access, error_msg = _validate_company_access(user_companies)
+        if not has_access:
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content=error_msg)
+            return True
+
+        # Validate the requested location belongs to user's companies
+        location_name = args.get("location", "").strip()
+        if location_name:
+            location_key = location_name.lower().replace(" ", "_")
+            is_valid, loc_error, _ = _validate_location_access(location_key, user_companies)
+            if not is_valid:
+                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                await channel_adapter.send_message(channel_id=channel, content=loc_error)
+                return True
+
         # Delegate to extracted mockup handler
         await handle_mockup_generation(
-            location_name=args.get("location", "").strip(),
+            location_name=location_name,
             time_of_day=args.get("time_of_day", "").strip().lower() or "all",
             finish=args.get("finish", "").strip().lower() or "all",
             ai_prompts=args.get("ai_prompts", []) or [],

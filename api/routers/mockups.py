@@ -56,13 +56,25 @@ async def mockup_setup_page(user: AuthUser = Depends(require_permission("sales:m
 
 @router.get("/api/mockup/locations")
 async def get_mockup_locations(user: AuthUser = Depends(require_auth)):
-    """Get list of available locations for mockup. Requires authentication."""
+    """Get list of available locations for mockup. Requires authentication and company access."""
+    # Company access validation (security - no backwards compatibility)
+    if not user.has_company_access:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to any company data. Please contact your administrator to be assigned to a company."
+        )
+
+    # Query locations from user's accessible company schemas
+    db_locations = db.get_locations_for_companies(user.companies)
+
     locations = []
-    for key, meta in config.LOCATION_METADATA.items():
+    for loc in db_locations:
         locations.append({
-            "key": key,
-            "name": meta.get("display_name", key.title())
+            "key": loc.get("location_key"),
+            "name": loc.get("display_name", loc.get("location_key", "").title()),
+            "company": loc.get("company_schema"),
         })
+
     return {"locations": sorted(locations, key=lambda x: x["name"])}
 
 

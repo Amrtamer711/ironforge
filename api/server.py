@@ -310,6 +310,25 @@ async def trusted_user_middleware(request: Request, call_next):
             except json.JSONDecodeError:
                 subordinate_ids = []
 
+            # Level 4: Sharing Rules & Record Shares
+            sharing_rules_json = request.headers.get("x-trusted-user-sharing-rules", "[]")
+            try:
+                sharing_rules = json.loads(sharing_rules_json)
+            except json.JSONDecodeError:
+                sharing_rules = []
+
+            shared_records_json = request.headers.get("x-trusted-user-shared-records", "{}")
+            try:
+                shared_records = json.loads(shared_records_json)
+            except json.JSONDecodeError:
+                shared_records = {}
+
+            shared_from_user_ids_json = request.headers.get("x-trusted-user-shared-from-user-ids", "[]")
+            try:
+                shared_from_user_ids = json.loads(shared_from_user_ids_json)
+            except json.JSONDecodeError:
+                shared_from_user_ids = []
+
             # Set full RBAC context (all 4 levels)
             set_user_context(
                 user_id=user_id,
@@ -320,6 +339,9 @@ async def trusted_user_middleware(request: Request, call_next):
                 team_ids=team_ids,
                 manager_id=manager_id,
                 subordinate_ids=subordinate_ids,
+                sharing_rules=sharing_rules,
+                shared_records=shared_records,
+                shared_from_user_ids=shared_from_user_ids,
             )
 
     try:

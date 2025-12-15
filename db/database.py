@@ -24,7 +24,7 @@ Configuration:
 
 import os
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from db.base import DatabaseBackend
 from db.backends.sqlite import SQLiteBackend
@@ -142,11 +142,11 @@ class _DatabaseNamespace:
         self,
         limit: int = 50,
         offset: int = 0,
-        user_id: Optional[str] = None,
+        user_ids: Optional[Union[str, List[str]]] = None,
         client_name: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
-        """Get proposals with optional filtering."""
-        return self._backend.get_proposals(limit, offset, user_id, client_name)
+        """Get proposals with optional filtering. user_ids can be a single ID or list for team access."""
+        return self._backend.get_proposals(limit, offset, user_ids, client_name)
 
     def get_proposal_by_id(self, proposal_id: int) -> Optional[Dict[str, Any]]:
         """Get a single proposal by ID."""

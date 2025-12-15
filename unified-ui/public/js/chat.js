@@ -418,6 +418,7 @@ const Chat = {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let fullContent = '';
+    let currentMessageId = null;  // Track the current message being streamed
 
     while (true) {
       const { done, value } = await reader.read();
@@ -441,11 +442,33 @@ const Chat = {
             }
 
             if (parsed.type === 'chunk' && parsed.content) {
+              // Track which message these chunks belong to
+              if (parsed.message_id && parsed.message_id !== currentMessageId) {
+                // New message starting - if previous was deleted, content was already reset
+                currentMessageId = parsed.message_id;
+              }
               fullContent += parsed.content;
               this.updateMessage(msgId, fullContent);
             } else if (parsed.type === 'content' && parsed.content) {
               fullContent = parsed.content;
               this.updateMessage(msgId, fullContent);
+            } else if (parsed.type === 'status') {
+              // Status updates (ephemeral) - show as thinking indicator, don't accumulate
+              const statusContent = parsed.content || 'Processing...';
+              this.showThinking(msgId, statusContent);
+              // Track the message_id so we know when it's deleted
+              if (parsed.message_id) {
+                currentMessageId = parsed.message_id;
+              }
+            } else if (parsed.type === 'delete') {
+              // Status message deleted - reset content and clear thinking indicator
+              // This happens when the status "Please wait..." is being replaced by real content
+              if (parsed.message_id && parsed.message_id === currentMessageId) {
+                fullContent = '';
+                currentMessageId = null;
+                // Show thinking indicator while waiting for actual content
+                this.showThinking(msgId);
+              }
             } else if (parsed.type === 'tool_call') {
               // Handle tool calls - show processing message
               const toolName = parsed.tool?.name || 'processing';
@@ -453,6 +476,9 @@ const Chat = {
             } else if (parsed.type === 'files' && parsed.files) {
               // Handle files returned from backend (proposals, mockups, etc.)
               this.appendFiles(msgId, parsed.files);
+            } else if (parsed.type === 'file' && parsed.file) {
+              // Single file upload event
+              this.appendFiles(msgId, [parsed.file]);
             } else if (parsed.files) {
               // Also check for files in final response
               this.appendFiles(msgId, parsed.files);

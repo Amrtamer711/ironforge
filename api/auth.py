@@ -11,6 +11,7 @@ Trusted Headers (set by unified-ui proxy):
 - X-Trusted-User-Name: User's display name
 - X-Trusted-User-Profile: User's RBAC profile name
 - X-Trusted-User-Permissions: JSON array of permission strings
+- X-Trusted-User-Companies: JSON array of company schema names user can access
 
 Usage:
     from api.auth import require_auth, require_permission
@@ -53,12 +54,19 @@ async def get_current_user(request: Request) -> Optional[AuthUser]:
     name = request.headers.get("x-trusted-user-name")
     profile = request.headers.get("x-trusted-user-profile")
     permissions_json = request.headers.get("x-trusted-user-permissions", "[]")
+    companies_json = request.headers.get("x-trusted-user-companies", "[]")
 
     # Parse permissions
     try:
         permissions = json.loads(permissions_json)
     except json.JSONDecodeError:
         permissions = []
+
+    # Parse companies (schema names user can access)
+    try:
+        companies = json.loads(companies_json)
+    except json.JSONDecodeError:
+        companies = []
 
     return AuthUser(
         id=user_id,
@@ -69,6 +77,7 @@ async def get_current_user(request: Request) -> Optional[AuthUser]:
         metadata={
             "profile": profile,
             "permissions": permissions,
+            "companies": companies,
         },
     )
 

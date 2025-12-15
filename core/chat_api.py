@@ -46,6 +46,7 @@ async def process_chat_message(
     message: str,
     roles: Optional[List[str]] = None,
     files: Optional[List[Dict[str, Any]]] = None,
+    companies: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Process a chat message from the unified UI.
@@ -59,6 +60,7 @@ async def process_chat_message(
         message: User's message text
         roles: User's roles (for permission checks)
         files: Optional list of file info dicts (for uploads)
+        companies: List of company schemas user can access (for data filtering)
 
     Returns:
         Dict containing response data:
@@ -124,7 +126,7 @@ async def process_chat_message(
     messages_before = len(session.messages)
 
     try:
-        logger.info(f"[WebChat] Calling main_llm_loop for user={user_id}, admin={is_admin}")
+        logger.info(f"[WebChat] Calling main_llm_loop for user={user_id}, admin={is_admin}, companies={companies}")
 
         # Call the SAME main_llm_loop as Slack
         # The channel adapter abstraction handles all the differences
@@ -134,6 +136,7 @@ async def process_chat_message(
             user_input=message,
             channel_event=channel_event if files else None,
             is_admin_override=is_admin,
+            user_companies=companies,
         )
 
         logger.info(f"[WebChat] main_llm_loop completed for user={user_id}")
@@ -189,7 +192,8 @@ async def stream_chat_message(
     user_name: str,
     message: str,
     roles: Optional[List[str]] = None,
-    files: Optional[List[Dict[str, Any]]] = None
+    files: Optional[List[Dict[str, Any]]] = None,
+    companies: Optional[List[str]] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Stream a chat response using Server-Sent Events format.
@@ -202,6 +206,14 @@ async def stream_chat_message(
 
     Supports parallel requests: multiple requests can be processed simultaneously,
     with each request receiving only its own events via request_id filtering.
+
+    Args:
+        user_id: Unique user identifier
+        user_name: Display name for the user
+        message: User's message text
+        roles: User's roles (for permission checks)
+        files: Optional list of file info dicts (for uploads)
+        companies: List of company schemas user can access (for data filtering)
     """
     from core.llm import main_llm_loop
     from integrations.channels.adapters.web import current_request_id, current_parent_message_id
@@ -286,6 +298,7 @@ async def stream_chat_message(
                 user_input=message,
                 channel_event=channel_event if files else None,
                 is_admin_override=is_admin,
+                user_companies=companies,
             )
         except Exception as e:
             logger.error(f"[WebChat] main_llm_loop error: {e}", exc_info=True)
@@ -331,12 +344,13 @@ async def stream_chat_message(
                 elif event_type == "message":
                     # New message from assistant
                     content = event.get("content", "")
+                    message_id = event.get("message_id")
                     if content:
                         # Stream word by word for typing effect
                         words = content.split(' ')
                         for i, word in enumerate(words):
                             chunk = word + (' ' if i < len(words) - 1 else '')
-                            yield f"data: {json.dumps({'type': 'chunk', 'content': chunk, 'parent_id': event.get('parent_id')})}\n\n"
+                            yield f"data: {json.dumps({'type': 'chunk', 'content': chunk, 'message_id': message_id, 'parent_id': event.get('parent_id')})}\n\n"
                             await asyncio.sleep(0.02)
 
                 elif event_type == "file":
