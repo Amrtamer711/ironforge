@@ -315,6 +315,74 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
+    def get_proposals(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        user_id: Optional[str] = None,
+        client_name: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get proposals with optional filtering."""
+        conn = self._connect()
+        try:
+            query = "SELECT * FROM proposals_log WHERE 1=1"
+            params = []
+
+            if user_id:
+                query += " AND submitted_by = ?"
+                params.append(user_id)
+            if client_name:
+                query += " AND client_name LIKE ?"
+                params.append(f"%{client_name}%")
+
+            query += " ORDER BY date_generated DESC LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+
+            cursor = conn.execute(query, params)
+            columns = [desc[0] for desc in cursor.description]
+            rows = cursor.fetchall()
+            return [dict(zip(columns, row)) for row in rows]
+        finally:
+            conn.close()
+
+    def get_proposal_by_id(self, proposal_id: int) -> Optional[Dict[str, Any]]:
+        """Get a single proposal by ID."""
+        conn = self._connect()
+        try:
+            cursor = conn.execute(
+                "SELECT * FROM proposals_log WHERE id = ?",
+                (proposal_id,)
+            )
+            columns = [desc[0] for desc in cursor.description]
+            row = cursor.fetchone()
+            if row:
+                return dict(zip(columns, row))
+            return None
+        finally:
+            conn.close()
+
+    def get_proposal_locations(self, proposal_id: int) -> List[Dict[str, Any]]:
+        """Get locations for a specific proposal (SQLite doesn't have this table yet)."""
+        # SQLite schema doesn't have proposal_locations table
+        # Return empty list for compatibility
+        return []
+
+    def delete_proposal(self, proposal_id: int) -> bool:
+        """Delete a proposal by ID."""
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN")
+            conn.execute("DELETE FROM proposals_log WHERE id = ?", (proposal_id,))
+            conn.execute("COMMIT")
+            logger.info(f"[SQLITE] Deleted proposal {proposal_id}")
+            return True
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            logger.error(f"[SQLITE] Failed to delete proposal {proposal_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
     # =========================================================================
     # BOOKING ORDERS
     # =========================================================================

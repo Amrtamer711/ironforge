@@ -138,6 +138,28 @@ class _DatabaseNamespace:
     def export_to_excel(self) -> str:
         return self._backend.export_to_excel()
 
+    def get_proposals(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        user_id: Optional[str] = None,
+        client_name: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get proposals with optional filtering."""
+        return self._backend.get_proposals(limit, offset, user_id, client_name)
+
+    def get_proposal_by_id(self, proposal_id: int) -> Optional[Dict[str, Any]]:
+        """Get a single proposal by ID."""
+        return self._backend.get_proposal_by_id(proposal_id)
+
+    def get_proposal_locations(self, proposal_id: int) -> List[Dict[str, Any]]:
+        """Get locations for a specific proposal."""
+        return self._backend.get_proposal_locations(proposal_id)
+
+    def delete_proposal(self, proposal_id: int) -> bool:
+        """Delete a proposal by ID."""
+        return self._backend.delete_proposal(proposal_id)
+
     # =========================================================================
     # BOOKING ORDERS
     # =========================================================================

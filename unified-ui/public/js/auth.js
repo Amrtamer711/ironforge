@@ -8,6 +8,8 @@ const Auth = {
   user: null,
   supabaseClient: null,
   isLocalDev: window.location.hostname === 'localhost' && !window.SUPABASE_URL,
+  isAccessPending: false, // Flag to prevent further auth processing when showing pending screen
+  isProcessingSession: false, // Flag to prevent multiple simultaneous session handling
 
   // Dev users for local testing only (when Supabase is not configured)
   devUsers: {
@@ -50,7 +52,15 @@ const Auth = {
 
       // Listen for auth state changes (handles OAuth redirect callback)
       this.supabaseClient.auth.onAuthStateChange((event, session) => {
-        console.log('[Auth] Auth state changed:', event);
+        console.log('[Auth] Auth state changed:', event, 'isAccessPending:', this.isAccessPending);
+
+        // If we're showing the access pending screen, ignore auth events
+        // (user needs to click Sign Out explicitly)
+        if (this.isAccessPending) {
+          console.log('[Auth] Ignoring auth event - access pending screen is active');
+          return;
+        }
+
         if (event === 'SIGNED_IN' && session) {
           this.handleSession(session);
         } else if (event === 'SIGNED_OUT') {
@@ -93,82 +103,106 @@ const Auth = {
   },
 
   async handleSession(session) {
-    const user = session.user;
-
-    // Store token first for API requests
-    localStorage.setItem('authToken', session.access_token);
-
-    // Fetch user's profile from the users table (the source of truth for RBAC)
-    let profileName = 'sales_user'; // Default fallback
-    try {
-      const response = await fetch('/api/base/auth/me', {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
-      });
-
-      // Check if user was deleted/deactivated/pending approval
-      if (response.status === 403) {
-        const errorData = await response.json();
-        if (errorData.requiresLogout) {
-          console.error('[Auth] User account issue:', errorData.code);
-
-          // Handle pending approval specially - show the pending screen instead of logout
-          if (errorData.code === 'USER_PENDING_APPROVAL') {
-            this.showAccessPending(user.email, errorData.error);
-            return;
-          }
-
-          await this.logout();
-          if (window.Toast) {
-            Toast.error(errorData.error || 'Your account has been removed or deactivated');
-          }
-          return;
-        }
-      }
-
-      if (response.ok) {
-        const data = await response.json();
-        profileName = data.profile_name || data.profile || 'sales_user';
-        console.log('[Auth] User profile from server:', profileName);
-      }
-    } catch (err) {
-      console.warn('[Auth] Could not fetch user profile, using default:', err.message);
-      // Fallback to user_metadata if server call fails
-      profileName = user.user_metadata?.profile || 'sales_user';
+    // Prevent multiple simultaneous session handling
+    if (this.isProcessingSession) {
+      console.log('[Auth] Already processing session, skipping...');
+      return;
     }
 
-    // Map profile to roles for backward compatibility
-    const profileToRoles = {
-      'system_admin': ['admin', 'hos', 'sales_person'],
-      'sales_manager': ['hos', 'sales_person'],
-      'sales_user': ['sales_person'],
-      'coordinator': ['coordinator'],
-      'finance': ['finance'],
-      'viewer': ['viewer']
-    };
+    // Don't process if access pending screen is active
+    if (this.isAccessPending) {
+      console.log('[Auth] Access pending screen active, skipping session handling');
+      return;
+    }
 
-    // Build user object from Supabase user
-    // Microsoft Azure sends name in full_name field
-    const userName = user.user_metadata?.full_name
-      || user.user_metadata?.name
-      || user.identities?.[0]?.identity_data?.full_name
-      || user.identities?.[0]?.identity_data?.name
-      || user.email?.split('@')[0]
-      || 'User';
+    this.isProcessingSession = true;
 
-    this.user = {
-      id: user.id,
-      email: user.email,
-      name: userName,
-      profile: profileName,
-      roles: profileToRoles[profileName] || ['sales_person']
-    };
+    try {
+      const user = session.user;
 
-    localStorage.setItem('userData', JSON.stringify(this.user));
-    console.log('[Auth] Session established for:', this.user.email, 'with profile:', profileName);
+      // Store token first for API requests
+      localStorage.setItem('authToken', session.access_token);
 
-    this.showApp();
+      // Fetch user's profile from the users table (the source of truth for RBAC)
+      let profileName = 'sales_user'; // Default fallback
+
+      try {
+        const response = await fetch('/api/base/auth/me', {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
+          }
+        });
+
+        // Check if user was deleted/deactivated/pending approval
+        if (response.status === 403) {
+          const errorData = await response.json();
+          if (errorData.requiresLogout) {
+            console.error('[Auth] User account issue:', errorData.code);
+
+            // Handle pending approval specially - show the pending screen instead of logout
+            if (errorData.code === 'USER_PENDING_APPROVAL') {
+              this.showAccessPending(user.email, errorData.error);
+              return; // Don't continue with session handling
+            }
+
+            await this.logout();
+            if (window.Toast) {
+              Toast.error(errorData.error || 'Your account has been removed or deactivated');
+            }
+            return;
+          }
+        }
+
+        // If response is not ok (e.g., 401 Unauthorized), don't proceed to showApp
+        if (!response.ok) {
+          console.error('[Auth] Failed to fetch user profile, status:', response.status);
+          // Don't show app if we couldn't verify the user
+          return;
+        }
+
+        const profileData = await response.json();
+        profileName = profileData.profile_name || profileData.profile || 'sales_user';
+        console.log('[Auth] User profile from server:', profileName);
+      } catch (err) {
+        console.warn('[Auth] Could not fetch user profile, using default:', err.message);
+        // Fallback to user_metadata if server call fails
+        profileName = user.user_metadata?.profile || 'sales_user';
+      }
+
+      // Map profile to roles for backward compatibility
+      const profileToRoles = {
+        'system_admin': ['admin', 'hos', 'sales_person'],
+        'sales_manager': ['hos', 'sales_person'],
+        'sales_user': ['sales_person'],
+        'coordinator': ['coordinator'],
+        'finance': ['finance'],
+        'viewer': ['viewer']
+      };
+
+      // Build user object from Supabase user
+      // Microsoft Azure sends name in full_name field
+      const userName = user.user_metadata?.full_name
+        || user.user_metadata?.name
+        || user.identities?.[0]?.identity_data?.full_name
+        || user.identities?.[0]?.identity_data?.name
+        || user.email?.split('@')[0]
+        || 'User';
+
+      this.user = {
+        id: user.id,
+        email: user.email,
+        name: userName,
+        profile: profileName,
+        roles: profileToRoles[profileName] || ['sales_person']
+      };
+
+      localStorage.setItem('userData', JSON.stringify(this.user));
+      console.log('[Auth] Session established for:', this.user.email, 'with profile:', profileName);
+
+      this.showApp();
+    } finally {
+      this.isProcessingSession = false;
+    }
   },
 
   async login(email, password) {
@@ -261,6 +295,9 @@ const Auth = {
   showAccessPending(email, message) {
     console.log('[Auth] Showing access pending screen for:', email);
 
+    // Set flag to prevent further auth event processing
+    this.isAccessPending = true;
+
     // Hide loading screen
     const loadingScreen = document.getElementById('loadingScreen');
     if (loadingScreen) loadingScreen.classList.add('hidden');
@@ -351,6 +388,7 @@ const Auth = {
    * Hide the access pending screen
    */
   hideAccessPending() {
+    this.isAccessPending = false;
     const pendingScreen = document.getElementById('accessPendingScreen');
     if (pendingScreen) {
       pendingScreen.style.display = 'none';

@@ -1,23 +1,37 @@
 #!/usr/bin/env python3
 """
-Complete SQLite to Supabase Migration Script.
+Complete Migration Script: SQLite + Files → Supabase (Multi-Schema).
 
-This script performs a full migration from the SQLite backup to Supabase:
-1. Seeds locations from template metadata.txt files
-2. Loads all SQLite table data (proposals_log, mockup_frames, mockup_usage, etc.)
+This script performs a full migration to Supabase:
+1. Seeds locations from template metadata.txt files → {company}.locations
+2. Loads all SQLite table data → {company}.proposals_log, {company}.mockup_frames, etc.
 3. Links records to the locations table (location_id foreign keys)
 4. Creates proposal_locations and bo_locations junction table entries
+5. Uploads files to Supabase Storage with company folder structure
 
 Usage:
-    python db/scripts/load_sqlite_backup.py [--dry-run] [--skip-locations] [--tables TABLE1 TABLE2]
+    # Full migration (database + storage)
+    python db/scripts/migrate_to_supabase.py --company backlite_dubai
+
+    # Database only (no file uploads)
+    python db/scripts/migrate_to_supabase.py --company backlite_dubai --skip-storage
+
+    # Storage only (no database)
+    python db/scripts/migrate_to_supabase.py --company backlite_dubai --storage-only
+
+    # Dry run (preview)
+    python db/scripts/migrate_to_supabase.py --company backlite_dubai --dry-run
 
 Prerequisites:
-    - Schema must be applied: salesbot_schema_v2.sql
+    - Schema must be applied: salesbot/01_schema.sql (creates company schemas)
+    - Storage buckets must exist: templates, mockups, fonts
     - Environment variables: SALESBOT_DEV_SUPABASE_URL, SALESBOT_DEV_SUPABASE_SERVICE_ROLE_KEY
-      (or SALESBOT_PROD_* for production)
+
+Valid company codes: backlite_dubai, backlite_uk, backlite_abudhabi, viola
 """
 
 import json
+import mimetypes
 import os
 import re
 import sqlite3
@@ -43,9 +57,17 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 BACKUP_DIR = PROJECT_ROOT / "data_backup_prod" / "data"
 SQLITE_DB = BACKUP_DIR / "proposals.db"
 TEMPLATES_DIR = BACKUP_DIR / "templates"
+MOCKUPS_DIR = BACKUP_DIR / "mockups"
+FONTS_DIR = BACKUP_DIR / "Sofia-Pro Font"
 
-# Also check render_main_data for templates (production location)
-RENDER_TEMPLATES_DIR = PROJECT_ROOT / "render_main_data" / "templates"
+# Also check render_main_data for files (production location)
+RENDER_DATA_DIR = PROJECT_ROOT / "render_main_data"
+RENDER_TEMPLATES_DIR = RENDER_DATA_DIR / "templates"
+RENDER_MOCKUPS_DIR = RENDER_DATA_DIR / "mockups"
+RENDER_FONTS_DIR = RENDER_DATA_DIR / "Sofia-Pro Font"
+
+# Valid company schemas (must match salesbot/01_schema.sql)
+VALID_COMPANIES = ['backlite_dubai', 'backlite_uk', 'backlite_abudhabi', 'viola']
 
 # Try DEV vars first, then PROD, then legacy names
 SUPABASE_URL = (
@@ -58,6 +80,9 @@ SUPABASE_KEY = (
     os.getenv("SALESBOT_PROD_SUPABASE_SERVICE_ROLE_KEY") or
     os.getenv("SALESBOT_SUPABASE_SERVICE_KEY")
 )
+
+# Global company schema (set by --company argument)
+COMPANY_SCHEMA = 'backlite_dubai'
 
 
 def get_supabase() -> Client:
@@ -111,10 +136,15 @@ def parse_json_field(value: Any) -> Any:
     return value
 
 
+def get_schema_table(supabase: Client, table: str):
+    """Get a table reference with the correct schema."""
+    return supabase.schema(COMPANY_SCHEMA).table(table)
+
+
 def batch_insert(supabase: Client, table: str, records: List[Dict],
                  batch_size: int = 50, on_conflict: Optional[str] = None,
                  dry_run: bool = False) -> int:
-    """Insert records in batches, return count of inserted records."""
+    """Insert records in batches into company schema, return count of inserted records."""
     if not records:
         return 0
 
@@ -126,9 +156,9 @@ def batch_insert(supabase: Client, table: str, records: List[Dict],
         batch = records[i:i+batch_size]
         try:
             if on_conflict:
-                supabase.table(table).upsert(batch, on_conflict=on_conflict).execute()
+                get_schema_table(supabase, table).upsert(batch, on_conflict=on_conflict).execute()
             else:
-                supabase.table(table).insert(batch).execute()
+                get_schema_table(supabase, table).insert(batch).execute()
             inserted += len(batch)
         except Exception as e:
             print(f"    Error inserting batch {i//batch_size + 1}: {e}")
@@ -136,14 +166,230 @@ def batch_insert(supabase: Client, table: str, records: List[Dict],
             for record in batch:
                 try:
                     if on_conflict:
-                        supabase.table(table).upsert(record, on_conflict=on_conflict).execute()
+                        get_schema_table(supabase, table).upsert(record, on_conflict=on_conflict).execute()
                     else:
-                        supabase.table(table).insert(record).execute()
+                        get_schema_table(supabase, table).insert(record).execute()
                     inserted += 1
                 except Exception as e2:
                     print(f"    Failed record: {e2}")
 
     return inserted
+
+
+# =============================================================================
+# STORAGE UPLOAD FUNCTIONS
+# =============================================================================
+
+def get_mime_type(filepath: Path) -> str:
+    """Get MIME type for a file."""
+    mime_type, _ = mimetypes.guess_type(str(filepath))
+    if mime_type:
+        return mime_type
+
+    # Fallback based on extension
+    ext = filepath.suffix.lower()
+    mime_map = {
+        '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        '.ppt': 'application/vnd.ms-powerpoint',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.ttf': 'font/ttf',
+        '.otf': 'font/otf',
+        '.woff': 'font/woff',
+        '.woff2': 'font/woff2',
+        '.txt': 'text/plain',
+        '.json': 'application/json',
+    }
+    return mime_map.get(ext, 'application/octet-stream')
+
+
+def upload_file_to_storage(supabase: Client, bucket: str, storage_path: str,
+                           local_path: Path, dry_run: bool = False) -> bool:
+    """Upload a single file to Supabase Storage."""
+    if dry_run:
+        return True
+
+    try:
+        with open(local_path, 'rb') as f:
+            file_data = f.read()
+
+        mime_type = get_mime_type(local_path)
+
+        # Try to upload (will fail if exists, which is fine)
+        supabase.storage.from_(bucket).upload(
+            storage_path,
+            file_data,
+            file_options={"content-type": mime_type, "upsert": "true"}
+        )
+        return True
+    except Exception as e:
+        if 'already exists' in str(e).lower() or 'duplicate' in str(e).lower():
+            return True  # Already exists is fine
+        print(f"      Error uploading {storage_path}: {e}")
+        return False
+
+
+def upload_templates(supabase: Client, company: str, dry_run: bool = False) -> int:
+    """
+    Upload templates to Supabase Storage.
+
+    Structure: templates/{company}/{location_key}/{location_key}.pptx
+    """
+    print("\n--- Uploading templates ---")
+
+    # Find templates directory
+    templates_dir = None
+    for candidate in [TEMPLATES_DIR, RENDER_TEMPLATES_DIR]:
+        if candidate.exists():
+            templates_dir = candidate
+            break
+
+    if not templates_dir:
+        print("  No templates directory found")
+        return 0
+
+    print(f"  Source: {templates_dir}")
+
+    # Skip special directories (amr = test data)
+    # NOTE: intro_outro is uploaded - it contains company-specific branding slides
+    skip_dirs = {'amr', '.DS_Store'}
+
+    uploaded = 0
+    for location_dir in sorted(templates_dir.iterdir()):
+        if not location_dir.is_dir():
+            continue
+        if location_dir.name in skip_dirs or location_dir.name.startswith('.'):
+            continue
+
+        location_key = location_dir.name
+
+        # Upload all files in the location directory
+        for filepath in location_dir.iterdir():
+            if filepath.name.startswith('.'):
+                continue
+
+            # Storage path: templates/{company}/{location_key}/{filename}
+            storage_path = f"{company}/{location_key}/{filepath.name}"
+
+            if dry_run:
+                print(f"    [DRY RUN] Would upload: templates/{storage_path}")
+                uploaded += 1
+            else:
+                if upload_file_to_storage(supabase, 'templates', storage_path, filepath):
+                    uploaded += 1
+                    if uploaded % 10 == 0:
+                        print(f"    Progress: {uploaded} files")
+
+    print(f"  Uploaded: {uploaded} template files")
+    return uploaded
+
+
+def upload_mockups(supabase: Client, company: str, dry_run: bool = False) -> int:
+    """
+    Upload mockups (background photos) to Supabase Storage.
+
+    Structure: mockups/{company}/{location_key}/{time_of_day}/{finish}/{photo}.jpg
+    """
+    print("\n--- Uploading mockups ---")
+
+    # Find mockups directory
+    mockups_dir = None
+    for candidate in [MOCKUPS_DIR, RENDER_MOCKUPS_DIR]:
+        if candidate.exists():
+            mockups_dir = candidate
+            break
+
+    if not mockups_dir:
+        print("  No mockups directory found")
+        return 0
+
+    print(f"  Source: {mockups_dir}")
+
+    uploaded = 0
+
+    # Walk the mockups directory structure
+    for location_dir in sorted(mockups_dir.iterdir()):
+        if not location_dir.is_dir():
+            continue
+        if location_dir.name.startswith('.'):
+            continue
+
+        location_key = location_dir.name
+
+        # Walk through time_of_day/finish/photos structure
+        for item in location_dir.rglob('*'):
+            if not item.is_file():
+                continue
+            if item.name.startswith('.'):
+                continue
+
+            # Get relative path from location directory
+            rel_path = item.relative_to(location_dir)
+
+            # Storage path: mockups/{company}/{location_key}/{relative_path}
+            storage_path = f"{company}/{location_key}/{rel_path}"
+
+            if dry_run:
+                print(f"    [DRY RUN] Would upload: mockups/{storage_path}")
+                uploaded += 1
+            else:
+                if upload_file_to_storage(supabase, 'mockups', storage_path, item):
+                    uploaded += 1
+                    if uploaded % 20 == 0:
+                        print(f"    Progress: {uploaded} files")
+
+    print(f"  Uploaded: {uploaded} mockup files")
+    return uploaded
+
+
+def upload_fonts(supabase: Client, dry_run: bool = False) -> int:
+    """
+    Upload fonts to Supabase Storage.
+
+    Structure: fonts/Sofia-Pro/{font}.ttf (shared, not per-company)
+    """
+    print("\n--- Uploading fonts ---")
+
+    # Find fonts directory
+    fonts_dir = None
+    for candidate in [FONTS_DIR, RENDER_FONTS_DIR]:
+        if candidate.exists():
+            fonts_dir = candidate
+            break
+
+    if not fonts_dir:
+        print("  No fonts directory found")
+        return 0
+
+    print(f"  Source: {fonts_dir}")
+
+    uploaded = 0
+
+    for filepath in sorted(fonts_dir.iterdir()):
+        if filepath.name.startswith('.'):
+            continue
+        if not filepath.is_file():
+            continue
+
+        # Font extensions
+        if filepath.suffix.lower() not in ('.ttf', '.otf', '.woff', '.woff2'):
+            continue
+
+        # Storage path: fonts/Sofia-Pro/{filename}
+        storage_path = f"Sofia-Pro/{filepath.name}"
+
+        if dry_run:
+            print(f"    [DRY RUN] Would upload: fonts/{storage_path}")
+            uploaded += 1
+        else:
+            if upload_file_to_storage(supabase, 'fonts', storage_path, filepath):
+                uploaded += 1
+
+    print(f"  Uploaded: {uploaded} font files")
+    return uploaded
 
 
 # =============================================================================
@@ -211,8 +457,8 @@ def parse_metadata_file(filepath: Path) -> Dict[str, Any]:
     return metadata
 
 
-def get_template_path(location_key: str, templates_dir: Path) -> Optional[str]:
-    """Find the template file path for a location."""
+def get_template_path(location_key: str, templates_dir: Path, company: str) -> Optional[str]:
+    """Find the template file path for a location (with company prefix)."""
     location_dir = templates_dir / location_key
     if not location_dir.exists():
         return None
@@ -222,8 +468,8 @@ def get_template_path(location_key: str, templates_dir: Path) -> Optional[str]:
         # Prefer file matching location_key
         for pptx in pptx_files:
             if pptx.stem == location_key:
-                return f"{location_key}/{pptx.name}"
-        return f"{location_key}/{pptx_files[0].name}"
+                return f"{company}/{location_key}/{pptx.name}"
+        return f"{company}/{location_key}/{pptx_files[0].name}"
     return None
 
 
@@ -257,8 +503,8 @@ def seed_locations(supabase: Client, dry_run: bool = False) -> Tuple[int, Dict[s
     locations = []
     metadata_files = list(templates_dir.glob('*/metadata.txt'))
 
-    # Skip special directories
-    skip_dirs = {'intro_outro', 'amr', 't3'}
+    # Skip special directories (intro_outro = slides, amr = test data)
+    skip_dirs = {'intro_outro', 'amr'}
 
     for metadata_file in sorted(metadata_files):
         location_key = metadata_file.parent.name
@@ -286,7 +532,7 @@ def seed_locations(supabase: Client, dry_run: bool = False) -> Tuple[int, Dict[s
             'loop_duration': metadata.get('loop_duration'),
             'sov_percent': metadata.get('sov_percent'),
             'upload_fee': metadata.get('upload_fee'),
-            'template_path': get_template_path(location_key, templates_dir),
+            'template_path': get_template_path(location_key, templates_dir, COMPANY_SCHEMA),
             'is_active': True,
             'created_by': 'migration_script',
         }
@@ -309,7 +555,7 @@ def seed_locations(supabase: Client, dry_run: bool = False) -> Tuple[int, Dict[s
     print(f"  Inserted/Updated: {inserted} locations")
 
     # Build location_key -> id mapping
-    result = supabase.table('locations').select('id, location_key').execute()
+    result = get_schema_table(supabase, 'locations').select('id, location_key').execute()
     location_map = {loc['location_key']: loc['id'] for loc in (result.data or [])}
     print(f"  Location map built: {len(location_map)} entries")
 
@@ -344,12 +590,17 @@ def load_proposals_log(supabase: Client, conn: sqlite3.Connection,
         # Store locations text for later extraction
         locations_text = row['locations'] or ''
 
+        # Map package_type: 'single' -> 'separate' (schema only allows 'separate' or 'combined')
+        package_type = row['package_type']
+        if package_type not in ('separate', 'combined'):
+            package_type = 'separate'  # Default 'single' and others to 'separate'
+
         record = {
             'user_id': row['submitted_by'],  # Slack ID initially
             'submitted_by': row['submitted_by'],
             'client_name': row['client_name'],
             'date_generated': row['date_generated'],
-            'package_type': row['package_type'],
+            'package_type': package_type,
             'total_amount': row['total_amount'],
             'currency': 'AED',
             # Store in proposal_data for reference
@@ -376,7 +627,7 @@ def load_proposals_log(supabase: Client, conn: sqlite3.Connection,
     inserted = 0
     for i, record in enumerate(records):
         try:
-            result = supabase.table('proposals_log').insert(record).execute()
+            result = get_schema_table(supabase, 'proposals_log').insert(record).execute()
             if result.data:
                 proposal_mapping[i]['supabase_id'] = result.data[0]['id']
                 inserted += 1
@@ -400,8 +651,36 @@ def load_mockup_frames(supabase: Client, conn: sqlite3.Connection,
         print("  No data")
         return 0
 
+    # Skip test data locations
+    skip_locations = {'amr'}
+
+    # Valid enum values per schema constraints
+    valid_time_of_day = {'day', 'night'}
+    valid_finish = {'gold', 'silver', 'black'}
+
     records = []
+    skipped = 0
     for row in rows:
+        location_key = row['location_key']
+
+        # Skip test data
+        if location_key in skip_locations:
+            skipped += 1
+            continue
+
+        time_of_day = row['time_of_day'] or 'day'
+        finish = row['finish'] or 'gold'
+
+        # Validate enum values - skip invalid records
+        if time_of_day not in valid_time_of_day:
+            print(f"    Skipping {location_key}: invalid time_of_day='{time_of_day}'")
+            skipped += 1
+            continue
+        if finish not in valid_finish:
+            print(f"    Skipping {location_key}: invalid finish='{finish}'")
+            skipped += 1
+            continue
+
         frames_data = parse_json_field(row['frames_data'])
         if frames_data is None:
             frames_data = []
@@ -409,9 +688,9 @@ def load_mockup_frames(supabase: Client, conn: sqlite3.Connection,
         config_json = parse_json_field(row['config_json'])
 
         record = {
-            'location_key': row['location_key'],
-            'time_of_day': row['time_of_day'] or 'day',
-            'finish': row['finish'] or 'gold',
+            'location_key': location_key,
+            'time_of_day': time_of_day,
+            'finish': finish,
             'photo_filename': row['photo_filename'],
             'frames_data': frames_data,
             'created_at': row['created_at'],
@@ -419,6 +698,9 @@ def load_mockup_frames(supabase: Client, conn: sqlite3.Connection,
             'config_json': config_json,
         }
         records.append(record)
+
+    if skipped > 0:
+        print(f"  Skipped: {skipped} invalid/test records")
 
     if dry_run:
         print(f"  [DRY RUN] Would insert {len(records)} records")
@@ -549,7 +831,7 @@ def load_booking_orders(supabase: Client, conn: sqlite3.Connection,
     inserted = 0
     for i, record in enumerate(records):
         try:
-            result = supabase.table('booking_orders').upsert(
+            result = get_schema_table(supabase, 'booking_orders').upsert(
                 record, on_conflict='bo_ref'
             ).execute()
             if result.data:
@@ -678,7 +960,7 @@ def load_ai_costs(supabase: Client, conn: sqlite3.Connection,
     for i in range(0, len(records), batch_size):
         batch = records[i:i+batch_size]
         try:
-            supabase.table('ai_costs').insert(batch).execute()
+            get_schema_table(supabase, 'ai_costs').insert(batch).execute()
             inserted += len(batch)
             if inserted % 500 == 0:
                 print(f"    Progress: {inserted}/{len(records)}")
@@ -702,7 +984,7 @@ def link_mockups_to_locations(supabase: Client, location_map: Dict[str, int],
     usage_updated = 0
 
     # Update mockup_frames
-    result = supabase.table('mockup_frames').select('id, location_key').is_('location_id', 'null').execute()
+    result = get_schema_table(supabase, 'mockup_frames').select('id, location_key').is_('location_id', 'null').execute()
 
     for frame in (result.data or []):
         location_key = frame.get('location_key')
@@ -711,7 +993,7 @@ def link_mockups_to_locations(supabase: Client, location_map: Dict[str, int],
         if location_id:
             if not dry_run:
                 try:
-                    supabase.table('mockup_frames').update(
+                    get_schema_table(supabase, 'mockup_frames').update(
                         {'location_id': location_id}
                     ).eq('id', frame['id']).execute()
                     frames_updated += 1
@@ -721,7 +1003,7 @@ def link_mockups_to_locations(supabase: Client, location_map: Dict[str, int],
                 frames_updated += 1
 
     # Update mockup_usage
-    result = supabase.table('mockup_usage').select('id, location_key').is_('location_id', 'null').execute()
+    result = get_schema_table(supabase, 'mockup_usage').select('id, location_key').is_('location_id', 'null').execute()
 
     for usage in (result.data or []):
         location_key = usage.get('location_key')
@@ -730,7 +1012,7 @@ def link_mockups_to_locations(supabase: Client, location_map: Dict[str, int],
         if location_id:
             if not dry_run:
                 try:
-                    supabase.table('mockup_usage').update(
+                    get_schema_table(supabase, 'mockup_usage').update(
                         {'location_id': location_id}
                     ).eq('id', usage['id']).execute()
                     usage_updated += 1
@@ -787,8 +1069,8 @@ def create_proposal_locations(supabase: Client, location_map: Dict[str, int],
         print(f"  [DRY RUN] Would create {len(records)} entries")
         return len(records)
 
-    inserted = batch_insert(supabase, 'proposal_locations', records,
-                           on_conflict='proposal_id,location_key')
+    # No on_conflict - allow duplicate locations per proposal (different options/finishes)
+    inserted = batch_insert(supabase, 'proposal_locations', records)
     print(f"  Created: {inserted} entries")
     return inserted
 
@@ -892,7 +1174,7 @@ def create_bo_locations(supabase: Client, location_map: Dict[str, int],
     inserted = 0
     for record in records:
         try:
-            supabase.table('bo_locations').insert(record).execute()
+            get_schema_table(supabase, 'bo_locations').insert(record).execute()
             inserted += 1
         except Exception as e:
             if 'duplicate' not in str(e).lower():
@@ -906,28 +1188,62 @@ def create_bo_locations(supabase: Client, location_map: Dict[str, int],
 # MAIN MIGRATION
 # =============================================================================
 
-def run_migration(dry_run: bool = False, skip_locations: bool = False,
+def run_migration(company: str, dry_run: bool = False, skip_locations: bool = False,
+                  skip_storage: bool = False, storage_only: bool = False,
                   tables: Optional[List[str]] = None):
-    """Run the complete migration."""
+    """Run the complete migration to a company schema."""
+    global COMPANY_SCHEMA
+    COMPANY_SCHEMA = company
+
     print("=" * 70)
-    print("COMPLETE SQLITE TO SUPABASE MIGRATION")
+    print("COMPLETE MIGRATION TO SUPABASE (Multi-Schema)")
     print("=" * 70)
+    print(f"Target Company: {COMPANY_SCHEMA}")
     print(f"SQLite Source: {SQLITE_DB}")
     print(f"Templates: {TEMPLATES_DIR}")
     print(f"Dry Run: {dry_run}")
     print(f"Skip Locations: {skip_locations}")
+    print(f"Skip Storage: {skip_storage}")
+    print(f"Storage Only: {storage_only}")
     if tables:
         print(f"Tables: {', '.join(tables)}")
     print()
 
     # Initialize clients
     supabase = get_supabase()
-    conn = get_sqlite()
 
     results = {}
     location_map = {}
     proposal_mapping = []
     bo_mapping = []
+
+    # =========================================================================
+    # STORAGE UPLOAD (if not skipped)
+    # =========================================================================
+    if not skip_storage:
+        print("\n" + "=" * 60)
+        print("STORAGE UPLOAD")
+        print("=" * 60)
+
+        results['templates_uploaded'] = upload_templates(supabase, company, dry_run)
+        results['mockups_uploaded'] = upload_mockups(supabase, company, dry_run)
+        results['fonts_uploaded'] = upload_fonts(supabase, dry_run)
+
+    # If storage-only mode, stop here
+    if storage_only:
+        print("\n" + "=" * 70)
+        print("STORAGE UPLOAD SUMMARY")
+        print("=" * 70)
+        for key, value in results.items():
+            print(f"  {key}: {value}")
+        return
+
+    # =========================================================================
+    # DATABASE MIGRATION
+    # =========================================================================
+
+    # Need SQLite for database migration
+    conn = get_sqlite()
 
     # All tables to load
     all_tables = ['proposals_log', 'mockup_frames', 'mockup_usage',
@@ -945,7 +1261,7 @@ def run_migration(dry_run: bool = False, skip_locations: bool = False,
     else:
         print("\n[Skipping location seeding]")
         # Build location map from existing data
-        result = supabase.table('locations').select('id, location_key').execute()
+        result = get_schema_table(supabase, 'locations').select('id, location_key').execute()
         location_map = {loc['location_key']: loc['id'] for loc in (result.data or [])}
         print(f"  Loaded existing location map: {len(location_map)} entries")
 
@@ -1006,7 +1322,7 @@ def run_migration(dry_run: bool = False, skip_locations: bool = False,
         print(f"  {key}: {value}")
 
     if dry_run:
-        print("\n[DRY RUN] No data was actually inserted.")
+        print("\n[DRY RUN] No data was actually inserted/uploaded.")
         print("Run without --dry-run to perform actual migration.")
     else:
         print("\nMigration complete!")
@@ -1015,18 +1331,44 @@ def run_migration(dry_run: bool = False, skip_locations: bool = False,
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Migrate SQLite backup to Supabase")
+    parser = argparse.ArgumentParser(
+        description="Migrate SQLite + files to Supabase company schema",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Full migration (database + storage)
+  python db/scripts/migrate_to_supabase.py --company backlite_dubai
+
+  # Database only
+  python db/scripts/migrate_to_supabase.py --company backlite_dubai --skip-storage
+
+  # Storage only
+  python db/scripts/migrate_to_supabase.py --company backlite_dubai --storage-only
+
+  # Dry run
+  python db/scripts/migrate_to_supabase.py --company backlite_dubai --dry-run
+        """
+    )
+    parser.add_argument("--company", required=True, choices=VALID_COMPANIES,
+                       help=f"Target company schema: {', '.join(VALID_COMPANIES)}")
     parser.add_argument("--dry-run", action="store_true",
                        help="Preview changes without inserting data")
     parser.add_argument("--skip-locations", action="store_true",
                        help="Skip location seeding (use existing)")
+    parser.add_argument("--skip-storage", action="store_true",
+                       help="Skip file uploads to storage")
+    parser.add_argument("--storage-only", action="store_true",
+                       help="Only upload files to storage (skip database)")
     parser.add_argument("--tables", nargs="+",
                        help="Specific tables to load (default: all)")
 
     args = parser.parse_args()
 
     run_migration(
+        company=args.company,
         dry_run=args.dry_run,
         skip_locations=args.skip_locations,
+        skip_storage=args.skip_storage,
+        storage_only=args.storage_only,
         tables=args.tables
     )

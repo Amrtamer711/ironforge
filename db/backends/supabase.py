@@ -199,6 +199,61 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Failed to export proposals to Excel: {e}", exc_info=True)
             raise SupabaseOperationError(f"Failed to export proposals: {e}") from e
 
+    def get_proposals(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        user_id: Optional[str] = None,
+        client_name: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Get proposals with optional filtering."""
+        try:
+            client = self._get_client()
+            query = client.table("proposals_log").select("*")
+
+            if user_id:
+                query = query.eq("user_id", user_id)
+            if client_name:
+                query = query.ilike("client_name", f"%{client_name}%")
+
+            response = query.order("date_generated", desc=True).range(offset, offset + limit - 1).execute()
+            logger.debug(f"[SUPABASE] Retrieved {len(response.data or [])} proposals")
+            return response.data or []
+        except Exception as e:
+            logger.error(f"[SUPABASE] Failed to get proposals: {e}", exc_info=True)
+            return []
+
+    def get_proposal_by_id(self, proposal_id: int) -> Optional[Dict[str, Any]]:
+        """Get a single proposal by ID."""
+        try:
+            client = self._get_client()
+            response = client.table("proposals_log").select("*").eq("id", proposal_id).single().execute()
+            return response.data
+        except Exception as e:
+            logger.error(f"[SUPABASE] Failed to get proposal {proposal_id}: {e}", exc_info=True)
+            return None
+
+    def get_proposal_locations(self, proposal_id: int) -> List[Dict[str, Any]]:
+        """Get locations for a specific proposal."""
+        try:
+            client = self._get_client()
+            response = client.table("proposal_locations").select("*").eq("proposal_id", proposal_id).execute()
+            return response.data or []
+        except Exception as e:
+            logger.error(f"[SUPABASE] Failed to get locations for proposal {proposal_id}: {e}", exc_info=True)
+            return []
+
+    def delete_proposal(self, proposal_id: int) -> bool:
+        """Delete a proposal by ID (cascade deletes locations)."""
+        try:
+            client = self._get_client()
+            client.table("proposals_log").delete().eq("id", proposal_id).execute()
+            logger.info(f"[SUPABASE] Deleted proposal {proposal_id}")
+            return True
+        except Exception as e:
+            logger.error(f"[SUPABASE] Failed to delete proposal {proposal_id}: {e}", exc_info=True)
+            return False
+
     # =========================================================================
     # BOOKING ORDERS
     # =========================================================================
