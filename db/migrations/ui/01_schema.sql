@@ -546,6 +546,32 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql STABLE;
 
+-- Get accessible schemas (company codes) from assigned company IDs
+-- Used by RBAC to expand group companies to their children
+CREATE OR REPLACE FUNCTION get_accessible_schemas(p_company_ids bigint[])
+RETURNS TABLE (schema_name text) AS $$
+BEGIN
+    RETURN QUERY
+    WITH RECURSIVE company_tree AS (
+        -- Base case: directly assigned companies
+        SELECT c.id, c.code, c.is_group
+        FROM companies c
+        WHERE c.id = ANY(p_company_ids)
+
+        UNION
+
+        -- Recursive case: children of group companies (via parent_id)
+        SELECT child.id, child.code, child.is_group
+        FROM companies child
+        INNER JOIN company_tree parent ON child.parent_id = parent.id
+        WHERE parent.is_group = true
+    )
+    SELECT DISTINCT ct.code AS schema_name
+    FROM company_tree ct
+    WHERE ct.code IS NOT NULL;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
 -- Check if user can access a specific company
 CREATE OR REPLACE FUNCTION user_can_access_company(p_user_id TEXT, p_company_id BIGINT)
 RETURNS BOOLEAN AS $$

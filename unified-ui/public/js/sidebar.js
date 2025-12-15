@@ -180,7 +180,7 @@ const Sidebar = {
     if (!adminNavItem) return;
 
     // Use permission-based check instead of legacy role check
-    const isAdmin = Auth?.hasPermission?.('core:system:admin') || Auth?.hasPermission?.('core:*:*') || false;
+    const isAdmin = Auth?.hasPermission?.('*:*:*') || Auth?.hasPermission?.('core:system:admin') || Auth?.hasPermission?.('core:*:*') || false;
     adminNavItem.style.display = isAdmin ? 'flex' : 'none';
   },
 

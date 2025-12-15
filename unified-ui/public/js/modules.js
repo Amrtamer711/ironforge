@@ -109,7 +109,7 @@ const ModuleRegistry = {
     console.log('[ModuleRegistry] Using fallback modules');
 
     // Use permission-based check instead of legacy role check
-    const isAdmin = Auth?.hasPermission?.('core:system:admin') || Auth?.hasPermission?.('core:*:*') || false;
+    const isAdmin = Auth?.hasPermission?.('*:*:*') || Auth?.hasPermission?.('core:system:admin') || Auth?.hasPermission?.('core:*:*') || false;
 
     const modules = [
       {
@@ -176,7 +176,7 @@ const ModuleRegistry = {
 
     // Add admin nav item for admin users (always visible regardless of current module)
     // Use permission-based check instead of legacy role check
-    const isAdmin = Auth?.hasPermission?.('core:system:admin') || Auth?.hasPermission?.('core:*:*') || false;
+    const isAdmin = Auth?.hasPermission?.('*:*:*') || Auth?.hasPermission?.('core:system:admin') || Auth?.hasPermission?.('core:*:*') || false;
     if (isAdmin && moduleConfig.name !== 'core') {
       navHTML += `
         <button class="sidebar-nav-item admin-only" data-tool="admin" data-module="core" id="adminNavItem">
