@@ -229,6 +229,20 @@ class WebAdapter(ChannelAdapter):
             self._restore_session_state(user_id, session)
         return session
 
+    def _sanitize_content(self, text: str) -> str:
+        """
+        Remove any leaked frontend placeholders from message content.
+
+        The frontend's formatContent() uses __INLINE_CODE_X__ and __CODE_BLOCK_X__
+        placeholders internally. These should never be persisted or sent to the LLM.
+        """
+        if not text:
+            return text
+        import re
+        text = re.sub(r'__INLINE_CODE_\d+__', '', text)
+        text = re.sub(r'__CODE_BLOCK_\d+__', '', text)
+        return text
+
     def _restore_session_state(self, user_id: str, session: WebSession) -> None:
         """
         Restore session state from database for a newly created session.
@@ -242,7 +256,10 @@ class WebAdapter(ChannelAdapter):
 
             persisted_messages = load_chat_messages(user_id)
             if persisted_messages:
-                # Restore UI messages
+                # Restore UI messages (sanitize any leaked placeholders)
+                for msg in persisted_messages:
+                    if msg.get("content"):
+                        msg["content"] = self._sanitize_content(msg["content"])
                 session.messages = persisted_messages
 
                 # Rebuild LLM context from persisted messages (last 10)

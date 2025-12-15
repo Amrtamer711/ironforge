@@ -696,9 +696,9 @@ const Chat = {
       // Bold + Italic: ***text*** or ___text___
       .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')
       .replace(/___(.+?)___/g, '<strong><em>$1</em></strong>')
-      // Bold: **text** or __text__
+      // Bold: **text** or __text__ (but NOT our internal placeholders like __INLINE_CODE_0__)
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/__(.+?)__/g, '<strong>$1</strong>')
+      .replace(/__(?!INLINE_CODE_|CODE_BLOCK_)(.+?)__/g, '<strong>$1</strong>')
       // Italic: *text* or _text_ (but not within words for underscore)
       .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
       .replace(/(?<!\w)_(?!_)(.+?)(?<!_)_(?!\w)/g, '<em>$1</em>')

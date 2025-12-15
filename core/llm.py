@@ -1159,14 +1159,33 @@ async def main_llm_loop(
     from integrations.llm import LLMClient, LLMMessage
     from core.bo_messaging import get_user_real_name
 
+    # Sanitize placeholders that might have leaked from frontend formatting
+    def _sanitize_content(text: str) -> str:
+        """Remove any leaked frontend placeholders from message content."""
+        if not text:
+            return text
+        # Remove __INLINE_CODE_X__ and __CODE_BLOCK_X__ placeholders
+        # These are used by frontend formatContent() and should never reach the LLM
+        import re
+        text = re.sub(r'__INLINE_CODE_\d+__', '', text)
+        text = re.sub(r'__CODE_BLOCK_\d+__', '', text)
+        return text
+
     llm_messages = [LLMMessage.system(prompt)]
     for msg in history:
         role = msg.get("role", "user")
-        content = msg.get("content", "")
+        content = _sanitize_content(msg.get("content", ""))
         if role == "user":
             llm_messages.append(LLMMessage.user(content))
         elif role == "assistant":
             llm_messages.append(LLMMessage.assistant(content))
+
+    # Debug: Log message order for troubleshooting
+    logger.debug(f"[LLM] Building messages: system prompt + {len(history)} history messages")
+    for i, msg in enumerate(llm_messages[:5]):  # Log first 5 for debugging
+        role = msg.role
+        preview = (msg.content[:50] + "...") if isinstance(msg.content, str) and len(msg.content) > 50 else msg.content
+        logger.debug(f"[LLM] Message {i}: role={role}, content={preview}")
 
     # Get tools from centralized tool definitions
     base_tools = get_base_tools()
