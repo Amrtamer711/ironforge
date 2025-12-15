@@ -229,6 +229,9 @@ def setup_logging(
         "httpcore": "WARNING",
         "urllib3": "WARNING",
         "asyncio": "WARNING",
+        "hpack": "WARNING",  # HTTP/2 header encoding spam
+        "hpack.hpack": "WARNING",
+        "hpack.table": "WARNING",
     }
     for module, mod_level in default_quiet.items():
         if module_levels is None or module not in module_levels:
