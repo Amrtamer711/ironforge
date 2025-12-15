@@ -11,10 +11,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app_settings import settings
 from db.database import db
-from api.auth import require_auth, require_any_profile
+from api.auth import require_auth, require_permission
 from api.schemas import CallType, Workflow
 from integrations.auth import AuthUser
-from integrations.rbac import get_rbac_client
+from integrations.rbac import get_rbac_client, has_permission
 from utils.time import get_uae_time
 from utils.logging import get_logger
 
@@ -37,19 +37,17 @@ async def get_costs(
     ),
     call_type: Optional[CallType] = Query(None, description="Filter by call type"),
     workflow: Optional[Workflow] = Query(None, description="Filter by workflow"),
-    filter_user_id: Optional[str] = Query(None, max_length=100, description="Filter by user ID (requires core:costs:manage)")
+    filter_user_id: Optional[str] = Query(None, max_length=100, description="Filter by user ID (requires core:ai_costs:manage)")
 ):
     """
     Get AI costs summary with optional filters.
 
-    Requires authentication. Users without core:costs:manage can only see their own costs.
+    Requires authentication. Users without core:ai_costs:manage can only see their own costs.
     """
-    from integrations.rbac import has_permission
-
     logger.info(f"[COSTS] Get costs request from {user.email}, filters: start={start_date}, end={end_date}, type={call_type}, workflow={workflow}")
 
     # Check if user can view all costs (has manage permission)
-    can_view_all = await has_permission(user.id, "core:costs:manage")
+    can_view_all = await has_permission(user.id, "core:ai_costs:manage")
     logger.debug(f"[COSTS] User {user.email} can_view_all: {can_view_all}")
 
     # If filter_user_id is provided but user can't view all, reject
@@ -57,7 +55,7 @@ async def get_costs(
         logger.warning(f"[COSTS] User {user.email} attempted to filter by user_id without permission")
         raise HTTPException(
             status_code=403,
-            detail="Permission denied: core:costs:manage required to filter by user_id"
+            detail="Permission denied: core:ai_costs:manage required to filter by user_id"
         )
 
     # Users with manage permission can see any user's costs, others only see their own
@@ -92,14 +90,14 @@ async def get_costs(
 
 @router.delete("/clear")
 async def clear_costs(
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:ai_costs:manage")),
     auth_code: Optional[str] = Query(None, min_length=1, max_length=100, description="Authorization code")
 ):
     """
     Clear all AI cost tracking data (useful for testing/resetting).
     WARNING: This will delete all cost history!
 
-    Requires admin role AND authentication code in query parameter:
+    Requires core:ai_costs:manage permission AND authentication code in query parameter:
     DELETE /costs/clear?auth_code=YOUR_CODE
     """
     logger.warning(f"[COSTS] CLEAR COSTS REQUEST from admin {user.email}")

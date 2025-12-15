@@ -15,7 +15,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from api.auth import require_auth, require_permission, require_any_profile
+from api.auth import require_auth, require_permission
 from integrations.auth import AuthUser, get_auth_client
 from integrations.rbac import (
     get_rbac_client,
@@ -97,7 +97,7 @@ class AdminDashboard(BaseModel):
 
 @router.get("/permissions", response_model=List[PermissionResponse])
 async def list_permissions(
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     List all available permissions.
@@ -120,7 +120,7 @@ async def list_permissions(
 
 @router.get("/permissions/grouped")
 async def list_permissions_grouped(
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     List permissions grouped by resource.
@@ -180,7 +180,7 @@ async def get_user_permissions_info(
 
 @router.get("/dashboard", response_model=AdminDashboard)
 async def admin_dashboard(
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Get admin dashboard overview.
@@ -207,7 +207,7 @@ async def admin_dashboard(
 
 @router.post("/initialize", status_code=status.HTTP_200_OK)
 async def initialize_rbac(
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Initialize default profiles and permissions.
@@ -284,7 +284,7 @@ class APIKeyCreateResponse(BaseModel):
 @router.get("/api-keys", response_model=List[APIKeyResponse])
 async def list_api_keys(
     include_inactive: bool = False,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     List all API keys.
@@ -318,7 +318,7 @@ async def list_api_keys(
 @router.get("/api-keys/{key_id}", response_model=APIKeyResponse)
 async def get_api_key(
     key_id: int,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Get a specific API key by ID.
@@ -355,7 +355,7 @@ async def get_api_key(
 @router.post("/api-keys", response_model=APIKeyCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_api_key(
     key_data: APIKeyCreate,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Create a new API key.
@@ -417,7 +417,7 @@ async def create_api_key(
 async def update_api_key(
     key_id: int,
     key_data: APIKeyUpdate,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Update an API key.
@@ -486,7 +486,7 @@ async def update_api_key(
 @router.post("/api-keys/{key_id}/rotate")
 async def rotate_api_key(
     key_id: int,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Rotate an API key (generate new secret, invalidate old).
@@ -541,7 +541,7 @@ async def rotate_api_key(
 @router.delete("/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_api_key(
     key_id: int,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Delete an API key (hard delete).
@@ -573,7 +573,7 @@ async def delete_api_key(
 @router.post("/api-keys/{key_id}/deactivate", status_code=status.HTTP_200_OK)
 async def deactivate_api_key(
     key_id: int,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Deactivate an API key (soft delete).
@@ -609,7 +609,7 @@ async def get_api_key_usage(
     key_id: int,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Get usage statistics for an API key.
@@ -903,7 +903,7 @@ class ProfileResponse(BaseModel):
 
 @router.get("/profiles", response_model=List[ProfileResponse])
 async def list_profiles(
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     List all available profiles.
@@ -931,7 +931,7 @@ async def list_profiles(
 @router.get("/profiles/{profile_name}", response_model=ProfileResponse)
 async def get_profile(
     profile_name: str,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Get a specific profile by name.
@@ -962,7 +962,7 @@ async def get_profile(
 @router.post("/profiles", response_model=ProfileResponse, status_code=status.HTTP_201_CREATED)
 async def create_profile(
     profile_data: ProfileCreate,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Create a new profile.
@@ -1010,7 +1010,7 @@ async def create_profile(
 async def update_profile(
     profile_name: str,
     profile_data: ProfileUpdate,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Update an existing profile.
@@ -1064,7 +1064,7 @@ async def update_profile(
 @router.delete("/profiles/{profile_name}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_profile(
     profile_name: str,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Delete a profile.
@@ -1173,7 +1173,7 @@ class UserPermissionSetAssign(BaseModel):
 
 @router.get("/permission-sets", response_model=List[PermissionSetResponse])
 async def list_permission_sets(
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     List all available permission sets.
@@ -1201,7 +1201,7 @@ async def list_permission_sets(
 @router.get("/permission-sets/{ps_name}", response_model=PermissionSetResponse)
 async def get_permission_set(
     ps_name: str,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Get a specific permission set by name.
@@ -1232,7 +1232,7 @@ async def get_permission_set(
 @router.post("/permission-sets", response_model=PermissionSetResponse, status_code=status.HTTP_201_CREATED)
 async def create_permission_set(
     ps_data: PermissionSetCreate,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Create a new permission set.
@@ -1279,7 +1279,7 @@ async def create_permission_set(
 async def update_permission_set(
     ps_name: str,
     ps_data: PermissionSetUpdate,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Update an existing permission set.
@@ -1326,7 +1326,7 @@ async def update_permission_set(
 @router.delete("/permission-sets/{ps_name}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_permission_set(
     ps_name: str,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Delete a permission set.
@@ -1468,7 +1468,7 @@ class TeamMemberResponse(BaseModel):
 
 @router.get("/teams", response_model=List[TeamResponse])
 async def list_teams(
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     List all teams.
@@ -1496,7 +1496,7 @@ async def list_teams(
 @router.get("/teams/{team_id}", response_model=TeamResponse)
 async def get_team(
     team_id: int,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Get a specific team by ID.
@@ -1527,7 +1527,7 @@ async def get_team(
 @router.post("/teams", response_model=TeamResponse, status_code=status.HTTP_201_CREATED)
 async def create_team(
     team_data: TeamCreate,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Create a new team.
@@ -1574,7 +1574,7 @@ async def create_team(
 async def update_team(
     team_id: int,
     team_data: TeamUpdate,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Update an existing team.
@@ -1622,7 +1622,7 @@ async def update_team(
 @router.delete("/teams/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_team(
     team_id: int,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Delete a team.
@@ -1652,7 +1652,7 @@ async def delete_team(
 @router.get("/teams/{team_id}/members", response_model=List[TeamMemberResponse])
 async def get_team_members(
     team_id: int,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Get all members of a team.
@@ -1814,7 +1814,7 @@ class SharingRuleResponse(BaseModel):
 @router.get("/sharing-rules", response_model=List[SharingRuleResponse])
 async def list_sharing_rules(
     object_type: Optional[str] = None,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     List all sharing rules, optionally filtered by object type.
@@ -1846,7 +1846,7 @@ async def list_sharing_rules(
 @router.post("/sharing-rules", response_model=SharingRuleResponse, status_code=status.HTTP_201_CREATED)
 async def create_sharing_rule(
     rule_data: SharingRuleCreate,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Create a new sharing rule.
@@ -1895,7 +1895,7 @@ async def create_sharing_rule(
 @router.delete("/sharing-rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_sharing_rule(
     rule_id: int,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Delete a sharing rule.

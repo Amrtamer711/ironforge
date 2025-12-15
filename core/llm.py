@@ -257,27 +257,7 @@ async def _handle_booking_order_parse(
     except Exception as e:
         logger.error(f"[CHANNEL] Failed to update status message while parsing: {e}", exc_info=True)
     try:
-        # Timeout temporarily disabled to allow high reasoning effort to complete
-        # result = await asyncio.wait_for(
-        #     parser.parse_file(tmp_file, file_type, user_message=user_message, user_id=user_name),
-        #     timeout=900.0
-        # )
         result = await parser.parse_file(tmp_file, file_type, user_message=user_message, user_id=user_name)
-    # except asyncio.TimeoutError:
-    #     logger.error(f"[BOOKING] Parsing timed out after 15 minutes", exc_info=True)
-    #     try:
-    #         await config.slack_client.chat_update(
-    #             channel=channel,
-    #             ts=status_ts,
-    #             text=config.markdown_to_slack(
-    #                 f"❌ **Error:** Sorry, OpenAI took too long and seems to be hanging.\n\n"
-    #                 f"Please try uploading the booking order again. If this persists, contact the AI team."
-    #             )
-    #         )
-    #     except Exception as slack_error:
-    #         logger.error(f"[SLACK] Failed to send timeout error to user: {slack_error}", exc_info=True)
-    #     tmp_file.unlink(missing_ok=True)
-    #     return
     except Exception as e:
         logger.error(f"[BOOKING] Parsing failed: {e}", exc_info=True)
         try:

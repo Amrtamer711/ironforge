@@ -10,7 +10,7 @@ from typing import Literal, Optional
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Form, BackgroundTasks, Depends
 from fastapi.responses import HTMLResponse, FileResponse, Response
 
-from api.auth import require_auth, require_any_profile
+from api.auth import require_auth, require_permission
 from integrations.auth import AuthUser
 import config
 from db.database import db
@@ -46,7 +46,7 @@ def sanitize_path_component(value: str) -> str:
 
 
 @router.get("/mockup")
-async def mockup_setup_page(user: AuthUser = Depends(require_any_profile("system_admin"))):
+async def mockup_setup_page(user: AuthUser = Depends(require_permission("sales:mockups:setup"))):
     """Serve the mockup setup/generate interface. Requires admin role."""
     html_path = Path(__file__).parent.parent / "templates" / "mockup_setup.html"
     if not html_path.exists():
@@ -74,7 +74,7 @@ async def save_mockup_frame(
     frames_data: str = Form(..., max_length=50000),
     photo: UploadFile = File(...),
     config_json: Optional[str] = Form(None, max_length=10000),
-    user: AuthUser = Depends(require_any_profile("system_admin"))
+    user: AuthUser = Depends(require_permission("sales:mockups:setup"))
 ):
     """Save a billboard photo with multiple frame coordinates and optional config. Requires admin role."""
     from generators import mockup as mockup_generator
@@ -170,7 +170,7 @@ async def test_preview_mockup(
     frame_points: str = Form(...),
     config: str = Form("{}"),
     time_of_day: str = Form("day"),
-    user: AuthUser = Depends(require_any_profile("system_admin"))
+    user: AuthUser = Depends(require_permission("sales:mockups:setup"))
 ):
     """Generate a test preview of how the creative will look on the billboard with current config. Requires admin role."""
     import cv2
@@ -376,7 +376,7 @@ async def get_mockup_photo(location_key: str, photo_filename: str, time_of_day: 
 
 
 @router.delete("/api/mockup/photo/{location_key}/{photo_filename}")
-async def delete_mockup_photo(location_key: str, photo_filename: str, time_of_day: str = "all", finish: str = "all", user: AuthUser = Depends(require_any_profile("system_admin"))):
+async def delete_mockup_photo(location_key: str, photo_filename: str, time_of_day: str = "all", finish: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:setup"))):
     """Delete a photo and its frame. Requires admin role."""
     from generators import mockup as mockup_generator
 

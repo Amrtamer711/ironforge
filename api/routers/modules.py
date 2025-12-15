@@ -11,7 +11,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from api.auth import get_current_user, require_auth, require_any_profile
+from api.auth import get_current_user, require_auth, require_permission
 from integrations.auth import AuthUser
 from integrations.rbac import get_rbac_client, has_permission
 from integrations.rbac.modules import get_all_modules, get_module
@@ -296,7 +296,7 @@ async def get_module_config(
 
 @router.get("/all")
 async def list_all_modules(
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     List all modules (admin only).
@@ -325,7 +325,7 @@ async def list_all_modules(
 @router.post("/user-access")
 async def grant_module_access(
     assignment: UserModuleAssignment,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Grant a user access to a module (admin only).
@@ -408,7 +408,7 @@ async def grant_module_access(
 async def revoke_module_access(
     user_id: str,
     module_name: str,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Revoke a user's access to a module (admin only).
@@ -447,7 +447,7 @@ async def revoke_module_access(
 @router.get("/user/{user_id}/modules")
 async def get_user_modules(
     user_id: str,
-    user: AuthUser = Depends(require_any_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
     Get all modules a specific user has explicit access to (admin only).

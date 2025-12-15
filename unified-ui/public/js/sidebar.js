@@ -173,13 +173,14 @@ const Sidebar = {
   },
 
   /**
-   * Show/hide admin nav item based on user roles
+   * Show/hide admin nav item based on user permissions
    */
   updateAdminVisibility(user) {
     const adminNavItem = document.getElementById('adminNavItem');
     if (!adminNavItem) return;
 
-    const isAdmin = user && user.roles && user.roles.includes('admin');
+    // Use permission-based check instead of legacy role check
+    const isAdmin = Auth?.hasPermission?.('core:system:admin') || Auth?.hasPermission?.('core:*:*') || false;
     adminNavItem.style.display = isAdmin ? 'flex' : 'none';
   },
 
