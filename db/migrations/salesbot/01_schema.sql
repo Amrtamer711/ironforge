@@ -45,6 +45,19 @@ CREATE TABLE IF NOT EXISTS public.companies (
 CREATE INDEX IF NOT EXISTS idx_companies_code ON public.companies(code);
 CREATE INDEX IF NOT EXISTS idx_companies_parent ON public.companies(parent_id);
 
+-- Chat sessions (global per user, not company-specific)
+-- Users have one chat session regardless of which companies they can access
+CREATE TABLE IF NOT EXISTS public.chat_sessions (
+    id BIGSERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL UNIQUE,
+    session_id TEXT NOT NULL,
+    messages JSONB NOT NULL DEFAULT '[]',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON public.chat_sessions(user_id);
+
 -- Seed companies
 INSERT INTO public.companies (id, code, name, parent_id, country, currency, is_group, config) VALUES
     (1, 'mmg', 'MMG', NULL, NULL, 'AED', true, '{"description": "Parent company - no data schema"}'),
@@ -339,20 +352,7 @@ BEGIN
     EXECUTE format('CREATE INDEX IF NOT EXISTS idx_bo_workflows_status ON %I.bo_approval_workflows(status)', v_schema);
     EXECUTE format('CREATE INDEX IF NOT EXISTS idx_bo_workflows_bo ON %I.bo_approval_workflows(bo_id)', v_schema);
 
-    -- =========================================================================
-    -- CHAT SESSIONS
-    -- =========================================================================
-    EXECUTE format('
-        CREATE TABLE IF NOT EXISTS %I.chat_sessions (
-            id BIGSERIAL PRIMARY KEY,
-            user_id TEXT NOT NULL UNIQUE,
-            session_id TEXT NOT NULL,
-            messages JSONB NOT NULL DEFAULT ''[]'',
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-        )', v_schema);
-
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON %I.chat_sessions(user_id)', v_schema);
+    -- NOTE: chat_sessions is in PUBLIC schema (global per user, not company-specific)
 
     -- =========================================================================
     -- AI COSTS
@@ -579,12 +579,7 @@ BEGIN
             FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
     ', v_schema, v_schema);
 
-    EXECUTE format('
-        DROP TRIGGER IF EXISTS update_chat_sessions_updated_at ON %I.chat_sessions;
-        CREATE TRIGGER update_chat_sessions_updated_at
-            BEFORE UPDATE ON %I.chat_sessions
-            FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
-    ', v_schema, v_schema);
+    -- NOTE: chat_sessions trigger is in PUBLIC schema section
 
     EXECUTE format('
         DROP TRIGGER IF EXISTS update_occupations_updated_at ON %I.location_occupations;
@@ -604,7 +599,7 @@ BEGIN
     EXECUTE format('ALTER TABLE %I.booking_orders ENABLE ROW LEVEL SECURITY', v_schema);
     EXECUTE format('ALTER TABLE %I.bo_locations ENABLE ROW LEVEL SECURITY', v_schema);
     EXECUTE format('ALTER TABLE %I.bo_approval_workflows ENABLE ROW LEVEL SECURITY', v_schema);
-    EXECUTE format('ALTER TABLE %I.chat_sessions ENABLE ROW LEVEL SECURITY', v_schema);
+    -- NOTE: chat_sessions RLS is in PUBLIC schema section
     EXECUTE format('ALTER TABLE %I.ai_costs ENABLE ROW LEVEL SECURITY', v_schema);
     EXECUTE format('ALTER TABLE %I.location_occupations ENABLE ROW LEVEL SECURITY', v_schema);
     EXECUTE format('ALTER TABLE %I.rate_cards ENABLE ROW LEVEL SECURITY', v_schema);
@@ -622,7 +617,7 @@ BEGIN
     EXECUTE format('CREATE POLICY "Service role full access" ON %I.booking_orders FOR ALL USING (true)', v_schema);
     EXECUTE format('CREATE POLICY "Service role full access" ON %I.bo_locations FOR ALL USING (true)', v_schema);
     EXECUTE format('CREATE POLICY "Service role full access" ON %I.bo_approval_workflows FOR ALL USING (true)', v_schema);
-    EXECUTE format('CREATE POLICY "Service role full access" ON %I.chat_sessions FOR ALL USING (true)', v_schema);
+    -- NOTE: chat_sessions policy is in PUBLIC schema section
     EXECUTE format('CREATE POLICY "Service role full access" ON %I.ai_costs FOR ALL USING (true)', v_schema);
     EXECUTE format('CREATE POLICY "Service role full access" ON %I.location_occupations FOR ALL USING (true)', v_schema);
     EXECUTE format('CREATE POLICY "Service role full access" ON %I.rate_cards FOR ALL USING (true)', v_schema);
@@ -700,8 +695,19 @@ SELECT 'viola' as company_code, c.* FROM viola.ai_costs c;
 -- PART 6: PUBLIC SCHEMA RLS & GRANTS
 -- =============================================================================
 
+-- Companies table
 ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Service role full access" ON public.companies FOR ALL USING (true);
+
+-- Chat sessions table (global per user)
+ALTER TABLE public.chat_sessions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Service role full access" ON public.chat_sessions FOR ALL USING (true);
+
+-- Trigger for chat_sessions updated_at
+DROP TRIGGER IF EXISTS update_chat_sessions_updated_at ON public.chat_sessions;
+CREATE TRIGGER update_chat_sessions_updated_at
+    BEFORE UPDATE ON public.chat_sessions
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
 GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO service_role;
