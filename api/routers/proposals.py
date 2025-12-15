@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from db.database import db
 from api.auth import require_auth, require_profile
 from integrations.auth import AuthUser
+from integrations.rbac import get_rbac_client, has_permission
 import config
 
 logger = config.logger
@@ -73,14 +74,14 @@ async def list_proposals(
     List proposals with pagination and filtering.
 
     Regular users see only their own proposals.
-    Admins can see all proposals.
+    Users with sales:proposals:manage permission can see all proposals.
     """
     try:
-        # Check if user is admin
-        is_admin = user.profile and user.profile.name == "system_admin"
+        # Check if user can view all proposals (has manage permission)
+        can_view_all = await has_permission(user.id, "sales:proposals:manage")
 
-        # Filter by user_id unless admin
-        user_filter = None if is_admin else user.id
+        # Filter by user_id unless user has manage permission
+        user_filter = None if can_view_all else user.id
 
         proposals = db.get_proposals(
             limit=limit,
@@ -105,13 +106,13 @@ async def get_proposals_history(user: AuthUser = Depends(require_auth)):
     """
     Get proposal generation history for the authenticated user.
 
-    Returns proposals owned by the user. Admins can see all proposals.
+    Returns proposals owned by the user. Users with manage permission can see all.
 
     DEPRECATED: Use GET /api/proposals instead.
     """
     try:
-        is_admin = user.profile and user.profile.name == "system_admin"
-        user_filter = None if is_admin else user.id
+        can_view_all = await has_permission(user.id, "sales:proposals:manage")
+        user_filter = None if can_view_all else user.id
 
         proposals = db.get_proposals(limit=20, user_id=user_filter)
         return proposals
@@ -128,7 +129,7 @@ async def get_proposal(
     """
     Get a single proposal by ID with its locations.
 
-    Users can only view their own proposals unless admin.
+    Users can only view their own proposals unless they have manage permission.
     """
     try:
         proposal = db.get_proposal_by_id(proposal_id)
@@ -136,11 +137,11 @@ async def get_proposal(
         if not proposal:
             raise HTTPException(status_code=404, detail="Proposal not found")
 
-        # Check ownership unless admin
-        is_admin = user.profile and user.profile.name == "system_admin"
+        # Check ownership unless user has manage permission
+        can_view_all = await has_permission(user.id, "sales:proposals:manage")
         proposal_owner = proposal.get("user_id") or proposal.get("submitted_by")
 
-        if not is_admin and proposal_owner != user.id:
+        if not can_view_all and proposal_owner != user.id:
             raise HTTPException(status_code=403, detail="Not authorized to view this proposal")
 
         # Get locations
@@ -165,7 +166,7 @@ async def delete_proposal(
     """
     Delete a proposal by ID.
 
-    Users can only delete their own proposals unless admin.
+    Users can only delete their own proposals unless they have delete permission.
     """
     try:
         proposal = db.get_proposal_by_id(proposal_id)
@@ -173,11 +174,11 @@ async def delete_proposal(
         if not proposal:
             raise HTTPException(status_code=404, detail="Proposal not found")
 
-        # Check ownership unless admin
-        is_admin = user.profile and user.profile.name == "system_admin"
+        # Check ownership unless user has delete permission
+        can_delete_all = await has_permission(user.id, "sales:proposals:delete")
         proposal_owner = proposal.get("user_id") or proposal.get("submitted_by")
 
-        if not is_admin and proposal_owner != user.id:
+        if not can_delete_all and proposal_owner != user.id:
             raise HTTPException(status_code=403, detail="Not authorized to delete this proposal")
 
         success = db.delete_proposal(proposal_id)
@@ -201,7 +202,7 @@ async def get_proposal_locations(
     """
     Get locations for a specific proposal.
 
-    Users can only view their own proposal locations unless admin.
+    Users can only view their own proposal locations unless they have manage permission.
     """
     try:
         proposal = db.get_proposal_by_id(proposal_id)
@@ -209,11 +210,11 @@ async def get_proposal_locations(
         if not proposal:
             raise HTTPException(status_code=404, detail="Proposal not found")
 
-        # Check ownership unless admin
-        is_admin = user.profile and user.profile.name == "system_admin"
+        # Check ownership unless user has manage permission
+        can_view_all = await has_permission(user.id, "sales:proposals:manage")
         proposal_owner = proposal.get("user_id") or proposal.get("submitted_by")
 
-        if not is_admin and proposal_owner != user.id:
+        if not can_view_all and proposal_owner != user.id:
             raise HTTPException(status_code=403, detail="Not authorized to view this proposal")
 
         locations = db.get_proposal_locations(proposal_id)

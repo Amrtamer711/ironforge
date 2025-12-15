@@ -37,31 +37,31 @@ async def get_costs(
     ),
     call_type: Optional[CallType] = Query(None, description="Filter by call type"),
     workflow: Optional[Workflow] = Query(None, description="Filter by workflow"),
-    filter_user_id: Optional[str] = Query(None, max_length=100, description="Filter by user ID (admin only)")
+    filter_user_id: Optional[str] = Query(None, max_length=100, description="Filter by user ID (requires core:costs:manage)")
 ):
     """
     Get AI costs summary with optional filters.
 
-    Requires authentication. Non-admin users can only see their own costs.
+    Requires authentication. Users without core:costs:manage can only see their own costs.
     """
+    from integrations.rbac import has_permission
+
     logger.info(f"[COSTS] Get costs request from {user.email}, filters: start={start_date}, end={end_date}, type={call_type}, workflow={workflow}")
 
-    # Non-admins can only see their own costs
-    rbac = get_rbac_client()
-    profile = await rbac.get_user_profile(user.id)
-    is_admin = profile and profile.name == "system_admin"
-    logger.debug(f"[COSTS] User {user.email} is_admin: {is_admin}")
+    # Check if user can view all costs (has manage permission)
+    can_view_all = await has_permission(user.id, "core:costs:manage")
+    logger.debug(f"[COSTS] User {user.email} can_view_all: {can_view_all}")
 
-    # If filter_user_id is provided but user is not admin, reject
-    if filter_user_id and not is_admin:
-        logger.warning(f"[COSTS] Non-admin {user.email} attempted to filter by user_id")
+    # If filter_user_id is provided but user can't view all, reject
+    if filter_user_id and not can_view_all:
+        logger.warning(f"[COSTS] User {user.email} attempted to filter by user_id without permission")
         raise HTTPException(
             status_code=403,
-            detail="Only admins can filter by user_id"
+            detail="Permission denied: core:costs:manage required to filter by user_id"
         )
 
-    # Admins can see any user's costs, non-admins only see their own
-    effective_user_id = filter_user_id if (filter_user_id and is_admin) else (None if is_admin else user.id)
+    # Users with manage permission can see any user's costs, others only see their own
+    effective_user_id = filter_user_id if (filter_user_id and can_view_all) else (None if can_view_all else user.id)
 
     # Convert enums to string values for database query
     call_type_str = call_type.value if call_type else None

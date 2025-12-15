@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from api.auth import get_current_user, require_auth, require_any_profile
 from integrations.auth import AuthUser
-from integrations.rbac import get_rbac_client
+from integrations.rbac import get_rbac_client, has_permission
 from integrations.rbac.modules import get_all_modules, get_module
 from utils.logging import get_logger
 from utils.time import get_uae_time
@@ -140,17 +140,13 @@ async def get_accessible_modules(user: AuthUser = Depends(require_auth)):
     default_module = None
     user_default_module = None
 
-    # Get user's profile and permissions to check access
-    profile = await rbac.get_user_profile(user.id)
+    # Get user's permissions to check access
     user_permissions = await rbac.get_user_permissions(user.id)
-    profile_name = profile.name if profile else None
-    logger.info(f"[MODULES] User {user.email} profile={profile_name}, permissions={user_permissions}")
+    logger.info(f"[MODULES] User {user.email} permissions={user_permissions}")
 
-    # Check if user is admin (has access to everything)
-    # Check profile name and also user metadata for roles
-    user_roles = getattr(user, 'roles', None) or user.metadata.get('roles', [])
-    is_admin = profile_name == "system_admin" or (user_roles and "admin" in user_roles)
-    logger.info(f"[MODULES] is_admin={is_admin} (profile={profile_name}, roles={user_roles})")
+    # Check if user has full admin access (using permission-based check)
+    is_admin = await has_permission(user.id, "core:*:*")
+    logger.info(f"[MODULES] is_admin={is_admin}")
 
     # Check each module
     for module_name, config in MODULE_CONFIGS.items():
@@ -269,13 +265,12 @@ async def get_module_config(
 
     config = MODULE_CONFIGS[module_name]
 
-    # Verify user has access to this module
+    # Verify user has access to this module using permission-based checks
     rbac = get_rbac_client()
-    profile = await rbac.get_user_profile(user.id)
     user_permissions = await rbac.get_user_permissions(user.id)
-    profile_name = profile.name if profile else None
 
-    has_access = profile_name == "system_admin"
+    # Check if user has admin access or module-specific permission
+    has_access = await has_permission(user.id, "core:*:*")
     if not has_access and config.get("required_permission"):
         module_prefix = config["required_permission"].split(":")[0]
         for perm in user_permissions:

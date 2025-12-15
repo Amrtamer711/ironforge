@@ -105,8 +105,9 @@ async def process_chat_message(
         ]
     session.messages.append(user_msg)
 
-    # Check if user is admin (has 'admin' role)
-    is_admin = 'admin' in roles
+    # Check if user has admin permissions using RBAC
+    from integrations.rbac import has_permission
+    is_admin = await has_permission(user_id, "core:*:*")
 
     # Build channel_event in the same format as Slack events
     # This allows main_llm_loop to process files, etc.
@@ -254,8 +255,9 @@ async def stream_chat_message(
     session.events.clear()
     session.processing_complete = False
 
-    # Check if user is admin
-    is_admin = 'admin' in roles
+    # Check if user has admin permissions using RBAC
+    from integrations.rbac import has_permission
+    is_admin = await has_permission(user_id, "core:*:*")
 
     # Build channel_event
     channel_event = {
