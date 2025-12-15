@@ -387,7 +387,9 @@ const ModuleRegistry = {
         }
         break;
       case 'mockup':
-        if (window.Sidebar) {
+        if (window.MockupGenerator) {
+          MockupGenerator.init();
+        } else if (window.Sidebar) {
           Sidebar.initMockup();
         }
         break;

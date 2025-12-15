@@ -601,12 +601,199 @@
 
         <!-- Mockup Tool -->
         <div class="tool-panel" id="mockupPanel">
-          <!-- This will contain the full mockup studio interface -->
-          <div class="mockup-container">
-            <!-- Setup/Generate Mode Content will be dynamically loaded here -->
-            <div class="mockup-placeholder">
-              <h3>Mockup Generator</h3>
-              <p>Loading mockup studio...</p>
+          <div class="mockup-studio">
+            <!-- Header -->
+            <div class="mockup-header">
+              <h2>Mockup Generator</h2>
+              <p>Generate billboard mockups with your creative or AI</p>
+            </div>
+
+            <!-- Main Content -->
+            <div class="mockup-content">
+              <!-- Left Side: Settings -->
+              <div class="mockup-settings">
+                <!-- Location Selection -->
+                <div class="mockup-form-group">
+                  <label for="mockupLocationSelect">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                      <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    Location
+                  </label>
+                  <select id="mockupLocationSelect" class="mockup-select">
+                    <option value="">Select a location...</option>
+                  </select>
+                </div>
+
+                <!-- Time of Day -->
+                <div class="mockup-form-group">
+                  <label for="mockupTimeOfDay">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="5"/>
+                      <line x1="12" y1="1" x2="12" y2="3"/>
+                      <line x1="12" y1="21" x2="12" y2="23"/>
+                      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                      <line x1="1" y1="12" x2="3" y2="12"/>
+                      <line x1="21" y1="12" x2="23" y2="12"/>
+                      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                    </svg>
+                    Time of Day
+                  </label>
+                  <select id="mockupTimeOfDay" class="mockup-select">
+                    <option value="all">All (Auto)</option>
+                    <option value="day">Day</option>
+                    <option value="night">Night</option>
+                  </select>
+                </div>
+
+                <!-- Billboard Finish -->
+                <div class="mockup-form-group">
+                  <label for="mockupFinish">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                      <path d="M3 9h18"/>
+                    </svg>
+                    Billboard Finish
+                  </label>
+                  <select id="mockupFinish" class="mockup-select">
+                    <option value="all">All (Auto)</option>
+                    <option value="gold">Gold</option>
+                    <option value="silver">Silver</option>
+                  </select>
+                </div>
+
+                <!-- Template Selection (appears after location selected) -->
+                <div class="mockup-form-group" id="templateSelectGroup" style="display: none;">
+                  <label for="mockupTemplate">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                      <circle cx="8.5" cy="8.5" r="1.5"/>
+                      <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                    Template (Optional)
+                  </label>
+                  <select id="mockupTemplate" class="mockup-select">
+                    <option value="">Random template</option>
+                  </select>
+                  <small class="mockup-hint">Leave blank for random selection</small>
+                </div>
+
+                <!-- Divider -->
+                <div class="mockup-divider"></div>
+
+                <!-- Creative Upload -->
+                <div class="mockup-form-group">
+                  <label>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="17 8 12 3 7 8"/>
+                      <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    Upload Creative
+                  </label>
+                  <div class="mockup-upload-zone" id="mockupUploadZone">
+                    <input type="file" id="mockupCreativeUpload" accept="image/*" hidden>
+                    <div class="upload-icon">
+                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                      </svg>
+                    </div>
+                    <p>Drop image here or click to upload</p>
+                    <small>JPG, PNG, GIF up to 10MB</small>
+                  </div>
+                  <div class="mockup-file-preview" id="mockupFilePreview" style="display: none;">
+                    <img id="mockupPreviewImg" src="" alt="Preview">
+                    <button class="mockup-clear-btn" id="mockupClearFile">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- OR Divider -->
+                <div class="mockup-or-divider">
+                  <span>OR</span>
+                </div>
+
+                <!-- AI Prompt -->
+                <div class="mockup-form-group">
+                  <label for="mockupAiPrompt">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
+                      <path d="M16 14v1a4 4 0 0 1-8 0v-1"/>
+                      <line x1="12" y1="19" x2="12" y2="22"/>
+                      <line x1="8" y1="22" x2="16" y2="22"/>
+                    </svg>
+                    AI-Generated Creative
+                  </label>
+                  <textarea
+                    id="mockupAiPrompt"
+                    class="mockup-textarea"
+                    placeholder="Describe your billboard ad...&#10;e.g., Luxury watch ad with gold typography on dark background, elegant and professional"
+                    rows="3"
+                  ></textarea>
+                  <small class="mockup-hint">AI will generate a billboard creative based on your description</small>
+                </div>
+
+                <!-- Generate Button -->
+                <button class="mockup-generate-btn" id="mockupGenerateBtn" disabled>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                  </svg>
+                  Generate Mockup
+                </button>
+              </div>
+
+              <!-- Right Side: Result -->
+              <div class="mockup-result-area">
+                <!-- Loading State -->
+                <div class="mockup-loading" id="mockupLoading" style="display: none;">
+                  <div class="mockup-spinner"></div>
+                  <p>Generating your mockup...</p>
+                  <small id="mockupLoadingDetail">This may take a moment</small>
+                </div>
+
+                <!-- Empty State -->
+                <div class="mockup-empty" id="mockupEmpty">
+                  <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                  <h3>No mockup generated yet</h3>
+                  <p>Select a location and upload your creative or enter an AI prompt to generate a billboard mockup.</p>
+                </div>
+
+                <!-- Result Display -->
+                <div class="mockup-result-display" id="mockupResultDisplay" style="display: none;">
+                  <img id="mockupResultImage" src="" alt="Generated Mockup">
+                  <div class="mockup-result-actions">
+                    <a class="mockup-download-btn" id="mockupDownloadBtn" download="mockup.jpg">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                      </svg>
+                      Download
+                    </a>
+                    <button class="mockup-regenerate-btn" id="mockupRegenerateBtn">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="23 4 23 10 17 10"/>
+                        <polyline points="1 20 1 14 7 14"/>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                      </svg>
+                      Regenerate
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -653,6 +840,7 @@
   <script src="/js/modules.js"></script>
   <script src="/js/sidebar.js"></script>
   <script src="/js/chat.js"></script>
+  <script src="/js/mockup.js"></script>
   <script src="/js/admin.js"></script>
   <script src="/js/app.js"></script>
   <script>

@@ -4799,3 +4799,401 @@ body.modal-open {
   border-radius: var(--radius-md);
   margin-bottom: 0;
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOCKUP STUDIO STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.mockup-studio {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: var(--space-6);
+  overflow-y: auto;
+}
+
+.mockup-header {
+  margin-bottom: var(--space-6);
+}
+
+.mockup-header h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+
+.mockup-header p {
+  color: var(--neural-500);
+  font-size: 0.9rem;
+}
+
+.mockup-content {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  gap: var(--space-6);
+  flex: 1;
+  min-height: 0;
+}
+
+.mockup-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  background: var(--void-base);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  height: fit-content;
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+}
+
+.mockup-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.mockup-form-group label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mockup-form-group label svg {
+  color: var(--plasma-400);
+}
+
+.mockup-select {
+  width: 100%;
+  padding: var(--space-3);
+  background: var(--void-hover);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mockup-select:hover {
+  border-color: var(--plasma-500);
+}
+
+.mockup-select:focus {
+  outline: none;
+  border-color: var(--plasma-400);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.mockup-hint {
+  font-size: 0.75rem;
+  color: var(--neural-500);
+}
+
+.mockup-divider {
+  height: 1px;
+  background: var(--glass-border);
+  margin: var(--space-2) 0;
+}
+
+.mockup-or-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-2) 0;
+}
+
+.mockup-or-divider::before,
+.mockup-or-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--glass-border);
+}
+
+.mockup-or-divider span {
+  font-size: 0.75rem;
+  color: var(--neural-500);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.mockup-upload-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: var(--void-hover);
+  border: 2px dashed var(--glass-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.mockup-upload-zone:hover {
+  border-color: var(--plasma-500);
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.mockup-upload-zone.drag-over {
+  border-color: var(--plasma-400);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.mockup-upload-zone .upload-icon {
+  color: var(--neural-500);
+  margin-bottom: var(--space-3);
+}
+
+.mockup-upload-zone p {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  margin-bottom: var(--space-1);
+}
+
+.mockup-upload-zone small {
+  color: var(--neural-500);
+  font-size: 0.75rem;
+}
+
+.mockup-file-preview {
+  position: relative;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--void-hover);
+}
+
+.mockup-file-preview img {
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+}
+
+.mockup-clear-btn {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  border: none;
+  border-radius: 50%;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mockup-clear-btn:hover {
+  background: var(--crimson-500);
+}
+
+.mockup-textarea {
+  width: 100%;
+  padding: var(--space-3);
+  background: var(--void-hover);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 80px;
+  transition: all 0.2s ease;
+}
+
+.mockup-textarea:hover {
+  border-color: var(--plasma-500);
+}
+
+.mockup-textarea:focus {
+  outline: none;
+  border-color: var(--plasma-400);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+}
+
+.mockup-textarea::placeholder {
+  color: var(--neural-600);
+}
+
+.mockup-generate-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-4);
+  background: linear-gradient(135deg, var(--plasma-500), var(--plasma-600));
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: var(--space-2);
+}
+
+.mockup-generate-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--plasma-400), var(--plasma-500));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+}
+
+.mockup-generate-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Result Area */
+.mockup-result-area {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--void-base);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  min-height: 400px;
+}
+
+.mockup-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: var(--neural-500);
+}
+
+.mockup-empty svg {
+  margin-bottom: var(--space-4);
+  opacity: 0.5;
+}
+
+.mockup-empty h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.mockup-empty p {
+  font-size: 0.9rem;
+  max-width: 300px;
+}
+
+.mockup-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.mockup-spinner {
+  width: 50px;
+  height: 50px;
+  border: 3px solid var(--glass-border);
+  border-top-color: var(--plasma-400);
+  border-radius: 50%;
+  animation: mockup-spin 1s linear infinite;
+  margin-bottom: var(--space-4);
+}
+
+@keyframes mockup-spin {
+  to { transform: rotate(360deg); }
+}
+
+.mockup-loading p {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: var(--space-1);
+}
+
+.mockup-loading small {
+  font-size: 0.85rem;
+  color: var(--neural-500);
+}
+
+.mockup-result-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.mockup-result-display img {
+  max-width: 100%;
+  max-height: 500px;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  margin-bottom: var(--space-4);
+}
+
+.mockup-result-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.mockup-download-btn,
+.mockup-regenerate-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.mockup-download-btn {
+  background: linear-gradient(135deg, var(--emerald-500), var(--emerald-600));
+  border: none;
+  color: white;
+}
+
+.mockup-download-btn:hover {
+  background: linear-gradient(135deg, var(--emerald-400), var(--emerald-500));
+  transform: translateY(-1px);
+}
+
+.mockup-regenerate-btn {
+  background: var(--void-hover);
+  border: 1px solid var(--glass-border);
+  color: var(--text-primary);
+}
+
+.mockup-regenerate-btn:hover {
+  background: var(--void-base);
+  border-color: var(--plasma-500);
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .mockup-content {
+    grid-template-columns: 1fr;
+  }
+
+  .mockup-settings {
+    max-height: none;
+  }
+
+  .mockup-result-area {
+    min-height: 300px;
+  }
+}

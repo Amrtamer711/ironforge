@@ -59,6 +59,7 @@ SQLITE_DB = BACKUP_DIR / "proposals.db"
 TEMPLATES_DIR = BACKUP_DIR / "templates"
 MOCKUPS_DIR = BACKUP_DIR / "mockups"
 FONTS_DIR = BACKUP_DIR / "Sofia-Pro Font"
+BOOKING_ORDERS_DIR = BACKUP_DIR / "booking_orders"
 
 # Also check render_main_data for files (production location)
 RENDER_DATA_DIR = PROJECT_ROOT / "render_main_data"
@@ -202,6 +203,9 @@ def get_mime_type(filepath: Path) -> str:
         '.woff2': 'font/woff2',
         '.txt': 'text/plain',
         '.json': 'application/json',
+        '.pdf': 'application/pdf',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.xls': 'application/vnd.ms-excel',
     }
     return mime_map.get(ext, 'application/octet-stream')
 
@@ -389,6 +393,55 @@ def upload_fonts(supabase: Client, dry_run: bool = False) -> int:
                 uploaded += 1
 
     print(f"  Uploaded: {uploaded} font files")
+    return uploaded
+
+
+def upload_booking_orders(supabase: Client, company: str, dry_run: bool = False) -> int:
+    """
+    Upload booking order files to Supabase Storage.
+
+    Structure: booking_orders/{company}/{subfolder}/{filename}
+    Subfolders: original_uploads, combined_bos, original_bos, parsed_bos
+    """
+    print("\n--- Uploading booking orders ---")
+
+    if not BOOKING_ORDERS_DIR.exists():
+        print(f"  No booking_orders directory found at {BOOKING_ORDERS_DIR}")
+        return 0
+
+    print(f"  Source: {BOOKING_ORDERS_DIR}")
+
+    uploaded = 0
+
+    # Walk all subdirectories
+    for subfolder in sorted(BOOKING_ORDERS_DIR.iterdir()):
+        if not subfolder.is_dir():
+            continue
+        if subfolder.name.startswith('.'):
+            continue
+
+        subfolder_name = subfolder.name
+
+        # Upload all files in this subfolder
+        for filepath in subfolder.iterdir():
+            if filepath.name.startswith('.'):
+                continue
+            if not filepath.is_file():
+                continue
+
+            # Storage path: booking_orders/{company}/{subfolder}/{filename}
+            storage_path = f"{company}/{subfolder_name}/{filepath.name}"
+
+            if dry_run:
+                print(f"    [DRY RUN] Would upload: booking_orders/{storage_path}")
+                uploaded += 1
+            else:
+                if upload_file_to_storage(supabase, 'booking_orders', storage_path, filepath):
+                    uploaded += 1
+                    if uploaded % 10 == 0:
+                        print(f"    Progress: {uploaded} files")
+
+    print(f"  Uploaded: {uploaded} booking order files")
     return uploaded
 
 
@@ -1228,6 +1281,7 @@ def run_migration(company: str, dry_run: bool = False, skip_locations: bool = Fa
         results['templates_uploaded'] = upload_templates(supabase, company, dry_run)
         results['mockups_uploaded'] = upload_mockups(supabase, company, dry_run)
         results['fonts_uploaded'] = upload_fonts(supabase, dry_run)
+        results['booking_orders_uploaded'] = upload_booking_orders(supabase, company, dry_run)
 
     # If storage-only mode, stop here
     if storage_only:

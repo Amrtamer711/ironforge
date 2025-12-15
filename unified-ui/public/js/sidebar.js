@@ -76,7 +76,7 @@ const Sidebar = {
   },
 
   initMockup() {
-    // Load mockup studio content into the panel
+    // Initialize mockup generator module
     const mockupPanel = document.getElementById('mockupPanel');
     if (!mockupPanel) return;
 
@@ -84,42 +84,11 @@ const Sidebar = {
     if (mockupPanel.dataset.initialized) return;
     mockupPanel.dataset.initialized = 'true';
 
-    // Load locations for settings dropdown
-    this.loadMockupLocations();
-
-    // Mode toggle
-    const modeToggleBtns = document.querySelectorAll('.mode-toggle-btn');
-    modeToggleBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        modeToggleBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        // Mode change logic here
-      });
-    });
-  },
-
-  async loadMockupLocations() {
-    const locationSelect = document.getElementById('mockupLocation');
-    if (!locationSelect) return;
-
-    console.log('[Sidebar] Loading mockup locations...');
-    try {
-      // Try to load from API
-      const locations = await API.mockup.getLocations();
-      console.log('[Sidebar] Loaded', locations.length, 'locations from API');
-      locationSelect.innerHTML = '<option value="">Select location...</option>' +
-        locations.map(loc => `<option value="${loc}">${loc}</option>`).join('');
-    } catch (e) {
-      console.warn('[Sidebar] Failed to load locations from API, using defaults:', e.message);
-      // Fallback to hardcoded locations
-      const defaultLocations = [
-        'Burj Khalifa',
-        'Dubai Mall',
-        'The Landmark',
-        'Business Bay'
-      ];
-      locationSelect.innerHTML = '<option value="">Select location...</option>' +
-        defaultLocations.map(loc => `<option value="${loc}">${loc}</option>`).join('');
+    // Initialize the MockupGenerator module
+    if (window.MockupGenerator) {
+      MockupGenerator.init();
+    } else {
+      console.warn('[Sidebar] MockupGenerator module not loaded');
     }
   },
 
