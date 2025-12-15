@@ -130,8 +130,11 @@ def set_channel_adapter(adapter):
     Args:
         adapter: ChannelAdapter instance to set as active
     """
-    from integrations.channels import set_channel
-    set_channel(adapter)
+    from integrations.channels import register_channel, set_channel
+    # Register the adapter first (if not already registered)
+    register_channel(adapter)
+    # Then set it as active by its channel type
+    set_channel(adapter.channel_type.value)
 
 
 # ============================================================================
