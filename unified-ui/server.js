@@ -709,10 +709,15 @@ app.use('/api/sales', createProxyMiddleware({
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
 
-// Request logging middleware
+// Request logging middleware (skip health checks in debug mode to reduce noise)
+const SKIP_LOG_PATHS_DEBUG = new Set(['/health', '/health/ready', '/health/auth']);
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
+    // Skip health check logging in non-production (debug) mode
+    if (!IS_PRODUCTION && SKIP_LOG_PATHS_DEBUG.has(req.path)) {
+      return;
+    }
     const duration = Date.now() - start;
     console.log(`[UI] ${req.method} ${req.path} -> ${res.statusCode} (${duration}ms)`);
   });
