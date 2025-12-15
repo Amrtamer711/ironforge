@@ -1,0 +1,297 @@
+"""
+FastAPI application entry point for unified-ui.
+
+[VERIFIED] Mirrors server.js application setup:
+- Environment detection (lines 14-20)
+- CORS configuration (lines 104-148)
+- Static file serving (line 807)
+- Health endpoints (lines 813-834)
+- SPA catch-all (lines 4148-4159)
+- Error handling (lines 4161-4170)
+
+Routers:
+- /api/modules/* - modules.py (1 endpoint)
+- /api/sales/* - proxy.py (proxies to proposal-bot)
+- /api/base/auth/* - auth.py (12 endpoints)
+- /api/admin/* - admin.py (8 endpoints)
+- /api/rbac/* - rbac/ (43 endpoints: profiles, permission_sets, teams, sharing, users)
+- /api/channel-identity/* - channel_identity.py (9 endpoints)
+"""
+
+import logging
+import os
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
+
+from backend.config import get_settings
+from backend.middleware.rate_limit import start_rate_limit_cleanup
+from backend.services.supabase_client import get_supabase
+
+# Import routers
+from backend.routers import admin, auth, channel_identity, modules, proxy
+from backend.routers.rbac import router as rbac_router
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger("unified-ui")
+
+
+# =============================================================================
+# LIFESPAN - Startup/shutdown events
+# =============================================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager."""
+    settings = get_settings()
+
+    # Startup
+    settings.log_config()
+    start_rate_limit_cleanup()
+
+    # Check Supabase connection
+    supabase = get_supabase()
+    if supabase:
+        logger.info("[UI] Supabase: Connected")
+    else:
+        logger.warning("[UI] Supabase: Not configured")
+
+    logger.info(f"[UI] Sales Bot URL: {settings.SALES_BOT_URL}")
+    logger.info(f"Unified UI running on port {settings.PORT}")
+
+    yield
+
+    # Shutdown (cleanup if needed)
+    logger.info("[UI] Shutting down...")
+
+
+# =============================================================================
+# APP INITIALIZATION
+# =============================================================================
+
+app = FastAPI(
+    title="Unified UI",
+    description="Unified UI backend for authentication, RBAC, and proxying",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+# =============================================================================
+# CORS CONFIGURATION - server.js:104-148
+# =============================================================================
+
+settings = get_settings()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins or ["*"],  # Fall back to all if empty
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Request-ID"],
+)
+
+
+# =============================================================================
+# REQUEST LOGGING MIDDLEWARE - server.js:724-737
+# =============================================================================
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all requests with timing."""
+    import time
+    start = time.time()
+
+    # Skip health check logging in non-production
+    skip_paths = {"/health", "/health/ready", "/health/auth"}
+
+    response = await call_next(request)
+
+    if settings.is_production or request.url.path not in skip_paths:
+        duration = (time.time() - start) * 1000
+        logger.info(f"[UI] {request.method} {request.url.path} -> {response.status_code} ({duration:.0f}ms)")
+
+    return response
+
+
+# =============================================================================
+# INCLUDE ROUTERS
+# =============================================================================
+
+# Auth router - /api/base/auth/*
+app.include_router(auth.router)
+
+# Modules router - /api/modules/*
+app.include_router(modules.router)
+
+# Proxy router - /api/sales/* -> proposal-bot
+app.include_router(proxy.router)
+
+# Admin router - /api/admin/*
+app.include_router(admin.router)
+
+# RBAC router - /api/rbac/*
+app.include_router(rbac_router)
+
+# Channel Identity router - /api/channel-identity/*
+app.include_router(channel_identity.router)
+
+
+# =============================================================================
+# HEALTH ENDPOINTS - server.js:813-822
+# =============================================================================
+
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint.
+    Mirrors server.js:813-822
+    """
+    settings = get_settings()
+    supabase = get_supabase()
+
+    return {
+        "status": "ok",
+        "service": "unified-ui",
+        "supabase": supabase is not None,
+        "sales_bot_url": settings.SALES_BOT_URL,
+        "environment": settings.ENVIRONMENT,
+    }
+
+
+# =============================================================================
+# SUPABASE CONFIG ENDPOINT - server.js:824-834
+# =============================================================================
+
+@app.get("/api/base/config.js")
+async def get_supabase_config():
+    """
+    Serve public Supabase credentials to frontend as JavaScript.
+
+    Mirrors server.js:824-834
+
+    IMPORTANT: Only expose SUPABASE_URL and SUPABASE_ANON_KEY (public),
+    never SERVICE_KEY.
+    """
+    settings = get_settings()
+    import json
+
+    js_content = f"""// Supabase configuration (auto-generated)
+// Environment: {settings.ENVIRONMENT}
+window.SUPABASE_URL = {json.dumps(settings.supabase_url or '')};
+window.SUPABASE_ANON_KEY = {json.dumps(settings.supabase_anon_key or '')};
+"""
+
+    return Response(
+        content=js_content,
+        media_type="application/javascript",
+    )
+
+
+# =============================================================================
+# STATIC FILES - server.js:807
+# =============================================================================
+
+# Determine frontend path
+# In development: unified-ui/public
+# In production/docker: frontend/ (next to backend/)
+FRONTEND_PATH = Path(__file__).parent.parent / "public"
+if not FRONTEND_PATH.exists():
+    FRONTEND_PATH = Path(__file__).parent.parent / "frontend"
+
+if FRONTEND_PATH.exists():
+    # Serve static assets (CSS, JS, images)
+    css_path = FRONTEND_PATH / "css"
+    js_path = FRONTEND_PATH / "js"
+    images_path = FRONTEND_PATH / "images"
+
+    if css_path.exists():
+        app.mount("/css", StaticFiles(directory=str(css_path)), name="css")
+    if js_path.exists():
+        app.mount("/js", StaticFiles(directory=str(js_path)), name="js")
+    if images_path.exists():
+        app.mount("/images", StaticFiles(directory=str(images_path)), name="images")
+
+    logger.info(f"[UI] Serving static files from: {FRONTEND_PATH}")
+else:
+    logger.warning(f"[UI] Frontend path not found: {FRONTEND_PATH}")
+
+
+# =============================================================================
+# SPA CATCH-ALL - server.js:4148-4159
+# =============================================================================
+
+@app.get("/{full_path:path}")
+async def serve_frontend(full_path: str):
+    """
+    Serve index.html for all non-API routes (SPA routing).
+
+    Mirrors server.js:4148-4159
+
+    This enables client-side routing and handles Supabase auth redirects.
+    """
+    # Don't catch API routes
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    # Check for static file first (icons, etc.)
+    if FRONTEND_PATH.exists():
+        static_file = FRONTEND_PATH / full_path
+        if static_file.exists() and static_file.is_file():
+            return FileResponse(static_file)
+
+        # Serve index.html for SPA routing
+        index_path = FRONTEND_PATH / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+
+    raise HTTPException(status_code=404, detail="Frontend not found")
+
+
+# =============================================================================
+# ERROR HANDLING - server.js:4161-4170
+# =============================================================================
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """
+    Global error handler.
+    Mirrors server.js:4161-4170
+    """
+    settings = get_settings()
+    logger.error(f"Server error: {exc}")
+
+    # In production, hide internal error details from client
+    if settings.is_production:
+        return JSONResponse(
+            status_code=500,
+            content={"error": "An internal error occurred"},
+        )
+    else:
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(exc) or "Internal server error"},
+        )
+
+
+# =============================================================================
+# MAIN ENTRY POINT
+# =============================================================================
+
+if __name__ == "__main__":
+    import uvicorn
+
+    settings = get_settings()
+    uvicorn.run(
+        "backend.main:app",
+        host="0.0.0.0",
+        port=settings.PORT,
+        reload=not settings.is_production,
+    )

@@ -1,0 +1,89 @@
+# unified-ui Docker Compose
+# Python FastAPI backend serving frontend + authentication + RBAC + proxying to proposal-bot
+#
+# Usage:
+#   docker-compose up -d              # Start in background
+#   docker-compose up --build         # Rebuild and start
+#   docker-compose logs -f unified-ui # View logs
+#   docker-compose down               # Stop and remove
+
+version: '3.8'
+
+services:
+  unified-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: unified-ui
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3005}:3005"
+    environment:
+      # Core settings
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - PORT=3005
+
+      # UI Supabase - Development (used when ENVIRONMENT != production)
+      - UI_DEV_SUPABASE_URL=${UI_DEV_SUPABASE_URL}
+      - UI_DEV_SUPABASE_ANON_KEY=${UI_DEV_SUPABASE_ANON_KEY}
+      - UI_DEV_SUPABASE_SERVICE_ROLE_KEY=${UI_DEV_SUPABASE_SERVICE_ROLE_KEY}
+
+      # UI Supabase - Production (used when ENVIRONMENT == production)
+      - UI_PROD_SUPABASE_URL=${UI_PROD_SUPABASE_URL}
+      - UI_PROD_SUPABASE_ANON_KEY=${UI_PROD_SUPABASE_ANON_KEY}
+      - UI_PROD_SUPABASE_SERVICE_ROLE_KEY=${UI_PROD_SUPABASE_SERVICE_ROLE_KEY}
+
+      # Sales bot (proposal-bot) URL for proxying
+      - SALES_BOT_URL=${SALES_BOT_URL:-http://proposal-bot:8000}
+
+      # Proxy secret for trusted headers (must match proposal-bot)
+      - PROXY_SECRET=${PROXY_SECRET}
+
+      # CORS origins (comma-separated)
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - RENDER_EXTERNAL_URL=${RENDER_EXTERNAL_URL:-}
+
+      # RBAC cache settings (optional)
+      - RBAC_CACHE_TTL_SECONDS=${RBAC_CACHE_TTL_SECONDS:-30}
+    volumes:
+      # Persist uploads and data
+      - ./uploads:/app/uploads
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+# =============================================================================
+# FULL STACK DEPLOYMENT (Optional)
+# =============================================================================
+# To run unified-ui alongside proposal-bot, uncomment below:
+#
+#   proposal-bot:
+#     build:
+#       context: ../
+#       dockerfile: Dockerfile
+#     container_name: proposal-bot
+#     restart: unless-stopped
+#     ports:
+#       - "8000:8000"
+#     environment:
+#       - ENVIRONMENT=${ENVIRONMENT:-production}
+#       - PROXY_SECRET=${PROXY_SECRET}
+#       # Salesbot Supabase (separate project)
+#       - SALESBOT_DEV_SUPABASE_URL=${SALESBOT_DEV_SUPABASE_URL}
+#       - SALESBOT_DEV_SUPABASE_ANON_KEY=${SALESBOT_DEV_SUPABASE_ANON_KEY}
+#       - SALESBOT_DEV_SUPABASE_SERVICE_ROLE_KEY=${SALESBOT_DEV_SUPABASE_SERVICE_ROLE_KEY}
+#       - SALESBOT_PROD_SUPABASE_URL=${SALESBOT_PROD_SUPABASE_URL}
+#       - SALESBOT_PROD_SUPABASE_ANON_KEY=${SALESBOT_PROD_SUPABASE_ANON_KEY}
+#       - SALESBOT_PROD_SUPABASE_SERVICE_ROLE_KEY=${SALESBOT_PROD_SUPABASE_SERVICE_ROLE_KEY}
+#     networks:
+#       - app-network
