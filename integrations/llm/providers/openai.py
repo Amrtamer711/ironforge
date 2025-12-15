@@ -188,6 +188,22 @@ class OpenAIProvider(LLMProvider):
         if cache_retention:
             kwargs["prompt_cache_retention"] = cache_retention
 
+        # Debug: Log message order being sent to API
+        logger.info(f"[OPENAI] === API Request Message Order ===")
+        if instructions:
+            instr_preview = (instructions[:80] + "...") if len(instructions) > 80 else instructions
+            logger.info(f"[OPENAI] instructions (system): {instr_preview.replace(chr(10), ' ')}")
+        for i, msg in enumerate(input_messages):
+            role = msg.get("role", "?")
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                preview = (content[:80] + "...") if len(content) > 80 else content
+                preview = preview.replace("\n", " ")
+            else:
+                preview = f"[complex content: {type(content).__name__}]"
+            logger.info(f"[OPENAI] input[{i}] {role}: {preview}")
+        logger.info(f"[OPENAI] === End Message Order ===")
+
         response = await self._client.responses.create(**kwargs)
         return self._parse_text_response(response, model)
 
