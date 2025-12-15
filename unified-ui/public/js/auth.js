@@ -123,8 +123,9 @@ const Auth = {
       // Store token first for API requests
       localStorage.setItem('authToken', session.access_token);
 
-      // Fetch user's profile from the users table (the source of truth for RBAC)
+      // Fetch user's profile and permissions from the users table (the source of truth for RBAC)
       let profileName = 'sales_user'; // Default fallback
+      let userPermissions = []; // Permissions from RBAC system
 
       try {
         const response = await fetch('/api/base/auth/me', {
@@ -162,11 +163,14 @@ const Auth = {
 
         const profileData = await response.json();
         profileName = profileData.profile_name || profileData.profile || 'sales_user';
-        console.log('[Auth] User profile from server:', profileName);
+        // Store permissions from server
+        userPermissions = profileData.permissions || [];
+        console.log('[Auth] User profile from server:', profileName, 'permissions:', userPermissions.length);
       } catch (err) {
         console.warn('[Auth] Could not fetch user profile, using default:', err.message);
         // Fallback to user_metadata if server call fails
         profileName = user.user_metadata?.profile || 'sales_user';
+        userPermissions = [];
       }
 
       // Map profile to roles for backward compatibility
@@ -193,11 +197,12 @@ const Auth = {
         email: user.email,
         name: userName,
         profile: profileName,
-        roles: profileToRoles[profileName] || ['sales_person']
+        roles: profileToRoles[profileName] || ['sales_person'],
+        permissions: userPermissions
       };
 
       localStorage.setItem('userData', JSON.stringify(this.user));
-      console.log('[Auth] Session established for:', this.user.email, 'with profile:', profileName);
+      console.log('[Auth] Session established for:', this.user.email, 'with profile:', profileName, 'permissions:', userPermissions.length);
 
       this.showApp();
     } finally {
@@ -616,6 +621,78 @@ const Auth = {
 
   isHos() {
     return this.hasRole('hos');
+  },
+
+  /**
+   * Check if user has a specific permission.
+   * Supports wildcard matching:
+   * - '*:*:*' matches everything
+   * - 'sales:*:*' matches all sales permissions
+   * - 'sales:mockups:*' matches all mockup actions
+   * - 'sales:mockups:setup' matches exactly
+   *
+   * @param {string} requiredPermission - Permission to check (format: module:resource:action)
+   * @returns {boolean} True if user has the permission
+   */
+  hasPermission(requiredPermission) {
+    if (!this.user || !this.user.permissions) {
+      console.warn('[Auth] No user or permissions available');
+      return false;
+    }
+
+    const permissions = this.user.permissions;
+
+    // Check for exact match first
+    if (permissions.includes(requiredPermission)) {
+      return true;
+    }
+
+    // Check for wildcard matches
+    const [reqModule, reqResource, reqAction] = requiredPermission.split(':');
+
+    for (const perm of permissions) {
+      const [permModule, permResource, permAction] = perm.split(':');
+
+      // Full wildcard (*:*:*)
+      if (permModule === '*' && permResource === '*' && permAction === '*') {
+        return true;
+      }
+
+      // Module wildcard (sales:*:*)
+      if (permModule === reqModule && permResource === '*' && permAction === '*') {
+        return true;
+      }
+
+      // Resource wildcard (sales:mockups:*)
+      if (permModule === reqModule && permResource === reqResource && permAction === '*') {
+        return true;
+      }
+
+      // Action wildcard check for 'manage' which implies all actions
+      if (permModule === reqModule && permResource === reqResource && permAction === 'manage') {
+        return true;
+      }
+    }
+
+    return false;
+  },
+
+  /**
+   * Check multiple permissions (returns true if user has ANY of them)
+   * @param {string[]} permissions - Array of permissions to check
+   * @returns {boolean} True if user has any of the permissions
+   */
+  hasAnyPermission(permissions) {
+    return permissions.some(perm => this.hasPermission(perm));
+  },
+
+  /**
+   * Check multiple permissions (returns true if user has ALL of them)
+   * @param {string[]} permissions - Array of permissions to check
+   * @returns {boolean} True if user has all permissions
+   */
+  hasAllPermissions(permissions) {
+    return permissions.every(perm => this.hasPermission(perm));
   },
 
   getUser() {

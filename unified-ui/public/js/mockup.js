@@ -61,15 +61,16 @@ const MockupGenerator = {
 
   /**
    * Check if user has permission to access setup mode
+   * Uses permission-based RBAC: requires 'sales:mockups:setup' permission
    */
   checkPermissions() {
-    const user = Auth?.getUser?.();
-    const roles = user?.roles || [];
+    // Check for setup permission using Auth.hasPermission()
+    // This will match:
+    // - Exact: 'sales:mockups:setup'
+    // - Wildcard: 'sales:mockups:*', 'sales:*:*', '*:*:*'
+    this.canAccessSetup = Auth?.hasPermission?.('sales:mockups:setup') || false;
 
-    // Admin or HoS can access setup
-    this.canAccessSetup = roles.includes('admin') || roles.includes('hos');
-
-    console.log('[MockupGenerator] User roles:', roles, 'Can access setup:', this.canAccessSetup);
+    console.log('[MockupGenerator] Can access setup:', this.canAccessSetup);
 
     // Show/hide setup mode button based on permissions
     const setupBtn = document.getElementById('mockupSetupModeBtn');

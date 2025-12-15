@@ -966,12 +966,15 @@ WHERE p.name = 'sales_manager'
 ON CONFLICT DO NOTHING;
 
 -- Sales User
+-- Note: mockups permissions are explicit (generate, read) - NOT setup
+-- Setup requires sales_manager or system_admin profile
 INSERT INTO profile_permissions (profile_id, permission)
 SELECT p.id, perm FROM profiles p
 CROSS JOIN (VALUES
     ('sales:proposals:create'), ('sales:proposals:read'), ('sales:proposals:update'),
     ('sales:booking_orders:create'), ('sales:booking_orders:read'),
-    ('sales:mockups:*'), ('sales:templates:read')
+    ('sales:mockups:generate'), ('sales:mockups:read'),
+    ('sales:templates:read')
 ) AS perms(perm)
 WHERE p.name = 'sales_user'
 ON CONFLICT DO NOTHING;

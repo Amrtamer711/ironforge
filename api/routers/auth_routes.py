@@ -81,19 +81,24 @@ async def auth_me(user: Optional[AuthUser] = Depends(get_current_user)):
         logger.warning("[AUTH] /me called without authentication")
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    # Get profile from RBAC
+    # Get profile and permissions from RBAC
     from integrations.rbac import get_rbac_client
     rbac = get_rbac_client()
     profile = await rbac.get_user_profile(user.id)
     profile_name = profile.name if profile else user.metadata.get("role", "sales_user")
 
-    logger.info(f"[AUTH] /me returning user {user.email} with profile: {profile_name}")
+    # Get user permissions for frontend authorization
+    permissions = await rbac.get_user_permissions(user.id)
+
+    logger.info(f"[AUTH] /me returning user {user.email} with profile: {profile_name}, {len(permissions)} permissions")
     return {
         "id": user.id,
         "name": user.name,
         "email": user.email,
         "avatar_url": user.avatar_url,
-        "profile": profile_name
+        "profile": profile_name,
+        "profile_name": profile_name,  # Alias for frontend compatibility
+        "permissions": list(permissions)
     }
 
 
