@@ -234,6 +234,8 @@ def setup_logging(
         "hpack.table": "WARNING",
         "multipart": "WARNING",  # Multipart form parsing spam
         "multipart.multipart": "WARNING",
+        "PIL": "WARNING",  # Pillow image plugin loading spam
+        "PIL.Image": "WARNING",
     }
     for module, mod_level in default_quiet.items():
         if module_levels is None or module not in module_levels:
