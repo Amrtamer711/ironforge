@@ -84,4 +84,8 @@ class CoreModule(ModuleDefinition):
             Permission.from_name("core:sharing_rules:create", "Create sharing rules"),
             Permission.from_name("core:sharing_rules:delete", "Delete sharing rules"),
             Permission.from_name("core:sharing_rules:manage", "Full control over sharing rules"),
+
+            # File Management
+            Permission.from_name("core:files:read", "Read any user's files (admin)"),
+            Permission.from_name("core:files:manage", "Full control over all files"),
         ]

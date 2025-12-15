@@ -5,7 +5,7 @@ Each backend implements their own storage-specific syntax.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 
 @dataclass
@@ -132,6 +132,43 @@ class DatabaseBackend(ABC):
         date_generated: Optional[str] = None,
     ) -> None:
         """Log a proposal generation."""
+        pass
+
+    @abstractmethod
+    def get_proposals(
+        self,
+        limit: int = 50,
+        offset: int = 0,
+        user_ids: Optional[Union[str, List[str]]] = None,
+        client_name: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get proposals with optional filtering.
+
+        Args:
+            limit: Maximum number of proposals to return
+            offset: Number of proposals to skip
+            user_ids: Filter by user ID(s) - can be single ID or list for team access
+            client_name: Filter by client name (partial match)
+
+        Returns:
+            List of proposal dictionaries
+        """
+        pass
+
+    @abstractmethod
+    def get_proposal_by_id(self, proposal_id: int) -> Optional[Dict[str, Any]]:
+        """Get a single proposal by ID."""
+        pass
+
+    @abstractmethod
+    def get_proposal_locations(self, proposal_id: int) -> List[Dict[str, Any]]:
+        """Get locations for a proposal."""
+        pass
+
+    @abstractmethod
+    def delete_proposal(self, proposal_id: int) -> bool:
+        """Delete a proposal. Returns True if successful."""
         pass
 
     @abstractmethod

@@ -51,10 +51,12 @@ class SalesModule(ModuleDefinition):
 
             # Mockups
             Permission.from_name("sales:mockups:create", "Create mockups"),
-            Permission.from_name("sales:mockups:read", "View mockups"),
+            Permission.from_name("sales:mockups:read", "View mockups and templates"),
             Permission.from_name("sales:mockups:update", "Edit mockups"),
             Permission.from_name("sales:mockups:delete", "Delete mockups"),
             Permission.from_name("sales:mockups:manage", "Full control over mockups"),
+            Permission.from_name("sales:mockups:setup", "Configure mockup templates and frames"),
+            Permission.from_name("sales:mockups:generate", "Generate mockup images"),
 
             # Templates
             Permission.from_name("sales:templates:read", "View templates"),
@@ -80,4 +82,7 @@ class SalesModule(ModuleDefinition):
             # Reports
             Permission.from_name("sales:reports:read", "View reports"),
             Permission.from_name("sales:reports:export", "Export reports"),
+
+            # Chat (AI Assistant)
+            Permission.from_name("sales:chat:use", "Use AI chat assistant"),
         ]

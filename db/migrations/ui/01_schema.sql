@@ -974,7 +974,8 @@ CROSS JOIN (VALUES
     ('sales:proposals:create'), ('sales:proposals:read'), ('sales:proposals:update'),
     ('sales:booking_orders:create'), ('sales:booking_orders:read'),
     ('sales:mockups:generate'), ('sales:mockups:read'),
-    ('sales:templates:read')
+    ('sales:templates:read'),
+    ('sales:chat:use')
 ) AS perms(perm)
 WHERE p.name = 'sales_user'
 ON CONFLICT DO NOTHING;

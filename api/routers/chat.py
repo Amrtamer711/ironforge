@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 
-from api.auth import require_auth
+from api.auth import require_auth, require_permission
 from integrations.auth import AuthUser
 from integrations.rbac import get_rbac_client
 from utils.logging import get_logger
@@ -73,13 +73,13 @@ async def _get_user_profile(user: AuthUser) -> List[str]:
 @router.post("/message", response_model=ChatMessageResponse)
 async def chat_message(
     request: ChatMessageRequest,
-    user: AuthUser = Depends(require_auth),
+    user: AuthUser = Depends(require_permission("sales:chat:use")),
 ):
     """
     Send a chat message and receive a response.
 
     This endpoint connects the Unified UI to the same LLM infrastructure
-    used by the Slack bot. Requires authentication.
+    used by the Slack bot. Requires sales:chat:use permission.
 
     Optionally include file_ids from /api/files/upload to attach files.
     """
@@ -139,13 +139,13 @@ async def chat_message(
 @router.post("/stream")
 async def chat_stream(
     request: ChatMessageRequest,
-    user: AuthUser = Depends(require_auth),
+    user: AuthUser = Depends(require_permission("sales:chat:use")),
 ):
     """
     Stream a chat response using Server-Sent Events.
 
     Returns real-time chunks as the LLM generates the response.
-    Requires authentication.
+    Requires sales:chat:use permission.
 
     Optionally include file_ids from /api/files/upload to attach files.
     """
@@ -201,8 +201,8 @@ async def chat_stream(
 
 
 @router.get("/conversations")
-async def get_conversations(user: AuthUser = Depends(require_auth)):
-    """Get conversation history for the authenticated user."""
+async def get_conversations(user: AuthUser = Depends(require_permission("sales:chat:use"))):
+    """Get conversation history for the authenticated user. Requires sales:chat:use permission."""
     from core.chat_api import get_conversation_history
 
     history = get_conversation_history(user.id)
@@ -210,8 +210,8 @@ async def get_conversations(user: AuthUser = Depends(require_auth)):
 
 
 @router.post("/conversation")
-async def create_conversation(user: AuthUser = Depends(require_auth)):
-    """Create a new conversation (clears existing history)."""
+async def create_conversation(user: AuthUser = Depends(require_permission("sales:chat:use"))):
+    """Create a new conversation (clears existing history). Requires sales:chat:use permission."""
     from core.chat_api import clear_conversation, get_web_adapter
 
     clear_conversation(user.id)
@@ -228,9 +228,9 @@ async def create_conversation(user: AuthUser = Depends(require_auth)):
 @router.delete("/conversation/{conversation_id}")
 async def delete_conversation(
     conversation_id: str,
-    user: AuthUser = Depends(require_auth),
+    user: AuthUser = Depends(require_permission("sales:chat:use")),
 ):
-    """Delete a conversation for the authenticated user."""
+    """Delete a conversation for the authenticated user. Requires sales:chat:use permission."""
     from core.chat_api import clear_conversation
 
     clear_conversation(user.id)
@@ -238,12 +238,14 @@ async def delete_conversation(
 
 
 @router.get("/history")
-async def get_chat_history(user: AuthUser = Depends(require_auth)):
+async def get_chat_history(user: AuthUser = Depends(require_permission("sales:chat:use"))):
     """
     Load persisted chat history for the authenticated user.
 
     This endpoint loads chat messages from the database, which persist
     across server restarts. Use this on login to restore previous conversations.
+
+    Requires sales:chat:use permission.
 
     Returns:
         messages: List of message objects with role, content, timestamp

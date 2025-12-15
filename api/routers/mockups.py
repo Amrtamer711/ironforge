@@ -55,8 +55,8 @@ async def mockup_setup_page(user: AuthUser = Depends(require_permission("sales:m
 
 
 @router.get("/api/mockup/locations")
-async def get_mockup_locations(user: AuthUser = Depends(require_auth)):
-    """Get list of available locations for mockup. Requires authentication and company access."""
+async def get_mockup_locations(user: AuthUser = Depends(require_permission("sales:mockups:read"))):
+    """Get list of available locations for mockup. Requires sales:mockups:read permission."""
     # Company access validation (security - no backwards compatibility)
     if not user.has_company_access:
         raise HTTPException(
@@ -257,8 +257,8 @@ async def test_preview_mockup(
 
 
 @router.get("/api/mockup/photos/{location_key}")
-async def list_mockup_photos(location_key: str, time_of_day: str = "all", finish: str = "all", user: AuthUser = Depends(require_auth)):
-    """List all photos for a location with specific time_of_day and finish. Requires authentication."""
+async def list_mockup_photos(location_key: str, time_of_day: str = "all", finish: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:read"))):
+    """List all photos for a location with specific time_of_day and finish. Requires sales:mockups:read permission."""
     try:
         # If "all" is specified, we need to aggregate from all variations
         if time_of_day == "all" or finish == "all":
@@ -278,8 +278,8 @@ async def list_mockup_photos(location_key: str, time_of_day: str = "all", finish
 
 
 @router.get("/api/mockup/templates/{location_key}")
-async def list_mockup_templates(location_key: str, time_of_day: str = "all", finish: str = "all", user: AuthUser = Depends(require_auth)):
-    """List all templates (photos with frame configs) for a location. Requires authentication."""
+async def list_mockup_templates(location_key: str, time_of_day: str = "all", finish: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:read"))):
+    """List all templates (photos with frame configs) for a location. Requires sales:mockups:read permission."""
     try:
         templates = []
 
@@ -324,8 +324,8 @@ async def list_mockup_templates(location_key: str, time_of_day: str = "all", fin
 
 
 @router.get("/api/mockup/photo/{location_key}/{photo_filename}")
-async def get_mockup_photo(location_key: str, photo_filename: str, time_of_day: str = "all", finish: str = "all", user: AuthUser = Depends(require_auth)):
-    """Get a specific photo file. Requires authentication."""
+async def get_mockup_photo(location_key: str, photo_filename: str, time_of_day: str = "all", finish: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:read"))):
+    """Get a specific photo file. Requires sales:mockups:read permission."""
     from generators import mockup as mockup_generator
 
     # Sanitize path components to prevent path traversal attacks
@@ -431,9 +431,9 @@ async def generate_mockup_api(
     creative: Optional[UploadFile] = File(None),
     specific_photo: Optional[str] = Form(None),
     frame_config: Optional[str] = Form(None),
-    user: AuthUser = Depends(require_auth)
+    user: AuthUser = Depends(require_permission("sales:mockups:generate"))
 ):
-    """Generate a mockup by warping creative onto billboard (upload or AI-generated). Requires authentication."""
+    """Generate a mockup by warping creative onto billboard (upload or AI-generated). Requires sales:mockups:generate permission."""
     import tempfile
     from generators import mockup as mockup_generator
 
