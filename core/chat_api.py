@@ -15,7 +15,7 @@ from typing import Dict, Any, Optional, List, AsyncGenerator
 
 import config
 from db.cache import user_history
-from core.chat_persistence import save_chat_messages, load_chat_messages, clear_chat_messages
+from core.chat_persistence import save_chat_messages, clear_chat_messages
 from integrations.channels import WebAdapter
 
 logger = config.logger
@@ -73,18 +73,8 @@ async def process_chat_message(
     roles = roles or []
     web_adapter = _ensure_web_adapter_registered()
 
-    # Get or create session
+    # Get or create session (adapter handles persistence loading + LLM context rebuild)
     session = web_adapter.get_or_create_session(user_id, user_name, roles=roles)
-
-    # Load persisted history if session is new (no messages yet)
-    if not session.messages:
-        try:
-            persisted_messages = load_chat_messages(user_id)
-            if persisted_messages:
-                session.messages = persisted_messages
-                logger.info(f"[WebChat] Loaded {len(persisted_messages)} persisted messages for {user_id}")
-        except Exception as e:
-            logger.warning(f"[WebChat] Failed to load persisted messages: {e}")
 
     # Add user message to session history
     user_msg = {
@@ -210,31 +200,36 @@ async def stream_chat_message(
     - Message content
     - Delete events (ephemeral status cleanup)
 
-    This gives the web UI the same real-time experience as Slack.
+    Supports parallel requests: multiple requests can be processed simultaneously,
+    with each request receiving only its own events via request_id filtering.
     """
     from core.llm import main_llm_loop
+    from integrations.channels.adapters.web import current_request_id, current_parent_message_id
+    import uuid as uuid_module
 
-    logger.info(f"[WebChat] stream_chat_message called for user={user_id}")
+    # Generate unique request ID for parallel request support
+    request_id = str(uuid_module.uuid4())
+    logger.info(f"[WebChat] stream_chat_message called for user={user_id}, request={request_id[:8]}...")
 
     roles = roles or []
     web_adapter = _ensure_web_adapter_registered()
 
-    # Get or create session
+    # Get or create session (adapter handles persistence loading + LLM context rebuild)
     session = web_adapter.get_or_create_session(user_id, user_name, roles=roles)
 
-    # Load persisted history if session is new
-    if not session.messages:
-        try:
-            persisted_messages = load_chat_messages(user_id)
-            if persisted_messages:
-                session.messages = persisted_messages
-                logger.info(f"[WebChat] Loaded {len(persisted_messages)} persisted messages for {user_id}")
-        except Exception as e:
-            logger.warning(f"[WebChat] Failed to load persisted messages: {e}")
+    # Register this request as active
+    web_adapter.start_request(user_id, request_id)
 
-    # Add user message to session history
+    # Generate user message ID (used to link assistant responses to this message)
+    user_msg_id = f"user-{datetime.now().timestamp()}-{request_id[:8]}"
+
+    # Set context variables so adapter methods tag events correctly
+    request_token = current_request_id.set(request_id)
+    parent_token = current_parent_message_id.set(user_msg_id)  # Links responses to this user message
+
+    # Add user message to session history (with timestamp for ordering)
     user_msg = {
-        "id": f"user-{datetime.now().timestamp()}",
+        "id": user_msg_id,
         "role": "user",
         "content": message,
         "timestamp": datetime.now().isoformat()
@@ -251,9 +246,8 @@ async def stream_chat_message(
         ]
     session.messages.append(user_msg)
 
-    # Clear any stale events and reset processing flag
-    session.events.clear()
-    session.processing_complete = False
+    # Clean up old events from completed requests (memory management)
+    web_adapter.cleanup_old_events(user_id)
 
     # Check if user has admin permissions using RBAC
     from integrations.rbac import has_permission
@@ -278,11 +272,13 @@ async def stream_chat_message(
             }
             channel_event["files"].append(file_info)
 
-    # Track messages before processing
-    messages_before = len(session.messages)
+    # Track where we start in the event list (for this request only)
+    event_start_index = len(session.events)
+    request_complete = False
 
     async def run_llm():
         """Run main_llm_loop in background and mark complete when done."""
+        nonlocal request_complete
         try:
             await main_llm_loop(
                 channel=user_id,
@@ -293,13 +289,16 @@ async def stream_chat_message(
             )
         except Exception as e:
             logger.error(f"[WebChat] main_llm_loop error: {e}", exc_info=True)
+            # Push error event tagged with this request_id
             session.events.append({
                 "type": "error",
+                "request_id": request_id,
                 "error": str(e),
                 "timestamp": datetime.now().isoformat(),
             })
         finally:
-            session.processing_complete = True
+            request_complete = True
+            web_adapter.complete_request(user_id, request_id)
 
     # Start LLM processing in background
     llm_task = asyncio.create_task(run_llm())
@@ -308,21 +307,26 @@ async def stream_chat_message(
         # Send initial processing indicator
         yield f"data: {json.dumps({'type': 'status', 'content': 'Processing...'})}\n\n"
 
-        event_index = 0
+        event_index = event_start_index
         poll_interval = 0.1  # 100ms polling
 
-        # Stream events as they arrive
-        while not session.processing_complete or event_index < len(session.events):
-            # Process any new events
+        # Stream events as they arrive (filtered by request_id)
+        while not request_complete or event_index < len(session.events):
+            # Process any new events that belong to this request
             while event_index < len(session.events):
                 event = session.events[event_index]
                 event_index += 1
+
+                # Only process events for THIS request (parallel request isolation)
+                event_request_id = event.get("request_id")
+                if event_request_id is not None and event_request_id != request_id:
+                    continue  # Skip events from other parallel requests
 
                 event_type = event.get("type")
 
                 if event_type == "status":
                     # Status update (tool progress, etc.)
-                    yield f"data: {json.dumps({'type': 'status', 'message_id': event.get('message_id'), 'content': event.get('content')})}\n\n"
+                    yield f"data: {json.dumps({'type': 'status', 'message_id': event.get('message_id'), 'parent_id': event.get('parent_id'), 'content': event.get('content')})}\n\n"
 
                 elif event_type == "message":
                     # New message from assistant
@@ -332,12 +336,12 @@ async def stream_chat_message(
                         words = content.split(' ')
                         for i, word in enumerate(words):
                             chunk = word + (' ' if i < len(words) - 1 else '')
-                            yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+                            yield f"data: {json.dumps({'type': 'chunk', 'content': chunk, 'parent_id': event.get('parent_id')})}\n\n"
                             await asyncio.sleep(0.02)
 
                 elif event_type == "file":
                     # File uploaded
-                    yield f"data: {json.dumps({'type': 'file', 'file': {'file_id': event.get('file_id'), 'url': event.get('url'), 'filename': event.get('filename'), 'title': event.get('title'), 'comment': event.get('comment')}})}\n\n"
+                    yield f"data: {json.dumps({'type': 'file', 'parent_id': event.get('parent_id'), 'file': {'file_id': event.get('file_id'), 'url': event.get('url'), 'filename': event.get('filename'), 'title': event.get('title'), 'comment': event.get('comment')}})}\n\n"
 
                 elif event_type == "delete":
                     # Status message deleted (tool completed successfully)
@@ -348,13 +352,13 @@ async def stream_chat_message(
                     yield f"data: {json.dumps({'type': 'error', 'error': event.get('error')})}\n\n"
 
             # Wait before polling again (only if not complete)
-            if not session.processing_complete:
+            if not request_complete:
                 await asyncio.sleep(poll_interval)
 
         # Ensure task is done
         await llm_task
 
-        # Persist messages
+        # Persist messages (save full conversation - all parallel messages are included)
         try:
             save_chat_messages(user_id, session.messages, session.conversation_id)
         except Exception as persist_err:
@@ -367,9 +371,12 @@ async def stream_chat_message(
         yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
         yield "data: [DONE]\n\n"
     finally:
-        # Clean up events
-        session.events.clear()
-        session.processing_complete = False
+        # Reset context variables
+        current_request_id.reset(request_token)
+        current_parent_message_id.reset(parent_token)
+        # Mark request complete if not already
+        if not request_complete:
+            web_adapter.complete_request(user_id, request_id)
 
 
 def _get_filetype_from_mimetype(mimetype: str) -> str:

@@ -13,13 +13,26 @@ File Storage:
 """
 
 import asyncio
+import contextvars
 import logging
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, Callable, Awaitable
+from typing import Any, Dict, List, Optional, Set, Union, Callable, Awaitable
+
+# Context variable to track current request ID for parallel request support
+# This allows adapter methods to tag events with the correct request_id
+current_request_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    'web_request_id', default=None
+)
+
+# Context variable to track the parent message ID (user message that triggered this response)
+# This allows assistant responses to be linked to their originating user message
+current_parent_message_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    'web_parent_message_id', default=None
+)
 
 from ..base import (
     ChannelAdapter,
@@ -53,7 +66,11 @@ class StoredFileInfo:
 
 @dataclass
 class WebSession:
-    """Represents a web user session."""
+    """Represents a web user session.
+
+    Supports parallel requests: multiple requests can be processed simultaneously,
+    each with its own event stream identified by request_id.
+    """
     user_id: str
     user_name: str
     email: Optional[str] = None
@@ -68,9 +85,14 @@ class WebSession:
     response_complete: bool = False
     response_chunks: List[str] = field(default_factory=list)
 
-    # Real-time event queue for SSE streaming
-    # Events: {"type": "status"|"message"|"file"|"delete"|"done", ...}
+    # Real-time event queue for SSE streaming (supports parallel requests)
+    # Events: {"type": "status"|"message"|"file"|"delete"|"done", "request_id": str, ...}
     events: List[Dict[str, Any]] = field(default_factory=list)
+
+    # Track active requests by request_id (supports parallel processing)
+    active_requests: Dict[str, bool] = field(default_factory=dict)
+
+    # Legacy field for backwards compatibility (deprecated, use active_requests)
     processing_complete: bool = False
 
 
@@ -195,17 +217,144 @@ class WebAdapter(ChannelAdapter):
         email: Optional[str] = None,
         roles: Optional[List[str]] = None
     ) -> WebSession:
-        """Get existing session or create new one."""
+        """Get existing session or create new one.
+
+        When creating a new session, loads persisted messages from database
+        and rebuilds LLM context so the bot remembers previous conversation.
+        """
         session = self.get_session(user_id)
         if not session:
             session = self.create_session(user_id, user_name, email, roles)
+            # Load persisted messages and rebuild LLM context for new sessions
+            self._restore_session_state(user_id, session)
         return session
+
+    def _restore_session_state(self, user_id: str, session: WebSession) -> None:
+        """
+        Restore session state from database for a newly created session.
+
+        This loads persisted chat messages and rebuilds the LLM context,
+        ensuring continuity after server restarts.
+        """
+        try:
+            from core.chat_persistence import load_chat_messages
+            from db.cache import user_history
+
+            persisted_messages = load_chat_messages(user_id)
+            if persisted_messages:
+                # Restore UI messages
+                session.messages = persisted_messages
+
+                # Rebuild LLM context from persisted messages (last 10)
+                llm_history = []
+                for msg in persisted_messages:
+                    role = msg.get("role")
+                    content = msg.get("content")
+                    if role in ("user", "assistant") and content:
+                        llm_history.append({
+                            "role": role,
+                            "content": content,
+                            "timestamp": msg.get("timestamp", "")
+                        })
+
+                if llm_history:
+                    user_history[user_id] = llm_history[-10:]
+                    logger.info(
+                        f"[WebAdapter] Restored session for {user_id}: "
+                        f"{len(persisted_messages)} messages, "
+                        f"{len(user_history[user_id])} in LLM context"
+                    )
+        except Exception as e:
+            logger.warning(f"[WebAdapter] Failed to restore session state for {user_id}: {e}")
 
     def clear_session(self, user_id: str) -> None:
         """Clear a user's session."""
         if user_id in self._sessions:
             del self._sessions[user_id]
             logger.info(f"[WebAdapter] Cleared session for user {user_id}")
+
+    # ========================================================================
+    # PARALLEL REQUEST SUPPORT
+    # ========================================================================
+
+    def start_request(self, user_id: str, request_id: str) -> None:
+        """Mark a request as active for a user session."""
+        session = self.get_session(user_id)
+        if session:
+            session.active_requests[request_id] = True
+            logger.debug(f"[WebAdapter] Started request {request_id[:8]}... for {user_id}")
+
+    def complete_request(self, user_id: str, request_id: str) -> None:
+        """Mark a request as complete and clean up its events."""
+        session = self.get_session(user_id)
+        if session:
+            session.active_requests[request_id] = False
+            logger.debug(f"[WebAdapter] Completed request {request_id[:8]}... for {user_id}")
+
+    def is_request_active(self, user_id: str, request_id: str) -> bool:
+        """Check if a specific request is still active."""
+        session = self.get_session(user_id)
+        if session:
+            return session.active_requests.get(request_id, False)
+        return False
+
+    def cleanup_old_events(self, user_id: str, max_age_seconds: int = 300) -> int:
+        """
+        Clean up old events from completed requests to prevent memory growth.
+
+        Args:
+            user_id: User session to clean
+            max_age_seconds: Remove events older than this (default 5 minutes)
+
+        Returns:
+            Number of events removed
+        """
+        session = self.get_session(user_id)
+        if not session:
+            return 0
+
+        now = datetime.now()
+        initial_count = len(session.events)
+
+        # Keep events that are either:
+        # 1. From active requests, OR
+        # 2. Less than max_age_seconds old
+        cleaned_events = []
+        for event in session.events:
+            req_id = event.get("request_id")
+            timestamp_str = event.get("timestamp", "")
+
+            # Keep if request is still active
+            if req_id and session.active_requests.get(req_id, False):
+                cleaned_events.append(event)
+                continue
+
+            # Keep if event is recent enough
+            try:
+                event_time = datetime.fromisoformat(timestamp_str)
+                age = (now - event_time).total_seconds()
+                if age < max_age_seconds:
+                    cleaned_events.append(event)
+            except (ValueError, TypeError):
+                # Can't parse timestamp, keep event to be safe
+                cleaned_events.append(event)
+
+        session.events = cleaned_events
+        removed = initial_count - len(cleaned_events)
+
+        if removed > 0:
+            logger.debug(f"[WebAdapter] Cleaned up {removed} old events for {user_id}")
+
+        # Also clean up completed request entries older than max_age
+        completed_requests = [
+            req_id for req_id, active in session.active_requests.items()
+            if not active
+        ]
+        for req_id in completed_requests[:max(0, len(completed_requests) - 10)]:
+            # Keep last 10 completed requests for debugging
+            del session.active_requests[req_id]
+
+        return removed
 
     def get_conversation_history(self, user_id: str) -> List[Dict[str, Any]]:
         """Get conversation history for a user."""
@@ -269,11 +418,15 @@ class WebAdapter(ChannelAdapter):
         message_id = str(uuid.uuid4())
         timestamp = datetime.now().isoformat()
 
+        # Get parent message ID from context (links response to originating user message)
+        parent_id = current_parent_message_id.get()
+
         message_data = {
             "id": message_id,
             "role": "assistant",
             "content": content,
             "timestamp": timestamp,
+            "parent_id": parent_id,  # Link to the user message that triggered this response
             "buttons": [
                 {
                     "action_id": b.action_id,
@@ -298,9 +451,12 @@ class WebAdapter(ChannelAdapter):
             session.pending_response = content
             session.response_complete = True
 
-            # Push event for real-time streaming
+            # Push event for real-time streaming (tagged with request_id and parent_id)
+            req_id = current_request_id.get()
             session.events.append({
                 "type": "message",
+                "request_id": req_id,
+                "parent_id": parent_id,  # Frontend uses this to place response under correct user message
                 "message_id": message_id,
                 "content": content,
                 "attachments": message_data.get("attachments", []),
@@ -347,9 +503,11 @@ class WebAdapter(ChannelAdapter):
                         ]
                     break
 
-            # Push status update event for real-time streaming
+            # Push status update event for real-time streaming (tagged with request_id)
+            req_id = current_request_id.get()
             session.events.append({
                 "type": "status",
+                "request_id": req_id,
                 "message_id": message_id,
                 "content": content,
                 "timestamp": datetime.now().isoformat(),
@@ -376,9 +534,11 @@ class WebAdapter(ChannelAdapter):
                 if m.get("id") != message_id
             ]
 
-            # Push delete event for real-time streaming
+            # Push delete event for real-time streaming (tagged with request_id)
+            req_id = current_request_id.get()
             session.events.append({
                 "type": "delete",
+                "request_id": req_id,
                 "message_id": message_id,
                 "timestamp": datetime.now().isoformat(),
             })
@@ -542,9 +702,11 @@ class WebAdapter(ChannelAdapter):
                                 }]
                             })
 
-                        # Push file event for real-time streaming
+                        # Push file event for real-time streaming (tagged with request_id)
+                        req_id = current_request_id.get()
                         session.events.append({
                             "type": "file",
+                            "request_id": req_id,
                             "file_id": file_id,
                             "url": url,
                             "filename": actual_filename,
@@ -621,9 +783,11 @@ class WebAdapter(ChannelAdapter):
                     }]
                 })
 
-            # Push file event for real-time streaming
+            # Push file event for real-time streaming (tagged with request_id)
+            req_id = current_request_id.get()
             session.events.append({
                 "type": "file",
+                "request_id": req_id,
                 "file_id": file_id,
                 "url": url,
                 "filename": actual_filename,
