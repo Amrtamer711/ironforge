@@ -44,6 +44,23 @@ logging.basicConfig(
 logger = logging.getLogger("unified-ui")
 
 
+# Filter to silence health check logs in uvicorn
+class HealthCheckFilter(logging.Filter):
+    """Filter out health check endpoint logs."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        # Skip health check logs in development
+        if not get_settings().is_production:
+            if "/health" in message:
+                return False
+        return True
+
+
+# Apply filter to uvicorn access logger
+logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
+
+
 # =============================================================================
 # LIFESPAN - Startup/shutdown events
 # =============================================================================
