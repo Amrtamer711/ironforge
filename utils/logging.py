@@ -232,6 +232,8 @@ def setup_logging(
         "hpack": "WARNING",  # HTTP/2 header encoding spam
         "hpack.hpack": "WARNING",
         "hpack.table": "WARNING",
+        "multipart": "WARNING",  # Multipart form parsing spam
+        "multipart.multipart": "WARNING",
     }
     for module, mod_level in default_quiet.items():
         if module_levels is None or module not in module_levels:

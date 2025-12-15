@@ -1022,12 +1022,42 @@ class WebAdapter(ChannelAdapter):
         """
         Download a file from file_info.
 
-        For web uploads, file_info contains the temp path directly.
+        For web uploads, file_info may contain:
+        - temp_path: Local temp file path (immediate uploads)
+        - file_id: ID of file uploaded via /api/files/upload (may be in Supabase)
         """
-        if "temp_path" in file_info:
+        import tempfile
+
+        # Check for local temp path first
+        if file_info.get("temp_path"):
             return Path(file_info["temp_path"])
-        if "file_id" in file_info:
-            return self._uploaded_files.get(file_info["file_id"])
+
+        # Check for file_id - may be local or in remote storage
+        file_id = file_info.get("file_id")
+        if file_id:
+            # First check local uploaded files cache
+            local_path = self._uploaded_files.get(file_id)
+            if local_path and local_path.exists():
+                return local_path
+
+            # Check stored files (Supabase storage)
+            stored = self._stored_files.get(file_id)
+            if stored:
+                # If local path exists and is valid, use it
+                if stored.local_path and stored.local_path.exists():
+                    return stored.local_path
+
+                # Download from remote storage
+                file_bytes = await self.download_file_bytes(file_id)
+                if file_bytes:
+                    # Save to temp file
+                    suffix = Path(stored.filename).suffix if stored.filename else ""
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                        tmp.write(file_bytes)
+                        tmp_path = Path(tmp.name)
+                    logger.debug(f"[WebAdapter] Downloaded file {file_id} to temp: {tmp_path}")
+                    return tmp_path
+
         return None
 
     # ========================================================================

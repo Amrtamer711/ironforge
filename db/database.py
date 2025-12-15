@@ -505,6 +505,51 @@ class _DatabaseNamespace:
         """Delete a user's chat session."""
         return self._backend.delete_chat_session(user_id)
 
+    # =========================================================================
+    # DOCUMENT MANAGEMENT
+    # =========================================================================
+
+    def create_document(
+        self,
+        file_id: str,
+        user_id: str,
+        original_filename: str,
+        file_type: str,
+        storage_provider: str,
+        storage_bucket: str,
+        storage_key: str,
+        file_size: Optional[int] = None,
+        file_extension: Optional[str] = None,
+        file_hash: Optional[str] = None,
+        document_type: Optional[str] = None,
+        bo_id: Optional[int] = None,
+        proposal_id: Optional[int] = None,
+        metadata_json: Optional[Dict[str, Any]] = None,
+    ) -> Optional[int]:
+        """Create a new document record."""
+        return self._backend.create_document(
+            file_id, user_id, original_filename, file_type,
+            storage_provider, storage_bucket, storage_key,
+            file_size, file_extension, file_hash, document_type,
+            bo_id, proposal_id, metadata_json
+        )
+
+    def get_document(self, file_id: str) -> Optional[Dict[str, Any]]:
+        """Get a document by file_id."""
+        return self._backend.get_document(file_id)
+
+    def get_document_by_hash(self, file_hash: str) -> Optional[Dict[str, Any]]:
+        """Get a document by file hash (for deduplication)."""
+        return self._backend.get_document_by_hash(file_hash)
+
+    def soft_delete_document(self, file_id: str) -> bool:
+        """Soft delete a document."""
+        return self._backend.soft_delete_document(file_id)
+
+    def hard_delete_document(self, file_id: str) -> bool:
+        """Hard delete a document record."""
+        return self._backend.hard_delete_document(file_id)
+
 
 # Create the singleton database interface
 db = _DatabaseNamespace(_backend)
