@@ -46,7 +46,7 @@ async def slack_events(request: Request):
         user = event.get("user")
         channel = event.get("channel")
         if user and channel:
-            asyncio.create_task(main_llm_loop(channel, user, event.get("text", ""), event))
+            asyncio.create_task(main_llm_loop(channel, user, event.get("text", ""), channel_event=event))
         else:
             logger.warning(f"[SLACK_EVENT] Message missing user or channel: {event}")
     # Handle file_shared events where Slack does not send a message subtype
@@ -68,7 +68,7 @@ async def slack_events(request: Request):
                         channel = channels[0]
                 if user and channel and file_obj:
                     synthetic_event = {"type": "message", "subtype": "file_share", "file": file_obj, "user": user, "channel": channel}
-                    asyncio.create_task(main_llm_loop(channel, user, "", synthetic_event))
+                    asyncio.create_task(main_llm_loop(channel, user, "", channel_event=synthetic_event))
                 else:
                     logger.warning(f"[SLACK_EVENT] Cannot route file_shared event, missing user/channel/file: user={user}, channel={channel}, has_file={bool(file_obj)}")
         except Exception as e:

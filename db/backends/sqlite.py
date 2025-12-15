@@ -1824,3 +1824,310 @@ class SQLiteBackend(DatabaseBackend):
             return False
         finally:
             conn.close()
+
+    # =========================================================================
+    # DOCUMENTS
+    # =========================================================================
+
+    def create_document(
+        self,
+        file_id: str,
+        user_id: str,
+        original_filename: str,
+        file_type: str,
+        storage_provider: str,
+        storage_bucket: str,
+        storage_key: str,
+        file_size: Optional[int] = None,
+        file_extension: Optional[str] = None,
+        file_hash: Optional[str] = None,
+        document_type: Optional[str] = None,
+        bo_id: Optional[int] = None,
+        proposal_id: Optional[int] = None,
+    ) -> bool:
+        """Create a document record."""
+        conn = self._connect()
+        try:
+            now = get_uae_time().isoformat()
+            conn.execute("BEGIN")
+            conn.execute(
+                """
+                INSERT INTO documents (
+                    file_id, user_id, original_filename, file_type,
+                    storage_provider, storage_bucket, storage_key,
+                    file_size, file_extension, file_hash,
+                    document_type, bo_id, proposal_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    file_id, user_id, original_filename, file_type,
+                    storage_provider, storage_bucket, storage_key,
+                    file_size, file_extension, file_hash,
+                    document_type, bo_id, proposal_id, now
+                )
+            )
+            conn.execute("COMMIT")
+            logger.info(f"[DB] Created document: {file_id} ({original_filename})")
+            return True
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            logger.error(f"[DB] Error creating document {file_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_document(self, file_id: str) -> Optional[Dict[str, Any]]:
+        """Get a document by file_id."""
+        conn = self._connect()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT file_id, user_id, original_filename, file_type,
+                       storage_provider, storage_bucket, storage_key,
+                       file_size, file_extension, file_hash,
+                       document_type, bo_id, proposal_id,
+                       created_at, is_deleted, deleted_at
+                FROM documents WHERE file_id = ?
+                """,
+                (file_id,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "file_id": row[0],
+                "user_id": row[1],
+                "original_filename": row[2],
+                "file_type": row[3],
+                "storage_provider": row[4],
+                "storage_bucket": row[5],
+                "storage_key": row[6],
+                "file_size": row[7],
+                "file_extension": row[8],
+                "file_hash": row[9],
+                "document_type": row[10],
+                "bo_id": row[11],
+                "proposal_id": row[12],
+                "created_at": row[13],
+                "is_deleted": bool(row[14]),
+                "deleted_at": row[15],
+            }
+        except Exception as e:
+            logger.error(f"[DB] Error getting document {file_id}: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def get_document_by_hash(self, file_hash: str) -> Optional[Dict[str, Any]]:
+        """Get a document by file hash (for deduplication)."""
+        conn = self._connect()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT file_id, user_id, original_filename, file_type,
+                       storage_provider, storage_bucket, storage_key,
+                       file_size, file_extension, file_hash,
+                       document_type, bo_id, proposal_id,
+                       created_at, is_deleted, deleted_at
+                FROM documents WHERE file_hash = ? AND is_deleted = 0
+                """,
+                (file_hash,)
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "file_id": row[0],
+                "user_id": row[1],
+                "original_filename": row[2],
+                "file_type": row[3],
+                "storage_provider": row[4],
+                "storage_bucket": row[5],
+                "storage_key": row[6],
+                "file_size": row[7],
+                "file_extension": row[8],
+                "file_hash": row[9],
+                "document_type": row[10],
+                "bo_id": row[11],
+                "proposal_id": row[12],
+                "created_at": row[13],
+                "is_deleted": bool(row[14]),
+                "deleted_at": row[15],
+            }
+        except Exception as e:
+            logger.error(f"[DB] Error getting document by hash {file_hash}: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def soft_delete_document(self, file_id: str) -> bool:
+        """Soft delete a document."""
+        conn = self._connect()
+        try:
+            now = get_uae_time().isoformat()
+            conn.execute("BEGIN")
+            cursor = conn.execute(
+                "UPDATE documents SET is_deleted = 1, deleted_at = ? WHERE file_id = ?",
+                (now, file_id)
+            )
+            conn.execute("COMMIT")
+            if cursor.rowcount > 0:
+                logger.info(f"[DB] Soft deleted document: {file_id}")
+                return True
+            return False
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            logger.error(f"[DB] Error soft deleting document {file_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def hard_delete_document(self, file_id: str) -> bool:
+        """Permanently delete a document record."""
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN")
+            cursor = conn.execute("DELETE FROM documents WHERE file_id = ?", (file_id,))
+            conn.execute("COMMIT")
+            if cursor.rowcount > 0:
+                logger.info(f"[DB] Hard deleted document: {file_id}")
+                return True
+            return False
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            logger.error(f"[DB] Error hard deleting document {file_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def list_documents(
+        self,
+        user_id: Optional[str] = None,
+        document_type: Optional[str] = None,
+        bo_id: Optional[int] = None,
+        proposal_id: Optional[int] = None,
+        include_deleted: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """List documents with optional filters."""
+        conn = self._connect()
+        try:
+            conditions = []
+            params = []
+
+            if not include_deleted:
+                conditions.append("is_deleted = 0")
+
+            if user_id:
+                conditions.append("user_id = ?")
+                params.append(user_id)
+            if document_type:
+                conditions.append("document_type = ?")
+                params.append(document_type)
+            if bo_id:
+                conditions.append("bo_id = ?")
+                params.append(bo_id)
+            if proposal_id:
+                conditions.append("proposal_id = ?")
+                params.append(proposal_id)
+
+            where_clause = " AND ".join(conditions) if conditions else "1=1"
+            params.extend([limit, offset])
+
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                SELECT file_id, user_id, original_filename, file_type,
+                       storage_provider, storage_bucket, storage_key,
+                       file_size, file_extension, file_hash,
+                       document_type, bo_id, proposal_id,
+                       created_at, is_deleted, deleted_at
+                FROM documents
+                WHERE {where_clause}
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                params
+            )
+
+            documents = []
+            for row in cursor.fetchall():
+                documents.append({
+                    "file_id": row[0],
+                    "user_id": row[1],
+                    "original_filename": row[2],
+                    "file_type": row[3],
+                    "storage_provider": row[4],
+                    "storage_bucket": row[5],
+                    "storage_key": row[6],
+                    "file_size": row[7],
+                    "file_extension": row[8],
+                    "file_hash": row[9],
+                    "document_type": row[10],
+                    "bo_id": row[11],
+                    "proposal_id": row[12],
+                    "created_at": row[13],
+                    "is_deleted": bool(row[14]),
+                    "deleted_at": row[15],
+                })
+            return documents
+        except Exception as e:
+            logger.error(f"[DB] Error listing documents: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_soft_deleted_documents(
+        self,
+        older_than_days: int = 30,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Get soft-deleted documents older than specified days."""
+        conn = self._connect()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT file_id, user_id, original_filename, file_type,
+                       storage_provider, storage_bucket, storage_key,
+                       file_size, file_extension, file_hash,
+                       document_type, bo_id, proposal_id,
+                       created_at, is_deleted, deleted_at
+                FROM documents
+                WHERE is_deleted = 1
+                  AND deleted_at < datetime('now', ?)
+                ORDER BY deleted_at ASC
+                LIMIT ?
+                """,
+                (f"-{older_than_days} days", limit)
+            )
+
+            documents = []
+            for row in cursor.fetchall():
+                documents.append({
+                    "file_id": row[0],
+                    "user_id": row[1],
+                    "original_filename": row[2],
+                    "file_type": row[3],
+                    "storage_provider": row[4],
+                    "storage_bucket": row[5],
+                    "storage_key": row[6],
+                    "file_size": row[7],
+                    "file_extension": row[8],
+                    "file_hash": row[9],
+                    "document_type": row[10],
+                    "bo_id": row[11],
+                    "proposal_id": row[12],
+                    "created_at": row[13],
+                    "is_deleted": bool(row[14]),
+                    "deleted_at": row[15],
+                })
+            return documents
+        except Exception as e:
+            logger.error(f"[DB] Error getting soft deleted documents: {e}")
+            return []
+        finally:
+            conn.close()

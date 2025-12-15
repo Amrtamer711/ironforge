@@ -68,6 +68,11 @@ class WebSession:
     response_complete: bool = False
     response_chunks: List[str] = field(default_factory=list)
 
+    # Real-time event queue for SSE streaming
+    # Events: {"type": "status"|"message"|"file"|"delete"|"done", ...}
+    events: List[Dict[str, Any]] = field(default_factory=list)
+    processing_complete: bool = False
+
 
 class WebAdapter(ChannelAdapter):
     """
@@ -293,6 +298,15 @@ class WebAdapter(ChannelAdapter):
             session.pending_response = content
             session.response_complete = True
 
+            # Push event for real-time streaming
+            session.events.append({
+                "type": "message",
+                "message_id": message_id,
+                "content": content,
+                "attachments": message_data.get("attachments", []),
+                "timestamp": timestamp,
+            })
+
         logger.debug(f"[WebAdapter] Sent message to {target_user}: {content[:50]}...")
 
         return Message(
@@ -333,6 +347,14 @@ class WebAdapter(ChannelAdapter):
                         ]
                     break
 
+            # Push status update event for real-time streaming
+            session.events.append({
+                "type": "status",
+                "message_id": message_id,
+                "content": content,
+                "timestamp": datetime.now().isoformat(),
+            })
+
         return Message(
             id=message_id,
             channel_id=channel_id,
@@ -353,6 +375,14 @@ class WebAdapter(ChannelAdapter):
                 m for m in session.messages
                 if m.get("id") != message_id
             ]
+
+            # Push delete event for real-time streaming
+            session.events.append({
+                "type": "delete",
+                "message_id": message_id,
+                "timestamp": datetime.now().isoformat(),
+            })
+
             return True
         return False
 
@@ -497,9 +527,9 @@ class WebAdapter(ChannelAdapter):
                     logger.info(f"[WebAdapter] File uploaded to {storage_client.provider_name}: {actual_filename} -> {bucket}/{storage_key} (hash={file_hash[:16] if file_hash else 'N/A'}...)")
 
                     # Add message with attachment if comment provided
-                    if comment:
-                        session = self.get_session(channel_id)
-                        if session:
+                    session = self.get_session(channel_id)
+                    if session:
+                        if comment:
                             session.messages.append({
                                 "id": str(uuid.uuid4()),
                                 "role": "assistant",
@@ -511,6 +541,17 @@ class WebAdapter(ChannelAdapter):
                                     "title": title
                                 }]
                             })
+
+                        # Push file event for real-time streaming
+                        session.events.append({
+                            "type": "file",
+                            "file_id": file_id,
+                            "url": url,
+                            "filename": actual_filename,
+                            "title": title,
+                            "comment": comment,
+                            "timestamp": datetime.now().isoformat(),
+                        })
 
                     return FileUpload(
                         success=True,
@@ -565,9 +606,9 @@ class WebAdapter(ChannelAdapter):
         logger.info(f"[WebAdapter] File stored locally: {actual_filename} -> {url} (hash={file_hash[:16] if file_hash else 'N/A'}...)")
 
         # If there's a comment, add as message with attachment
-        if comment:
-            session = self.get_session(channel_id)
-            if session:
+        session = self.get_session(channel_id)
+        if session:
+            if comment:
                 session.messages.append({
                     "id": str(uuid.uuid4()),
                     "role": "assistant",
@@ -579,6 +620,17 @@ class WebAdapter(ChannelAdapter):
                         "title": title
                     }]
                 })
+
+            # Push file event for real-time streaming
+            session.events.append({
+                "type": "file",
+                "file_id": file_id,
+                "url": url,
+                "filename": actual_filename,
+                "title": title,
+                "comment": comment,
+                "timestamp": datetime.now().isoformat(),
+            })
 
         return FileUpload(
             success=True,

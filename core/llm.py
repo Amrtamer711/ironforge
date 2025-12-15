@@ -171,7 +171,7 @@ async def _persist_location_upload(location_key: str, pptx_path: Path, metadata_
 
 async def _handle_booking_order_parse(
     company: str,
-    slack_event: Dict[str, Any],
+    channel_event: Dict[str, Any],
     channel: str,
     status_ts: str,
     user_notes: str,
@@ -182,9 +182,9 @@ async def _handle_booking_order_parse(
     logger = config.logger
 
     # Extract files from slack event
-    files = slack_event.get("files", [])
-    if not files and slack_event.get("subtype") == "file_share" and "file" in slack_event:
-        files = [slack_event["file"]]
+    files = channel_event.get("files", [])
+    if not files and channel_event.get("subtype") == "file_share" and "file" in channel_event:
+        files = [channel_event["file"]]
 
     if not files:
         channel_adapter = config.get_channel_adapter()
@@ -682,18 +682,40 @@ async def handle_booking_order_edit_flow(channel: str, user_id: str, user_input:
         return f"❌ **Error processing your request:** {str(e)}\n\nPlease try again."
 
 
-async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event: Dict[str, Any] = None):
+async def main_llm_loop(
+    channel: str,
+    user_id: str,
+    user_input: str,
+    channel_event: Dict[str, Any] = None,
+    is_admin_override: bool = None,
+):
+    """
+    Main LLM processing loop - channel-agnostic.
+
+    Works with any channel adapter (Slack, Web, etc.) through the unified
+    channel abstraction layer.
+
+    Args:
+        channel: Channel/conversation ID (Slack channel ID or web user ID)
+        user_id: User identifier
+        user_input: User's message text
+        channel_event: Channel-specific event data containing:
+            - files: List of file info dicts (optional)
+            - thread_ts: Thread ID for Slack (optional)
+            - subtype: Event subtype (optional)
+        is_admin_override: Override admin check (for web UI where roles are passed separately)
+    """
     logger = config.logger
-    
+
     # Debug logging
     logger.info(f"[MAIN_LLM] Starting for user {user_id}, pending_adds: {list(pending_location_additions.keys())}")
-    if slack_event:
-        logger.info(f"[MAIN_LLM] Slack event keys: {list(slack_event.keys())}")
-        if "files" in slack_event:
-            logger.info(f"[MAIN_LLM] Files found: {len(slack_event['files'])}")
+    if channel_event:
+        logger.info(f"[MAIN_LLM] Channel event keys: {list(channel_event.keys())}")
+        if "files" in channel_event:
+            logger.info(f"[MAIN_LLM] Files found: {len(channel_event['files'])}")
     
     # Check if message is in a coordinator thread (before sending status message)
-    thread_ts = slack_event.get("thread_ts") if slack_event else None
+    thread_ts = channel_event.get("thread_ts") if channel_event else None
     if thread_ts:
         # Check if this thread is an active coordinator thread
         from workflows import bo_approval as bo_approval_workflow
@@ -762,7 +784,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
 
     # Check if user has a pending location addition or mockup request and uploaded a file
     # Also check for file_share events which Slack sometimes uses
-    has_files = slack_event and ("files" in slack_event or (slack_event.get("subtype") == "file_share"))
+    has_files = channel_event and ("files" in channel_event or (channel_event.get("subtype") == "file_share"))
 
     # Note: Mockup generation is now handled in one step within the tool handler
     # No need for pending state - users must upload image WITH request or provide AI prompt
@@ -782,15 +804,15 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
             return
 
         logger.info(f"[LOCATION_ADD] Found pending location for user {user_id}: {pending_data['location_key']}")
-        logger.info(f"[LOCATION_ADD] Files in event: {len(slack_event.get('files', []))}")
+        logger.info(f"[LOCATION_ADD] Files in event: {len(channel_event.get('files', []))}")
         
         # Check if any of the files is a PDF (we'll convert it to PPTX)
         pptx_file = None
-        files = slack_event.get("files", [])
+        files = channel_event.get("files", [])
 
         # If it's a file_share event, files might be structured differently
-        if not files and slack_event.get("subtype") == "file_share" and "file" in slack_event:
-            files = [slack_event["file"]]
+        if not files and channel_event.get("subtype") == "file_share" and "file" in channel_event:
+            files = [channel_event["file"]]
             logger.info(f"[LOCATION_ADD] Using file from file_share event")
 
         for f in files:
@@ -1020,7 +1042,8 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
     digital_list = ", ".join(digital_locations) if digital_locations else "None"
 
     # Check if user is admin for system prompt and tool filtering
-    is_admin = config.is_admin(user_id)
+    # Use override if provided (for web UI where roles are passed separately), otherwise check config
+    is_admin = is_admin_override if is_admin_override is not None else config.is_admin(user_id)
 
     prompt = get_main_system_prompt(
         is_admin=is_admin,
@@ -1033,12 +1056,12 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
     image_files = []  # Initialize outside conditional block
     document_files = []  # For PDFs, Excel, etc.
 
-    if has_files and slack_event:
+    if has_files and channel_event:
         from utils.constants import is_image_mimetype, is_document_mimetype
 
-        files = slack_event.get("files", [])
-        if not files and slack_event.get("subtype") == "file_share" and "file" in slack_event:
-            files = [slack_event["file"]]
+        files = channel_event.get("files", [])
+        if not files and channel_event.get("subtype") == "file_share" and "file" in channel_event:
+            files = [channel_event["file"]]
 
         # Check for image files and document files
         for f in files:
@@ -1085,7 +1108,7 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                     # Route to booking order parser
                     await _handle_booking_order_parse(
                         company=company,
-                        slack_event=slack_event,
+                        channel_event=channel_event,
                         channel=channel,
                         status_ts=status_ts,
                         user_notes="",
@@ -1227,9 +1250,9 @@ async def main_llm_loop(channel: str, user_id: str, user_input: str, slack_event
                 channel=channel,
                 user_id=user_id,
                 status_ts=status_ts,
-                slack_event=slack_event,
+                channel_event=channel_event,
                 user_input=user_input,
-                download_slack_file_func=download_file,
+                download_file_func=download_file,
                 handle_booking_order_parse_func=_handle_booking_order_parse,
                 generate_mockup_queued_func=_generate_mockup_queued,
                 generate_ai_mockup_queued_func=_generate_ai_mockup_queued,

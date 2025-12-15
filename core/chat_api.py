@@ -1,25 +1,22 @@
 """
 Generalized Chat API for the Unified UI.
 
-This module provides a simplified chat interface that uses the same LLM
-infrastructure as the Slack bot but works with any channel adapter.
-It's designed for synchronous HTTP request/response (with optional streaming).
+This module provides a chat interface that uses the SAME LLM infrastructure
+and tool execution as the Slack bot, ensuring feature parity across channels.
+
+Key principle: ALL functionality is channel-agnostic. The web UI gets
+exactly the same capabilities as Slack by using the same main_llm_loop.
 """
 
 import json
 import asyncio
-import re
-from datetime import datetime, timedelta
-from typing import Dict, Any, Optional, List, AsyncGenerator, Callable, Awaitable
-from pathlib import Path
+from datetime import datetime
+from typing import Dict, Any, Optional, List, AsyncGenerator
 
 import config
-from db.cache import user_history, mockup_history, get_mockup_history
-from integrations.llm import LLMClient, LLMMessage
-from integrations.llm.prompts.chat import get_main_system_prompt
-from core.tools import get_base_tools, get_admin_tools
+from db.cache import user_history
 from core.chat_persistence import save_chat_messages, load_chat_messages, clear_chat_messages
-from integrations.channels import WebAdapter, ChannelType
+from integrations.channels import WebAdapter
 
 logger = config.logger
 
@@ -35,21 +32,26 @@ def get_web_adapter() -> WebAdapter:
     return _web_adapter
 
 
+def _ensure_web_adapter_registered():
+    """Ensure the WebAdapter is registered as the channel adapter for web requests."""
+    web_adapter = get_web_adapter()
+    # Register the web adapter in config so main_llm_loop uses it
+    config.set_channel_adapter(web_adapter)
+    return web_adapter
+
+
 async def process_chat_message(
     user_id: str,
     user_name: str,
     message: str,
     roles: Optional[List[str]] = None,
     files: Optional[List[Dict[str, Any]]] = None,
-    stream_callback: Optional[Callable[[str], Awaitable[None]]] = None
 ) -> Dict[str, Any]:
     """
     Process a chat message from the unified UI.
 
-    This is a simplified version of main_llm_loop that:
-    - Uses the same LLM infrastructure
-    - Uses the same tools
-    - Returns the response directly instead of posting to Slack
+    Uses the SAME main_llm_loop as Slack to ensure feature parity.
+    All tools (mockups, proposals, booking orders, etc.) work identically.
 
     Args:
         user_id: Unique user identifier
@@ -57,19 +59,19 @@ async def process_chat_message(
         message: User's message text
         roles: User's roles (for permission checks)
         files: Optional list of file info dicts (for uploads)
-        stream_callback: Optional callback for streaming chunks
 
     Returns:
         Dict containing response data:
         {
             "content": str,
-            "tool_call": Optional[dict],
             "files": Optional[list],
             "error": Optional[str]
         }
     """
-    web_adapter = get_web_adapter()
+    from core.llm import main_llm_loop
+
     roles = roles or []
+    web_adapter = _ensure_web_adapter_registered()
 
     # Get or create session
     session = web_adapter.get_or_create_session(user_id, user_name, roles=roles)
@@ -84,7 +86,7 @@ async def process_chat_message(
         except Exception as e:
             logger.warning(f"[WebChat] Failed to load persisted messages: {e}")
 
-    # Add user message to session history (include files if present)
+    # Add user message to session history
     user_msg = {
         "id": f"user-{datetime.now().timestamp()}",
         "role": "user",
@@ -92,7 +94,6 @@ async def process_chat_message(
         "timestamp": datetime.now().isoformat()
     }
     if files:
-        # Store file metadata for persistence (file_id, filename, url)
         user_msg["files"] = [
             {
                 "file_id": f.get("file_id"),
@@ -107,203 +108,75 @@ async def process_chat_message(
     # Check if user is admin (has 'admin' role)
     is_admin = 'admin' in roles
 
-    # Get location lists for the prompt
-    static_locations = []
-    digital_locations = []
-    for key, meta in config.LOCATION_METADATA.items():
-        display_name = meta.get('display_name', key)
-        if meta.get('display_type', '').lower() == 'static':
-            static_locations.append(f"{display_name} ({key})")
-        elif meta.get('display_type', '').lower() == 'digital':
-            digital_locations.append(f"{display_name} ({key})")
+    # Build channel_event in the same format as Slack events
+    # This allows main_llm_loop to process files, etc.
+    channel_event = {
+        "type": "message",
+        "user": user_id,
+        "channel": user_id,  # For web, channel == user_id
+    }
 
-    static_list = ", ".join(static_locations) if static_locations else "None"
-    digital_list = ", ".join(digital_locations) if digital_locations else "None"
-
-    # Build system prompt
-    system_prompt = get_main_system_prompt(
-        is_admin=is_admin,
-        static_list=static_list,
-        digital_list=digital_list,
-    )
-
-    # Build user message content with file info
-    user_message_content = message
-    image_files = []
-    document_files = []
-
+    # Add files in a format compatible with the channel adapter
     if files:
-        from utils.constants import is_image_mimetype, is_document_mimetype
-
+        channel_event["files"] = []
         for f in files:
-            filename = f.get("filename", "").lower()
-            mimetype = f.get("mimetype", "")
+            file_info = {
+                "name": f.get("filename", ""),
+                "filetype": _get_filetype_from_mimetype(f.get("mimetype", "")),
+                "mimetype": f.get("mimetype", ""),
+                "file_id": f.get("file_id"),
+                "temp_path": f.get("temp_path"),  # Web uploads have temp_path
+            }
+            channel_event["files"].append(file_info)
 
-            # Use exact MIME type matching (security: no .startswith())
-            if is_image_mimetype(mimetype) or any(filename.endswith(ext) for ext in [".jpg", ".jpeg", ".png", ".gif", ".bmp"]):
-                image_files.append(f.get("filename", "image"))
-            elif is_document_mimetype(mimetype) or any(filename.endswith(ext) for ext in [".pdf", ".xlsx", ".xls", ".csv", ".docx", ".doc"]):
-                document_files.append(f.get("filename", "document"))
-
-        if image_files:
-            user_message_content = f"{message}\n\n[User uploaded {len(image_files)} image file(s): {', '.join(image_files)}]"
-        elif document_files:
-            user_message_content = f"{message}\n\n[User uploaded {len(document_files)} document file(s): {', '.join(document_files)}]"
-
-    # Inject mockup history context if no files uploaded
-    if not image_files and not document_files:
-        mockup_hist = get_mockup_history(user_id)
-        if mockup_hist:
-            metadata = mockup_hist.get("metadata", {})
-            stored_location = metadata.get("location_name", "unknown")
-            stored_frames = metadata.get("num_frames", 1)
-            mode = metadata.get("mode", "unknown")
-
-            timestamp = mockup_hist.get("timestamp")
-            if timestamp:
-                time_remaining = 30 - int((datetime.now() - timestamp).total_seconds() / 60)
-                time_remaining = max(0, time_remaining)
-
-                user_message_content = (
-                    f"{user_message_content}\n\n"
-                    f"[SYSTEM: User has {stored_frames}-frame creative(s) in memory from '{stored_location}' ({mode}). "
-                    f"Expires in {time_remaining} minutes. Can reuse for follow-up mockup requests on locations with {stored_frames} frame(s).]"
-                )
-
-    # Get conversation history
-    history = user_history.get(user_id, [])
-    history.append({"role": "user", "content": user_message_content, "timestamp": datetime.now().isoformat()})
-    history = history[-10:]  # Keep last 10 messages
-
-    # Build LLM messages
-    llm_messages = [LLMMessage.system(system_prompt)]
-    for msg in history:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        if role == "user":
-            llm_messages.append(LLMMessage.user(content))
-        elif role == "assistant":
-            llm_messages.append(LLMMessage.assistant(content))
-
-    # Get tools
-    base_tools = get_base_tools()
-    all_tools = list(base_tools)
-
-    if is_admin:
-        admin_tools = get_admin_tools()
-        all_tools.extend(admin_tools)
+    # Get message count before processing
+    messages_before = len(session.messages)
 
     try:
-        # Initialize LLM client
-        logger.info(f"[WebChat] Initializing LLM client...")
-        llm_client = LLMClient.from_config()
-        logger.info(f"[WebChat] LLM client initialized: provider={llm_client.provider_name}")
+        logger.info(f"[WebChat] Calling main_llm_loop for user={user_id}, admin={is_admin}")
 
-        # Call LLM
-        logger.info(f"[WebChat] Calling LLM with {len(llm_messages)} messages and {len(all_tools)} tools...")
-        response = await llm_client.complete(
-            messages=llm_messages,
-            tools=all_tools,
-            tool_choice="auto",
-            store=config.IS_DEVELOPMENT,  # Store in OpenAI only in dev mode
-            cache_key="web-chat",
-            cache_retention="24h",
-            call_type="main_llm",
-            workflow="general_chat",
-            user_id=user_name,
-            context=f"Channel: web_ui, User: {user_id}",
+        # Call the SAME main_llm_loop as Slack
+        # The channel adapter abstraction handles all the differences
+        await main_llm_loop(
+            channel=user_id,  # For web, channel is user_id
+            user_id=user_id,
+            user_input=message,
+            channel_event=channel_event if files else None,
+            is_admin_override=is_admin,
         )
-        logger.info(f"[WebChat] LLM response received: has_content={bool(response.content)}, tool_calls={bool(response.tool_calls)}")
 
+        logger.info(f"[WebChat] main_llm_loop completed for user={user_id}")
+
+        # Get the new messages added by main_llm_loop
+        new_messages = session.messages[messages_before:]
+
+        # Build response from new messages
         result = {
             "content": None,
-            "tool_call": None,
             "files": [],
             "error": None
         }
 
-        # Handle tool calls
-        if response.tool_calls:
-            tool_call = response.tool_calls[0]
-            logger.info(f"[WebChat] Tool call: {tool_call.name}")
+        for msg in new_messages:
+            if msg.get("role") == "assistant":
+                # Concatenate content from all assistant messages
+                content = msg.get("content", "")
+                if content:
+                    if result["content"]:
+                        result["content"] += "\n\n" + content
+                    else:
+                        result["content"] = content
 
-            # For now, return the tool call info - let the API layer handle it
-            result["tool_call"] = {
-                "name": tool_call.name,
-                "arguments": tool_call.arguments
-            }
+                # Collect files/attachments
+                attachments = msg.get("attachments", [])
+                for att in attachments:
+                    result["files"].append({
+                        "url": att.get("url"),
+                        "filename": att.get("filename"),
+                        "title": att.get("title"),
+                    })
 
-            # Handle specific tools inline that don't need complex workflows
-            if tool_call.name == "list_locations":
-                # Simple tool - return locations list
-                locations_text = _format_locations_list()
-                result["content"] = locations_text
-                result["tool_call"] = None
-
-            elif tool_call.name in ["get_separate_proposals", "get_combined_proposal"]:
-                # Complex tool - will be handled by API layer
-                result["content"] = "📄 _Generating proposal..._"
-
-            elif tool_call.name == "generate_mockup":
-                # Complex tool - will be handled by API layer
-                args = tool_call.arguments
-                location = args.get("location", "unknown")
-                result["content"] = f"🎨 _Generating mockup for {location}..._"
-
-            elif tool_call.name == "parse_booking_order":
-                result["content"] = "📋 _Processing booking order..._"
-
-            else:
-                # Unknown tool
-                result["content"] = f"⏳ Processing {tool_call.name}..."
-
-            # Add assistant's tool call summary to history
-            history.append({
-                "role": "assistant",
-                "content": result["content"],
-                "timestamp": datetime.now().isoformat()
-            })
-
-        elif response.content:
-            # Text response - store raw markdown, frontend handles formatting
-            reply = response.content
-
-            result["content"] = reply
-
-            # Add to history
-            history.append({
-                "role": "assistant",
-                "content": reply,
-                "timestamp": datetime.now().isoformat()
-            })
-
-            # Stream if callback provided
-            if stream_callback:
-                words = reply.split(' ')
-                for word in words:
-                    await stream_callback(word + ' ')
-                    await asyncio.sleep(0.02)
-
-        else:
-            result["content"] = "I can help with proposals, mockups, and business operations. What would you like to do?"
-
-        # Update history cache
-        user_history[user_id] = history[-10:]
-
-        # Add to session (include files if generated)
-        if result["content"]:
-            assistant_msg = {
-                "id": f"assistant-{datetime.now().timestamp()}",
-                "role": "assistant",
-                "content": result["content"],
-                "timestamp": datetime.now().isoformat(),
-                "tool_call": result["tool_call"]
-            }
-            if result.get("files"):
-                assistant_msg["files"] = result["files"]
-            session.messages.append(assistant_msg)
-
-        # Persist messages to database (async-safe)
+        # Persist messages to database
         try:
             save_chat_messages(user_id, session.messages, session.conversation_id)
         except Exception as persist_err:
@@ -315,7 +188,6 @@ async def process_chat_message(
         logger.error(f"[WebChat] Error processing message: {e}", exc_info=True)
         return {
             "content": None,
-            "tool_call": None,
             "files": [],
             "error": str(e)
         }
@@ -331,69 +203,191 @@ async def stream_chat_message(
     """
     Stream a chat response using Server-Sent Events format.
 
-    Yields SSE-formatted strings that can be sent directly to the client.
+    Streams events in REAL-TIME as main_llm_loop executes, including:
+    - Status updates (tool execution progress)
+    - File uploads
+    - Message content
+    - Delete events (ephemeral status cleanup)
+
+    This gives the web UI the same real-time experience as Slack.
     """
+    from core.llm import main_llm_loop
+
     logger.info(f"[WebChat] stream_chat_message called for user={user_id}")
 
-    try:
-        result = await process_chat_message(
-            user_id=user_id,
-            user_name=user_name,
-            message=message,
-            roles=roles,
-            files=files,
-        )
-        logger.info(f"[WebChat] process_chat_message returned: error={result.get('error')}, has_content={bool(result.get('content'))}")
+    roles = roles or []
+    web_adapter = _ensure_web_adapter_registered()
 
-        if result.get("error"):
-            yield f"data: {json.dumps({'error': result['error']})}\n\n"
-        elif result.get("tool_call"):
-            # Tool call - send special event
-            yield f"data: {json.dumps({'type': 'tool_call', 'tool': result['tool_call']})}\n\n"
-            if result.get("content"):
-                yield f"data: {json.dumps({'type': 'content', 'content': result['content']})}\n\n"
-        else:
-            # Regular content - stream it
-            content = result.get("content", "")
-            words = content.split(' ')
-            for i, word in enumerate(words):
-                yield f"data: {json.dumps({'type': 'chunk', 'content': word + (' ' if i < len(words) - 1 else '')})}\n\n"
-                await asyncio.sleep(0.02)
+    # Get or create session
+    session = web_adapter.get_or_create_session(user_id, user_name, roles=roles)
+
+    # Load persisted history if session is new
+    if not session.messages:
+        try:
+            persisted_messages = load_chat_messages(user_id)
+            if persisted_messages:
+                session.messages = persisted_messages
+                logger.info(f"[WebChat] Loaded {len(persisted_messages)} persisted messages for {user_id}")
+        except Exception as e:
+            logger.warning(f"[WebChat] Failed to load persisted messages: {e}")
+
+    # Add user message to session history
+    user_msg = {
+        "id": f"user-{datetime.now().timestamp()}",
+        "role": "user",
+        "content": message,
+        "timestamp": datetime.now().isoformat()
+    }
+    if files:
+        user_msg["files"] = [
+            {
+                "file_id": f.get("file_id"),
+                "filename": f.get("filename"),
+                "url": f.get("url"),
+                "mimetype": f.get("mimetype"),
+            }
+            for f in files
+        ]
+    session.messages.append(user_msg)
+
+    # Clear any stale events and reset processing flag
+    session.events.clear()
+    session.processing_complete = False
+
+    # Check if user is admin
+    is_admin = 'admin' in roles
+
+    # Build channel_event
+    channel_event = {
+        "type": "message",
+        "user": user_id,
+        "channel": user_id,
+    }
+
+    if files:
+        channel_event["files"] = []
+        for f in files:
+            file_info = {
+                "name": f.get("filename", ""),
+                "filetype": _get_filetype_from_mimetype(f.get("mimetype", "")),
+                "mimetype": f.get("mimetype", ""),
+                "file_id": f.get("file_id"),
+                "temp_path": f.get("temp_path"),
+            }
+            channel_event["files"].append(file_info)
+
+    # Track messages before processing
+    messages_before = len(session.messages)
+
+    async def run_llm():
+        """Run main_llm_loop in background and mark complete when done."""
+        try:
+            await main_llm_loop(
+                channel=user_id,
+                user_id=user_id,
+                user_input=message,
+                channel_event=channel_event if files else None,
+                is_admin_override=is_admin,
+            )
+        except Exception as e:
+            logger.error(f"[WebChat] main_llm_loop error: {e}", exc_info=True)
+            session.events.append({
+                "type": "error",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat(),
+            })
+        finally:
+            session.processing_complete = True
+
+    # Start LLM processing in background
+    llm_task = asyncio.create_task(run_llm())
+
+    try:
+        # Send initial processing indicator
+        yield f"data: {json.dumps({'type': 'status', 'content': 'Processing...'})}\n\n"
+
+        event_index = 0
+        poll_interval = 0.1  # 100ms polling
+
+        # Stream events as they arrive
+        while not session.processing_complete or event_index < len(session.events):
+            # Process any new events
+            while event_index < len(session.events):
+                event = session.events[event_index]
+                event_index += 1
+
+                event_type = event.get("type")
+
+                if event_type == "status":
+                    # Status update (tool progress, etc.)
+                    yield f"data: {json.dumps({'type': 'status', 'message_id': event.get('message_id'), 'content': event.get('content')})}\n\n"
+
+                elif event_type == "message":
+                    # New message from assistant
+                    content = event.get("content", "")
+                    if content:
+                        # Stream word by word for typing effect
+                        words = content.split(' ')
+                        for i, word in enumerate(words):
+                            chunk = word + (' ' if i < len(words) - 1 else '')
+                            yield f"data: {json.dumps({'type': 'chunk', 'content': chunk})}\n\n"
+                            await asyncio.sleep(0.02)
+
+                elif event_type == "file":
+                    # File uploaded
+                    yield f"data: {json.dumps({'type': 'file', 'file': {'file_id': event.get('file_id'), 'url': event.get('url'), 'filename': event.get('filename'), 'title': event.get('title'), 'comment': event.get('comment')}})}\n\n"
+
+                elif event_type == "delete":
+                    # Status message deleted (tool completed successfully)
+                    yield f"data: {json.dumps({'type': 'delete', 'message_id': event.get('message_id')})}\n\n"
+
+                elif event_type == "error":
+                    # Error occurred
+                    yield f"data: {json.dumps({'type': 'error', 'error': event.get('error')})}\n\n"
+
+            # Wait before polling again (only if not complete)
+            if not session.processing_complete:
+                await asyncio.sleep(poll_interval)
+
+        # Ensure task is done
+        await llm_task
+
+        # Persist messages
+        try:
+            save_chat_messages(user_id, session.messages, session.conversation_id)
+        except Exception as persist_err:
+            logger.warning(f"[WebChat] Failed to persist messages: {persist_err}")
 
         yield "data: [DONE]\n\n"
 
     except Exception as e:
         logger.error(f"[WebChat] Streaming error: {e}", exc_info=True)
-        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
         yield "data: [DONE]\n\n"
+    finally:
+        # Clean up events
+        session.events.clear()
+        session.processing_complete = False
 
 
-def _format_locations_list() -> str:
-    """Format the locations list for display."""
-    static_locations = []
-    digital_locations = []
-
-    for key, meta in config.LOCATION_METADATA.items():
-        display_name = meta.get('display_name', key)
-        display_type = meta.get('display_type', 'Unknown')
-
-        if display_type.lower() == 'static':
-            static_locations.append(f"• {display_name} (`{key}`)")
-        elif display_type.lower() == 'digital':
-            digital_locations.append(f"• {display_name} (`{key}`)")
-
-    result = "**Available Locations**\n\n"
-
-    if digital_locations:
-        result += "**Digital Locations:**\n" + "\n".join(sorted(digital_locations)) + "\n\n"
-
-    if static_locations:
-        result += "**Static Locations:**\n" + "\n".join(sorted(static_locations))
-
-    if not digital_locations and not static_locations:
-        result = "No locations are currently configured."
-
-    return result
+def _get_filetype_from_mimetype(mimetype: str) -> str:
+    """Extract file type from MIME type."""
+    mime_to_type = {
+        "image/jpeg": "jpg",
+        "image/jpg": "jpg",
+        "image/png": "png",
+        "image/gif": "gif",
+        "image/bmp": "bmp",
+        "application/pdf": "pdf",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
+        "application/vnd.ms-excel": "xls",
+        "text/csv": "csv",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+        "application/msword": "doc",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+        "application/vnd.ms-powerpoint": "ppt",
+    }
+    return mime_to_type.get(mimetype, "")
 
 
 def get_conversation_history(user_id: str) -> List[Dict[str, Any]]:

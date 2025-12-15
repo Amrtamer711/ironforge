@@ -21,9 +21,9 @@ async def handle_tool_call(
     channel: str,
     user_id: str,
     status_ts: str,
-    slack_event: dict = None,
+    channel_event: dict = None,
     user_input: str = "",
-    download_slack_file_func=None,
+    download_file_func=None,
     handle_booking_order_parse_func=None,
     generate_mockup_queued_func=None,
     generate_ai_mockup_queued_func=None,
@@ -31,14 +31,16 @@ async def handle_tool_call(
     """
     Main tool router - dispatches function calls to appropriate handlers.
 
+    Channel-agnostic: Works with any channel adapter (Slack, Web, etc.)
+
     Args:
         tool_call: The ToolCall object from LLMClient response
-        channel: Slack channel ID
-        user_id: Slack user ID
-        status_ts: Timestamp of status message to update/delete
-        slack_event: Original Slack event (for file access)
+        channel: Channel/conversation ID (Slack channel or web user ID)
+        user_id: User identifier
+        status_ts: ID of status message to update/delete
+        channel_event: Original channel event dict (for file access)
         user_input: Original user message
-        download_slack_file_func: Function to download Slack files
+        download_file_func: Function to download files (channel-agnostic)
         handle_booking_order_parse_func: Function to handle BO parsing
         generate_mockup_queued_func: Function for queued mockup generation
         generate_ai_mockup_queued_func: Function for queued AI mockup generation
@@ -707,7 +709,7 @@ async def handle_tool_call(
         await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="⏳ _Parsing booking order..._")
         await handle_booking_order_parse_func(
             company=company,
-            slack_event=slack_event,
+            channel_event=channel_event,
             channel=channel,
             status_ts=status_ts,
             user_notes=user_notes,
@@ -726,8 +728,8 @@ async def handle_tool_call(
             user_id=user_id,
             channel=channel,
             status_ts=status_ts,
-            slack_event=slack_event,
-            download_slack_file_func=download_slack_file_func,
+            channel_event=channel_event,
+            download_file_func=download_file_func,
             generate_mockup_queued_func=generate_mockup_queued_func,
             generate_ai_mockup_queued_func=generate_ai_mockup_queued_func,
         )

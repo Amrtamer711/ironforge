@@ -90,6 +90,10 @@ from integrations.rbac.client import (
     reset_rbac_client,
     has_permission,
     require_permission,
+    # Channel identity helpers
+    get_platform_user_id_from_channel,
+    has_permission_by_channel,
+    require_permission_by_channel,
 )
 
 from integrations.rbac.providers import (

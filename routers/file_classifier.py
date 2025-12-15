@@ -16,7 +16,7 @@ async def classify_and_route_file(
     user_id: str,
     channel: str,
     status_ts: str,
-    slack_event: dict,
+    channel_event: dict,
     image_files: list,
     document_files: list,
     download_func,
@@ -24,6 +24,8 @@ async def classify_and_route_file(
 ) -> bool:
     """
     Classify a single uploaded file and route if high confidence.
+
+    Channel-agnostic: Works with any channel adapter (Slack, Web, etc.)
 
     Returns:
         True if file was routed and handled (caller should return early)
@@ -55,7 +57,7 @@ async def classify_and_route_file(
                 # Route to booking order parser
                 await handle_bo_parse_func(
                     company=company,
-                    slack_event=slack_event,
+                    channel_event=channel_event,
                     channel=channel,
                     status_ts=status_ts,
                     user_notes="",

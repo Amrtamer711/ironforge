@@ -29,13 +29,15 @@ async def handle_mockup_generation(
     user_id: str,
     channel: str,
     status_ts: str,
-    slack_event: dict = None,
-    download_slack_file_func: Callable = None,
+    channel_event: dict = None,
+    download_file_func: Callable = None,
     generate_mockup_queued_func: Callable = None,
     generate_ai_mockup_queued_func: Callable = None,
 ) -> bool:
     """
     Handle mockup generation request.
+
+    Channel-agnostic: Works with any channel adapter (Slack, Web, etc.)
 
     Supports three modes:
     1. Upload mode: User uploads image(s)
@@ -47,11 +49,11 @@ async def handle_mockup_generation(
         time_of_day: Time of day filter (e.g., "day", "night", "all")
         finish: Finish type filter (e.g., "matte", "gloss", "all")
         ai_prompts: List of AI prompts for generation
-        user_id: Slack user ID
-        channel: Slack channel ID
-        status_ts: Timestamp of status message to update
-        slack_event: Original Slack event (for file access)
-        download_slack_file_func: Function to download Slack files
+        user_id: User identifier
+        channel: Channel/conversation ID
+        status_ts: ID of status message to update
+        channel_event: Original channel event dict (for file access)
+        download_file_func: Function to download files (channel-agnostic)
         generate_mockup_queued_func: Function for queued mockup generation
         generate_ai_mockup_queued_func: Function for queued AI mockup generation
 
@@ -115,7 +117,7 @@ async def handle_mockup_generation(
 
     # Check if user uploaded image(s) with the request
     uploaded_creatives = await _extract_uploaded_images(
-        slack_event, download_slack_file_func
+        channel_event, download_file_func
     )
     has_images = len(uploaded_creatives) > 0
 
@@ -190,23 +192,23 @@ async def handle_mockup_generation(
 
 
 async def _extract_uploaded_images(
-    slack_event: dict,
-    download_slack_file_func: Callable,
+    channel_event: dict,
+    download_file_func: Callable,
 ) -> List[Path]:
     """Extract uploaded image files from Slack event."""
     uploaded_creatives = []
 
-    if not slack_event:
+    if not channel_event:
         return uploaded_creatives
 
-    if "files" not in slack_event and slack_event.get("subtype") != "file_share":
+    if "files" not in channel_event and channel_event.get("subtype") != "file_share":
         return uploaded_creatives
 
     from utils.constants import is_image_mimetype
 
-    files = slack_event.get("files", [])
-    if not files and slack_event.get("subtype") == "file_share" and "file" in slack_event:
-        files = [slack_event["file"]]
+    files = channel_event.get("files", [])
+    if not files and channel_event.get("subtype") == "file_share" and "file" in channel_event:
+        files = [channel_event["file"]]
 
     for f in files:
         filetype = f.get("filetype", "")
@@ -222,7 +224,7 @@ async def _extract_uploaded_images(
 
         if is_image:
             try:
-                creative_file = await download_slack_file_func(f)
+                creative_file = await download_file_func(f)
                 uploaded_creatives.append(creative_file)
                 logger.info(f"[MOCKUP] Found uploaded image: {f.get('name')}")
             except Exception as e:

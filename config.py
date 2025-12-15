@@ -120,6 +120,20 @@ def get_channel_adapter(channel_type: Optional[str] = None):
     return get_channel(channel_type)
 
 
+def set_channel_adapter(adapter):
+    """
+    Set the active channel adapter.
+
+    Used by web chat to register the WebAdapter before calling main_llm_loop,
+    ensuring tool execution uses the correct channel.
+
+    Args:
+        adapter: ChannelAdapter instance to set as active
+    """
+    from integrations.channels import set_channel
+    set_channel(adapter)
+
+
 # ============================================================================
 # LLM PROVIDER CONFIGURATION
 # ============================================================================
