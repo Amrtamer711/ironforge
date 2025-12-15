@@ -1193,7 +1193,11 @@ async def main_llm_loop(
     logger.debug(f"[LLM] Building messages: system prompt + {len(history)} history messages")
     for i, msg in enumerate(llm_messages[:5]):  # Log first 5 for debugging
         role = msg.role
-        preview = (msg.content[:50] + "...") if isinstance(msg.content, str) and len(msg.content) > 50 else msg.content
+        if role == "system":
+            # Don't log system prompt content - too long
+            preview = f"[{len(msg.content)} chars]" if isinstance(msg.content, str) else "[complex]"
+        else:
+            preview = (msg.content[:50] + "...") if isinstance(msg.content, str) and len(msg.content) > 50 else msg.content
         logger.debug(f"[LLM] Message {i}: role={role}, content={preview}")
 
     # Get tools from centralized tool definitions

@@ -191,8 +191,8 @@ class OpenAIProvider(LLMProvider):
         # Debug: Log message order being sent to API
         logger.info(f"[OPENAI] === API Request Message Order ===")
         if instructions:
-            instr_preview = (instructions[:80] + "...") if len(instructions) > 80 else instructions
-            logger.info(f"[OPENAI] instructions (system): {instr_preview.replace(chr(10), ' ')}")
+            # Just show length - system prompt is too long to log
+            logger.info(f"[OPENAI] instructions (system): [{len(instructions)} chars]")
         for i, msg in enumerate(input_messages):
             role = msg.get("role", "?")
             content = msg.get("content", "")
