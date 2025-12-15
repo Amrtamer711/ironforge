@@ -1172,7 +1172,16 @@ async def main_llm_loop(
         return text
 
     llm_messages = [LLMMessage.system(prompt)]
-    for msg in history:
+
+    # Ensure history starts with a user message (skip leading assistant messages)
+    # This fixes issues where error messages get persisted without corresponding user messages
+    history_start = 0
+    for i, msg in enumerate(history):
+        if msg.get("role") == "user":
+            history_start = i
+            break
+
+    for msg in history[history_start:]:
         role = msg.get("role", "user")
         content = _sanitize_content(msg.get("content", ""))
         if role == "user":
