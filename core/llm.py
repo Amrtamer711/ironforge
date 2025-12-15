@@ -10,6 +10,7 @@ import shutil
 import config
 from db.database import db
 from core.proposals import process_proposals
+from integrations.channels.base import ChannelType
 from workflows.bo_parser import BookingOrderParser, COMBINED_BOS_DIR
 from utils.task_queue import mockup_queue
 from core import bo_messaging
@@ -754,13 +755,15 @@ async def main_llm_loop(
                     )
                     return  # Exit early, don't process as normal message
 
-    # Send initial status message
+    # Send initial status message (skip for web UI - it has its own thinking animation)
     channel_adapter = config.get_channel_adapter()
-    status_message = await channel_adapter.send_message(
-        channel_id=channel,
-        content="⏳ _Please wait..._"
-    )
-    status_ts = status_message.platform_message_id or status_message.id
+    status_ts = None
+    if channel_adapter.channel_type != ChannelType.WEB:
+        status_message = await channel_adapter.send_message(
+            channel_id=channel,
+            content="⏳ _Please wait..._"
+        )
+        status_ts = status_message.platform_message_id or status_message.id
 
     # OLD EDIT FLOW REMOVED - Now coordinators edit directly in threads
 

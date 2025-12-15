@@ -248,6 +248,10 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
+# Paths to skip logging at DEBUG level (health checks flood the terminal)
+_SKIP_LOG_PATHS_DEBUG = {"/health", "/health/ready", "/health/auth"}
+
+
 # Middleware helper for FastAPI
 async def logging_middleware_helper(request, call_next):
     """
@@ -265,16 +269,23 @@ async def logging_middleware_helper(request, call_next):
 
     with request_context(request_id):
         logger = get_logger("api.request")
+        path = request.url.path
 
-        # Log request
-        logger.info(
-            f"{request.method} {request.url.path}",
-            extra={
-                "method": request.method,
-                "path": request.url.path,
-                "query": str(request.query_params),
-            }
-        )
+        # Skip health check logging only at DEBUG level (they flood terminal)
+        # In production (INFO+), health checks are logged normally
+        is_debug = logging.getLogger().level <= logging.DEBUG
+        skip_logging = is_debug and path in _SKIP_LOG_PATHS_DEBUG
+
+        if not skip_logging:
+            # Log request
+            logger.info(
+                f"{request.method} {path}",
+                extra={
+                    "method": request.method,
+                    "path": path,
+                    "query": str(request.query_params),
+                }
+            )
 
         # Process request
         import time
@@ -282,14 +293,15 @@ async def logging_middleware_helper(request, call_next):
         response = await call_next(request)
         duration_ms = (time.time() - start_time) * 1000
 
-        # Log response
-        logger.info(
-            f"{request.method} {request.url.path} -> {response.status_code} ({duration_ms:.0f}ms)",
-            extra={
-                "status_code": response.status_code,
-                "duration_ms": duration_ms,
-            }
-        )
+        if not skip_logging:
+            # Log response
+            logger.info(
+                f"{request.method} {path} -> {response.status_code} ({duration_ms:.0f}ms)",
+                extra={
+                    "status_code": response.status_code,
+                    "duration_ms": duration_ms,
+                }
+            )
 
         # Add request ID to response headers
         response.headers["X-Request-ID"] = request_id
