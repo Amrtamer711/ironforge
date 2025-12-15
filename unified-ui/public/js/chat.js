@@ -719,7 +719,7 @@ const Chat = {
     const messagesContainer = document.getElementById('chatMessages');
     if (!messagesContainer) return null;
 
-    const msgId = 'msg-' + Date.now();
+    const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 11);
     const isUser = role === 'user';
 
     const avatar = isUser
