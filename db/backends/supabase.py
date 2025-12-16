@@ -598,7 +598,8 @@ class SupabaseBackend(DatabaseBackend):
             response = client.schema(company_schema).table("mockup_frames").select("frames_data").eq("location_key", location_key).eq("time_of_day", time_of_day).eq("finish", finish).eq("photo_filename", photo_filename).single().execute()
 
             if response.data:
-                return json.loads(response.data["frames_data"])
+                # frames_data is JSONB - Supabase auto-deserializes it
+                return response.data["frames_data"]
             return None
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to get mockup frames for {location_key}/{photo_filename}: {e}", exc_info=True)
@@ -618,7 +619,8 @@ class SupabaseBackend(DatabaseBackend):
             response = client.schema(company_schema).table("mockup_frames").select("config_json").eq("location_key", location_key).eq("time_of_day", time_of_day).eq("finish", finish).eq("photo_filename", photo_filename).single().execute()
 
             if response.data and response.data.get("config_json"):
-                return json.loads(response.data["config_json"])
+                # config_json is JSONB - Supabase auto-deserializes it
+                return response.data["config_json"]
             return None
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to get mockup config for {location_key}/{photo_filename}: {e}", exc_info=True)
