@@ -225,6 +225,7 @@ class SupabaseBackend(DatabaseBackend):
         try:
             client = self._get_client()
             client.table("proposals_log").insert({
+                "user_id": submitted_by,  # user_id = submitted_by (both are the user's UUID)
                 "submitted_by": submitted_by,
                 "client_name": client_name,
                 "date_generated": date_generated,
