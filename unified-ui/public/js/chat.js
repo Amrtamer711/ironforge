@@ -419,6 +419,7 @@ const Chat = {
     const decoder = new TextDecoder();
     let fullContent = '';
     let currentMessageId = null;  // Track the current message being streamed
+    let filesReceived = false;  // Track if any files were sent (mockups, proposals, etc.)
 
     while (true) {
       const { done, value } = await reader.read();
@@ -476,12 +477,15 @@ const Chat = {
             } else if (parsed.type === 'files' && parsed.files) {
               // Handle files returned from backend (proposals, mockups, etc.)
               this.appendFiles(msgId, parsed.files);
+              filesReceived = true;
             } else if (parsed.type === 'file' && parsed.file) {
               // Single file upload event
               this.appendFiles(msgId, [parsed.file]);
+              filesReceived = true;
             } else if (parsed.files) {
               // Also check for files in final response
               this.appendFiles(msgId, parsed.files);
+              filesReceived = true;
             }
           } catch (e) {
             // If not valid JSON, treat as plain text chunk
@@ -494,9 +498,19 @@ const Chat = {
       }
     }
 
-    // If we got no content, show a default message
-    if (!fullContent) {
+    // If we got no content AND no files, show a default message
+    // When files are sent (mockups, proposals), no additional text response is needed
+    if (!fullContent && !filesReceived) {
       this.updateMessage(msgId, 'I\'m ready to help. What would you like to do?');
+    } else if (!fullContent && filesReceived) {
+      // Files were sent but no text - clear the thinking indicator and hide empty bubble
+      const msgEl = document.getElementById(msgId);
+      if (msgEl) {
+        const bubble = msgEl.querySelector('.chat-msg-bubble');
+        if (bubble) {
+          bubble.style.display = 'none';  // Hide empty text bubble, show only files
+        }
+      }
     }
   },
 
@@ -794,38 +808,80 @@ const Chat = {
       const existingFile = filesContainer.querySelector(`[data-file-id="${file.file_id}"]`);
       if (existingFile) return;
 
-      const fileEl = document.createElement('a');
-      fileEl.className = 'chat-file-link';
-      fileEl.dataset.fileId = file.file_id;
-      // Build URL - persisted URLs are like /api/files/... need to go through /api/sales proxy
+      // Build URL - signed URLs from Supabase can be used directly
+      // Only fallback to API proxy for legacy /api/files/ URLs
       let fileUrl = file.url;
       if (fileUrl && fileUrl.startsWith('/api/files/')) {
         fileUrl = `${API.baseUrl}/api/sales/files/${fileUrl.replace('/api/files/', '')}`;
       } else if (!fileUrl && file.file_id) {
         fileUrl = `${API.baseUrl}/api/sales/files/${file.file_id}/${encodeURIComponent(file.filename || 'file')}`;
       }
-      fileEl.href = fileUrl || '#';
-      fileEl.target = '_blank';
-      fileEl.rel = 'noopener noreferrer';
 
-      // Determine icon based on file type
+      // Determine file type
       const ext = (file.filename || '').split('.').pop().toLowerCase();
-      let icon = '📄';
-      if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext)) icon = '🖼️';
-      else if (['pdf'].includes(ext)) icon = '📕';
-      else if (['xlsx', 'xls', 'csv'].includes(ext)) icon = '📊';
-      else if (['pptx', 'ppt'].includes(ext)) icon = '📽️';
-      else if (['docx', 'doc'].includes(ext)) icon = '📝';
+      const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext);
 
-      const sizeStr = file.size ? ` (${(file.size / 1024 / 1024).toFixed(1)} MB)` : '';
+      if (isImage && fileUrl) {
+        // Display images inline with click to open full size
+        const imageContainer = document.createElement('div');
+        imageContainer.className = 'chat-image-container';
+        imageContainer.dataset.fileId = file.file_id;
 
-      fileEl.innerHTML = `
-        <span class="file-icon">${icon}</span>
-        <span class="file-name">${file.filename || 'Download'}${sizeStr}</span>
-        <span class="file-download">⬇️</span>
-      `;
+        const img = document.createElement('img');
+        img.className = 'chat-inline-image';
+        img.src = fileUrl;
+        img.alt = file.filename || 'Image';
+        img.loading = 'lazy';
+        img.onclick = () => window.open(fileUrl, '_blank');
+        img.title = 'Click to open full size';
 
-      filesContainer.appendChild(fileEl);
+        // Add loading state
+        img.onload = () => img.classList.add('loaded');
+        img.onerror = () => {
+          // If image fails to load, show download link instead
+          imageContainer.innerHTML = `
+            <a class="chat-file-link" href="${fileUrl}" target="_blank" rel="noopener noreferrer">
+              <span class="file-icon">🖼️</span>
+              <span class="file-name">${file.filename || 'Image'}</span>
+              <span class="file-download">⬇️</span>
+            </a>
+          `;
+        };
+
+        imageContainer.appendChild(img);
+
+        // Add filename below image
+        const caption = document.createElement('div');
+        caption.className = 'chat-image-caption';
+        caption.textContent = file.filename || 'Image';
+        imageContainer.appendChild(caption);
+
+        filesContainer.appendChild(imageContainer);
+      } else {
+        // Non-image files: show download link
+        const fileEl = document.createElement('a');
+        fileEl.className = 'chat-file-link';
+        fileEl.dataset.fileId = file.file_id;
+        fileEl.href = fileUrl || '#';
+        fileEl.target = '_blank';
+        fileEl.rel = 'noopener noreferrer';
+
+        let icon = '📄';
+        if (['pdf'].includes(ext)) icon = '📕';
+        else if (['xlsx', 'xls', 'csv'].includes(ext)) icon = '📊';
+        else if (['pptx', 'ppt'].includes(ext)) icon = '📽️';
+        else if (['docx', 'doc'].includes(ext)) icon = '📝';
+
+        const sizeStr = file.size ? ` (${(file.size / 1024 / 1024).toFixed(1)} MB)` : '';
+
+        fileEl.innerHTML = `
+          <span class="file-icon">${icon}</span>
+          <span class="file-name">${file.filename || 'Download'}${sizeStr}</span>
+          <span class="file-download">⬇️</span>
+        `;
+
+        filesContainer.appendChild(fileEl);
+      }
     });
 
     // Scroll to bottom

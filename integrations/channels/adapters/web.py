@@ -698,8 +698,18 @@ class WebAdapter(ChannelAdapter):
                     except Exception as db_err:
                         logger.warning(f"[WebAdapter] Failed to store document in DB (file still uploaded): {db_err}")
 
-                    # Create download URL (goes through our API for auth)
-                    url = f"{self._file_base_url}/{file_id}/{actual_filename}"
+                    # Get signed URL directly for Supabase storage (no auth required to view)
+                    # This allows files to be opened in new tabs and images to be displayed inline
+                    try:
+                        signed_url = await storage_client.get_signed_url(
+                            bucket=bucket,
+                            key=storage_key,
+                            expires_in=86400,  # 24 hours - long enough for chat sessions
+                        )
+                        url = signed_url if signed_url else f"{self._file_base_url}/{file_id}/{actual_filename}"
+                    except Exception as sign_err:
+                        logger.warning(f"[WebAdapter] Failed to get signed URL, using API URL: {sign_err}")
+                        url = f"{self._file_base_url}/{file_id}/{actual_filename}"
 
                     logger.info(f"[WebAdapter] File uploaded to {storage_client.provider_name}: {actual_filename} -> {bucket}/{storage_key} (hash={file_hash[:16] if file_hash else 'N/A'}...)")
 
@@ -915,7 +925,18 @@ class WebAdapter(ChannelAdapter):
                     except Exception as db_err:
                         logger.warning(f"[WebAdapter] Failed to store document in DB (file still uploaded): {db_err}")
 
-                    url = f"{self._file_base_url}/{file_id}/{filename}"
+                    # Get signed URL directly for Supabase storage (no auth required to view)
+                    try:
+                        signed_url = await storage_client.get_signed_url(
+                            bucket=bucket,
+                            key=storage_key,
+                            expires_in=86400,  # 24 hours
+                        )
+                        url = signed_url if signed_url else f"{self._file_base_url}/{file_id}/{filename}"
+                    except Exception as sign_err:
+                        logger.warning(f"[WebAdapter] Failed to get signed URL, using API URL: {sign_err}")
+                        url = f"{self._file_base_url}/{file_id}/{filename}"
+
                     logger.info(f"[WebAdapter] File bytes uploaded to {storage_client.provider_name}: {filename} -> {bucket}/{storage_key} (hash={file_hash[:16] if file_hash else 'N/A'}...)")
 
                     if comment:
