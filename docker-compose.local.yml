@@ -1,0 +1,105 @@
+# =============================================================================
+# LOCAL DEVELOPMENT STACK
+# =============================================================================
+# Uses your .env.secrets with cloud Dev Supabase (no local DB setup needed)
+#
+# Usage:
+#   docker-compose -f docker-compose.local.yml --env-file .env.secrets up -d
+#   docker-compose -f docker-compose.local.yml --env-file .env.secrets logs -f
+#   docker-compose -f docker-compose.local.yml down
+#
+# Access:
+#   - Unified UI:    http://localhost:3005
+#   - Proposal Bot:  http://localhost:8000
+#
+# =============================================================================
+
+# version removed - obsolete in modern Docker Compose
+
+services:
+  # ===========================================================================
+  # Proposal Bot Backend (FastAPI)
+  # ===========================================================================
+  proposal-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: proposal-bot
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.secrets
+    environment:
+      # Force development mode (uses DEV Supabase from .env.secrets)
+      ENVIRONMENT: development
+      PORT: 8000
+
+      # Use cloud Supabase instead of local SQLite
+      DB_BACKEND: supabase
+      STORAGE_PROVIDER: supabase
+      AUTH_PROVIDER: supabase
+
+      # Proxy secret for trusted headers (generate your own for production)
+      PROXY_SECRET: ${PROXY_SECRET:-local-dev-proxy-secret-change-me}
+
+      # CORS for local development
+      CORS_ORIGINS: http://localhost:3005,http://localhost:8000
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - app-network
+
+  # ===========================================================================
+  # Unified UI Frontend (Node.js)
+  # ===========================================================================
+  unified-ui:
+    build:
+      context: ./unified-ui
+      dockerfile: Dockerfile
+    container_name: unified-ui
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    depends_on:
+      proposal-bot:
+        condition: service_healthy
+    env_file:
+      - .env.secrets
+    environment:
+      # Force development mode (uses DEV Supabase from .env.secrets)
+      ENVIRONMENT: development
+      PORT: 3005
+
+      # Proxy to proposal-bot container (Docker internal DNS)
+      SALES_BOT_URL: http://proposal-bot:8000
+
+      # Must match proposal-bot
+      PROXY_SECRET: ${PROXY_SECRET:-local-dev-proxy-secret-change-me}
+
+      # CORS for local development
+      CORS_ORIGINS: http://localhost:3005,http://localhost:8000
+    volumes:
+      - ./unified-ui/uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3005/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - app-network
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  app-network:
+    driver: bridge
