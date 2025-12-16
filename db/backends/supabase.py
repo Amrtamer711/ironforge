@@ -660,9 +660,12 @@ class SupabaseBackend(DatabaseBackend):
             client = self._get_client()
             variations = {}
 
+            logger.info(f"[SUPABASE] list_mockup_variations: location_key='{location_key}', schemas={company_schemas}")
+
             for schema in company_schemas:
                 try:
                     response = client.schema(schema).table("mockup_frames").select("time_of_day,finish").eq("location_key", location_key).execute()
+                    logger.debug(f"[SUPABASE] {schema}.mockup_frames query for '{location_key}': {len(response.data or [])} results")
 
                     for r in (response.data or []):
                         tod = r["time_of_day"]
@@ -672,9 +675,10 @@ class SupabaseBackend(DatabaseBackend):
                         if fin not in variations[tod]:
                             variations[tod].append(fin)
                 except Exception as schema_err:
-                    logger.debug(f"[SUPABASE] Error querying {schema}.mockup_frames: {schema_err}")
+                    logger.warning(f"[SUPABASE] Error querying {schema}.mockup_frames: {schema_err}")
                     continue
 
+            logger.info(f"[SUPABASE] list_mockup_variations result for '{location_key}': {variations}")
             return variations
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to list mockup variations for {location_key}: {e}", exc_info=True)
