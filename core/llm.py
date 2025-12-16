@@ -1012,16 +1012,43 @@ async def main_llm_loop(
         del pending_location_additions[uid]
 
     available_names = ", ".join(config.available_location_names())
-    
+
     # Get static and digital locations for the prompt
+    # Filter by user's companies if provided
     static_locations = []
     digital_locations = []
-    for key, meta in config.LOCATION_METADATA.items():
-        display_name = meta.get('display_name', key)
-        if meta.get('display_type', '').lower() == 'static':
-            static_locations.append(f"{display_name} ({key})")
-        elif meta.get('display_type', '').lower() == 'digital':
-            digital_locations.append(f"{display_name} ({key})")
+
+    if user_companies:
+        # Get locations filtered by user's company access
+        from db.database import db
+        company_locations = db.get_locations_for_companies(user_companies)
+
+        # Debug logging for company access
+        logger.info(f"[LLM] User companies: {user_companies}")
+        logger.info(f"[LLM] Retrieved {len(company_locations)} locations for user")
+
+        for loc in company_locations:
+            key = loc.get('location_key', loc.get('key', ''))
+            display_name = loc.get('display_name', key)
+            display_type = loc.get('display_type', '').lower()
+            company = loc.get('company_schema', 'unknown')
+
+            if display_type == 'static':
+                static_locations.append(f"{display_name} ({key}) [{company}]")
+            elif display_type == 'digital':
+                digital_locations.append(f"{display_name} ({key}) [{company}]")
+
+        logger.debug(f"[LLM] Static locations: {static_locations}")
+        logger.debug(f"[LLM] Digital locations: {digital_locations}")
+    else:
+        # Fallback to global cache (for Slack without company filtering)
+        logger.info(f"[LLM] No user_companies provided, using global location cache")
+        for key, meta in config.LOCATION_METADATA.items():
+            display_name = meta.get('display_name', key)
+            if meta.get('display_type', '').lower() == 'static':
+                static_locations.append(f"{display_name} ({key})")
+            elif meta.get('display_type', '').lower() == 'digital':
+                digital_locations.append(f"{display_name} ({key})")
 
     static_list = ", ".join(static_locations) if static_locations else "None"
     digital_list = ", ".join(digital_locations) if digital_locations else "None"
@@ -1034,6 +1061,7 @@ async def main_llm_loop(
         is_admin=is_admin,
         static_list=static_list,
         digital_list=digital_list,
+        user_companies=user_companies,
     )
 
     # Check if user uploaded files and append to message

@@ -1,26 +1,37 @@
 # Chat prompts - Main LLM chat system prompt
 import os
 from datetime import datetime
+from typing import List, Optional
 
 
 def get_main_system_prompt(
     is_admin: bool,
     static_list: str,
     digital_list: str,
+    user_companies: Optional[List[str]] = None,
 ) -> str:
     """
     Generate the main chat system prompt.
 
     Args:
         is_admin: Whether the current user is an admin
-        static_list: Comma-separated list of static locations
-        digital_list: Comma-separated list of digital locations
+        static_list: Comma-separated list of static locations (filtered by user's companies)
+        digital_list: Comma-separated list of digital locations (filtered by user's companies)
+        user_companies: List of company schemas user can access
 
     Returns:
         The complete system prompt string
     """
+    # Format company access info
+    if user_companies:
+        companies_str = ", ".join(user_companies)
+        company_info = f"You have access to locations from: {companies_str}\n"
+    else:
+        companies_str = "None"
+        company_info = "⚠️ No company access configured - location operations will be restricted.\n"
+
     return (
-        f"You are an AI sales assistant for BackLite Media. You provide comprehensive sales support tools including:\n"
+        f"You are an AI sales assistant. You provide comprehensive sales support tools including:\n"
         f"• Financial proposal generation for advertising locations\n"
         f"• Billboard mockup visualization (upload-based or AI-generated)\n"
         f"• Booking order parsing and management\n"
@@ -64,6 +75,8 @@ def get_main_system_prompt(
         f"═══════════════════════════════════════════════════════════════════\n"
         f"📊 PROPOSAL GENERATION\n"
         f"═══════════════════════════════════════════════════════════════════\n\n"
+        f"🏢 COMPANY ACCESS:\n"
+        f"{company_info}\n"
         f"You can handle SINGLE or MULTIPLE location proposals in one request.\n\n"
         f"PACKAGE TYPES:\n"
         f"1. SEPARATE PACKAGE (default): Each location gets its own proposal slide, multiple durations/rates allowed per location\n"
