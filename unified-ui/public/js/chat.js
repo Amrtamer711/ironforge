@@ -478,10 +478,23 @@ const Chat = {
               // Handle files returned from backend (proposals, mockups, etc.)
               this.appendFiles(msgId, parsed.files);
               filesReceived = true;
+              // Check if any file has a comment to display
+              for (const f of parsed.files) {
+                if (f.comment && !fullContent) {
+                  fullContent = f.comment;
+                  this.updateMessage(msgId, fullContent);
+                  break;
+                }
+              }
             } else if (parsed.type === 'file' && parsed.file) {
               // Single file upload event
               this.appendFiles(msgId, [parsed.file]);
               filesReceived = true;
+              // Display file comment as message content (e.g., "Billboard Mockup Generated...")
+              if (parsed.file.comment && !fullContent) {
+                fullContent = parsed.file.comment;
+                this.updateMessage(msgId, fullContent);
+              }
             } else if (parsed.files) {
               // Also check for files in final response
               this.appendFiles(msgId, parsed.files);
