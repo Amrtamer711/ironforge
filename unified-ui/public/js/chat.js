@@ -303,13 +303,28 @@ const Chat = {
     // Hide welcome screen
     this.hideWelcome();
 
-    // Add user message (with file indicator if applicable)
-    let displayMessage = message;
-    if (fileToSend) {
-      const fileIndicator = `[Attached: ${fileToSend.name}]`;
-      displayMessage = message ? `${message}\n${fileIndicator}` : fileIndicator;
+    // Add user message
+    const userMsgId = this.addMessage('user', message || '');
+
+    // If file attached, render it inline (not as text)
+    if (fileToSend && userMsgId) {
+      // Create a local URL for preview
+      const localUrl = URL.createObjectURL(fileToSend);
+      this.appendFiles(userMsgId, [{
+        file_id: `local-${Date.now()}`,
+        filename: fileToSend.name,
+        url: localUrl,
+      }]);
+
+      // If no text message, hide the empty bubble
+      if (!message) {
+        const msgEl = document.getElementById(userMsgId);
+        if (msgEl) {
+          const bubble = msgEl.querySelector('.chat-msg-bubble');
+          if (bubble) bubble.style.display = 'none';
+        }
+      }
     }
-    this.addMessage('user', displayMessage);
 
     // Add assistant message placeholder
     const assistantMsgId = this.addMessage('assistant', '', true);
