@@ -4,7 +4,7 @@ import shutil
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from pptx import Presentation
 from pypdf import PdfReader, PdfWriter
@@ -67,7 +67,7 @@ def _extract_pages_from_pdf(pdf_path: str, pages: list[int]) -> str:
 
 
 
-def _get_location_info_for_intro_outro(proposals_data: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+def _get_location_info_for_intro_outro(proposals_data: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Find a suitable location for intro/outro slides based on series."""
     logger = config.logger
 
@@ -83,7 +83,7 @@ def _get_location_info_for_intro_outro(proposals_data: list[dict[str, Any]]) -> 
         matched_key = config.get_location_key_from_display_name(location)
         if not matched_key:
             # Try old matching logic
-            for key in mapping.keys():
+            for key in mapping:
                 if key in location or location in key:
                     matched_key = key
                     break
@@ -119,7 +119,7 @@ def _get_location_info_for_intro_outro(proposals_data: list[dict[str, Any]]) -> 
         matched_key = config.get_location_key_from_display_name(first_location)
         if not matched_key:
             # Try old matching logic
-            for key in mapping.keys():
+            for key in mapping:
                 if key in first_location or first_location in key:
                     matched_key = key
                     break
@@ -240,7 +240,7 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
         if not matched_key:
             logger.info(f"[COMBINED] Available mappings: {list(mapping.keys())}")
 
-            for key in mapping.keys():
+            for key in mapping:
                 if key in location or location in key:
                     matched_key = key
                     logger.info(f"[COMBINED] Matched '{location}' to '{key}'")
@@ -545,7 +545,7 @@ async def process_proposals(
         if not matched_key:
             logger.info(f"[PROCESS] Available location mappings: {list(mapping.keys())}")
 
-            for key in mapping.keys():
+            for key in mapping:
                 if key in location or location in key:
                     matched_key = key
                     logger.info(f"[PROCESS] Matched '{location}' to '{key}'")

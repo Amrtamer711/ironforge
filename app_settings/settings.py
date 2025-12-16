@@ -15,7 +15,7 @@ Usage:
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -53,11 +53,11 @@ class Settings(BaseSettings):
     # PATHS
     # =========================================================================
 
-    data_dir: Optional[str] = Field(
+    data_dir: str | None = Field(
         default=None,
         description="Base directory for persistent data (auto-detected if not set)",
     )
-    templates_dir: Optional[str] = Field(
+    templates_dir: str | None = Field(
         default=None,
         description="Directory containing location templates",
     )
@@ -70,7 +70,7 @@ class Settings(BaseSettings):
         default="sqlite",
         description="Database backend to use",
     )
-    database_url: Optional[str] = Field(
+    database_url: str | None = Field(
         default=None,
         description="Database connection URL (for direct DB access)",
     )
@@ -80,43 +80,43 @@ class Settings(BaseSettings):
     # =========================================================================
 
     # Development
-    salesbot_dev_supabase_url: Optional[str] = Field(
+    salesbot_dev_supabase_url: str | None = Field(
         default=None,
         description="Sales Bot DEV Supabase project URL",
     )
-    salesbot_dev_supabase_anon_key: Optional[str] = Field(
+    salesbot_dev_supabase_anon_key: str | None = Field(
         default=None,
         description="Sales Bot DEV Supabase anon key",
     )
-    salesbot_dev_supabase_service_role_key: Optional[str] = Field(
+    salesbot_dev_supabase_service_role_key: str | None = Field(
         default=None,
         description="Sales Bot DEV Supabase service role key",
     )
 
     # Production
-    salesbot_prod_supabase_url: Optional[str] = Field(
+    salesbot_prod_supabase_url: str | None = Field(
         default=None,
         description="Sales Bot PROD Supabase project URL",
     )
-    salesbot_prod_supabase_anon_key: Optional[str] = Field(
+    salesbot_prod_supabase_anon_key: str | None = Field(
         default=None,
         description="Sales Bot PROD Supabase anon key",
     )
-    salesbot_prod_supabase_service_role_key: Optional[str] = Field(
+    salesbot_prod_supabase_service_role_key: str | None = Field(
         default=None,
         description="Sales Bot PROD Supabase service role key",
     )
 
     # Legacy single-project config (backwards compatibility)
-    supabase_url: Optional[str] = Field(
+    supabase_url: str | None = Field(
         default=None,
         description="Supabase project URL (legacy, use SALESBOT_*_SUPABASE_URL instead)",
     )
-    supabase_service_key: Optional[str] = Field(
+    supabase_service_key: str | None = Field(
         default=None,
         description="Supabase service role key (legacy)",
     )
-    supabase_jwt_secret: Optional[str] = Field(
+    supabase_jwt_secret: str | None = Field(
         default=None,
         description="Supabase JWT secret for token validation",
     )
@@ -127,7 +127,7 @@ class Settings(BaseSettings):
     # UI Supabase URL/keys are managed by unified-ui (Node.js service).
     # =========================================================================
 
-    ui_jwt_secret: Optional[str] = Field(
+    ui_jwt_secret: str | None = Field(
         default=None,
         description="JWT secret from UI's Supabase project (for cross-service auth)",
     )
@@ -140,7 +140,7 @@ class Settings(BaseSettings):
         default="local",
         description="Authentication provider to use",
     )
-    jwt_secret: Optional[str] = Field(
+    jwt_secret: str | None = Field(
         default=None,
         description="JWT secret for token signing (falls back to supabase_jwt_secret)",
     )
@@ -159,13 +159,13 @@ class Settings(BaseSettings):
     )
 
     # OpenAI
-    openai_api_key: Optional[str] = Field(
+    openai_api_key: str | None = Field(
         default=None,
         description="OpenAI API key",
     )
 
     # Google
-    google_api_key: Optional[str] = Field(
+    google_api_key: str | None = Field(
         default=None,
         description="Google AI API key",
     )
@@ -174,11 +174,11 @@ class Settings(BaseSettings):
     # SLACK
     # =========================================================================
 
-    slack_bot_token: Optional[str] = Field(
+    slack_bot_token: str | None = Field(
         default=None,
         description="Slack bot OAuth token",
     )
-    slack_signing_secret: Optional[str] = Field(
+    slack_signing_secret: str | None = Field(
         default=None,
         description="Slack request signing secret",
     )
@@ -193,15 +193,15 @@ class Settings(BaseSettings):
     )
 
     # AWS S3 (optional)
-    aws_access_key_id: Optional[str] = Field(
+    aws_access_key_id: str | None = Field(
         default=None,
         description="AWS access key ID",
     )
-    aws_secret_access_key: Optional[str] = Field(
+    aws_secret_access_key: str | None = Field(
         default=None,
         description="AWS secret access key",
     )
-    aws_s3_bucket: Optional[str] = Field(
+    aws_s3_bucket: str | None = Field(
         default=None,
         description="AWS S3 bucket name",
     )
@@ -218,7 +218,7 @@ class Settings(BaseSettings):
         default="memory",
         description="Cache backend: memory (single instance) or redis (distributed)",
     )
-    cache_default_ttl: Optional[int] = Field(
+    cache_default_ttl: int | None = Field(
         default=300,
         description="Default cache TTL in seconds (None for no expiry)",
     )
@@ -231,7 +231,7 @@ class Settings(BaseSettings):
     # REDIS
     # =========================================================================
 
-    redis_url: Optional[str] = Field(
+    redis_url: str | None = Field(
         default=None,
         description="Redis connection URL (e.g., redis://localhost:6379)",
     )
@@ -292,7 +292,7 @@ class Settings(BaseSettings):
     # PROXY SECURITY
     # =========================================================================
 
-    proxy_secret: Optional[str] = Field(
+    proxy_secret: str | None = Field(
         default=None,
         description="Shared secret for trusted proxy communication (unified-ui -> proposal-bot)",
     )
@@ -327,7 +327,7 @@ class Settings(BaseSettings):
     # EXTERNAL URLS
     # =========================================================================
 
-    render_external_url: Optional[str] = Field(
+    render_external_url: str | None = Field(
         default=None,
         description="External URL for render service (mockup generation)",
     )
@@ -354,7 +354,7 @@ class Settings(BaseSettings):
     # COSTS / ADMIN
     # =========================================================================
 
-    costs_clear_auth_code: Optional[str] = Field(
+    costs_clear_auth_code: str | None = Field(
         default=None,
         description="Authorization code for clearing AI costs data",
     )
@@ -406,13 +406,13 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
     @property
-    def effective_jwt_secret(self) -> Optional[str]:
+    def effective_jwt_secret(self) -> str | None:
         """Get the JWT secret for validating UI tokens."""
         # Prefer UI JWT secret (for cross-service auth), fall back to legacy
         return self.ui_jwt_secret or self.jwt_secret or self.supabase_jwt_secret
 
     @property
-    def active_supabase_url(self) -> Optional[str]:
+    def active_supabase_url(self) -> str | None:
         """Get the active Supabase URL based on ENVIRONMENT setting."""
         if self.environment == "production":
             return self.salesbot_prod_supabase_url or self.supabase_url
@@ -422,7 +422,7 @@ class Settings(BaseSettings):
         return None
 
     @property
-    def active_supabase_anon_key(self) -> Optional[str]:
+    def active_supabase_anon_key(self) -> str | None:
         """Get the active Supabase anon key based on ENVIRONMENT setting."""
         if self.environment == "production":
             return self.salesbot_prod_supabase_anon_key
@@ -431,7 +431,7 @@ class Settings(BaseSettings):
         return None
 
     @property
-    def active_supabase_service_key(self) -> Optional[str]:
+    def active_supabase_service_key(self) -> str | None:
         """Get the active Supabase service role key based on ENVIRONMENT setting."""
         if self.environment == "production":
             return self.salesbot_prod_supabase_service_role_key or self.supabase_service_key

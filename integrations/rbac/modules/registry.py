@@ -7,7 +7,6 @@ Provides a central registry for modules to register their permissions.
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
 
 from integrations.rbac.base import Permission
 
@@ -88,7 +87,7 @@ def unregister_module(module_name: str) -> bool:
     return False
 
 
-def get_module(module_name: str) -> Optional[ModuleDefinition]:
+def get_module(module_name: str) -> ModuleDefinition | None:
     """Get a registered module by name."""
     return _registered_modules.get(module_name)
 

@@ -8,7 +8,6 @@ preventing scattered gc.collect() calls throughout the codebase.
 import gc
 import logging
 import os
-from typing import Optional
 
 import psutil
 
@@ -31,7 +30,7 @@ def get_memory_usage() -> dict:
 
 
 def cleanup_memory(
-    context: Optional[str] = None,
+    context: str | None = None,
     aggressive: bool = False,
     log_stats: bool = True,
 ) -> dict:
@@ -105,7 +104,7 @@ def _try_malloc_trim(log_prefix: str = "[MEMORY]") -> bool:
 def check_memory_threshold(
     threshold_mb: float = 1000.0,
     auto_cleanup: bool = True,
-    context: Optional[str] = None,
+    context: str | None = None,
 ) -> dict:
     """
     Check if memory usage exceeds threshold and optionally trigger cleanup.

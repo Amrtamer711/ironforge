@@ -17,7 +17,7 @@ RBAC (Role-Based Access Control) service for unified-ui.
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from backend.config import get_settings
 from backend.services.supabase_client import get_supabase
@@ -73,9 +73,9 @@ class TeamInfo:
     """Team membership info."""
     id: int
     name: str
-    display_name: Optional[str]
+    display_name: str | None
     role: str  # 'member' or 'leader'
-    parent_team_id: Optional[int]
+    parent_team_id: int | None
 
 
 @dataclass
@@ -83,7 +83,7 @@ class PermissionSetInfo:
     """Permission set assignment info."""
     id: int
     name: str
-    expires_at: Optional[str]
+    expires_at: str | None
 
 
 @dataclass
@@ -93,7 +93,7 @@ class SharingRuleInfo:
     name: str
     object_type: str
     share_from_type: str
-    share_from_id: Optional[str]
+    share_from_id: str | None
     access_level: str
 
 
@@ -102,8 +102,8 @@ class SharedRecordInfo:
     """Shared record info."""
     record_id: str
     access_level: str  # 'read', 'read_write', 'full'
-    shared_by: Optional[str]
-    reason: Optional[str]
+    shared_by: str | None
+    reason: str | None
 
 
 @dataclass
@@ -121,7 +121,7 @@ class RBACContext:
     # Level 3: Teams
     teams: list[TeamInfo] = field(default_factory=list)
     # Level 3: Hierarchy
-    manager_id: Optional[str] = None
+    manager_id: str | None = None
     subordinate_ids: list[str] = field(default_factory=list)
     # Level 4: Sharing
     sharing_rules: list[SharingRuleInfo] = field(default_factory=list)
@@ -231,7 +231,7 @@ async def get_user_record_shares(
 # MAIN RBAC FUNCTION
 # =============================================================================
 
-async def get_user_rbac_data(user_id: str, use_cache: bool = True) -> Optional[RBACContext]:
+async def get_user_rbac_data(user_id: str, use_cache: bool = True) -> RBACContext | None:
     """
     Fetch complete RBAC context for a user.
 
@@ -312,7 +312,7 @@ async def get_user_rbac_data(user_id: str, use_cache: bool = True) -> Optional[R
         # =====================================================================
         # LEVEL 2: Permission Sets (with expiration check) - server.js:237-274
         # =====================================================================
-        now = datetime.utcnow().isoformat()
+        datetime.utcnow().isoformat()
         perm_sets_response = (
             supabase.table("user_permission_sets")
             .select("permission_set_id, expires_at, permission_sets(id, name, is_active)")

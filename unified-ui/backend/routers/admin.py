@@ -16,10 +16,11 @@ Admin router for unified-ui.
 8. GET /api/admin/teams - Get available teams
 """
 
+import contextlib
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
@@ -39,19 +40,19 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 class CreateUserRequest(BaseModel):
     email: EmailStr
-    name: Optional[str] = None
-    profile_name: Optional[str] = None
-    team_id: Optional[int] = None
+    name: str | None = None
+    profile_name: str | None = None
+    team_id: int | None = None
 
 
 class ApproveUserRequest(BaseModel):
-    profile_name: Optional[str] = None
+    profile_name: str | None = None
 
 
 class UpdateUserRequest(BaseModel):
-    profile_name: Optional[str] = None
-    name: Optional[str] = None
-    team_id: Optional[int] = None
+    profile_name: str | None = None
+    name: str | None = None
+    team_id: int | None = None
 
 
 # =============================================================================
@@ -293,7 +294,7 @@ async def approve_user(
         supabase.table("users").update(update_data).eq("id", user_id).execute()
 
         # server.js:1730-1741 - Audit log
-        try:
+        with contextlib.suppress(Exception):
             supabase.table("audit_log").insert({
                 "user_id": user.id,
                 "user_email": user.email,
@@ -305,8 +306,6 @@ async def approve_user(
                 "details": {"profile_name": request.profile_name},
                 "success": True
             }).execute()
-        except Exception:
-            pass
 
         logger.info(f"[UI Admin] User approved: {target_user['email']} by {user.email}")
 
@@ -361,13 +360,11 @@ async def deactivate_user(
 
         # server.js:1786-1788 - Force logout the user
         invalidate_rbac_cache(user_id)
-        try:
+        with contextlib.suppress(Exception):
             supabase.auth.admin.sign_out(user_id)
-        except Exception:
-            pass
 
         # server.js:1790-1800 - Audit log
-        try:
+        with contextlib.suppress(Exception):
             supabase.table("audit_log").insert({
                 "user_id": user.id,
                 "user_email": user.email,
@@ -378,8 +375,6 @@ async def deactivate_user(
                 "target_user_id": user_id,
                 "success": True
             }).execute()
-        except Exception:
-            pass
 
         logger.info(f"[UI Admin] User deactivated: {target_user['email']} by {user.email}")
 
@@ -454,7 +449,7 @@ async def update_user(
         invalidate_rbac_cache(user_id)
 
         # server.js:1867-1878 - Audit log
-        try:
+        with contextlib.suppress(Exception):
             supabase.table("audit_log").insert({
                 "user_id": user.id,
                 "user_email": user.email,
@@ -470,8 +465,6 @@ async def update_user(
                 },
                 "success": True
             }).execute()
-        except Exception:
-            pass
 
         logger.info(f"[UI Admin] User updated: {user_id} by {user.email}")
         return {"success": True}

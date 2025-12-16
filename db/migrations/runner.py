@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from utils.logging import get_logger
 
@@ -200,7 +200,7 @@ class MigrationRunner:
             ),
         }
 
-    def migrate(self, target_version: Optional[str] = None) -> tuple[int, list[str]]:
+    def migrate(self, target_version: str | None = None) -> tuple[int, list[str]]:
         """
         Run pending migrations.
 
@@ -328,7 +328,7 @@ class MigrationRunner:
 
 
 # Global runner instance
-_runner: Optional[MigrationRunner] = None
+_runner: MigrationRunner | None = None
 
 
 def get_migration_runner() -> MigrationRunner:
@@ -343,7 +343,7 @@ def get_migration_runner() -> MigrationRunner:
     return _runner
 
 
-def run_migrations(target_version: Optional[str] = None) -> tuple[int, list[str]]:
+def run_migrations(target_version: str | None = None) -> tuple[int, list[str]]:
     """Run pending migrations (convenience function)."""
     runner = get_migration_runner()
     return runner.migrate(target_version)

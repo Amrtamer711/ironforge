@@ -21,7 +21,7 @@ Image generation: gpt-image-1 via images.generate()
 
 import base64
 import logging
-from typing import Any, Optional, Union
+from typing import Any
 
 from openai import AsyncOpenAI
 
@@ -106,16 +106,16 @@ class OpenAIProvider(LLMProvider):
     async def complete(
         self,
         messages: list[LLMMessage],
-        model: Optional[str] = None,
-        tools: Optional[list[ToolDefinition]] = None,
-        tool_choice: Optional[str] = None,
-        json_schema: Optional[JSONSchema] = None,
-        reasoning: Optional[ReasoningEffort] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        model: str | None = None,
+        tools: list[ToolDefinition] | None = None,
+        tool_choice: str | None = None,
+        json_schema: JSONSchema | None = None,
+        reasoning: ReasoningEffort | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         store: bool = False,
-        cache_key: Optional[str] = None,
-        cache_retention: Optional[str] = None,
+        cache_key: str | None = None,
+        cache_retention: str | None = None,
     ) -> LLMResponse:
         """
         Generate completion using OpenAI's responses.create API.
@@ -307,7 +307,7 @@ class OpenAIProvider(LLMProvider):
     # ========================================================================
 
     def _convert_tools(
-        self, tools: list[Union[ToolDefinition, RawTool]]
+        self, tools: list[ToolDefinition | RawTool]
     ) -> list[dict[str, Any]]:
         """Convert tool definitions to OpenAI format."""
         result = []

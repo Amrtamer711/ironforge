@@ -36,7 +36,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from utils.logging import get_logger
 from utils.time import get_uae_time
@@ -61,13 +61,13 @@ class JobStatus:
     name: str
     state: JobState
     created_at: datetime
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     result: Any = None
-    error: Optional[str] = None
-    error_traceback: Optional[str] = None
-    progress: Optional[float] = None  # 0.0 to 1.0
-    progress_message: Optional[str] = None
+    error: str | None = None
+    error_traceback: str | None = None
+    progress: float | None = None  # 0.0 to 1.0
+    progress_message: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
@@ -81,7 +81,7 @@ class JobStatus:
         )
 
     @property
-    def duration_seconds(self) -> Optional[float]:
+    def duration_seconds(self) -> float | None:
         """Get job duration in seconds."""
         if not self.started_at:
             return None
@@ -114,20 +114,20 @@ class Job:
     func: Callable
     args: tuple
     kwargs: dict
-    timeout: Optional[float]
+    timeout: float | None
     created_at: datetime
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     state: JobState = JobState.PENDING
     result: Any = None
-    error: Optional[str] = None
-    error_traceback: Optional[str] = None
-    progress: Optional[float] = None
-    progress_message: Optional[str] = None
+    error: str | None = None
+    error_traceback: str | None = None
+    progress: float | None = None
+    progress_message: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     started_event: asyncio.Event = field(default_factory=asyncio.Event)
     completed_event: asyncio.Event = field(default_factory=asyncio.Event)
-    _task: Optional[asyncio.Task] = None
+    _task: asyncio.Task | None = None
 
     def get_status(self) -> JobStatus:
         """Get current job status."""
@@ -192,9 +192,9 @@ class JobQueue:
         self,
         func: Callable,
         *args,
-        name: Optional[str] = None,
-        timeout: Optional[float] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        name: str | None = None,
+        timeout: float | None = None,
+        metadata: dict[str, Any] | None = None,
         **kwargs,
     ) -> str:
         """
@@ -332,7 +332,7 @@ class JobQueue:
             # Start next jobs
             await self._process_queue()
 
-    def get_job_status(self, job_id: str) -> Optional[JobStatus]:
+    def get_job_status(self, job_id: str) -> JobStatus | None:
         """Get status of a job by ID."""
         job = self._jobs.get(job_id)
         if not job:
@@ -365,7 +365,7 @@ class JobQueue:
     async def wait_for_job(
         self,
         job_id: str,
-        timeout: Optional[float] = None,
+        timeout: float | None = None,
     ) -> Any:
         """
         Wait for a job to complete and return its result.
@@ -431,7 +431,7 @@ class JobQueue:
         self,
         job_id: str,
         progress: float,
-        message: Optional[str] = None,
+        message: str | None = None,
     ) -> bool:
         """
         Update job progress (call from within job function).
@@ -454,7 +454,7 @@ class JobQueue:
 
     def list_jobs(
         self,
-        state: Optional[JobState] = None,
+        state: JobState | None = None,
         limit: int = 100,
     ) -> list[JobStatus]:
         """
@@ -494,7 +494,7 @@ class JobQueue:
 
 
 # Global queue instance
-_queue: Optional[JobQueue] = None
+_queue: JobQueue | None = None
 
 
 def get_job_queue() -> JobQueue:

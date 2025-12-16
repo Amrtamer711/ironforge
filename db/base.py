@@ -5,13 +5,13 @@ Each backend implements their own storage-specific syntax.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Optional, Union
+from typing import Any
 
 
 @dataclass
 class ProposalLog:
     """Proposal log entry."""
-    id: Optional[int] = None
+    id: int | None = None
     submitted_by: str = ""
     client_name: str = ""
     date_generated: str = ""
@@ -30,36 +30,36 @@ class BookingOrder:
     parsed_excel_path: str
     parsed_at: str
     # Optional fields
-    id: Optional[int] = None
-    original_file_size: Optional[int] = None
-    original_filename: Optional[str] = None
-    bo_number: Optional[str] = None
-    bo_date: Optional[str] = None
-    client: Optional[str] = None
-    agency: Optional[str] = None
-    brand_campaign: Optional[str] = None
-    category: Optional[str] = None
-    asset: Optional[str] = None
-    net_pre_vat: Optional[float] = None
-    vat_value: Optional[float] = None
-    gross_amount: Optional[float] = None
-    sla_pct: Optional[float] = None
-    payment_terms: Optional[str] = None
-    sales_person: Optional[str] = None
-    commission_pct: Optional[float] = None
-    notes: Optional[str] = None
-    locations: Optional[list[dict]] = None
-    extraction_method: Optional[str] = None
-    extraction_confidence: Optional[str] = None
-    warnings: Optional[list[str]] = None
-    missing_required: Optional[list[str]] = None
-    vat_calc: Optional[float] = None
-    gross_calc: Optional[float] = None
-    sla_deduction: Optional[float] = None
-    net_excl_sla_calc: Optional[float] = None
-    parsed_by: Optional[str] = None
-    source_classification: Optional[str] = None
-    classification_confidence: Optional[str] = None
+    id: int | None = None
+    original_file_size: int | None = None
+    original_filename: str | None = None
+    bo_number: str | None = None
+    bo_date: str | None = None
+    client: str | None = None
+    agency: str | None = None
+    brand_campaign: str | None = None
+    category: str | None = None
+    asset: str | None = None
+    net_pre_vat: float | None = None
+    vat_value: float | None = None
+    gross_amount: float | None = None
+    sla_pct: float | None = None
+    payment_terms: str | None = None
+    sales_person: str | None = None
+    commission_pct: float | None = None
+    notes: str | None = None
+    locations: list[dict] | None = None
+    extraction_method: str | None = None
+    extraction_confidence: str | None = None
+    warnings: list[str] | None = None
+    missing_required: list[str] | None = None
+    vat_calc: float | None = None
+    gross_calc: float | None = None
+    sla_deduction: float | None = None
+    net_excl_sla_calc: float | None = None
+    parsed_by: str | None = None
+    source_classification: str | None = None
+    classification_confidence: str | None = None
     needs_review: bool = False
 
 
@@ -71,10 +71,10 @@ class MockupFrame:
     frames_data: list[dict]
     time_of_day: str = "day"
     finish: str = "gold"
-    created_at: Optional[str] = None
-    created_by: Optional[str] = None
-    config: Optional[dict] = None
-    id: Optional[int] = None
+    created_at: str | None = None
+    created_by: str | None = None
+    config: dict | None = None
+    id: int | None = None
 
 
 @dataclass
@@ -85,17 +85,17 @@ class AICostEntry:
     input_tokens: int
     output_tokens: int
     total_cost: float
-    timestamp: Optional[str] = None
-    workflow: Optional[str] = None
-    user_id: Optional[str] = None
-    context: Optional[str] = None
+    timestamp: str | None = None
+    workflow: str | None = None
+    user_id: str | None = None
+    context: str | None = None
     reasoning_tokens: int = 0
     cached_input_tokens: int = 0
     input_cost: float = 0.0
     output_cost: float = 0.0
     reasoning_cost: float = 0.0
-    metadata_json: Optional[str] = None
-    id: Optional[int] = None
+    metadata_json: str | None = None
+    id: int | None = None
 
 
 class DatabaseBackend(ABC):
@@ -129,7 +129,7 @@ class DatabaseBackend(ABC):
         package_type: str,
         locations: str,
         total_amount: str,
-        date_generated: Optional[str] = None,
+        date_generated: str | None = None,
     ) -> None:
         """Log a proposal generation."""
         pass
@@ -139,8 +139,8 @@ class DatabaseBackend(ABC):
         self,
         limit: int = 50,
         offset: int = 0,
-        user_ids: Optional[Union[str, list[str]]] = None,
-        client_name: Optional[str] = None,
+        user_ids: str | list[str] | None = None,
+        client_name: str | None = None,
     ) -> list[dict[str, Any]]:
         """
         Get proposals with optional filtering.
@@ -157,7 +157,7 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_proposal_by_id(self, proposal_id: int) -> Optional[dict[str, Any]]:
+    def get_proposal_by_id(self, proposal_id: int) -> dict[str, Any] | None:
         """Get a single proposal by ID."""
         pass
 
@@ -196,12 +196,12 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_booking_order(self, bo_ref: str) -> Optional[dict[str, Any]]:
+    def get_booking_order(self, bo_ref: str) -> dict[str, Any] | None:
         """Get a booking order by backend reference."""
         pass
 
     @abstractmethod
-    def get_booking_order_by_number(self, bo_number: str) -> Optional[dict[str, Any]]:
+    def get_booking_order_by_number(self, bo_number: str) -> dict[str, Any] | None:
         """Get a booking order by user-facing BO number."""
         pass
 
@@ -235,7 +235,7 @@ class DatabaseBackend(ABC):
         self,
         location_key: str,
         company_schemas: list[str],
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Get a specific location by key from the user's accessible company schemas.
 
@@ -259,10 +259,10 @@ class DatabaseBackend(ABC):
         photo_filename: str,
         frames_data: list[dict],
         company_schema: str,
-        created_by: Optional[str] = None,
+        created_by: str | None = None,
         time_of_day: str = "day",
         finish: str = "gold",
-        config: Optional[dict] = None,
+        config: dict | None = None,
     ) -> str:
         """Save mockup frame data to company-specific schema. Returns the final filename."""
         pass
@@ -275,7 +275,7 @@ class DatabaseBackend(ABC):
         company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> Optional[list[dict]]:
+    ) -> list[dict] | None:
         """Get frame coordinates for a mockup photo from company-specific schema."""
         pass
 
@@ -287,7 +287,7 @@ class DatabaseBackend(ABC):
         company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """Get config for a mockup photo from company-specific schema."""
         pass
 
@@ -336,10 +336,10 @@ class DatabaseBackend(ABC):
         photo_used: str,
         creative_type: str,
         company_schema: str,
-        ai_prompt: Optional[str] = None,
+        ai_prompt: str | None = None,
         template_selected: bool = False,
         success: bool = True,
-        user_ip: Optional[str] = None,
+        user_ip: str | None = None,
     ) -> None:
         """Log a mockup generation event to company-specific schema."""
         pass
@@ -375,7 +375,7 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_bo_workflow(self, workflow_id: str) -> Optional[str]:
+    def get_bo_workflow(self, workflow_id: str) -> str | None:
         """Get a BO workflow by ID. Returns workflow_data JSON."""
         pass
 
@@ -405,12 +405,12 @@ class DatabaseBackend(ABC):
         output_cost: float,
         reasoning_cost: float,
         total_cost: float,
-        user_id: Optional[str] = None,
-        workflow: Optional[str] = None,
+        user_id: str | None = None,
+        workflow: str | None = None,
         cached_input_tokens: int = 0,
-        context: Optional[str] = None,
-        metadata_json: Optional[str] = None,
-        timestamp: Optional[str] = None,
+        context: str | None = None,
+        metadata_json: str | None = None,
+        timestamp: str | None = None,
     ) -> None:
         """Log an AI API cost entry."""
         pass
@@ -418,11 +418,11 @@ class DatabaseBackend(ABC):
     @abstractmethod
     def get_ai_costs_summary(
         self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        call_type: Optional[str] = None,
-        workflow: Optional[str] = None,
-        user_id: Optional[str] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        call_type: str | None = None,
+        workflow: str | None = None,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
         """Get AI costs summary with optional filters."""
         pass
@@ -441,10 +441,10 @@ class DatabaseBackend(ABC):
         self,
         user_id: str,
         email: str,
-        full_name: Optional[str] = None,
-        avatar_url: Optional[str] = None,
-        created_at: Optional[str] = None,
-        last_login: Optional[str] = None,
+        full_name: str | None = None,
+        avatar_url: str | None = None,
+        created_at: str | None = None,
+        last_login: str | None = None,
     ) -> bool:
         """
         Create or update a user.
@@ -463,12 +463,12 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_user_by_id(self, user_id: str) -> Optional[dict[str, Any]]:
+    def get_user_by_id(self, user_id: str) -> dict[str, Any] | None:
         """Get a user by ID."""
         pass
 
     @abstractmethod
-    def get_user_by_email(self, email: str) -> Optional[dict[str, Any]]:
+    def get_user_by_email(self, email: str) -> dict[str, Any] | None:
         """Get a user by email."""
         pass
 
@@ -487,9 +487,9 @@ class DatabaseBackend(ABC):
         name: str,
         resource: str,
         action: str,
-        description: Optional[str] = None,
-        created_at: Optional[str] = None,
-    ) -> Optional[str]:
+        description: str | None = None,
+        created_at: str | None = None,
+    ) -> str | None:
         """
         Create a permission.
 
@@ -509,12 +509,12 @@ class DatabaseBackend(ABC):
         key_prefix: str,
         name: str,
         scopes: list[str],
-        description: Optional[str] = None,
-        rate_limit: Optional[int] = None,
-        expires_at: Optional[str] = None,
-        created_by: Optional[str] = None,
-        metadata: Optional[dict] = None,
-    ) -> Optional[int]:
+        description: str | None = None,
+        rate_limit: int | None = None,
+        expires_at: str | None = None,
+        created_by: str | None = None,
+        metadata: dict | None = None,
+    ) -> int | None:
         """
         Create a new API key.
 
@@ -535,19 +535,19 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_api_key_by_hash(self, key_hash: str) -> Optional[dict[str, Any]]:
+    def get_api_key_by_hash(self, key_hash: str) -> dict[str, Any] | None:
         """Get API key info by hash."""
         pass
 
     @abstractmethod
-    def get_api_key_by_id(self, key_id: int) -> Optional[dict[str, Any]]:
+    def get_api_key_by_id(self, key_id: int) -> dict[str, Any] | None:
         """Get API key info by ID."""
         pass
 
     @abstractmethod
     def list_api_keys(
         self,
-        created_by: Optional[str] = None,
+        created_by: str | None = None,
         include_inactive: bool = False,
     ) -> list[dict[str, Any]]:
         """List all API keys, optionally filtered."""
@@ -557,12 +557,12 @@ class DatabaseBackend(ABC):
     def update_api_key(
         self,
         key_id: int,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        scopes: Optional[list[str]] = None,
-        rate_limit: Optional[int] = None,
-        is_active: Optional[bool] = None,
-        expires_at: Optional[str] = None,
+        name: str | None = None,
+        description: str | None = None,
+        scopes: list[str] | None = None,
+        rate_limit: int | None = None,
+        is_active: bool | None = None,
+        expires_at: str | None = None,
     ) -> bool:
         """Update an API key."""
         pass
@@ -603,13 +603,13 @@ class DatabaseBackend(ABC):
         api_key_id: int,
         endpoint: str,
         method: str,
-        status_code: Optional[int] = None,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        response_time_ms: Optional[int] = None,
-        request_size: Optional[int] = None,
-        response_size: Optional[int] = None,
-        timestamp: Optional[str] = None,
+        status_code: int | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        response_time_ms: int | None = None,
+        request_size: int | None = None,
+        response_size: int | None = None,
+        timestamp: str | None = None,
     ) -> None:
         """Log API key usage for auditing."""
         pass
@@ -617,9 +617,9 @@ class DatabaseBackend(ABC):
     @abstractmethod
     def get_api_key_usage_stats(
         self,
-        api_key_id: Optional[int] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        api_key_id: int | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> dict[str, Any]:
         """Get API key usage statistics."""
         pass
@@ -633,12 +633,12 @@ class DatabaseBackend(ABC):
         self,
         timestamp: str,
         action: str,
-        user_id: Optional[str] = None,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None,
-        details_json: Optional[str] = None,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        user_id: str | None = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        details_json: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> None:
         """
         Log an audit event.
@@ -658,12 +658,12 @@ class DatabaseBackend(ABC):
     @abstractmethod
     def query_audit_log(
         self,
-        user_id: Optional[str] = None,
-        action: Optional[str] = None,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        user_id: str | None = None,
+        action: str | None = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
@@ -694,7 +694,7 @@ class DatabaseBackend(ABC):
         self,
         user_id: str,
         messages: list[dict[str, Any]],
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> bool:
         """
         Save or update a user's chat session.
@@ -710,7 +710,7 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_chat_session(self, user_id: str) -> Optional[dict[str, Any]]:
+    def get_chat_session(self, user_id: str) -> dict[str, Any] | None:
         """
         Get a user's chat session.
 
@@ -749,14 +749,14 @@ class DatabaseBackend(ABC):
         storage_provider: str,
         storage_bucket: str,
         storage_key: str,
-        file_size: Optional[int] = None,
-        file_extension: Optional[str] = None,
-        file_hash: Optional[str] = None,
-        document_type: Optional[str] = None,
-        bo_id: Optional[int] = None,
-        proposal_id: Optional[int] = None,
-        metadata_json: Optional[dict[str, Any]] = None,
-    ) -> Optional[int]:
+        file_size: int | None = None,
+        file_extension: str | None = None,
+        file_hash: str | None = None,
+        document_type: str | None = None,
+        bo_id: int | None = None,
+        proposal_id: int | None = None,
+        metadata_json: dict[str, Any] | None = None,
+    ) -> int | None:
         """
         Create a new document record.
 
@@ -782,7 +782,7 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_document(self, file_id: str) -> Optional[dict[str, Any]]:
+    def get_document(self, file_id: str) -> dict[str, Any] | None:
         """
         Get a document by file_id.
 
@@ -795,7 +795,7 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_document_by_hash(self, file_hash: str) -> Optional[dict[str, Any]]:
+    def get_document_by_hash(self, file_hash: str) -> dict[str, Any] | None:
         """
         Get a document by file hash (for deduplication).
 
@@ -823,10 +823,10 @@ class DatabaseBackend(ABC):
     @abstractmethod
     def list_documents(
         self,
-        user_id: Optional[str] = None,
-        document_type: Optional[str] = None,
-        bo_id: Optional[int] = None,
-        proposal_id: Optional[int] = None,
+        user_id: str | None = None,
+        document_type: str | None = None,
+        bo_id: int | None = None,
+        proposal_id: int | None = None,
         include_deleted: bool = False,
         limit: int = 100,
         offset: int = 0,

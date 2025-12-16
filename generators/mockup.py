@@ -2,7 +2,6 @@ import logging
 import os
 import random
 from pathlib import Path
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -90,7 +89,7 @@ def save_location_photo(location_key: str, photo_filename: str, photo_data: byte
 
             # Run async tracking if we're in an event loop
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
                 # Create task with error handling callback
                 task = asyncio.create_task(_track_photo())
                 task.add_done_callback(lambda t: t.exception() if not t.cancelled() and t.exception() else None)
@@ -126,8 +125,8 @@ def get_random_location_photo(
     location_key: str,
     time_of_day: str = "all",
     finish: str = "all",
-    company_schemas: Optional[list[str]] = None,
-) -> Optional[tuple[str, str, str, Path]]:
+    company_schemas: list[str] | None = None,
+) -> tuple[str, str, str, Path] | None:
     """Get a random photo for a location that has a frame configured. Returns (photo_filename, time_of_day, finish, photo_path)."""
     from config import COMPANY_SCHEMAS
 
@@ -205,7 +204,7 @@ def get_random_location_photo(
 
 def is_portrait_location(
     location_key: str,
-    company_schemas: Optional[list[str]] = None,
+    company_schemas: list[str] | None = None,
 ) -> bool:
     """Check if a location has portrait orientation based on actual frame dimensions from database.
 
@@ -272,10 +271,10 @@ def is_portrait_location(
 async def generate_ai_creative(
     prompt: str,
     size: str = "1536x1024",
-    location_key: Optional[str] = None,
-    user_id: Optional[str] = None,
-    provider: Optional[str] = None
-) -> Optional[Path]:
+    location_key: str | None = None,
+    user_id: str | None = None,
+    provider: str | None = None
+) -> Path | None:
     """Generate a creative using AI image generation.
 
     Uses the unified LLMClient which supports multiple providers:
@@ -394,13 +393,13 @@ async def generate_ai_creative(
 def generate_mockup(
     location_key: str,
     creative_images: list[Path],
-    output_path: Optional[Path] = None,
-    specific_photo: Optional[str] = None,
+    output_path: Path | None = None,
+    specific_photo: str | None = None,
     time_of_day: str = "day",
     finish: str = "gold",
-    config_override: Optional[dict] = None,
-    company_schemas: Optional[list[str]] = None,
-) -> Optional[Path]:
+    config_override: dict | None = None,
+    company_schemas: list[str] | None = None,
+) -> Path | None:
     """
     Generate a mockup by warping creatives onto a location billboard.
 
@@ -595,7 +594,7 @@ def delete_location_photo(
                 )
 
             try:
-                loop = asyncio.get_running_loop()
+                asyncio.get_running_loop()
                 asyncio.create_task(_soft_delete())
             except RuntimeError:
                 pass

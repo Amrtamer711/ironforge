@@ -28,7 +28,7 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional, Union
+from typing import Any
 
 from utils.logging import get_request_id
 from utils.time import get_uae_time
@@ -110,14 +110,14 @@ class AuditEvent:
         request_id: Request ID for correlation
     """
     action: str
-    user_id: Optional[str] = None
-    resource_type: Optional[str] = None
-    resource_id: Optional[str] = None
+    user_id: str | None = None
+    resource_type: str | None = None
+    resource_id: str | None = None
     details: dict[str, Any] = field(default_factory=dict)
-    ip_address: Optional[str] = None
-    user_agent: Optional[str] = None
-    timestamp: Optional[str] = None
-    request_id: Optional[str] = None
+    ip_address: str | None = None
+    user_agent: str | None = None
+    timestamp: str | None = None
+    request_id: str | None = None
 
     def __post_init__(self):
         if self.timestamp is None:
@@ -178,7 +178,7 @@ class AuditLogger:
             self._db = db
         return self._db
 
-    def _extract_request_info(self, request) -> dict[str, Optional[str]]:
+    def _extract_request_info(self, request) -> dict[str, str | None]:
         """Extract IP address and user agent from a request object."""
         ip_address = None
         user_agent = None
@@ -203,14 +203,14 @@ class AuditLogger:
 
     async def log(
         self,
-        action: Union[str, AuditAction],
-        user_id: Optional[str] = None,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None,
-        details: Optional[dict[str, Any]] = None,
-        request: Optional[Any] = None,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        action: str | AuditAction,
+        user_id: str | None = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        request: Any | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> None:
         """
         Log an audit event.
@@ -273,14 +273,14 @@ class AuditLogger:
 
     def log_sync(
         self,
-        action: Union[str, AuditAction],
-        user_id: Optional[str] = None,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None,
-        details: Optional[dict[str, Any]] = None,
-        request: Optional[Any] = None,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        action: str | AuditAction,
+        user_id: str | None = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        details: dict[str, Any] | None = None,
+        request: Any | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> None:
         """
         Synchronous version of log() for non-async contexts.
@@ -322,12 +322,12 @@ class AuditLogger:
 
     async def query(
         self,
-        user_id: Optional[str] = None,
-        action: Optional[str] = None,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        user_id: str | None = None,
+        action: str | None = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
@@ -390,11 +390,11 @@ audit_logger = AuditLogger()
 
 
 def audit_action(
-    action: Union[str, AuditAction],
-    resource_type: Optional[str] = None,
-    get_resource_id: Optional[Callable] = None,
-    get_user_id: Optional[Callable] = None,
-    get_details: Optional[Callable] = None,
+    action: str | AuditAction,
+    resource_type: str | None = None,
+    get_resource_id: Callable | None = None,
+    get_user_id: Callable | None = None,
+    get_details: Callable | None = None,
 ):
     """
     Decorator to automatically log audit events for endpoint functions.

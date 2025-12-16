@@ -9,7 +9,7 @@ user messages are paired with their assistant responses via parent_id.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger("proposal-bot")
 
@@ -86,7 +86,7 @@ def _get_db():
 def save_chat_messages(
     user_id: str,
     messages: list[dict[str, Any]],
-    session_id: Optional[str] = None,
+    session_id: str | None = None,
 ) -> bool:
     """
     Save chat messages for a user to the database.
@@ -153,7 +153,7 @@ def clear_chat_messages(user_id: str) -> bool:
         return False
 
 
-def get_chat_session_info(user_id: str) -> Optional[dict[str, Any]]:
+def get_chat_session_info(user_id: str) -> dict[str, Any] | None:
     """
     Get chat session metadata without full messages.
 

@@ -4,7 +4,6 @@ Tool Router - Handles dispatching LLM function calls to appropriate handlers.
 
 import os
 from datetime import datetime
-from typing import Optional
 
 import config
 from core.proposals import process_proposals
@@ -17,7 +16,7 @@ from workflows.bo_parser import BookingOrderParser, sanitize_filename
 logger = config.logger
 
 
-def _validate_company_access(user_companies: Optional[list[str]]) -> tuple[bool, str]:
+def _validate_company_access(user_companies: list[str] | None) -> tuple[bool, str]:
     """
     Validate that user has company access for data operations.
 
@@ -42,7 +41,7 @@ def _validate_company_access(user_companies: Optional[list[str]]) -> tuple[bool,
 def _validate_location_access(
     location_key: str,
     user_companies: list[str],
-) -> tuple[bool, str, Optional[str]]:
+) -> tuple[bool, str, str | None]:
     """
     Validate that a specific location belongs to user's accessible companies.
 

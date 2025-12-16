@@ -17,7 +17,7 @@ Channel Identity router for unified-ui.
 
 import logging
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -37,11 +37,11 @@ router = APIRouter(prefix="/api/channel-identity", tags=["channel-identity"])
 class RecordInteractionRequest(BaseModel):
     provider: str
     provider_user_id: str
-    provider_team_id: Optional[str] = None
-    email: Optional[str] = None
-    display_name: Optional[str] = None
-    real_name: Optional[str] = None
-    avatar_url: Optional[str] = None
+    provider_team_id: str | None = None
+    email: str | None = None
+    display_name: str | None = None
+    real_name: str | None = None
+    avatar_url: str | None = None
 
 
 class LinkIdentityRequest(BaseModel):
@@ -52,7 +52,7 @@ class LinkIdentityRequest(BaseModel):
 class BlockIdentityRequest(BaseModel):
     provider_user_id: str
     blocked: bool
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 class UpdateSettingsRequest(BaseModel):
@@ -152,7 +152,7 @@ async def check_authorization(
 
 @router.get("/list")
 async def list_identities(
-    linked: Optional[str] = None,
+    linked: str | None = None,
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=100),
     user: AuthUser = Depends(require_profile("system_admin")),

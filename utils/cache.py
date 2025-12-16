@@ -37,7 +37,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Optional, TypeVar
+from typing import Any, TypeVar
 
 from utils.logging import get_logger
 
@@ -50,7 +50,7 @@ T = TypeVar("T")
 class CacheEntry:
     """A cached value with expiration."""
     value: Any
-    expires_at: Optional[float] = None  # Unix timestamp
+    expires_at: float | None = None  # Unix timestamp
 
     def is_expired(self) -> bool:
         """Check if entry has expired."""
@@ -81,7 +81,7 @@ class CacheBackend(ABC):
     """Abstract base for cache backends."""
 
     @abstractmethod
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         """Get a value from cache."""
         pass
 
@@ -90,7 +90,7 @@ class CacheBackend(ABC):
         self,
         key: str,
         value: Any,
-        ttl: Optional[int] = None,
+        ttl: int | None = None,
     ) -> bool:
         """Set a value in cache."""
         pass
@@ -127,7 +127,7 @@ class CacheBackend(ABC):
     async def set_many(
         self,
         mapping: dict[str, Any],
-        ttl: Optional[int] = None,
+        ttl: int | None = None,
     ) -> bool:
         """Set multiple values in cache."""
         success = True
@@ -162,7 +162,7 @@ class MemoryCacheBackend(CacheBackend):
     def __init__(
         self,
         max_size: int = 1000,
-        default_ttl: Optional[int] = None,
+        default_ttl: int | None = None,
         cleanup_interval: int = 60,
     ):
         self._cache: OrderedDict[str, CacheEntry] = OrderedDict()
@@ -199,7 +199,7 @@ class MemoryCacheBackend(CacheBackend):
             self._cache.popitem(last=False)
             self._stats.evictions += 1
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         """Get a value from cache."""
         async with self._lock:
             await self._maybe_cleanup()
@@ -224,7 +224,7 @@ class MemoryCacheBackend(CacheBackend):
         self,
         key: str,
         value: Any,
-        ttl: Optional[int] = None,
+        ttl: int | None = None,
     ) -> bool:
         """Set a value in cache."""
         async with self._lock:
@@ -307,14 +307,14 @@ class RedisCacheBackend(CacheBackend):
 
     def __init__(
         self,
-        redis_url: Optional[str] = None,
+        redis_url: str | None = None,
         key_prefix: str = "cache:",
-        default_ttl: Optional[int] = None,
+        default_ttl: int | None = None,
     ):
         self._redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379")
         self._key_prefix = key_prefix
         self._default_ttl = default_ttl
-        self._redis: Optional["redis.asyncio.Redis"] = None
+        self._redis: "redis.asyncio.Redis" | None = None
         self._stats = CacheStats()
 
     async def _get_redis(self) -> "redis.asyncio.Redis":
@@ -343,7 +343,7 @@ class RedisCacheBackend(CacheBackend):
         """Add prefix to key."""
         return f"{self._key_prefix}{key}"
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         """Get a value from cache."""
         try:
             redis_client = await self._get_redis()
@@ -366,7 +366,7 @@ class RedisCacheBackend(CacheBackend):
         self,
         key: str,
         value: Any,
-        ttl: Optional[int] = None,
+        ttl: int | None = None,
     ) -> bool:
         """Set a value in cache."""
         try:
@@ -481,7 +481,7 @@ class RedisCacheBackend(CacheBackend):
 
 
 # Global cache instance
-_cache: Optional[CacheBackend] = None
+_cache: CacheBackend | None = None
 
 
 def get_cache() -> CacheBackend:
@@ -530,9 +530,9 @@ def set_cache_backend(backend: CacheBackend) -> None:
 
 
 def cached(
-    ttl: Optional[int] = None,
+    ttl: int | None = None,
     key_prefix: str = "",
-    key_builder: Optional[Callable[..., str]] = None,
+    key_builder: Callable[..., str] | None = None,
 ):
     """
     Decorator for caching function results.

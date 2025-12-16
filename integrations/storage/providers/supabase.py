@@ -5,10 +5,11 @@ Implements StorageProvider using Supabase Storage (S3-compatible).
 Recommended for production deployments already using Supabase.
 """
 
+import contextlib
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, BinaryIO, Optional, Union
+from typing import Any, BinaryIO
 
 from integrations.storage.base import (
     DownloadResult,
@@ -47,8 +48,8 @@ class SupabaseStorageProvider(StorageProvider):
 
     def __init__(
         self,
-        supabase_url: Optional[str] = None,
-        supabase_key: Optional[str] = None,
+        supabase_url: str | None = None,
+        supabase_key: str | None = None,
     ):
         """
         Initialize Supabase storage provider.
@@ -111,7 +112,7 @@ class SupabaseStorageProvider(StorageProvider):
         self,
         bucket: str,
         key: str,
-        data: Optional[dict[str, Any]] = None,
+        data: dict[str, Any] | None = None,
     ) -> StorageFile:
         """Create StorageFile from Supabase response."""
         name = Path(key).name
@@ -124,15 +125,11 @@ class SupabaseStorageProvider(StorageProvider):
 
         if data:
             if "created_at" in data:
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     created_at = datetime.fromisoformat(data["created_at"].replace("Z", "+00:00"))
-                except (ValueError, TypeError):
-                    pass
             if "updated_at" in data:
-                try:
+                with contextlib.suppress(ValueError, TypeError):
                     updated_at = datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00"))
-                except (ValueError, TypeError):
-                    pass
 
         # Build public URL
         public_url = f"{self._url}/storage/v1/object/public/{bucket}/{key}"
@@ -157,9 +154,9 @@ class SupabaseStorageProvider(StorageProvider):
         self,
         bucket: str,
         key: str,
-        data: Union[bytes, BinaryIO],
-        content_type: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        data: bytes | BinaryIO,
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> UploadResult:
         """Upload data to Supabase Storage."""
         try:
@@ -175,7 +172,7 @@ class SupabaseStorageProvider(StorageProvider):
                 data = data.read()
 
             # Upload to Supabase Storage
-            response = client.storage.from_(bucket).upload(
+            client.storage.from_(bucket).upload(
                 path=key,
                 file=data,
                 file_options={
@@ -200,9 +197,9 @@ class SupabaseStorageProvider(StorageProvider):
         self,
         bucket: str,
         key: str,
-        local_path: Union[str, Path],
-        content_type: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        local_path: str | Path,
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> UploadResult:
         """Upload file from local path to Supabase Storage."""
         try:
@@ -252,7 +249,7 @@ class SupabaseStorageProvider(StorageProvider):
         self,
         bucket: str,
         key: str,
-        local_path: Union[str, Path],
+        local_path: str | Path,
     ) -> DownloadResult:
         """Download file to local filesystem."""
         try:
@@ -324,7 +321,7 @@ class SupabaseStorageProvider(StorageProvider):
         self,
         bucket: str,
         key: str,
-    ) -> Optional[StorageFile]:
+    ) -> StorageFile | None:
         """Get file metadata from Supabase Storage."""
         try:
             client = self._get_client()
@@ -351,9 +348,9 @@ class SupabaseStorageProvider(StorageProvider):
     async def list_files(
         self,
         bucket: str,
-        prefix: Optional[str] = None,
+        prefix: str | None = None,
         limit: int = 100,
-        continuation_token: Optional[str] = None,
+        continuation_token: str | None = None,
     ) -> ListResult:
         """List files in a Supabase Storage bucket."""
         try:
@@ -400,7 +397,7 @@ class SupabaseStorageProvider(StorageProvider):
     ) -> UploadResult:
         """Copy a file within Supabase Storage."""
         try:
-            client = self._get_client()
+            self._get_client()
             source_key = self.normalize_key(source_key)
             dest_key = self.normalize_key(dest_key)
 
@@ -458,7 +455,7 @@ class SupabaseStorageProvider(StorageProvider):
         self,
         bucket: str,
         key: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get public URL for a file (if bucket is public)."""
         try:
             client = self._get_client()
@@ -476,7 +473,7 @@ class SupabaseStorageProvider(StorageProvider):
         bucket: str,
         key: str,
         expires_in: int = 3600,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get signed URL for temporary access."""
         try:
             client = self._get_client()

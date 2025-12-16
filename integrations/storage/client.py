@@ -12,7 +12,7 @@ import logging
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, BinaryIO, Optional, Union
+from typing import Any, BinaryIO, Optional
 
 from integrations.storage.base import (
     DownloadResult,
@@ -67,7 +67,7 @@ class StorageClient:
         logger.info(f"[STORAGE] Client initialized with provider: {provider.name}")
 
     @classmethod
-    def from_config(cls, provider_name: Optional[str] = None) -> "StorageClient":
+    def from_config(cls, provider_name: str | None = None) -> "StorageClient":
         """
         Create a StorageClient using configuration from environment.
 
@@ -118,9 +118,9 @@ class StorageClient:
         self,
         bucket: str,
         key: str,
-        data: Union[bytes, BinaryIO],
-        content_type: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        data: bytes | BinaryIO,
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> UploadResult:
         """
         Upload a file to storage.
@@ -141,9 +141,9 @@ class StorageClient:
         self,
         bucket: str,
         key: str,
-        local_path: Union[str, Path],
-        content_type: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        local_path: str | Path,
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> UploadResult:
         """
         Upload a file from local filesystem.
@@ -185,7 +185,7 @@ class StorageClient:
         self,
         bucket: str,
         key: str,
-        local_path: Union[str, Path],
+        local_path: str | Path,
     ) -> DownloadResult:
         """
         Download a file to local filesystem.
@@ -242,7 +242,7 @@ class StorageClient:
         self,
         bucket: str,
         key: str,
-    ) -> Optional[StorageFile]:
+    ) -> StorageFile | None:
         """
         Get file metadata without downloading contents.
 
@@ -258,9 +258,9 @@ class StorageClient:
     async def list_files(
         self,
         bucket: str,
-        prefix: Optional[str] = None,
+        prefix: str | None = None,
         limit: int = 100,
-        continuation_token: Optional[str] = None,
+        continuation_token: str | None = None,
     ) -> ListResult:
         """
         List files in a bucket with optional prefix filtering.
@@ -326,7 +326,7 @@ class StorageClient:
         self,
         bucket: str,
         key: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Get a public URL for a file (if bucket is public).
 
@@ -344,7 +344,7 @@ class StorageClient:
         bucket: str,
         key: str,
         expires_in: int = 3600,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Get a presigned URL for temporary access.
 
@@ -446,8 +446,8 @@ def reset_storage_client() -> None:
 async def upload_file(
     bucket: str,
     key: str,
-    data: Union[bytes, BinaryIO],
-    content_type: Optional[str] = None,
+    data: bytes | BinaryIO,
+    content_type: str | None = None,
 ) -> UploadResult:
     """
     Convenience function to upload a file using the global client.
@@ -483,7 +483,7 @@ async def get_file_url(
     key: str,
     signed: bool = False,
     expires_in: int = 3600,
-) -> Optional[str]:
+) -> str | None:
     """
     Convenience function to get a file URL.
 
@@ -534,10 +534,10 @@ class TrackedFile:
     original_filename: str
     file_size: int
     file_type: str
-    file_hash: Optional[str] = None
-    url: Optional[str] = None
+    file_hash: str | None = None
+    url: str | None = None
     success: bool = True
-    error: Optional[str] = None
+    error: str | None = None
     is_duplicate: bool = False  # True if file already existed (same hash)
 
 
@@ -554,7 +554,7 @@ FILE_SIZE_LIMITS = {
 }
 
 
-def _validate_file_size(file_size: int, file_type: str) -> Optional[str]:
+def _validate_file_size(file_size: int, file_type: str) -> str | None:
     """
     Validate file size against limits.
 
@@ -576,7 +576,7 @@ def _validate_file_size(file_size: int, file_type: str) -> Optional[str]:
 async def _check_duplicate_by_hash(
     file_hash: str,
     table: str = "documents",
-) -> Optional[TrackedFile]:
+) -> TrackedFile | None:
     """
     Check if a file with the same hash already exists.
 
@@ -624,12 +624,12 @@ async def _check_duplicate_by_hash(
 
 
 async def store_bo_file(
-    data: Union[bytes, BinaryIO, Path],
+    data: bytes | BinaryIO | Path,
     filename: str,
     bo_id: int,
-    user_id: Optional[str] = None,
+    user_id: str | None = None,
     file_type: str = "bo_document",
-    content_type: Optional[str] = None,
+    content_type: str | None = None,
     skip_duplicate_check: bool = False,
 ) -> TrackedFile:
     """
@@ -666,7 +666,7 @@ async def store_bo_file(
         file_bytes = data.read_bytes()
         if not filename:
             filename = data.name
-    elif isinstance(data, (bytes, bytearray)):
+    elif isinstance(data, bytes | bytearray):
         file_bytes = bytes(data)
     else:
         # File-like object
@@ -778,14 +778,14 @@ async def store_bo_file(
 
 
 async def store_proposal_file(
-    data: Union[bytes, BinaryIO, Path],
+    data: bytes | BinaryIO | Path,
     filename: str,
     user_id: str,
-    proposal_id: Optional[int] = None,
-    client_name: Optional[str] = None,
-    locations_count: Optional[int] = None,
+    proposal_id: int | None = None,
+    client_name: str | None = None,
+    locations_count: int | None = None,
     file_type: str = "proposal_pptx",
-    content_type: Optional[str] = None,
+    content_type: str | None = None,
     skip_duplicate_check: bool = False,
 ) -> TrackedFile:
     """
@@ -818,7 +818,7 @@ async def store_proposal_file(
         file_bytes = data.read_bytes()
         if not filename:
             filename = data.name
-    elif isinstance(data, (bytes, bytearray)):
+    elif isinstance(data, bytes | bytearray):
         file_bytes = bytes(data)
     else:
         file_bytes = data.read()
@@ -934,15 +934,15 @@ async def store_proposal_file(
 
 
 async def store_mockup_file(
-    data: Union[bytes, BinaryIO, Path],
+    data: bytes | BinaryIO | Path,
     filename: str,
     location_key: str,
     time_of_day: str = "day",
     finish: str = "gold",
     file_type: str = "mockup_image",
-    content_type: Optional[str] = None,
-    user_id: Optional[str] = None,
-    mockup_usage_id: Optional[int] = None,
+    content_type: str | None = None,
+    user_id: str | None = None,
+    mockup_usage_id: int | None = None,
     skip_duplicate_check: bool = False,
 ) -> TrackedFile:
     """
@@ -974,7 +974,7 @@ async def store_mockup_file(
         file_bytes = data.read_bytes()
         if not filename:
             filename = data.name
-    elif isinstance(data, (bytes, bytearray)):
+    elif isinstance(data, bytes | bytearray):
         file_bytes = bytes(data)
     else:
         file_bytes = data.read()
@@ -1092,7 +1092,7 @@ async def store_mockup_file(
 async def get_tracked_file(
     file_id: str,
     table: str = "documents",
-) -> Optional[TrackedFile]:
+) -> TrackedFile | None:
     """
     Get a tracked file's info from database.
 
@@ -1142,7 +1142,7 @@ async def get_tracked_file(
 async def download_tracked_file(
     file_id: str,
     table: str = "documents",
-) -> Optional[bytes]:
+) -> bytes | None:
     """
     Download a tracked file's contents.
 

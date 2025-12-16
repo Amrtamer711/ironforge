@@ -30,14 +30,14 @@ Usage:
 import asyncio
 import logging
 import os
-from typing import Any, Optional
+from typing import Any
 
 import aiohttp
 
 logger = logging.getLogger("proposal-bot")
 
 # UI service URL - where channel identity APIs live
-_ui_service_url: Optional[str] = None
+_ui_service_url: str | None = None
 
 
 def _get_ui_url() -> str:
@@ -62,11 +62,11 @@ class ChannelIdentity:
     async def record(
         provider: str,
         provider_user_id: str,
-        provider_team_id: Optional[str] = None,
-        email: Optional[str] = None,
-        display_name: Optional[str] = None,
-        real_name: Optional[str] = None,
-        avatar_url: Optional[str] = None,
+        provider_team_id: str | None = None,
+        email: str | None = None,
+        display_name: str | None = None,
+        real_name: str | None = None,
+        avatar_url: str | None = None,
     ) -> dict[str, Any]:
         """
         Record a channel user interaction.
@@ -91,25 +91,24 @@ class ChannelIdentity:
             - platform_user_id: str or None - linked platform user ID
         """
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{_get_ui_url()}/api/channel-identity/record",
-                    json={
-                        "provider": provider,
-                        "provider_user_id": provider_user_id,
-                        "provider_team_id": provider_team_id,
-                        "email": email,
-                        "display_name": display_name,
-                        "real_name": real_name,
-                        "avatar_url": avatar_url,
-                    },
-                    timeout=aiohttp.ClientTimeout(total=5),
-                ) as response:
-                    if response.status == 200:
-                        return await response.json()
-                    else:
-                        logger.debug(f"[ChannelIdentity] Record failed: {response.status}")
-                        return {"recorded": False, "is_authorized": True}
+            async with aiohttp.ClientSession() as session, session.post(
+                f"{_get_ui_url()}/api/channel-identity/record",
+                json={
+                    "provider": provider,
+                    "provider_user_id": provider_user_id,
+                    "provider_team_id": provider_team_id,
+                    "email": email,
+                    "display_name": display_name,
+                    "real_name": real_name,
+                    "avatar_url": avatar_url,
+                },
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    logger.debug(f"[ChannelIdentity] Record failed: {response.status}")
+                    return {"recorded": False, "is_authorized": True}
 
         except asyncio.TimeoutError:
             logger.debug("[ChannelIdentity] Record timeout - continuing")
@@ -138,15 +137,14 @@ class ChannelIdentity:
             - platform_user_name: str or None
         """
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(
-                    f"{_get_ui_url()}/api/channel-identity/check/{provider}/{provider_user_id}",
-                    timeout=aiohttp.ClientTimeout(total=5),
-                ) as response:
-                    if response.status == 200:
-                        return await response.json()
-                    else:
-                        return {"is_authorized": True, "reason": "check_failed"}
+            async with aiohttp.ClientSession() as session, session.get(
+                f"{_get_ui_url()}/api/channel-identity/check/{provider}/{provider_user_id}",
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    return {"is_authorized": True, "reason": "check_failed"}
 
         except Exception as e:
             logger.debug(f"[ChannelIdentity] Check error: {e}")
@@ -156,11 +154,11 @@ class ChannelIdentity:
     def record_fire_and_forget(
         provider: str,
         provider_user_id: str,
-        provider_team_id: Optional[str] = None,
-        email: Optional[str] = None,
-        display_name: Optional[str] = None,
-        real_name: Optional[str] = None,
-        avatar_url: Optional[str] = None,
+        provider_team_id: str | None = None,
+        email: str | None = None,
+        display_name: str | None = None,
+        real_name: str | None = None,
+        avatar_url: str | None = None,
     ) -> None:
         """
         Record interaction without waiting for result.

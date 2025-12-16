@@ -2,7 +2,6 @@
 Shared Pydantic models for RBAC endpoints.
 """
 
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -13,14 +12,14 @@ from pydantic import BaseModel
 class CreateProfileRequest(BaseModel):
     name: str
     display_name: str
-    description: Optional[str] = None
-    permissions: Optional[list[str]] = None
+    description: str | None = None
+    permissions: list[str] | None = None
 
 
 class UpdateProfileRequest(BaseModel):
-    display_name: Optional[str] = None
-    description: Optional[str] = None
-    permissions: Optional[list[str]] = None
+    display_name: str | None = None
+    description: str | None = None
+    permissions: list[str] | None = None
 
 
 # =============================================================================
@@ -30,20 +29,20 @@ class UpdateProfileRequest(BaseModel):
 class CreatePermissionSetRequest(BaseModel):
     name: str
     display_name: str
-    description: Optional[str] = None
-    permissions: Optional[list[str]] = None
+    description: str | None = None
+    permissions: list[str] | None = None
 
 
 class UpdatePermissionSetRequest(BaseModel):
-    display_name: Optional[str] = None
-    description: Optional[str] = None
-    is_active: Optional[bool] = None
-    permissions: Optional[list[str]] = None
+    display_name: str | None = None
+    description: str | None = None
+    is_active: bool | None = None
+    permissions: list[str] | None = None
 
 
 class AssignPermissionSetRequest(BaseModel):
     permission_set_id: int
-    expires_at: Optional[str] = None
+    expires_at: str | None = None
 
 
 # =============================================================================
@@ -52,22 +51,22 @@ class AssignPermissionSetRequest(BaseModel):
 
 class CreateTeamRequest(BaseModel):
     name: str
-    display_name: Optional[str] = None
-    description: Optional[str] = None
-    parent_team_id: Optional[int] = None
+    display_name: str | None = None
+    description: str | None = None
+    parent_team_id: int | None = None
 
 
 class UpdateTeamRequest(BaseModel):
-    name: Optional[str] = None
-    display_name: Optional[str] = None
-    description: Optional[str] = None
-    parent_team_id: Optional[int] = None
-    is_active: Optional[bool] = None
+    name: str | None = None
+    display_name: str | None = None
+    description: str | None = None
+    parent_team_id: int | None = None
+    is_active: bool | None = None
 
 
 class AddTeamMemberRequest(BaseModel):
     user_id: str
-    role: Optional[str] = "member"
+    role: str | None = "member"
 
 
 class UpdateTeamMemberRequest(BaseModel):
@@ -75,7 +74,7 @@ class UpdateTeamMemberRequest(BaseModel):
 
 
 class SetManagerRequest(BaseModel):
-    manager_id: Optional[str] = None
+    manager_id: str | None = None
 
 
 # =============================================================================
@@ -84,39 +83,39 @@ class SetManagerRequest(BaseModel):
 
 class CreateSharingRuleRequest(BaseModel):
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     object_type: str
     share_from_type: str
-    share_from_id: Optional[str] = None
+    share_from_id: str | None = None
     share_to_type: str
-    share_to_id: Optional[str] = None
+    share_to_id: str | None = None
     access_level: str
 
 
 class UpdateSharingRuleRequest(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    share_from_type: Optional[str] = None
-    share_from_id: Optional[str] = None
-    share_to_type: Optional[str] = None
-    share_to_id: Optional[str] = None
-    access_level: Optional[str] = None
-    is_active: Optional[bool] = None
+    name: str | None = None
+    description: str | None = None
+    share_from_type: str | None = None
+    share_from_id: str | None = None
+    share_to_type: str | None = None
+    share_to_id: str | None = None
+    access_level: str | None = None
+    is_active: bool | None = None
 
 
 class CreateShareRequest(BaseModel):
     object_type: str
     record_id: str
-    shared_with_user_id: Optional[str] = None
-    shared_with_team_id: Optional[int] = None
-    access_level: Optional[str] = "read"
-    expires_at: Optional[str] = None
-    reason: Optional[str] = None
+    shared_with_user_id: str | None = None
+    shared_with_team_id: int | None = None
+    access_level: str | None = "read"
+    expires_at: str | None = None
+    reason: str | None = None
 
 
 class UpdateRecordShareRequest(BaseModel):
-    access_level: Optional[str] = None
-    expires_at: Optional[str] = None
+    access_level: str | None = None
+    expires_at: str | None = None
 
 
 # =============================================================================
@@ -124,8 +123,8 @@ class UpdateRecordShareRequest(BaseModel):
 # =============================================================================
 
 class UpdateUserRequest(BaseModel):
-    name: Optional[str] = None
-    avatar_url: Optional[str] = None
-    is_active: Optional[bool] = None
-    profile_id: Optional[int] = None
-    profile_name: Optional[str] = None
+    name: str | None = None
+    avatar_url: str | None = None
+    is_active: bool | None = None
+    profile_id: int | None = None
+    profile_name: str | None = None

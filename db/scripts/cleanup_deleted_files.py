@@ -27,7 +27,6 @@ import logging
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -225,7 +224,7 @@ async def cleanup_table(
 async def run_cleanup(
     older_than_days: int = 30,
     dry_run: bool = False,
-    table: Optional[str] = None,
+    table: str | None = None,
 ) -> dict[str, int]:
     """
     Run cleanup for all or specific file tables.

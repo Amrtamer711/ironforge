@@ -15,7 +15,7 @@ import json
 import logging
 import os
 from datetime import datetime
-from typing import Any, Optional, Union
+from typing import Any
 
 from config import COMPANY_SCHEMAS
 from db.base import DatabaseBackend
@@ -93,7 +93,7 @@ class SupabaseBackend(DatabaseBackend):
             python -m db.schema --generate postgres
         """
         try:
-            client = self._get_client()
+            self._get_client()
             # Log expected tables from unified schema
             expected_tables = get_table_names()
             logger.info(f"[SUPABASE] Expected tables from schema: {expected_tables}")
@@ -113,7 +113,7 @@ class SupabaseBackend(DatabaseBackend):
         filters: dict[str, Any],
         user_companies: list[str],
         select: str = "*",
-    ) -> tuple[Optional[dict], Optional[str], str]:
+    ) -> tuple[dict | None, str | None, str]:
         """
         Search for a record across all company schemas with access control.
 
@@ -169,7 +169,7 @@ class SupabaseBackend(DatabaseBackend):
         table: str,
         company_schemas: list[str],
         select: str = "*",
-        filters: Optional[dict[str, Any]] = None,
+        filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Query a table across multiple company schemas and aggregate results.
@@ -217,7 +217,7 @@ class SupabaseBackend(DatabaseBackend):
         package_type: str,
         locations: str,
         total_amount: str,
-        date_generated: Optional[str] = None,
+        date_generated: str | None = None,
     ) -> None:
         if not date_generated:
             date_generated = datetime.now().isoformat()
@@ -309,8 +309,8 @@ class SupabaseBackend(DatabaseBackend):
         self,
         limit: int = 50,
         offset: int = 0,
-        user_ids: Optional[Union[str, list[str]]] = None,
-        client_name: Optional[str] = None,
+        user_ids: str | list[str] | None = None,
+        client_name: str | None = None,
     ) -> list[dict[str, Any]]:
         """Get proposals with optional filtering. user_ids supports single ID or list for team access."""
         try:
@@ -332,7 +332,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Failed to get proposals: {e}", exc_info=True)
             return []
 
-    def get_proposal_by_id(self, proposal_id: int) -> Optional[dict[str, Any]]:
+    def get_proposal_by_id(self, proposal_id: int) -> dict[str, Any] | None:
         """Get a single proposal by ID."""
         try:
             client = self._get_client()
@@ -450,7 +450,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Failed to save booking order {data.get('bo_ref', 'unknown')}: {e}", exc_info=True)
             raise SupabaseOperationError(f"Failed to save booking order: {e}") from e
 
-    def get_booking_order(self, bo_ref: str) -> Optional[dict[str, Any]]:
+    def get_booking_order(self, bo_ref: str) -> dict[str, Any] | None:
         try:
             client = self._get_client()
             response = client.table("booking_orders").select("*").eq("bo_ref", bo_ref).single().execute()
@@ -472,7 +472,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Failed to get booking order {bo_ref}: {e}", exc_info=True)
             return None
 
-    def get_booking_order_by_number(self, bo_number: str) -> Optional[dict[str, Any]]:
+    def get_booking_order_by_number(self, bo_number: str) -> dict[str, Any] | None:
         try:
             client = self._get_client()
             response = client.table("booking_orders").select("*").ilike("bo_number", bo_number.strip()).single().execute()
@@ -537,10 +537,10 @@ class SupabaseBackend(DatabaseBackend):
         photo_filename: str,
         frames_data: list[dict],
         company_schema: str,
-        created_by: Optional[str] = None,
+        created_by: str | None = None,
         time_of_day: str = "day",
         finish: str = "gold",
-        config: Optional[dict] = None,
+        config: dict | None = None,
     ) -> str:
         """Save mockup frame to company-specific schema."""
         import os
@@ -594,7 +594,7 @@ class SupabaseBackend(DatabaseBackend):
         company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> Optional[list[dict]]:
+    ) -> list[dict] | None:
         """Get mockup frames from company-specific schema."""
         try:
             client = self._get_client()
@@ -617,7 +617,7 @@ class SupabaseBackend(DatabaseBackend):
         company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """Get mockup config from company-specific schema."""
         try:
             client = self._get_client()
@@ -722,10 +722,10 @@ class SupabaseBackend(DatabaseBackend):
         photo_used: str,
         creative_type: str,
         company_schema: str,
-        ai_prompt: Optional[str] = None,
+        ai_prompt: str | None = None,
         template_selected: bool = False,
         success: bool = True,
-        user_ip: Optional[str] = None,
+        user_ip: str | None = None,
     ) -> None:
         """Log mockup usage to company-specific schema."""
         try:
@@ -897,7 +897,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Failed to save BO workflow {workflow_id}: {e}", exc_info=True)
             raise SupabaseOperationError(f"Failed to save BO workflow: {e}") from e
 
-    def get_bo_workflow(self, workflow_id: str) -> Optional[str]:
+    def get_bo_workflow(self, workflow_id: str) -> str | None:
         try:
             client = self._get_client()
             response = client.table("bo_approval_workflows").select("workflow_data").eq("workflow_id", workflow_id).single().execute()
@@ -941,12 +941,12 @@ class SupabaseBackend(DatabaseBackend):
         output_cost: float,
         reasoning_cost: float,
         total_cost: float,
-        user_id: Optional[str] = None,
-        workflow: Optional[str] = None,
+        user_id: str | None = None,
+        workflow: str | None = None,
         cached_input_tokens: int = 0,
-        context: Optional[str] = None,
-        metadata_json: Optional[str] = None,
-        timestamp: Optional[str] = None,
+        context: str | None = None,
+        metadata_json: str | None = None,
+        timestamp: str | None = None,
     ) -> None:
         if not timestamp:
             timestamp = get_uae_time().isoformat()
@@ -981,11 +981,11 @@ class SupabaseBackend(DatabaseBackend):
 
     def get_ai_costs_summary(
         self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        call_type: Optional[str] = None,
-        workflow: Optional[str] = None,
-        user_id: Optional[str] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        call_type: str | None = None,
+        workflow: str | None = None,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
         try:
             client = self._get_client()
@@ -1137,11 +1137,11 @@ class SupabaseBackend(DatabaseBackend):
         self,
         user_id: str,
         email: str,
-        full_name: Optional[str] = None,
-        avatar_url: Optional[str] = None,
-        created_at: Optional[str] = None,
-        last_login: Optional[str] = None,
-        profile_id: Optional[str] = None,
+        full_name: str | None = None,
+        avatar_url: str | None = None,
+        created_at: str | None = None,
+        last_login: str | None = None,
+        profile_id: str | None = None,
     ) -> bool:
         if not created_at:
             created_at = datetime.now().isoformat()
@@ -1187,7 +1187,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Error upserting user: {e}")
             return False
 
-    def get_user_by_id(self, user_id: str) -> Optional[dict[str, Any]]:
+    def get_user_by_id(self, user_id: str) -> dict[str, Any] | None:
         try:
             client = self._get_client()
             response = client.table("users").select("*").eq("id", user_id).single().execute()
@@ -1195,7 +1195,7 @@ class SupabaseBackend(DatabaseBackend):
         except Exception:
             return None
 
-    def get_user_by_email(self, email: str) -> Optional[dict[str, Any]]:
+    def get_user_by_email(self, email: str) -> dict[str, Any] | None:
         try:
             client = self._get_client()
             response = client.table("users").select("*").ilike("email", email).single().execute()
@@ -1221,9 +1221,9 @@ class SupabaseBackend(DatabaseBackend):
         name: str,
         resource: str,
         action: str,
-        description: Optional[str] = None,
-        created_at: Optional[str] = None,
-    ) -> Optional[str]:
+        description: str | None = None,
+        created_at: str | None = None,
+    ) -> str | None:
         if not created_at:
             created_at = datetime.now().isoformat()
 
@@ -1256,12 +1256,12 @@ class SupabaseBackend(DatabaseBackend):
         key_prefix: str,
         name: str,
         scopes: list[str],
-        description: Optional[str] = None,
-        rate_limit: Optional[int] = None,
-        expires_at: Optional[str] = None,
-        created_by: Optional[str] = None,
-        metadata: Optional[dict] = None,
-    ) -> Optional[int]:
+        description: str | None = None,
+        rate_limit: int | None = None,
+        expires_at: str | None = None,
+        created_by: str | None = None,
+        metadata: dict | None = None,
+    ) -> int | None:
         """Create a new API key."""
         created_at = datetime.now().isoformat()
         scopes_json = json.dumps(scopes)
@@ -1292,7 +1292,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Error creating API key: {e}")
             return None
 
-    def get_api_key_by_hash(self, key_hash: str) -> Optional[dict[str, Any]]:
+    def get_api_key_by_hash(self, key_hash: str) -> dict[str, Any] | None:
         """Get API key info by hash."""
         try:
             client = self._get_client()
@@ -1314,7 +1314,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Error getting API key by hash: {e}")
             return None
 
-    def get_api_key_by_id(self, key_id: int) -> Optional[dict[str, Any]]:
+    def get_api_key_by_id(self, key_id: int) -> dict[str, Any] | None:
         """Get API key info by ID."""
         try:
             client = self._get_client()
@@ -1337,7 +1337,7 @@ class SupabaseBackend(DatabaseBackend):
 
     def list_api_keys(
         self,
-        created_by: Optional[str] = None,
+        created_by: str | None = None,
         include_inactive: bool = False,
     ) -> list[dict[str, Any]]:
         """List all API keys, optionally filtered."""
@@ -1368,12 +1368,12 @@ class SupabaseBackend(DatabaseBackend):
     def update_api_key(
         self,
         key_id: int,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        scopes: Optional[list[str]] = None,
-        rate_limit: Optional[int] = None,
-        is_active: Optional[bool] = None,
-        expires_at: Optional[str] = None,
+        name: str | None = None,
+        description: str | None = None,
+        scopes: list[str] | None = None,
+        rate_limit: int | None = None,
+        is_active: bool | None = None,
+        expires_at: str | None = None,
     ) -> bool:
         """Update an API key."""
         updates = {}
@@ -1463,13 +1463,13 @@ class SupabaseBackend(DatabaseBackend):
         api_key_id: int,
         endpoint: str,
         method: str,
-        status_code: Optional[int] = None,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        response_time_ms: Optional[int] = None,
-        request_size: Optional[int] = None,
-        response_size: Optional[int] = None,
-        timestamp: Optional[str] = None,
+        status_code: int | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+        response_time_ms: int | None = None,
+        request_size: int | None = None,
+        response_size: int | None = None,
+        timestamp: str | None = None,
     ) -> None:
         """Log API key usage for auditing."""
         if not timestamp:
@@ -1494,9 +1494,9 @@ class SupabaseBackend(DatabaseBackend):
 
     def get_api_key_usage_stats(
         self,
-        api_key_id: Optional[int] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        api_key_id: int | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> dict[str, Any]:
         """Get API key usage statistics."""
         try:
@@ -1582,12 +1582,12 @@ class SupabaseBackend(DatabaseBackend):
         self,
         timestamp: str,
         action: str,
-        user_id: Optional[str] = None,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None,
-        details_json: Optional[str] = None,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        user_id: str | None = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        details_json: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> None:
         """Log an audit event to the audit_log table."""
         try:
@@ -1607,12 +1607,12 @@ class SupabaseBackend(DatabaseBackend):
 
     def query_audit_log(
         self,
-        user_id: Optional[str] = None,
-        action: Optional[str] = None,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        user_id: str | None = None,
+        action: str | None = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
@@ -1667,7 +1667,7 @@ class SupabaseBackend(DatabaseBackend):
         self,
         user_id: str,
         messages: list[dict[str, Any]],
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> bool:
         """Save or update a user's chat session."""
         import uuid
@@ -1694,7 +1694,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Error saving chat session for {user_id}: {e}")
             return False
 
-    def get_chat_session(self, user_id: str) -> Optional[dict[str, Any]]:
+    def get_chat_session(self, user_id: str) -> dict[str, Any] | None:
         """Get a user's chat session."""
         try:
             client = self._get_client()
@@ -1740,14 +1740,14 @@ class SupabaseBackend(DatabaseBackend):
         storage_provider: str,
         storage_bucket: str,
         storage_key: str,
-        file_size: Optional[int] = None,
-        file_extension: Optional[str] = None,
-        file_hash: Optional[str] = None,
-        document_type: Optional[str] = None,
-        bo_id: Optional[int] = None,
-        proposal_id: Optional[int] = None,
-        metadata_json: Optional[dict[str, Any]] = None,
-    ) -> Optional[int]:
+        file_size: int | None = None,
+        file_extension: str | None = None,
+        file_hash: str | None = None,
+        document_type: str | None = None,
+        bo_id: int | None = None,
+        proposal_id: int | None = None,
+        metadata_json: dict[str, Any] | None = None,
+    ) -> int | None:
         """Create a new document record."""
         try:
             client = self._get_client()
@@ -1788,7 +1788,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Error creating document: {e}")
             return None
 
-    def get_document(self, file_id: str) -> Optional[dict[str, Any]]:
+    def get_document(self, file_id: str) -> dict[str, Any] | None:
         """Get a document by file_id."""
         try:
             client = self._get_client()
@@ -1800,7 +1800,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Error getting document {file_id}: {e}")
             return None
 
-    def get_document_by_hash(self, file_hash: str) -> Optional[dict[str, Any]]:
+    def get_document_by_hash(self, file_hash: str) -> dict[str, Any] | None:
         """Get a document by file hash (for deduplication)."""
         try:
             client = self._get_client()
@@ -1838,10 +1838,10 @@ class SupabaseBackend(DatabaseBackend):
 
     def list_documents(
         self,
-        user_id: Optional[str] = None,
-        document_type: Optional[str] = None,
-        bo_id: Optional[int] = None,
-        proposal_id: Optional[int] = None,
+        user_id: str | None = None,
+        document_type: str | None = None,
+        bo_id: int | None = None,
+        proposal_id: int | None = None,
         include_deleted: bool = False,
         limit: int = 100,
         offset: int = 0,
@@ -1959,7 +1959,7 @@ class SupabaseBackend(DatabaseBackend):
         self,
         location_key: str,
         company_schemas: list[str],
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Get a specific location by key from the user's accessible company schemas.
 

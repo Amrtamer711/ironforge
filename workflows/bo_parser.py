@@ -454,7 +454,7 @@ The user provided this message with the file: "{user_message}"
 
         # Check totals consistency
         net = data.get("net_pre_vat")
-        vat_calc = data.get("vat_calc")
+        data.get("vat_calc")
         gross_calc = data.get("gross_calc")
         gross_stated = data.get("gross_amount")
 
@@ -1274,7 +1274,7 @@ The user provided this message with the file: "{user_message}"
             x_px, y_px = found
 
             # Convert pixel coordinates to PDF points
-            page_width = float(page.rect.width)
+            float(page.rect.width)
             page_height = float(page.rect.height)
             w_pt = px_to_pt(ww, dpi)
             h_pt = px_to_pt(wh, dpi)

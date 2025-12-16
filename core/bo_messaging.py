@@ -5,7 +5,7 @@ Uses the unified channel abstraction layer for all messaging operations.
 """
 
 import asyncio
-from typing import Any, Optional
+from typing import Any
 
 import config
 from integrations.channels import Button, ButtonStyle
@@ -14,7 +14,7 @@ from utils.logging import get_logger
 logger = get_logger("core.bo_messaging")
 
 
-def _format_amount(data: Optional[dict[str, Any]], amount: Optional[float]) -> str:
+def _format_amount(data: dict[str, Any] | None, amount: float | None) -> str:
     currency = (data or {}).get("currency", config.DEFAULT_CURRENCY)
     return config.format_currency_value(amount, currency)
 
@@ -209,11 +209,11 @@ async def send_to_coordinator(
     company: str,
     data: dict[str, Any],
     combined_pdf_path: str,
-    warnings: Optional[list] = None,
-    missing_required: Optional[list] = None,
+    warnings: list | None = None,
+    missing_required: list | None = None,
     is_revision: bool = False,
-    original_bo_ref: Optional[str] = None,
-    user_notes: Optional[str] = None
+    original_bo_ref: str | None = None,
+    user_notes: str | None = None
 ) -> dict[str, Any]:
     """
     Send booking order to Sales Coordinator with Approve/Reject buttons.

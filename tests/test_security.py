@@ -60,7 +60,7 @@ class TestCORS:
 
         assert response.status_code == 200
         # CORS header should be present for allowed origin
-        assert "access-control-allow-origin" in [h.lower() for h in response.headers.keys()]
+        assert "access-control-allow-origin" in [h.lower() for h in response.headers]
 
 
 class TestPathTraversal:

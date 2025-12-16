@@ -11,7 +11,6 @@ Rate limiting middleware for unified-ui.
 import logging
 import threading
 import time
-from typing import Optional
 
 from fastapi import HTTPException, Request
 
@@ -61,7 +60,7 @@ def _cleanup_expired_entries() -> None:
 
 
 # Start cleanup thread
-_cleanup_thread: Optional[threading.Thread] = None
+_cleanup_thread: threading.Thread | None = None
 
 
 def start_rate_limit_cleanup() -> None:
@@ -77,7 +76,7 @@ def start_rate_limit_cleanup() -> None:
 # RATE LIMITER - server.js:71-92
 # =============================================================================
 
-def rate_limiter(max_requests: Optional[int] = None):
+def rate_limiter(max_requests: int | None = None):
     """
     Create a rate limiting dependency.
 

@@ -59,7 +59,7 @@ class AuthClient:
         logger.info(f"[AUTH] Client initialized with provider: {provider.name}")
 
     @classmethod
-    def from_config(cls, provider_name: Optional[str] = None) -> "AuthClient":
+    def from_config(cls, provider_name: str | None = None) -> "AuthClient":
         """
         Create an AuthClient using configuration from environment.
 
@@ -159,7 +159,7 @@ class AuthClient:
         """
         return await self._provider.revoke_token(token)
 
-    def decode_token(self, token: str) -> Optional[TokenPayload]:
+    def decode_token(self, token: str) -> TokenPayload | None:
         """
         Decode a JWT token without verification.
 
@@ -179,7 +179,7 @@ class AuthClient:
     # USER OPERATIONS
     # =========================================================================
 
-    async def get_user_by_id(self, user_id: str) -> Optional[AuthUser]:
+    async def get_user_by_id(self, user_id: str) -> AuthUser | None:
         """
         Get user by their ID.
 
@@ -191,7 +191,7 @@ class AuthClient:
         """
         return await self._provider.get_user_by_id(user_id)
 
-    async def get_user_by_email(self, email: str) -> Optional[AuthUser]:
+    async def get_user_by_email(self, email: str) -> AuthUser | None:
         """
         Get user by their email.
 
@@ -221,9 +221,9 @@ class AuthClient:
     async def create_user(
         self,
         email: str,
-        name: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
-    ) -> Optional[AuthUser]:
+        name: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> AuthUser | None:
         """
         Create a new user.
 
@@ -240,11 +240,11 @@ class AuthClient:
     async def update_user(
         self,
         user_id: str,
-        name: Optional[str] = None,
-        avatar_url: Optional[str] = None,
-        is_active: Optional[bool] = None,
-        metadata: Optional[dict[str, Any]] = None,
-    ) -> Optional[AuthUser]:
+        name: str | None = None,
+        avatar_url: str | None = None,
+        is_active: bool | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> AuthUser | None:
         """
         Update user profile.
 
@@ -278,7 +278,7 @@ class AuthClient:
         self,
         limit: int = 100,
         offset: int = 0,
-        is_active: Optional[bool] = None,
+        is_active: bool | None = None,
     ) -> list[AuthUser]:
         """
         List users with pagination.
@@ -342,7 +342,7 @@ async def verify_token(token: str) -> AuthResult:
     return await get_auth_client().verify_token(token)
 
 
-async def get_current_user(token: str) -> Optional[AuthUser]:
+async def get_current_user(token: str) -> AuthUser | None:
     """
     Convenience function to get the current user from a token.
 

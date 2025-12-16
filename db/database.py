@@ -24,7 +24,7 @@ Configuration:
 
 import logging
 import os
-from typing import Any, Optional, Union
+from typing import Any
 
 from db.backends.sqlite import SQLiteBackend
 from db.base import DatabaseBackend
@@ -125,7 +125,7 @@ class _DatabaseNamespace:
         package_type: str,
         locations: str,
         total_amount: str,
-        date_generated: Optional[str] = None,
+        date_generated: str | None = None,
     ) -> None:
         return self._backend.log_proposal(
             submitted_by, client_name, package_type,
@@ -142,13 +142,13 @@ class _DatabaseNamespace:
         self,
         limit: int = 50,
         offset: int = 0,
-        user_ids: Optional[Union[str, list[str]]] = None,
-        client_name: Optional[str] = None,
+        user_ids: str | list[str] | None = None,
+        client_name: str | None = None,
     ) -> list[dict[str, Any]]:
         """Get proposals with optional filtering. user_ids can be a single ID or list for team access."""
         return self._backend.get_proposals(limit, offset, user_ids, client_name)
 
-    def get_proposal_by_id(self, proposal_id: int) -> Optional[dict[str, Any]]:
+    def get_proposal_by_id(self, proposal_id: int) -> dict[str, Any] | None:
         """Get a single proposal by ID."""
         return self._backend.get_proposal_by_id(proposal_id)
 
@@ -170,10 +170,10 @@ class _DatabaseNamespace:
     def save_booking_order(self, data: dict[str, Any]) -> str:
         return self._backend.save_booking_order(data)
 
-    def get_booking_order(self, bo_ref: str) -> Optional[dict[str, Any]]:
+    def get_booking_order(self, bo_ref: str) -> dict[str, Any] | None:
         return self._backend.get_booking_order(bo_ref)
 
-    def get_booking_order_by_number(self, bo_number: str) -> Optional[dict[str, Any]]:
+    def get_booking_order_by_number(self, bo_number: str) -> dict[str, Any] | None:
         return self._backend.get_booking_order_by_number(bo_number)
 
     def export_booking_orders_to_excel(self) -> str:
@@ -193,7 +193,7 @@ class _DatabaseNamespace:
         self,
         location_key: str,
         company_schemas: list[str],
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         return self._backend.get_location_by_key(location_key, company_schemas)
 
     # =========================================================================
@@ -206,10 +206,10 @@ class _DatabaseNamespace:
         photo_filename: str,
         frames_data: list[dict],
         company_schema: str,
-        created_by: Optional[str] = None,
+        created_by: str | None = None,
         time_of_day: str = "day",
         finish: str = "gold",
-        config: Optional[dict] = None,
+        config: dict | None = None,
     ) -> str:
         return self._backend.save_mockup_frame(
             location_key, photo_filename, frames_data, company_schema,
@@ -223,7 +223,7 @@ class _DatabaseNamespace:
         company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> Optional[list[dict]]:
+    ) -> list[dict] | None:
         return self._backend.get_mockup_frames(
             location_key, photo_filename, company_schema, time_of_day, finish
         )
@@ -235,7 +235,7 @@ class _DatabaseNamespace:
         company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> Optional[dict]:
+    ) -> dict | None:
         return self._backend.get_mockup_config(
             location_key, photo_filename, company_schema, time_of_day, finish
         )
@@ -282,10 +282,10 @@ class _DatabaseNamespace:
         photo_used: str,
         creative_type: str,
         company_schema: str,
-        ai_prompt: Optional[str] = None,
+        ai_prompt: str | None = None,
         template_selected: bool = False,
         success: bool = True,
-        user_ip: Optional[str] = None,
+        user_ip: str | None = None,
     ) -> None:
         return self._backend.log_mockup_usage(
             location_key, time_of_day, finish, photo_used,
@@ -316,7 +316,7 @@ class _DatabaseNamespace:
     ) -> None:
         return self._backend.save_bo_workflow(workflow_id, workflow_data, updated_at)
 
-    def get_bo_workflow(self, workflow_id: str) -> Optional[str]:
+    def get_bo_workflow(self, workflow_id: str) -> str | None:
         return self._backend.get_bo_workflow(workflow_id)
 
     def get_all_active_bo_workflows(self) -> list[tuple]:
@@ -340,12 +340,12 @@ class _DatabaseNamespace:
         output_cost: float,
         reasoning_cost: float,
         total_cost: float,
-        user_id: Optional[str] = None,
-        workflow: Optional[str] = None,
+        user_id: str | None = None,
+        workflow: str | None = None,
         cached_input_tokens: int = 0,
-        context: Optional[str] = None,
-        metadata_json: Optional[str] = None,
-        timestamp: Optional[str] = None,
+        context: str | None = None,
+        metadata_json: str | None = None,
+        timestamp: str | None = None,
     ) -> None:
         return self._backend.log_ai_cost(
             call_type, model, input_tokens, output_tokens, reasoning_tokens,
@@ -355,11 +355,11 @@ class _DatabaseNamespace:
 
     def get_ai_costs_summary(
         self,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
-        call_type: Optional[str] = None,
-        workflow: Optional[str] = None,
-        user_id: Optional[str] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        call_type: str | None = None,
+        workflow: str | None = None,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
         return self._backend.get_ai_costs_summary(
             start_date, end_date, call_type, workflow, user_id
@@ -393,7 +393,7 @@ class _DatabaseNamespace:
         self,
         query: str,
         params: tuple = (),
-    ) -> Optional[list[dict[str, Any]]]:
+    ) -> list[dict[str, Any]] | None:
         """
         Execute a raw SQL query for invite_tokens table.
         Bridges SQLite (?) and Supabase syntax.
@@ -472,12 +472,12 @@ class _DatabaseNamespace:
         self,
         timestamp: str,
         action: str,
-        user_id: Optional[str] = None,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None,
-        details_json: Optional[str] = None,
-        ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None,
+        user_id: str | None = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        details_json: str | None = None,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
     ) -> None:
         return self._backend.log_audit_event(
             timestamp, action, user_id, resource_type, resource_id,
@@ -486,12 +486,12 @@ class _DatabaseNamespace:
 
     def query_audit_log(
         self,
-        user_id: Optional[str] = None,
-        action: Optional[str] = None,
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        user_id: str | None = None,
+        action: str | None = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
@@ -508,12 +508,12 @@ class _DatabaseNamespace:
         self,
         user_id: str,
         messages: list[dict[str, Any]],
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> bool:
         """Save or update a user's chat session."""
         return self._backend.save_chat_session(user_id, messages, session_id)
 
-    def get_chat_session(self, user_id: str) -> Optional[dict[str, Any]]:
+    def get_chat_session(self, user_id: str) -> dict[str, Any] | None:
         """Get a user's chat session."""
         return self._backend.get_chat_session(user_id)
 
@@ -534,14 +534,14 @@ class _DatabaseNamespace:
         storage_provider: str,
         storage_bucket: str,
         storage_key: str,
-        file_size: Optional[int] = None,
-        file_extension: Optional[str] = None,
-        file_hash: Optional[str] = None,
-        document_type: Optional[str] = None,
-        bo_id: Optional[int] = None,
-        proposal_id: Optional[int] = None,
-        metadata_json: Optional[dict[str, Any]] = None,
-    ) -> Optional[int]:
+        file_size: int | None = None,
+        file_extension: str | None = None,
+        file_hash: str | None = None,
+        document_type: str | None = None,
+        bo_id: int | None = None,
+        proposal_id: int | None = None,
+        metadata_json: dict[str, Any] | None = None,
+    ) -> int | None:
         """Create a new document record."""
         return self._backend.create_document(
             file_id, user_id, original_filename, file_type,
@@ -550,11 +550,11 @@ class _DatabaseNamespace:
             bo_id, proposal_id, metadata_json
         )
 
-    def get_document(self, file_id: str) -> Optional[dict[str, Any]]:
+    def get_document(self, file_id: str) -> dict[str, Any] | None:
         """Get a document by file_id."""
         return self._backend.get_document(file_id)
 
-    def get_document_by_hash(self, file_hash: str) -> Optional[dict[str, Any]]:
+    def get_document_by_hash(self, file_hash: str) -> dict[str, Any] | None:
         """Get a document by file hash (for deduplication)."""
         return self._backend.get_document_by_hash(file_hash)
 

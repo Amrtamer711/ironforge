@@ -13,7 +13,7 @@ This module handles:
 import json
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from dotenv import load_dotenv
 from slack_sdk.signature import SignatureVerifier
@@ -104,7 +104,7 @@ def init_channels() -> None:
     logger.info("[CHANNELS] Channel abstraction initialized")
 
 
-def get_channel_adapter(channel_type: Optional[str] = None):
+def get_channel_adapter(channel_type: str | None = None):
     """
     Get a channel adapter.
 
@@ -188,8 +188,8 @@ LOCATION_DETAILS: dict[str, str] = {}
 LOCATION_METADATA: dict[str, dict[str, object]] = {}
 
 # Cache for templates
-_MAPPING_CACHE: Optional[dict[str, str]] = None
-_DISPLAY_CACHE: Optional[list[str]] = None
+_MAPPING_CACHE: dict[str, str] | None = None
+_DISPLAY_CACHE: list[str] | None = None
 
 # HOS config
 _HOS_CONFIG: dict[str, dict[str, dict[str, object]]] = {}
@@ -327,7 +327,7 @@ def update_currency_config(config_data: dict[str, Any], source: str = "dynamic")
     _apply_currency_config(merged, source=source)
 
 
-def get_currency_metadata(currency: Optional[str]) -> dict[str, Any]:
+def get_currency_metadata(currency: str | None) -> dict[str, Any]:
     """Return metadata for currency (falls back to default)."""
     code = str(currency or DEFAULT_CURRENCY).upper()
     currencies = CURRENCY_CONFIG.get("currencies", {})
@@ -343,7 +343,7 @@ def get_currency_metadata(currency: Optional[str]) -> dict[str, Any]:
     return {**meta, "code": code}
 
 
-def convert_currency_value(amount: Optional[float], from_currency: Optional[str], to_currency: Optional[str]) -> Optional[float]:
+def convert_currency_value(amount: float | None, from_currency: str | None, to_currency: str | None) -> float | None:
     """Convert using AED as intermediary. Returns rounded amount."""
     if amount is None:
         return None
@@ -359,7 +359,7 @@ def convert_currency_value(amount: Optional[float], from_currency: Optional[str]
     return round(converted, int(to_meta.get("decimals", 2)))
 
 
-def format_currency_value(amount: Optional[float], currency: Optional[str] = None) -> str:
+def format_currency_value(amount: float | None, currency: str | None = None) -> str:
     """Format amount with currency symbol and correct placement."""
     if amount is None:
         amount = 0.0
@@ -434,7 +434,7 @@ def is_admin(user_id: str) -> bool:
         is_active = info.get("active")
         logger.info(f"[ADMIN_CHECK] Checking {name}: slack_id={slack_id}, user_id={generic_id}, active={is_active}")
 
-        if is_active and (user_id == slack_id or user_id == generic_id):
+        if is_active and (user_id in (slack_id, generic_id)):
             logger.info(f"[ADMIN_CHECK] User {user_id} is admin!")
             return True
 
@@ -469,7 +469,7 @@ def _parse_metadata_file(folder: Path) -> dict[str, object]:
         return meta
 
     # Parse specific fields
-    upload_fee: Optional[int] = None
+    upload_fee: int | None = None
     uf = str(meta.get("upload_fee", "")).replace(",", "").strip()
     if uf.isdigit():
         upload_fee = int(uf)
@@ -551,8 +551,8 @@ def _discover_templates() -> tuple[dict[str, str], list[str]]:
 
         display_name = meta.get("display_name") or pptx_path.stem
         description = meta.get("description") or f"{pptx_path.stem} - Digital Display - 1 Spot - 16 Seconds - 16.6% SOV - Total Loop is 6 spots"
-        upload_fee = meta.get("upload_fee") or 3000
-        base_sov = meta.get("base_sov_percent") or 16.6
+        meta.get("upload_fee") or 3000
+        meta.get("base_sov_percent") or 16.6
 
         display_names.append(str(display_name))
         LOCATION_DETAILS[key] = str(description)
@@ -602,7 +602,7 @@ def available_location_names() -> list[str]:
     return _DISPLAY_CACHE or []
 
 
-def get_location_key_from_display_name(display_name: str) -> Optional[str]:
+def get_location_key_from_display_name(display_name: str) -> str | None:
     """Convert a display name back to its location key."""
     # Ensure metadata is loaded
     if not LOCATION_METADATA:
@@ -623,7 +623,7 @@ def get_location_key_from_display_name(display_name: str) -> Optional[str]:
             return key
 
     # Also check if the display name is actually a key
-    for key in LOCATION_METADATA.keys():
+    for key in LOCATION_METADATA:
         if key == display_name_lower:
             return key
 

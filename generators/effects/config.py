@@ -9,7 +9,6 @@ This makes it easy to:
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -144,7 +143,7 @@ class EffectConfig:
         return min(value, max_val)
 
     @classmethod
-    def from_dict(cls, config_dict: Optional[dict]) -> "EffectConfig":
+    def from_dict(cls, config_dict: dict | None) -> "EffectConfig":
         """
         Create EffectConfig from a dictionary (e.g., from database or API).
 

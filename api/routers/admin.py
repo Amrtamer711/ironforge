@@ -10,7 +10,6 @@ Enterprise RBAC with 4 levels:
 All endpoints require system_admin profile or appropriate permissions.
 """
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -38,13 +37,13 @@ class PermissionResponse(BaseModel):
     name: str
     resource: str
     action: str
-    description: Optional[str]
+    description: str | None
 
 
 class UserPermissionsInfo(BaseModel):
     """Response model for user permission information."""
     user_id: str
-    profile: Optional[str]
+    profile: str | None
     permission_sets: list[str]
     permissions: list[str]
 
@@ -53,25 +52,25 @@ class UserResponse(BaseModel):
     """Response model for a user."""
     id: str
     email: str
-    name: Optional[str]
+    name: str | None
     is_active: bool
     created_at: str
-    last_login_at: Optional[str]
-    profile: Optional[str] = None
+    last_login_at: str | None
+    profile: str | None = None
 
 
 class UserCreate(BaseModel):
     """Request model for creating a user."""
     email: str = Field(..., min_length=5)
-    name: Optional[str] = Field(None, max_length=100)
+    name: str | None = Field(None, max_length=100)
     password: str = Field(..., min_length=6)
     profile: str = Field(default="sales_user")
 
 
 class UserUpdate(BaseModel):
     """Request model for updating a user."""
-    name: Optional[str] = Field(None, max_length=100)
-    is_active: Optional[bool] = None
+    name: str | None = Field(None, max_length=100)
+    is_active: bool | None = None
 
 
 class AdminDashboard(BaseModel):
@@ -232,20 +231,20 @@ async def initialize_rbac(
 class APIKeyCreate(BaseModel):
     """Request model for creating an API key."""
     name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
+    description: str | None = Field(None, max_length=500)
     scopes: list[str] = Field(default_factory=lambda: ["read"])
-    rate_limit: Optional[int] = Field(None, ge=1, le=10000)
-    expires_at: Optional[str] = None
+    rate_limit: int | None = Field(None, ge=1, le=10000)
+    expires_at: str | None = None
 
 
 class APIKeyUpdate(BaseModel):
     """Request model for updating an API key."""
-    name: Optional[str] = Field(None, min_length=1, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
-    scopes: Optional[list[str]] = None
-    rate_limit: Optional[int] = Field(None, ge=1, le=10000)
-    is_active: Optional[bool] = None
-    expires_at: Optional[str] = None
+    name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = Field(None, max_length=500)
+    scopes: list[str] | None = None
+    rate_limit: int | None = Field(None, ge=1, le=10000)
+    is_active: bool | None = None
+    expires_at: str | None = None
 
 
 class APIKeyResponse(BaseModel):
@@ -253,15 +252,15 @@ class APIKeyResponse(BaseModel):
     id: int
     key_prefix: str
     name: str
-    description: Optional[str]
+    description: str | None
     scopes: list[str]
-    rate_limit: Optional[int]
+    rate_limit: int | None
     is_active: bool
     created_at: str
-    created_by: Optional[str]
-    expires_at: Optional[str]
-    last_used_at: Optional[str]
-    last_rotated_at: Optional[str]
+    created_by: str | None
+    expires_at: str | None
+    last_used_at: str | None
+    last_rotated_at: str | None
 
 
 class APIKeyCreateResponse(BaseModel):
@@ -600,8 +599,8 @@ async def deactivate_api_key(
 @router.get("/api-keys/{key_id}/usage")
 async def get_api_key_usage(
     key_id: int,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """
@@ -642,7 +641,7 @@ async def get_api_key_usage(
 async def list_users(
     limit: int = 100,
     offset: int = 0,
-    is_active: Optional[bool] = None,
+    is_active: bool | None = None,
     user: AuthUser = Depends(require_permission("core:users:read")),
 ):
     """
@@ -871,15 +870,15 @@ class ProfileCreate(BaseModel):
     """Request model for creating a profile."""
     name: str = Field(..., min_length=1, max_length=50, pattern=r"^[a-z_]+$")
     display_name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
+    description: str | None = Field(None, max_length=500)
     permissions: list[str] = Field(default_factory=list)
 
 
 class ProfileUpdate(BaseModel):
     """Request model for updating a profile."""
-    display_name: Optional[str] = Field(None, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
-    permissions: Optional[list[str]] = None
+    display_name: str | None = Field(None, max_length=100)
+    description: str | None = Field(None, max_length=500)
+    permissions: list[str] | None = None
 
 
 class ProfileResponse(BaseModel):
@@ -887,11 +886,11 @@ class ProfileResponse(BaseModel):
     id: int
     name: str
     display_name: str
-    description: Optional[str]
+    description: str | None
     permissions: list[str]
     is_system: bool
-    created_at: Optional[str]
-    updated_at: Optional[str]
+    created_at: str | None
+    updated_at: str | None
 
 
 @router.get("/profiles", response_model=list[ProfileResponse])
@@ -1135,16 +1134,16 @@ class PermissionSetCreate(BaseModel):
     """Request model for creating a permission set."""
     name: str = Field(..., min_length=1, max_length=50, pattern=r"^[a-z_]+$")
     display_name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
+    description: str | None = Field(None, max_length=500)
     permissions: list[str] = Field(default_factory=list)
 
 
 class PermissionSetUpdate(BaseModel):
     """Request model for updating a permission set."""
-    display_name: Optional[str] = Field(None, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
-    permissions: Optional[list[str]] = None
-    is_active: Optional[bool] = None
+    display_name: str | None = Field(None, max_length=100)
+    description: str | None = Field(None, max_length=500)
+    permissions: list[str] | None = None
+    is_active: bool | None = None
 
 
 class PermissionSetResponse(BaseModel):
@@ -1152,16 +1151,16 @@ class PermissionSetResponse(BaseModel):
     id: int
     name: str
     display_name: str
-    description: Optional[str]
+    description: str | None
     permissions: list[str]
     is_active: bool
-    created_at: Optional[str]
-    updated_at: Optional[str]
+    created_at: str | None
+    updated_at: str | None
 
 
 class UserPermissionSetAssign(BaseModel):
     """Request model for assigning a permission set to a user."""
-    expires_at: Optional[str] = None  # ISO datetime or None for permanent
+    expires_at: str | None = None  # ISO datetime or None for permanent
 
 
 @router.get("/permission-sets", response_model=list[PermissionSetResponse])
@@ -1419,30 +1418,30 @@ async def revoke_user_permission_set(
 class TeamCreate(BaseModel):
     """Request model for creating a team."""
     name: str = Field(..., min_length=1, max_length=100)
-    display_name: Optional[str] = Field(None, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
-    parent_team_id: Optional[int] = None
+    display_name: str | None = Field(None, max_length=100)
+    description: str | None = Field(None, max_length=500)
+    parent_team_id: int | None = None
 
 
 class TeamUpdate(BaseModel):
     """Request model for updating a team."""
-    name: Optional[str] = Field(None, max_length=100)
-    display_name: Optional[str] = Field(None, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
-    parent_team_id: Optional[int] = None
-    is_active: Optional[bool] = None
+    name: str | None = Field(None, max_length=100)
+    display_name: str | None = Field(None, max_length=100)
+    description: str | None = Field(None, max_length=500)
+    parent_team_id: int | None = None
+    is_active: bool | None = None
 
 
 class TeamResponse(BaseModel):
     """Response model for a team."""
     id: int
     name: str
-    display_name: Optional[str]
-    description: Optional[str]
-    parent_team_id: Optional[int]
+    display_name: str | None
+    description: str | None
+    parent_team_id: int | None
     is_active: bool
-    created_at: Optional[str]
-    updated_at: Optional[str]
+    created_at: str | None
+    updated_at: str | None
 
 
 class TeamMemberAdd(BaseModel):
@@ -1456,7 +1455,7 @@ class TeamMemberResponse(BaseModel):
     team_id: int
     user_id: str
     role: str
-    joined_at: Optional[str]
+    joined_at: str | None
 
 
 @router.get("/teams", response_model=list[TeamResponse])
@@ -1740,7 +1739,7 @@ async def remove_team_member(
 @router.put("/users/{user_id}/manager", status_code=status.HTTP_200_OK)
 async def set_user_manager(
     user_id: str,
-    manager_id: Optional[str] = None,
+    manager_id: str | None = None,
     user: AuthUser = Depends(require_permission("core:users:manage")),
 ):
     """
@@ -1779,12 +1778,12 @@ async def set_user_manager(
 class SharingRuleCreate(BaseModel):
     """Request model for creating a sharing rule."""
     name: str = Field(..., min_length=1, max_length=100)
-    description: Optional[str] = Field(None, max_length=500)
+    description: str | None = Field(None, max_length=500)
     object_type: str = Field(..., min_length=1, max_length=50)
     share_from_type: str = Field(..., pattern=r"^(owner|profile|team)$")
-    share_from_id: Optional[str] = None
+    share_from_id: str | None = None
     share_to_type: str = Field(..., pattern=r"^(profile|team|all)$")
-    share_to_id: Optional[str] = None
+    share_to_id: str | None = None
     access_level: str = Field(..., pattern=r"^(read|read_write|full)$")
 
 
@@ -1792,21 +1791,21 @@ class SharingRuleResponse(BaseModel):
     """Response model for a sharing rule."""
     id: int
     name: str
-    description: Optional[str]
+    description: str | None
     object_type: str
     share_from_type: str
-    share_from_id: Optional[str]
+    share_from_id: str | None
     share_to_type: str
-    share_to_id: Optional[str]
+    share_to_id: str | None
     access_level: str
     is_active: bool
-    created_at: Optional[str]
-    updated_at: Optional[str]
+    created_at: str | None
+    updated_at: str | None
 
 
 @router.get("/sharing-rules", response_model=list[SharingRuleResponse])
 async def list_sharing_rules(
-    object_type: Optional[str] = None,
+    object_type: str | None = None,
     user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
     """

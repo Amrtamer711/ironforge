@@ -4,7 +4,7 @@ Cache - In-memory caches for user sessions and mockup history.
 
 import os
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 
 import config
 from db.database import db
@@ -97,7 +97,7 @@ def store_mockup_history(user_id: str, creative_paths: list, metadata: dict):
     cleanup_expired_mockups()
 
 
-def get_mockup_history(user_id: str) -> Optional[dict[str, Any]]:
+def get_mockup_history(user_id: str) -> dict[str, Any] | None:
     """Get user's creative files from history if still valid (within 30 minutes)
 
     Returns:
@@ -138,7 +138,7 @@ def get_location_frame_count(
     company_schemas: list[str],
     time_of_day: str = "all",
     finish: str = "all",
-) -> Optional[int]:
+) -> int | None:
     """Get the number of frames for a specific location configuration.
 
     Args:

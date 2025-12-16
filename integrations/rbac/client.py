@@ -71,7 +71,7 @@ class RBACClient:
         logger.info(f"[RBAC] Client initialized with provider: {provider.name}")
 
     @classmethod
-    def from_config(cls, provider_name: Optional[str] = None) -> "RBACClient":
+    def from_config(cls, provider_name: str | None = None) -> "RBACClient":
         """
         Create an RBACClient using configuration from environment.
 
@@ -107,7 +107,7 @@ class RBACClient:
     # LEVEL 1: PROFILE OPERATIONS
     # =========================================================================
 
-    async def get_user_profile(self, user_id: str) -> Optional[Profile]:
+    async def get_user_profile(self, user_id: str) -> Profile | None:
         """
         Get the profile assigned to a user.
 
@@ -132,7 +132,7 @@ class RBACClient:
         """
         return await self._provider.assign_profile(user_id, profile_name)
 
-    async def get_profile(self, profile_name: str) -> Optional[Profile]:
+    async def get_profile(self, profile_name: str) -> Profile | None:
         """
         Get a profile by name.
 
@@ -157,9 +157,9 @@ class RBACClient:
         self,
         name: str,
         display_name: str,
-        description: Optional[str] = None,
-        permissions: Optional[list[str]] = None,
-    ) -> Optional[Profile]:
+        description: str | None = None,
+        permissions: list[str] | None = None,
+    ) -> Profile | None:
         """
         Create a new profile.
 
@@ -177,10 +177,10 @@ class RBACClient:
     async def update_profile(
         self,
         name: str,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        permissions: Optional[list[str]] = None,
-    ) -> Optional[Profile]:
+        display_name: str | None = None,
+        description: str | None = None,
+        permissions: list[str] | None = None,
+    ) -> Profile | None:
         """
         Update an existing profile.
 
@@ -227,8 +227,8 @@ class RBACClient:
         self,
         user_id: str,
         permission_set_name: str,
-        granted_by: Optional[str] = None,
-        expires_at: Optional[str] = None,
+        granted_by: str | None = None,
+        expires_at: str | None = None,
     ) -> bool:
         """
         Assign a permission set to a user.
@@ -259,7 +259,7 @@ class RBACClient:
         """
         return await self._provider.revoke_permission_set(user_id, permission_set_name)
 
-    async def get_permission_set(self, name: str) -> Optional[PermissionSet]:
+    async def get_permission_set(self, name: str) -> PermissionSet | None:
         """
         Get a permission set by name.
 
@@ -284,9 +284,9 @@ class RBACClient:
         self,
         name: str,
         display_name: str,
-        description: Optional[str] = None,
-        permissions: Optional[list[str]] = None,
-    ) -> Optional[PermissionSet]:
+        description: str | None = None,
+        permissions: list[str] | None = None,
+    ) -> PermissionSet | None:
         """
         Create a new permission set.
 
@@ -304,11 +304,11 @@ class RBACClient:
     async def update_permission_set(
         self,
         name: str,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        permissions: Optional[list[str]] = None,
-        is_active: Optional[bool] = None,
-    ) -> Optional[PermissionSet]:
+        display_name: str | None = None,
+        description: str | None = None,
+        permissions: list[str] | None = None,
+        is_active: bool | None = None,
+    ) -> PermissionSet | None:
         """
         Update an existing permission set.
 
@@ -386,7 +386,7 @@ class RBACClient:
         """
         return await self._provider.remove_user_from_team(user_id, team_id)
 
-    async def get_team(self, team_id: int) -> Optional[Team]:
+    async def get_team(self, team_id: int) -> Team | None:
         """
         Get a team by ID.
 
@@ -398,7 +398,7 @@ class RBACClient:
         """
         return await self._provider.get_team(team_id)
 
-    async def get_team_by_name(self, name: str) -> Optional[Team]:
+    async def get_team_by_name(self, name: str) -> Team | None:
         """
         Get a team by name.
 
@@ -434,10 +434,10 @@ class RBACClient:
     async def create_team(
         self,
         name: str,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        parent_team_id: Optional[int] = None,
-    ) -> Optional[Team]:
+        display_name: str | None = None,
+        description: str | None = None,
+        parent_team_id: int | None = None,
+    ) -> Team | None:
         """
         Create a new team.
 
@@ -455,12 +455,12 @@ class RBACClient:
     async def update_team(
         self,
         team_id: int,
-        name: Optional[str] = None,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        parent_team_id: Optional[int] = None,
-        is_active: Optional[bool] = None,
-    ) -> Optional[Team]:
+        name: str | None = None,
+        display_name: str | None = None,
+        description: str | None = None,
+        parent_team_id: int | None = None,
+        is_active: bool | None = None,
+    ) -> Team | None:
         """
         Update an existing team.
 
@@ -500,12 +500,12 @@ class RBACClient:
         object_type: str,
         record_id: str,
         shared_by: str,
-        shared_with_user_id: Optional[str] = None,
-        shared_with_team_id: Optional[int] = None,
+        shared_with_user_id: str | None = None,
+        shared_with_team_id: int | None = None,
         access_level: AccessLevel = AccessLevel.READ,
-        expires_at: Optional[str] = None,
-        reason: Optional[str] = None,
-    ) -> Optional[RecordShare]:
+        expires_at: str | None = None,
+        reason: str | None = None,
+    ) -> RecordShare | None:
         """
         Share a record with a user or team.
 
@@ -580,7 +580,7 @@ class RBACClient:
             user_id, object_type, record_id, required_access
         )
 
-    async def list_sharing_rules(self, object_type: Optional[str] = None) -> list[SharingRule]:
+    async def list_sharing_rules(self, object_type: str | None = None) -> list[SharingRule]:
         """
         List sharing rules.
 
@@ -599,10 +599,10 @@ class RBACClient:
         share_from_type: str,
         share_to_type: str,
         access_level: AccessLevel,
-        share_from_id: Optional[str] = None,
-        share_to_id: Optional[str] = None,
-        description: Optional[str] = None,
-    ) -> Optional[SharingRule]:
+        share_from_id: str | None = None,
+        share_to_id: str | None = None,
+        description: str | None = None,
+    ) -> SharingRule | None:
         """
         Create a sharing rule.
 
@@ -656,7 +656,7 @@ class RBACClient:
         self,
         user_id: str,
         permission: str,
-        context: Optional[RBACContext] = None,
+        context: RBACContext | None = None,
     ) -> bool:
         """
         Check if user has a specific permission.
@@ -675,7 +675,7 @@ class RBACClient:
         self,
         user_id: str,
         permission: str,
-        context: Optional[RBACContext] = None,
+        context: RBACContext | None = None,
     ) -> None:
         """
         Require a user to have a permission. Raises exception if not.
@@ -756,7 +756,7 @@ def reset_rbac_client() -> None:
 async def has_permission(
     user_id: str,
     permission: str,
-    context: Optional[RBACContext] = None,
+    context: RBACContext | None = None,
 ) -> bool:
     """
     Convenience function to check permission using global client.
@@ -775,7 +775,7 @@ async def has_permission(
 async def require_permission(
     user_id: str,
     permission: str,
-    context: Optional[RBACContext] = None,
+    context: RBACContext | None = None,
 ) -> None:
     """
     Convenience function to require permission.

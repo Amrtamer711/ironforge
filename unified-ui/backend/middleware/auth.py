@@ -12,7 +12,7 @@ These middlewares are implemented as FastAPI dependencies.
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import Depends, HTTPException, Request
 
@@ -34,8 +34,8 @@ class AuthUser:
     """
     id: str
     email: str
-    role: Optional[str] = None
-    user_metadata: Optional[dict[str, Any]] = None
+    role: str | None = None
+    user_metadata: dict[str, Any] | None = None
 
     @property
     def name(self) -> str:
@@ -68,7 +68,7 @@ class TrustedUser:
     teams: list[dict[str, Any]]
     team_ids: list[int]
     # Level 3: Hierarchy
-    manager_id: Optional[str]
+    manager_id: str | None
     subordinate_ids: list[str]
     # Level 4: Sharing
     sharing_rules: list[dict[str, Any]]
@@ -82,7 +82,7 @@ class TrustedUser:
 # REQUIRE AUTH MIDDLEWARE - server.js:742-767
 # =============================================================================
 
-async def get_current_user(request: Request) -> Optional[AuthUser]:
+async def get_current_user(request: Request) -> AuthUser | None:
     """
     Extract and validate user from Authorization header.
 

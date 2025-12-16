@@ -8,7 +8,7 @@ Follows the same pattern as integrations/llm/base.py.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class AuthStatus(str, Enum):
@@ -28,19 +28,19 @@ class AuthUser:
     """
     id: str  # UUID from auth provider
     email: str
-    name: Optional[str] = None
-    avatar_url: Optional[str] = None
+    name: str | None = None
+    avatar_url: str | None = None
     is_active: bool = True
     metadata: dict[str, Any] = field(default_factory=dict)
 
     # Token info (if applicable)
-    access_token: Optional[str] = None
-    refresh_token: Optional[str] = None
-    token_expires_at: Optional[str] = None
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_expires_at: str | None = None
 
     # Provider-specific IDs
-    supabase_id: Optional[str] = None
-    local_id: Optional[str] = None
+    supabase_id: str | None = None
+    local_id: str | None = None
 
     @property
     def companies(self) -> list[str]:
@@ -85,11 +85,11 @@ class AuthUser:
 class TokenPayload:
     """Decoded JWT token payload."""
     sub: str  # Subject (user ID)
-    email: Optional[str] = None
-    exp: Optional[int] = None  # Expiration timestamp
-    iat: Optional[int] = None  # Issued at timestamp
-    aud: Optional[str] = None  # Audience
-    role: Optional[str] = None  # Supabase role
+    email: str | None = None
+    exp: int | None = None  # Expiration timestamp
+    iat: int | None = None  # Issued at timestamp
+    aud: str | None = None  # Audience
+    role: str | None = None  # Supabase role
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -97,10 +97,10 @@ class TokenPayload:
 class AuthResult:
     """Result from authentication operations."""
     success: bool
-    user: Optional[AuthUser] = None
+    user: AuthUser | None = None
     status: AuthStatus = AuthStatus.UNAUTHENTICATED
-    error: Optional[str] = None
-    token: Optional[str] = None
+    error: str | None = None
+    token: str | None = None
 
 
 class AuthProvider(ABC):
@@ -136,7 +136,7 @@ class AuthProvider(ABC):
         pass
 
     @abstractmethod
-    async def get_user_by_id(self, user_id: str) -> Optional[AuthUser]:
+    async def get_user_by_id(self, user_id: str) -> AuthUser | None:
         """
         Get user by their ID.
 
@@ -149,7 +149,7 @@ class AuthProvider(ABC):
         pass
 
     @abstractmethod
-    async def get_user_by_email(self, email: str) -> Optional[AuthUser]:
+    async def get_user_by_email(self, email: str) -> AuthUser | None:
         """
         Get user by their email.
 
@@ -181,9 +181,9 @@ class AuthProvider(ABC):
     async def create_user(
         self,
         email: str,
-        name: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
-    ) -> Optional[AuthUser]:
+        name: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> AuthUser | None:
         """
         Create a new user in the auth system.
 
@@ -204,11 +204,11 @@ class AuthProvider(ABC):
     async def update_user(
         self,
         user_id: str,
-        name: Optional[str] = None,
-        avatar_url: Optional[str] = None,
-        is_active: Optional[bool] = None,
-        metadata: Optional[dict[str, Any]] = None,
-    ) -> Optional[AuthUser]:
+        name: str | None = None,
+        avatar_url: str | None = None,
+        is_active: bool | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> AuthUser | None:
         """
         Update user profile.
 
@@ -242,7 +242,7 @@ class AuthProvider(ABC):
         self,
         limit: int = 100,
         offset: int = 0,
-        is_active: Optional[bool] = None,
+        is_active: bool | None = None,
     ) -> list[AuthUser]:
         """
         List users with pagination.
@@ -293,7 +293,7 @@ class AuthProvider(ABC):
         """
         return False
 
-    def decode_token(self, token: str) -> Optional[TokenPayload]:
+    def decode_token(self, token: str) -> TokenPayload | None:
         """
         Decode a JWT token without verification.
 

@@ -17,7 +17,7 @@ All costs are logged with full metadata for analytics and debugging.
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from db.database import db
 from integrations.llm.base import CostInfo
@@ -28,10 +28,10 @@ logger = logging.getLogger("proposal-bot")
 def track_cost(
     cost: CostInfo,
     call_type: str,
-    user_id: Optional[str] = None,
-    workflow: Optional[str] = None,
-    context: Optional[str] = None,
-    metadata: Optional[dict[str, Any]] = None,
+    user_id: str | None = None,
+    workflow: str | None = None,
+    context: str | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> None:
     """
     Track AI API costs from a provider-calculated CostInfo object.
@@ -130,7 +130,7 @@ def _log_cost_summary(cost: CostInfo, call_type: str) -> None:
         )
 
 
-def get_user_name_sync(user_id: Optional[str]) -> Optional[str]:
+def get_user_name_sync(user_id: str | None) -> str | None:
     """
     Get user's real name from Slack synchronously.
     Returns the real name or None if lookup fails.

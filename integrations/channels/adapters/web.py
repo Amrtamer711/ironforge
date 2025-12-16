@@ -19,17 +19,17 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 # Context variable to track current request ID for parallel request support
 # This allows adapter methods to tag events with the correct request_id
-current_request_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+current_request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     'web_request_id', default=None
 )
 
 # Context variable to track the parent message ID (user message that triggered this response)
 # This allows assistant responses to be linked to their originating user message
-current_parent_message_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+current_parent_message_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     'web_parent_message_id', default=None
 )
 
@@ -58,8 +58,8 @@ class StoredFileInfo:
     filename: str
     content_type: str
     size: int
-    user_id: Optional[str] = None
-    local_path: Optional[Path] = None  # For local storage fallback
+    user_id: str | None = None
+    local_path: Path | None = None  # For local storage fallback
     created_at: datetime = field(default_factory=datetime.now)
 
 
@@ -72,7 +72,7 @@ class WebSession:
     """
     user_id: str
     user_name: str
-    email: Optional[str] = None
+    email: str | None = None
     roles: list[str] = field(default_factory=list)
     conversation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     messages: list[dict[str, Any]] = field(default_factory=list)
@@ -80,7 +80,7 @@ class WebSession:
     last_activity: datetime = field(default_factory=datetime.now)
 
     # For streaming responses
-    pending_response: Optional[str] = None
+    pending_response: str | None = None
     response_complete: bool = False
     response_chunks: list[str] = field(default_factory=list)
 
@@ -179,8 +179,8 @@ class WebAdapter(ChannelAdapter):
         self,
         user_id: str,
         user_name: str,
-        email: Optional[str] = None,
-        roles: Optional[list[str]] = None
+        email: str | None = None,
+        roles: list[str] | None = None
     ) -> WebSession:
         """Create a new web session for a user."""
         session = WebSession(
@@ -202,7 +202,7 @@ class WebAdapter(ChannelAdapter):
         logger.info(f"[WebAdapter] Created session for user {user_id}")
         return session
 
-    def get_session(self, user_id: str) -> Optional[WebSession]:
+    def get_session(self, user_id: str) -> WebSession | None:
         """Get existing session for a user."""
         session = self._sessions.get(user_id)
         if session:
@@ -213,8 +213,8 @@ class WebAdapter(ChannelAdapter):
         self,
         user_id: str,
         user_name: str,
-        email: Optional[str] = None,
-        roles: Optional[list[str]] = None
+        email: str | None = None,
+        roles: list[str] | None = None
     ) -> WebSession:
         """Get existing session or create new one.
 
@@ -416,12 +416,12 @@ class WebAdapter(ChannelAdapter):
         channel_id: str,  # In web adapter, this is the user_id
         content: str,
         *,
-        thread_id: Optional[str] = None,
-        buttons: Optional[list[Button]] = None,
-        attachments: Optional[list[Attachment]] = None,
+        thread_id: str | None = None,
+        buttons: list[Button] | None = None,
+        attachments: list[Attachment] | None = None,
         format: MessageFormat = MessageFormat.MARKDOWN,
         ephemeral: bool = False,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
     ) -> Message:
         """
         Send a message to the web session.
@@ -496,7 +496,7 @@ class WebAdapter(ChannelAdapter):
         message_id: str,
         content: str,
         *,
-        buttons: Optional[list[Button]] = None,
+        buttons: list[Button] | None = None,
         format: MessageFormat = MessageFormat.MARKDOWN,
     ) -> Message:
         """Update an existing message in the session."""
@@ -591,17 +591,17 @@ class WebAdapter(ChannelAdapter):
     async def upload_file(
         self,
         channel_id: str,
-        file_path: Union[str, Path],
+        file_path: str | Path,
         *,
-        filename: Optional[str] = None,
-        title: Optional[str] = None,
-        comment: Optional[str] = None,
-        thread_id: Optional[str] = None,
+        filename: str | None = None,
+        title: str | None = None,
+        comment: str | None = None,
+        thread_id: str | None = None,
         bucket: str = "uploads",
-        user_id: Optional[str] = None,
-        document_type: Optional[str] = None,
-        bo_id: Optional[int] = None,
-        proposal_id: Optional[int] = None,
+        user_id: str | None = None,
+        document_type: str | None = None,
+        bo_id: int | None = None,
+        proposal_id: int | None = None,
     ) -> FileUpload:
         """
         Store a file and return URL for web download.
@@ -843,15 +843,15 @@ class WebAdapter(ChannelAdapter):
         file_bytes: bytes,
         filename: str,
         *,
-        title: Optional[str] = None,
-        comment: Optional[str] = None,
-        thread_id: Optional[str] = None,
-        mimetype: Optional[str] = None,
+        title: str | None = None,
+        comment: str | None = None,
+        thread_id: str | None = None,
+        mimetype: str | None = None,
         bucket: str = "uploads",
-        user_id: Optional[str] = None,
-        document_type: Optional[str] = None,
-        bo_id: Optional[int] = None,
-        proposal_id: Optional[int] = None,
+        user_id: str | None = None,
+        document_type: str | None = None,
+        bo_id: int | None = None,
+        proposal_id: int | None = None,
     ) -> FileUpload:
         """
         Upload file from bytes.
@@ -993,7 +993,7 @@ class WebAdapter(ChannelAdapter):
             user_id=user_id,
         )
 
-    def get_file_path(self, file_id: str) -> Optional[Path]:
+    def get_file_path(self, file_id: str) -> Path | None:
         """Get the local path for an uploaded file (for local storage only)."""
         # Check new stored files first
         stored = self._stored_files.get(file_id)
@@ -1002,11 +1002,11 @@ class WebAdapter(ChannelAdapter):
         # Legacy fallback
         return self._uploaded_files.get(file_id)
 
-    def get_stored_file_info(self, file_id: str) -> Optional[StoredFileInfo]:
+    def get_stored_file_info(self, file_id: str) -> StoredFileInfo | None:
         """Get storage metadata for a file."""
         return self._stored_files.get(file_id)
 
-    async def get_file_download_url(self, file_id: str, expires_in: int = 3600) -> Optional[str]:
+    async def get_file_download_url(self, file_id: str, expires_in: int = 3600) -> str | None:
         """
         Get a download URL for a file.
 
@@ -1034,7 +1034,7 @@ class WebAdapter(ChannelAdapter):
         # Fallback to API URL
         return f"{self._file_base_url}/{file_id}/{stored.filename}"
 
-    async def download_file_bytes(self, file_id: str) -> Optional[bytes]:
+    async def download_file_bytes(self, file_id: str) -> bytes | None:
         """
         Download file contents as bytes.
 
@@ -1067,7 +1067,7 @@ class WebAdapter(ChannelAdapter):
     async def download_file(
         self,
         file_info: dict[str, Any],
-    ) -> Optional[Path]:
+    ) -> Path | None:
         """
         Download a file from file_info.
 
@@ -1113,7 +1113,7 @@ class WebAdapter(ChannelAdapter):
     # USER MANAGEMENT
     # ========================================================================
 
-    async def get_user(self, user_id: str) -> Optional[User]:
+    async def get_user(self, user_id: str) -> User | None:
         """Get user information."""
         return self._users.get(user_id)
 
@@ -1124,11 +1124,11 @@ class WebAdapter(ChannelAdapter):
             return user.display_name or user.name
         return user_id
 
-    async def open_dm(self, user_id: str) -> Optional[str]:
+    async def open_dm(self, user_id: str) -> str | None:
         """Open a DM channel (for web, this is just the user_id)."""
         return user_id
 
-    async def get_file_info(self, file_id: str) -> Optional[dict[str, Any]]:
+    async def get_file_info(self, file_id: str) -> dict[str, Any] | None:
         """Get file info for a file ID."""
         path = self._uploaded_files.get(file_id)
         if path and path.exists():
@@ -1159,7 +1159,7 @@ class WebAdapter(ChannelAdapter):
         content: str,
         *,
         replace_original: bool = True,
-        buttons: Optional[list[Button]] = None,
+        buttons: list[Button] | None = None,
     ) -> bool:
         """Actions handled by frontend."""
         logger.warning("[WebAdapter] respond_to_action called - handled by frontend")

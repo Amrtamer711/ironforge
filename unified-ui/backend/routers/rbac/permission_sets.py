@@ -13,6 +13,7 @@ RBAC Level 2: Permission Set Management endpoints.
 7 endpoints total.
 """
 
+import contextlib
 import logging
 from typing import Any
 
@@ -259,7 +260,7 @@ async def delete_permission_set(
         supabase.table("permission_sets").delete().eq("id", set_id).execute()
 
         # server.js:2742-2749 - Audit log
-        try:
+        with contextlib.suppress(Exception):
             supabase.table("audit_log").insert({
                 "user_id": user.id,
                 "action": "permission_set.delete",
@@ -271,8 +272,6 @@ async def delete_permission_set(
                     "permissions": [p["permission"] for p in (perms_response.data or [])]
                 }
             }).execute()
-        except Exception:
-            pass
 
         # server.js:2751
         return {"success": True, "deleted": perm_set["name"]}

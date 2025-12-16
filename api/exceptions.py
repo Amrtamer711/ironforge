@@ -6,7 +6,7 @@ return consistent JSON error responses.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -33,8 +33,8 @@ class APIError(Exception):
         self,
         message: str,
         status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR,
-        error_code: Optional[str] = None,
-        details: Optional[dict[str, Any]] = None,
+        error_code: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         self.message = message
         self.status_code = status_code
@@ -49,8 +49,8 @@ class NotFoundError(APIError):
     def __init__(
         self,
         message: str = "Resource not found",
-        resource_type: Optional[str] = None,
-        resource_id: Optional[str] = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
     ):
         details = {}
         if resource_type:
@@ -72,8 +72,8 @@ class ValidationFailedError(APIError):
     def __init__(
         self,
         message: str = "Validation failed",
-        field: Optional[str] = None,
-        errors: Optional[list] = None,
+        field: str | None = None,
+        errors: list | None = None,
     ):
         details = {}
         if field:
@@ -106,8 +106,8 @@ class AuthorizationError(APIError):
     def __init__(
         self,
         message: str = "Permission denied",
-        required_permission: Optional[str] = None,
-        required_role: Optional[str] = None,
+        required_permission: str | None = None,
+        required_role: str | None = None,
     ):
         details = {}
         if required_permission:
@@ -129,7 +129,7 @@ class RateLimitError(APIError):
     def __init__(
         self,
         message: str = "Rate limit exceeded",
-        retry_after: Optional[int] = None,
+        retry_after: int | None = None,
     ):
         details = {}
         if retry_after:
@@ -149,7 +149,7 @@ class ExternalServiceError(APIError):
     def __init__(
         self,
         message: str = "External service error",
-        service: Optional[str] = None,
+        service: str | None = None,
     ):
         details = {}
         if service:
@@ -172,8 +172,8 @@ def build_error_response(
     message: str,
     status_code: int,
     error_code: str,
-    details: Optional[dict[str, Any]] = None,
-    request_id: Optional[str] = None,
+    details: dict[str, Any] | None = None,
+    request_id: str | None = None,
 ) -> dict[str, Any]:
     """
     Build a standardized error response dictionary.

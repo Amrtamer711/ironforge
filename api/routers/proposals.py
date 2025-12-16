@@ -9,7 +9,6 @@ Access Control (Team-based):
 - Regular users see only their own proposals
 """
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -33,25 +32,25 @@ router = APIRouter(prefix="/api/proposals", tags=["proposals"])
 class ProposalLocation(BaseModel):
     id: int
     location_key: str
-    location_display_name: Optional[str] = None
-    start_date: Optional[str] = None
-    duration_weeks: Optional[int] = None
-    net_rate: Optional[float] = None
-    upload_fee: Optional[float] = None
-    production_fee: Optional[float] = None
+    location_display_name: str | None = None
+    start_date: str | None = None
+    duration_weeks: int | None = None
+    net_rate: float | None = None
+    upload_fee: float | None = None
+    production_fee: float | None = None
 
 
 class ProposalResponse(BaseModel):
     id: int
-    user_id: Optional[str] = None
-    submitted_by: Optional[str] = None
+    user_id: str | None = None
+    submitted_by: str | None = None
     client_name: str
     date_generated: str
     package_type: str
-    total_amount: Optional[str] = None
-    currency: Optional[str] = "AED"
-    locations: Optional[str] = None  # Legacy comma-separated
-    proposal_data: Optional[dict] = None
+    total_amount: str | None = None
+    currency: str | None = "AED"
+    locations: str | None = None  # Legacy comma-separated
+    proposal_data: dict | None = None
 
 
 class ProposalDetailResponse(ProposalResponse):
@@ -73,7 +72,7 @@ class ProposalListResponse(BaseModel):
 async def list_proposals(
     limit: int = Query(default=50, le=100, ge=1),
     offset: int = Query(default=0, ge=0),
-    client_name: Optional[str] = Query(default=None, description="Filter by client name"),
+    client_name: str | None = Query(default=None, description="Filter by client name"),
     user: AuthUser = Depends(require_auth),
 ):
     """

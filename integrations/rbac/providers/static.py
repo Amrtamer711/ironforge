@@ -13,7 +13,6 @@ Supports full 4-level enterprise RBAC:
 
 import logging
 from datetime import datetime
-from typing import Optional
 
 from integrations.rbac.base import (
     AccessLevel,
@@ -98,7 +97,7 @@ class StaticRBACProvider(RBACProvider):
         key = f"{object_type}:{record_id}"
         self._record_owners[key] = owner_id
 
-    def get_record_owner(self, object_type: str, record_id: str) -> Optional[str]:
+    def get_record_owner(self, object_type: str, record_id: str) -> str | None:
         """Get the owner of a record."""
         key = f"{object_type}:{record_id}"
         return self._record_owners.get(key)
@@ -133,7 +132,7 @@ class StaticRBACProvider(RBACProvider):
     # LEVEL 1: PROFILE OPERATIONS
     # =========================================================================
 
-    async def get_user_profile(self, user_id: str) -> Optional[Profile]:
+    async def get_user_profile(self, user_id: str) -> Profile | None:
         """Get the profile assigned to a user."""
         profile_name = self._user_profiles.get(user_id)
         if profile_name:
@@ -150,7 +149,7 @@ class StaticRBACProvider(RBACProvider):
         logger.info(f"[RBAC:STATIC] Assigned profile '{profile_name}' to user '{user_id}'")
         return True
 
-    async def get_profile(self, profile_name: str) -> Optional[Profile]:
+    async def get_profile(self, profile_name: str) -> Profile | None:
         """Get a profile by name."""
         return self._profiles.get(profile_name)
 
@@ -162,9 +161,9 @@ class StaticRBACProvider(RBACProvider):
         self,
         name: str,
         display_name: str,
-        description: Optional[str] = None,
-        permissions: Optional[list[str]] = None,
-    ) -> Optional[Profile]:
+        description: str | None = None,
+        permissions: list[str] | None = None,
+    ) -> Profile | None:
         """Create a new profile."""
         if name in self._profiles:
             logger.warning(f"[RBAC:STATIC] Profile already exists: {name}")
@@ -187,10 +186,10 @@ class StaticRBACProvider(RBACProvider):
     async def update_profile(
         self,
         name: str,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        permissions: Optional[list[str]] = None,
-    ) -> Optional[Profile]:
+        display_name: str | None = None,
+        description: str | None = None,
+        permissions: list[str] | None = None,
+    ) -> Profile | None:
         """Update an existing profile."""
         profile = self._profiles.get(name)
         if not profile:
@@ -248,8 +247,8 @@ class StaticRBACProvider(RBACProvider):
         self,
         user_id: str,
         permission_set_name: str,
-        granted_by: Optional[str] = None,
-        expires_at: Optional[str] = None,
+        granted_by: str | None = None,
+        expires_at: str | None = None,
     ) -> bool:
         """Assign a permission set to a user."""
         if permission_set_name not in self._permission_sets:
@@ -277,7 +276,7 @@ class StaticRBACProvider(RBACProvider):
 
         return False
 
-    async def get_permission_set(self, name: str) -> Optional[PermissionSet]:
+    async def get_permission_set(self, name: str) -> PermissionSet | None:
         """Get a permission set by name."""
         return self._permission_sets.get(name)
 
@@ -289,9 +288,9 @@ class StaticRBACProvider(RBACProvider):
         self,
         name: str,
         display_name: str,
-        description: Optional[str] = None,
-        permissions: Optional[list[str]] = None,
-    ) -> Optional[PermissionSet]:
+        description: str | None = None,
+        permissions: list[str] | None = None,
+    ) -> PermissionSet | None:
         """Create a new permission set."""
         if name in self._permission_sets:
             logger.warning(f"[RBAC:STATIC] Permission set already exists: {name}")
@@ -314,11 +313,11 @@ class StaticRBACProvider(RBACProvider):
     async def update_permission_set(
         self,
         name: str,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        permissions: Optional[list[str]] = None,
-        is_active: Optional[bool] = None,
-    ) -> Optional[PermissionSet]:
+        display_name: str | None = None,
+        description: str | None = None,
+        permissions: list[str] | None = None,
+        is_active: bool | None = None,
+    ) -> PermissionSet | None:
         """Update an existing permission set."""
         ps = self._permission_sets.get(name)
         if not ps:
@@ -410,11 +409,11 @@ class StaticRBACProvider(RBACProvider):
 
         return False
 
-    async def get_team(self, team_id: int) -> Optional[Team]:
+    async def get_team(self, team_id: int) -> Team | None:
         """Get a team by ID."""
         return self._teams.get(team_id)
 
-    async def get_team_by_name(self, name: str) -> Optional[Team]:
+    async def get_team_by_name(self, name: str) -> Team | None:
         """Get a team by name."""
         for team in self._teams.values():
             if team.name == name:
@@ -432,10 +431,10 @@ class StaticRBACProvider(RBACProvider):
     async def create_team(
         self,
         name: str,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        parent_team_id: Optional[int] = None,
-    ) -> Optional[Team]:
+        display_name: str | None = None,
+        description: str | None = None,
+        parent_team_id: int | None = None,
+    ) -> Team | None:
         """Create a new team."""
         # Check for duplicate name
         for team in self._teams.values():
@@ -464,12 +463,12 @@ class StaticRBACProvider(RBACProvider):
     async def update_team(
         self,
         team_id: int,
-        name: Optional[str] = None,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        parent_team_id: Optional[int] = None,
-        is_active: Optional[bool] = None,
-    ) -> Optional[Team]:
+        name: str | None = None,
+        display_name: str | None = None,
+        description: str | None = None,
+        parent_team_id: int | None = None,
+        is_active: bool | None = None,
+    ) -> Team | None:
         """Update an existing team."""
         team = self._teams.get(team_id)
         if not team:
@@ -511,12 +510,12 @@ class StaticRBACProvider(RBACProvider):
         object_type: str,
         record_id: str,
         shared_by: str,
-        shared_with_user_id: Optional[str] = None,
-        shared_with_team_id: Optional[int] = None,
+        shared_with_user_id: str | None = None,
+        shared_with_team_id: int | None = None,
         access_level: AccessLevel = AccessLevel.READ,
-        expires_at: Optional[str] = None,
-        reason: Optional[str] = None,
-    ) -> Optional[RecordShare]:
+        expires_at: str | None = None,
+        reason: str | None = None,
+    ) -> RecordShare | None:
         """Share a record with a user or team."""
         if not shared_with_user_id and not shared_with_team_id:
             logger.warning("[RBAC:STATIC] Must share with user or team")
@@ -616,7 +615,7 @@ class StaticRBACProvider(RBACProvider):
 
         return False
 
-    async def list_sharing_rules(self, object_type: Optional[str] = None) -> list[SharingRule]:
+    async def list_sharing_rules(self, object_type: str | None = None) -> list[SharingRule]:
         """List sharing rules, optionally filtered by object type."""
         rules = list(self._sharing_rules.values())
         if object_type:
@@ -630,10 +629,10 @@ class StaticRBACProvider(RBACProvider):
         share_from_type: str,
         share_to_type: str,
         access_level: AccessLevel,
-        share_from_id: Optional[str] = None,
-        share_to_id: Optional[str] = None,
-        description: Optional[str] = None,
-    ) -> Optional[SharingRule]:
+        share_from_id: str | None = None,
+        share_to_id: str | None = None,
+        description: str | None = None,
+    ) -> SharingRule | None:
         """Create a sharing rule."""
         rule_id = self._next_rule_id
         self._next_rule_id += 1
@@ -689,7 +688,7 @@ class StaticRBACProvider(RBACProvider):
         self,
         user_id: str,
         permission: str,
-        context: Optional[RBACContext] = None,
+        context: RBACContext | None = None,
     ) -> bool:
         """Check if user has a specific permission."""
         # Check profile permissions

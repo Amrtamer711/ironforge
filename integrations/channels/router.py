@@ -37,7 +37,7 @@ class ChannelRouter:
 
     def __init__(self):
         self._adapters: dict[str, ChannelAdapter] = {}
-        self._active_channel: Optional[str] = None
+        self._active_channel: str | None = None
 
     def register(self, adapter: ChannelAdapter) -> None:
         """
@@ -55,7 +55,7 @@ class ChannelRouter:
             self._active_channel = key
             logger.info(f"[ChannelRouter] Set default active channel: {key}")
 
-    def get(self, channel_type: str) -> Optional[ChannelAdapter]:
+    def get(self, channel_type: str) -> ChannelAdapter | None:
         """
         Get a specific channel adapter.
 
@@ -67,7 +67,7 @@ class ChannelRouter:
         """
         return self._adapters.get(channel_type)
 
-    def get_active(self) -> Optional[ChannelAdapter]:
+    def get_active(self) -> ChannelAdapter | None:
         """
         Get the currently active channel adapter.
 
@@ -97,7 +97,7 @@ class ChannelRouter:
         return True
 
     @property
-    def active_channel_type(self) -> Optional[str]:
+    def active_channel_type(self) -> str | None:
         """Get the active channel type."""
         return self._active_channel
 
@@ -127,7 +127,7 @@ def get_router() -> ChannelRouter:
     return _router
 
 
-def get_channel(channel_type: Optional[str] = None) -> Optional[ChannelAdapter]:
+def get_channel(channel_type: str | None = None) -> ChannelAdapter | None:
     """
     Get a channel adapter.
 

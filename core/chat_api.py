@@ -12,7 +12,7 @@ import asyncio
 import json
 from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import config
 from core.chat_persistence import clear_chat_messages, save_chat_messages
@@ -22,7 +22,7 @@ from integrations.channels import WebAdapter
 logger = config.logger
 
 # Global WebAdapter instance for the unified UI
-_web_adapter: Optional[WebAdapter] = None
+_web_adapter: WebAdapter | None = None
 
 
 def get_web_adapter() -> WebAdapter:
@@ -45,9 +45,9 @@ async def process_chat_message(
     user_id: str,
     user_name: str,
     message: str,
-    roles: Optional[list[str]] = None,
-    files: Optional[list[dict[str, Any]]] = None,
-    companies: Optional[list[str]] = None,
+    roles: list[str] | None = None,
+    files: list[dict[str, Any]] | None = None,
+    companies: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Process a chat message from the unified UI.
@@ -192,9 +192,9 @@ async def stream_chat_message(
     user_id: str,
     user_name: str,
     message: str,
-    roles: Optional[list[str]] = None,
-    files: Optional[list[dict[str, Any]]] = None,
-    companies: Optional[list[str]] = None,
+    roles: list[str] | None = None,
+    files: list[dict[str, Any]] | None = None,
+    companies: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Stream a chat response using Server-Sent Events format.

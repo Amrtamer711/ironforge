@@ -9,11 +9,11 @@ Provides:
 
 import hashlib
 from pathlib import Path
-from typing import BinaryIO, Optional, Union
+from typing import BinaryIO
 
 
 def calculate_file_hash(
-    data: Union[bytes, BinaryIO, str, Path],
+    data: bytes | BinaryIO | str | Path,
     algorithm: str = "sha256",
     chunk_size: int = 8192,
 ) -> str:
@@ -46,7 +46,7 @@ def calculate_file_hash(
 
     if isinstance(data, bytes):
         hasher.update(data)
-    elif isinstance(data, (str, Path)):
+    elif isinstance(data, str | Path):
         # File path - read in chunks
         path = Path(data)
         if not path.exists():
@@ -70,7 +70,7 @@ def calculate_file_hash(
     return hasher.hexdigest()
 
 
-def calculate_sha256(data: Union[bytes, BinaryIO, str, Path]) -> str:
+def calculate_sha256(data: bytes | BinaryIO | str | Path) -> str:
     """
     Convenience function to calculate SHA256 hash.
 
@@ -87,7 +87,7 @@ def validate_file_size(
     size: int,
     max_size: int,
     min_size: int = 0,
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """
     Validate file size is within bounds.
 

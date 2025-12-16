@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 
 class ChannelType(str, Enum):
@@ -50,16 +50,16 @@ class User:
     """Platform-agnostic user representation."""
     id: str
     name: str
-    display_name: Optional[str] = None
-    email: Optional[str] = None
-    avatar_url: Optional[str] = None
+    display_name: str | None = None
+    email: str | None = None
+    avatar_url: str | None = None
     is_bot: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
 
     # Platform-specific IDs (for cross-referencing)
-    slack_id: Optional[str] = None
-    teams_id: Optional[str] = None
-    web_user_id: Optional[str] = None
+    slack_id: str | None = None
+    teams_id: str | None = None
+    web_user_id: str | None = None
 
 
 @dataclass
@@ -67,10 +67,10 @@ class Attachment:
     """File or media attachment."""
     url: str
     filename: str
-    mimetype: Optional[str] = None
-    size: Optional[int] = None
-    title: Optional[str] = None
-    thumbnail_url: Optional[str] = None
+    mimetype: str | None = None
+    size: int | None = None
+    title: str | None = None
+    thumbnail_url: str | None = None
 
 
 @dataclass
@@ -79,14 +79,14 @@ class Message:
     id: str
     channel_id: str
     content: str
-    user_id: Optional[str] = None
-    thread_id: Optional[str] = None
-    timestamp: Optional[str] = None
+    user_id: str | None = None
+    thread_id: str | None = None
+    timestamp: str | None = None
     attachments: list[Attachment] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
     # For tracking platform-specific IDs
-    platform_message_id: Optional[str] = None  # e.g., Slack's ts
+    platform_message_id: str | None = None  # e.g., Slack's ts
 
 
 @dataclass
@@ -94,10 +94,10 @@ class Button:
     """Interactive button element."""
     action_id: str
     text: str
-    value: Optional[str] = None
+    value: str | None = None
     style: ButtonStyle = ButtonStyle.SECONDARY
-    confirm_title: Optional[str] = None  # Optional confirmation dialog
-    confirm_text: Optional[str] = None
+    confirm_title: str | None = None  # Optional confirmation dialog
+    confirm_text: str | None = None
 
 
 @dataclass
@@ -106,13 +106,13 @@ class ModalField:
     field_id: str
     label: str
     field_type: FieldType = FieldType.TEXT
-    placeholder: Optional[str] = None
-    default_value: Optional[str] = None
+    placeholder: str | None = None
+    default_value: str | None = None
     required: bool = False
-    options: Optional[list[dict[str, str]]] = None  # For select fields
-    max_length: Optional[int] = None
+    options: list[dict[str, str]] | None = None  # For select fields
+    max_length: int | None = None
     multiline: bool = False
-    block_id: Optional[str] = None  # Custom block ID (for Slack submission handling)
+    block_id: str | None = None  # Custom block ID (for Slack submission handling)
 
 
 @dataclass
@@ -123,7 +123,7 @@ class Modal:
     fields: list[ModalField] = field(default_factory=list)
     submit_text: str = "Submit"
     cancel_text: str = "Cancel"
-    private_metadata: Optional[str] = None  # For passing data through
+    private_metadata: str | None = None  # For passing data through
 
 
 @dataclass
@@ -133,24 +133,24 @@ class ActionResult:
     action_id: str
     user_id: str
     channel_id: str
-    value: Optional[str] = None
+    value: str | None = None
     form_values: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
 
     # For tracking the source
-    message_id: Optional[str] = None
-    thread_id: Optional[str] = None
-    response_url: Optional[str] = None  # For deferred responses
+    message_id: str | None = None
+    thread_id: str | None = None
+    response_url: str | None = None  # For deferred responses
 
 
 @dataclass
 class FileUpload:
     """File upload result."""
     success: bool
-    url: Optional[str] = None
-    file_id: Optional[str] = None
-    filename: Optional[str] = None
-    error: Optional[str] = None
+    url: str | None = None
+    file_id: str | None = None
+    filename: str | None = None
+    error: str | None = None
 
 
 class ChannelAdapter(ABC):
@@ -208,12 +208,12 @@ class ChannelAdapter(ABC):
         channel_id: str,
         content: str,
         *,
-        thread_id: Optional[str] = None,
-        buttons: Optional[list[Button]] = None,
-        attachments: Optional[list[Attachment]] = None,
+        thread_id: str | None = None,
+        buttons: list[Button] | None = None,
+        attachments: list[Attachment] | None = None,
         format: MessageFormat = MessageFormat.MARKDOWN,
         ephemeral: bool = False,
-        user_id: Optional[str] = None,  # For ephemeral messages
+        user_id: str | None = None,  # For ephemeral messages
     ) -> Message:
         """
         Send a message to a channel.
@@ -240,7 +240,7 @@ class ChannelAdapter(ABC):
         message_id: str,
         content: str,
         *,
-        buttons: Optional[list[Button]] = None,
+        buttons: list[Button] | None = None,
         format: MessageFormat = MessageFormat.MARKDOWN,
     ) -> Message:
         """
@@ -328,12 +328,12 @@ class ChannelAdapter(ABC):
     async def upload_file(
         self,
         channel_id: str,
-        file_path: Union[str, Path],
+        file_path: str | Path,
         *,
-        filename: Optional[str] = None,
-        title: Optional[str] = None,
-        comment: Optional[str] = None,
-        thread_id: Optional[str] = None,
+        filename: str | None = None,
+        title: str | None = None,
+        comment: str | None = None,
+        thread_id: str | None = None,
     ) -> FileUpload:
         """
         Upload a file to a channel.
@@ -358,10 +358,10 @@ class ChannelAdapter(ABC):
         file_bytes: bytes,
         filename: str,
         *,
-        title: Optional[str] = None,
-        comment: Optional[str] = None,
-        thread_id: Optional[str] = None,
-        mimetype: Optional[str] = None,
+        title: str | None = None,
+        comment: str | None = None,
+        thread_id: str | None = None,
+        mimetype: str | None = None,
     ) -> FileUpload:
         """
         Upload file from bytes.
@@ -384,7 +384,7 @@ class ChannelAdapter(ABC):
     async def download_file(
         self,
         file_info: dict[str, Any],
-    ) -> Optional[Path]:
+    ) -> Path | None:
         """
         Download a file from the channel.
 
@@ -401,7 +401,7 @@ class ChannelAdapter(ABC):
     # ========================================================================
 
     @abstractmethod
-    async def get_user(self, user_id: str) -> Optional[User]:
+    async def get_user(self, user_id: str) -> User | None:
         """
         Get user information.
 
@@ -427,7 +427,7 @@ class ChannelAdapter(ABC):
         pass
 
     @abstractmethod
-    async def open_dm(self, user_id: str) -> Optional[str]:
+    async def open_dm(self, user_id: str) -> str | None:
         """
         Open a direct message channel with a user.
 
@@ -468,7 +468,7 @@ class ChannelAdapter(ABC):
         content: str,
         *,
         replace_original: bool = True,
-        buttons: Optional[list[Button]] = None,
+        buttons: list[Button] | None = None,
     ) -> bool:
         """
         Respond to an interactive action via response URL.

@@ -14,7 +14,6 @@ Returns None if credentials are not configured (mirrors Node.js null check).
 """
 
 import logging
-from typing import Optional
 
 from supabase import Client, create_client
 
@@ -23,10 +22,10 @@ from backend.config import get_settings
 logger = logging.getLogger("unified-ui")
 
 # Global client instance (singleton)
-_client: Optional[Client] = None
+_client: Client | None = None
 
 
-def get_supabase() -> Optional[Client]:
+def get_supabase() -> Client | None:
     """
     Get or create the Supabase client.
 

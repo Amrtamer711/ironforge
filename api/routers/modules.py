@@ -7,7 +7,6 @@ This router handles:
 - User-module assignments (admin)
 """
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -31,8 +30,8 @@ class ModuleInfo(BaseModel):
     """Public module information."""
     name: str
     display_name: str
-    description: Optional[str] = None
-    icon: Optional[str] = None
+    description: str | None = None
+    icon: str | None = None
     is_default: bool = False
     sort_order: int = 0
     tools: list[str] = []  # Tools within this module
@@ -41,8 +40,8 @@ class ModuleInfo(BaseModel):
 class AccessibleModulesResponse(BaseModel):
     """Response for accessible modules endpoint."""
     modules: list[ModuleInfo]
-    default_module: Optional[str] = None
-    user_default_module: Optional[str] = None
+    default_module: str | None = None
+    user_default_module: str | None = None
 
 
 class UserModuleAssignment(BaseModel):
@@ -56,11 +55,11 @@ class ModuleCreateRequest(BaseModel):
     """Request to create a new module."""
     name: str
     display_name: str
-    description: Optional[str] = None
-    icon: Optional[str] = None
+    description: str | None = None
+    icon: str | None = None
     is_default: bool = False
     sort_order: int = 0
-    required_permission: Optional[str] = None
+    required_permission: str | None = None
     tools: list[str] = []
 
 

@@ -23,7 +23,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import config
 from db.database import db
@@ -67,7 +67,7 @@ def _convert_booking_order_currency(data: dict[str, Any], from_currency: str, to
     # Notes or other numeric strings are left untouched intentionally
 
 
-def _format_amount(data: dict[str, Any], amount: Optional[float]) -> str:
+def _format_amount(data: dict[str, Any], amount: float | None) -> str:
     currency = data.get("currency", config.DEFAULT_CURRENCY) if data else config.DEFAULT_CURRENCY
     return config.format_currency_value(amount, currency)
 
@@ -123,7 +123,7 @@ def get_head_of_sales_name(company: str) -> str:
     return company_hos.get("name", f"{company.title()} Head of Sales")
 
 
-async def get_head_of_sales_channel(company: str) -> Optional[str]:
+async def get_head_of_sales_channel(company: str) -> str | None:
     """
     Get Head of Sales DM channel ID for specific company.
     Uses conversations.open to get DM channel ID from user_id.
@@ -151,7 +151,7 @@ async def get_head_of_sales_channel(company: str) -> Optional[str]:
     return None
 
 
-async def get_coordinator_channel(company: str) -> Optional[str]:
+async def get_coordinator_channel(company: str) -> str | None:
     """
     Get Sales Coordinator DM channel ID for specific company.
     Uses channel adapter to get DM channel ID from user_id.
@@ -330,7 +330,7 @@ async def save_workflow_to_db(workflow_id: str, workflow_data: dict[str, Any]):
         logger.error(f"[BO APPROVAL] Failed to save workflow {workflow_id}: {e}")
 
 
-async def get_workflow_from_db(workflow_id: str) -> Optional[dict[str, Any]]:
+async def get_workflow_from_db(workflow_id: str) -> dict[str, Any] | None:
     """Retrieve workflow from database"""
     try:
         workflow_json = db.get_bo_workflow(workflow_id)
@@ -342,7 +342,7 @@ async def get_workflow_from_db(workflow_id: str) -> Optional[dict[str, Any]]:
         return None
 
 
-async def get_workflow_with_cache(workflow_id: str) -> Optional[dict[str, Any]]:
+async def get_workflow_with_cache(workflow_id: str) -> dict[str, Any] | None:
     """Get workflow from cache or database"""
     # Check cache first
     if workflow_id in approval_workflows:

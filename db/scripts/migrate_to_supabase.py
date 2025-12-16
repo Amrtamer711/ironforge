@@ -37,7 +37,7 @@ import re
 import sqlite3
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -47,6 +47,8 @@ from dotenv import load_dotenv
 # Load both .env and .env.secrets
 load_dotenv()
 load_dotenv(Path(__file__).parent.parent.parent / ".env.secrets")
+
+import contextlib
 
 from supabase import Client, create_client
 
@@ -144,7 +146,7 @@ def get_schema_table(supabase: Client, table: str):
 
 
 def batch_insert(supabase: Client, table: str, records: list[dict],
-                 batch_size: int = 50, on_conflict: Optional[str] = None,
+                 batch_size: int = 50, on_conflict: str | None = None,
                  dry_run: bool = False) -> int:
     """Insert records in batches into company schema, return count of inserted records."""
     if not records:
@@ -468,25 +470,17 @@ def parse_metadata_file(filepath: Path) -> dict[str, Any]:
                 # Parse specific fields
                 if key == 'sov':
                     value = value.replace('%', '').strip()
-                    try:
+                    with contextlib.suppress(ValueError):
                         metadata['sov_percent'] = float(value)
-                    except ValueError:
-                        pass
                 elif key == 'upload_fee':
-                    try:
+                    with contextlib.suppress(ValueError):
                         metadata['upload_fee'] = float(value.replace(',', ''))
-                    except ValueError:
-                        pass
                 elif key == 'spot_duration':
-                    try:
+                    with contextlib.suppress(ValueError):
                         metadata['spot_duration'] = int(value)
-                    except ValueError:
-                        pass
                 elif key == 'loop_duration':
-                    try:
+                    with contextlib.suppress(ValueError):
                         metadata['loop_duration'] = int(value)
-                    except ValueError:
-                        pass
                 elif key == 'number_of_faces':
                     try:
                         metadata['number_of_faces'] = int(value)
@@ -511,7 +505,7 @@ def parse_metadata_file(filepath: Path) -> dict[str, Any]:
     return metadata
 
 
-def get_template_path(location_key: str, templates_dir: Path, company: str) -> Optional[str]:
+def get_template_path(location_key: str, templates_dir: Path, company: str) -> str | None:
     """Find the template file path for a location (with company prefix)."""
     location_dir = templates_dir / location_key
     if not location_dir.exists():
@@ -1173,10 +1167,8 @@ def create_bo_locations(supabase: Client, location_map: dict[str, int],
                     # Extract rate
                     for key in ('net_rate', 'netRate', 'rate', 'amount'):
                         if key in item and item[key]:
-                            try:
+                            with contextlib.suppress(ValueError):
                                 loc_data['net_rate'] = float(str(item[key]).replace(',', ''))
-                            except ValueError:
-                                pass
                             break
 
                     if loc_data['location_key']:
@@ -1244,7 +1236,7 @@ def create_bo_locations(supabase: Client, location_map: dict[str, int],
 
 def run_migration(company: str, dry_run: bool = False, skip_locations: bool = False,
                   skip_storage: bool = False, storage_only: bool = False,
-                  tables: Optional[list[str]] = None):
+                  tables: list[str] | None = None):
     """Run the complete migration to a company schema."""
     global COMPANY_SCHEMA
     COMPANY_SCHEMA = company

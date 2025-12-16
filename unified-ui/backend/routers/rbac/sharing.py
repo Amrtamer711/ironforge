@@ -18,9 +18,10 @@ RBAC Level 4: Record Sharing endpoints.
 12 endpoints total.
 """
 
+import contextlib
 import logging
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -45,7 +46,7 @@ router = APIRouter()
 
 @router.get("/sharing-rules")
 async def list_sharing_rules(
-    object_type: Optional[str] = None,
+    object_type: str | None = None,
     user: AuthUser = Depends(require_profile("system_admin")),
 ) -> list[dict[str, Any]]:
     """
@@ -456,7 +457,7 @@ async def create_share(
         share = response.data
 
         # server.js:3698-3706 - Audit log
-        try:
+        with contextlib.suppress(Exception):
             supabase.table("audit_log").insert({
                 "user_id": user.id,
                 "action": "record.share",
@@ -470,8 +471,6 @@ async def create_share(
                     "expires_at": request.expires_at
                 }
             }).execute()
-        except Exception:
-            pass
 
         # server.js:3709-3711 - Clear RBAC cache
         if request.shared_with_user_id:
@@ -548,7 +547,7 @@ async def get_shares_for_record(
 
 @router.get("/shares/shared-with-me")
 async def get_shares_shared_with_me(
-    object_type: Optional[str] = None,
+    object_type: str | None = None,
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=100),
     user: AuthUser = Depends(require_auth),
@@ -656,7 +655,7 @@ async def delete_share(
         supabase.table("record_shares").delete().eq("id", share_id).execute()
 
         # server.js:3852-3860 - Audit log
-        try:
+        with contextlib.suppress(Exception):
             supabase.table("audit_log").insert({
                 "user_id": user.id,
                 "action": "record.unshare",
@@ -669,8 +668,6 @@ async def delete_share(
                     "shared_with_team_id": share.get("shared_with_team_id")
                 }
             }).execute()
-        except Exception:
-            pass
 
         # server.js:3863-3865 - Clear RBAC cache
         if share.get("shared_with_user_id"):
@@ -693,7 +690,7 @@ async def delete_share(
 async def check_access(
     object_type: str,
     record_id: str,
-    required_level: Optional[str] = None,
+    required_level: str | None = None,
     user: AuthUser = Depends(require_auth),
 ) -> dict[str, Any]:
     """

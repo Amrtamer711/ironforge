@@ -5,7 +5,6 @@ NOTE: This file only handles auth endpoints needed by the sales module.
 Invite token management is handled by unified-ui (Node.js service).
 """
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -74,7 +73,7 @@ async def auth_logout():
 
 
 @router.get("/me")
-async def auth_me(user: Optional[AuthUser] = Depends(get_current_user)):
+async def auth_me(user: AuthUser | None = Depends(get_current_user)):
     """Get current user info from token."""
     logger.info(f"[AUTH] /me request, user: {user.email if user else 'None'}")
     if not user:

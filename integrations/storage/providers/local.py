@@ -10,7 +10,7 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any, BinaryIO, Optional, Union
+from typing import Any, BinaryIO
 
 from integrations.storage.base import (
     DownloadResult,
@@ -44,8 +44,8 @@ class LocalStorageProvider(StorageProvider):
 
     def __init__(
         self,
-        base_path: Optional[Union[str, Path]] = None,
-        url_prefix: Optional[str] = None,
+        base_path: str | Path | None = None,
+        url_prefix: str | None = None,
     ):
         """
         Initialize local storage provider.
@@ -113,9 +113,9 @@ class LocalStorageProvider(StorageProvider):
         self,
         bucket: str,
         key: str,
-        data: Union[bytes, BinaryIO],
-        content_type: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        data: bytes | BinaryIO,
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> UploadResult:
         """Upload data to local storage."""
         try:
@@ -145,9 +145,9 @@ class LocalStorageProvider(StorageProvider):
         self,
         bucket: str,
         key: str,
-        local_path: Union[str, Path],
-        content_type: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        local_path: str | Path,
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> UploadResult:
         """Upload file from local path to storage."""
         try:
@@ -202,7 +202,7 @@ class LocalStorageProvider(StorageProvider):
         self,
         bucket: str,
         key: str,
-        local_path: Union[str, Path],
+        local_path: str | Path,
     ) -> DownloadResult:
         """Download file to local filesystem."""
         try:
@@ -266,7 +266,7 @@ class LocalStorageProvider(StorageProvider):
         self,
         bucket: str,
         key: str,
-    ) -> Optional[StorageFile]:
+    ) -> StorageFile | None:
         """Get file metadata without downloading."""
         try:
             full_path = self._get_full_path(bucket, key)
@@ -283,9 +283,9 @@ class LocalStorageProvider(StorageProvider):
     async def list_files(
         self,
         bucket: str,
-        prefix: Optional[str] = None,
+        prefix: str | None = None,
         limit: int = 100,
-        continuation_token: Optional[str] = None,
+        continuation_token: str | None = None,
     ) -> ListResult:
         """List files in a bucket with optional prefix filtering."""
         try:
@@ -399,7 +399,7 @@ class LocalStorageProvider(StorageProvider):
         self,
         bucket: str,
         key: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get URL for file access."""
         key = self.normalize_key(key)
 
@@ -416,7 +416,7 @@ class LocalStorageProvider(StorageProvider):
         bucket: str,
         key: str,
         expires_in: int = 3600,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Get signed URL for file access.
 

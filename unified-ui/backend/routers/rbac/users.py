@@ -13,7 +13,7 @@ RBAC User Management endpoints.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -69,10 +69,10 @@ async def get_my_context(
 async def list_users(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=100),
-    search: Optional[str] = None,
-    profile: Optional[str] = None,
-    team: Optional[int] = None,
-    is_active: Optional[str] = None,
+    search: str | None = None,
+    profile: str | None = None,
+    team: int | None = None,
+    is_active: str | None = None,
     user: AuthUser = Depends(require_profile("system_admin")),
 ) -> dict[str, Any]:
     """
@@ -371,13 +371,13 @@ async def reactivate_user(
 async def get_audit_log(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=100),
-    action: Optional[str] = None,
-    action_category: Optional[str] = None,
-    user_id: Optional[str] = None,
-    target_user_id: Optional[str] = None,
-    resource_type: Optional[str] = None,
-    from_date: Optional[str] = None,
-    to_date: Optional[str] = None,
+    action: str | None = None,
+    action_category: str | None = None,
+    user_id: str | None = None,
+    target_user_id: str | None = None,
+    resource_type: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
     user: AuthUser = Depends(require_profile("system_admin")),
 ) -> dict[str, Any]:
     """

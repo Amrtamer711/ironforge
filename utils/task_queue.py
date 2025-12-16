@@ -10,7 +10,7 @@ import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 import psutil
 
@@ -35,10 +35,10 @@ class QueuedTask:
     args: tuple
     kwargs: dict
     created_at: datetime
-    started_at: Optional[datetime] = None
-    completed_at: Optional[datetime] = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
     result: Any = None
-    error: Optional[Exception] = None
+    error: Exception | None = None
     started_event: asyncio.Event = None
     completed_event: asyncio.Event = None
 

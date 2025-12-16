@@ -25,6 +25,7 @@ Configuration:
     Set API_KEYS_ENABLED=true to enable enforcement.
 """
 
+import contextlib
 import hashlib
 import hmac
 import os
@@ -33,7 +34,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
@@ -59,11 +59,11 @@ class APIKeyInfo:
     key_id: str
     client_name: str
     scopes: list[APIKeyScope]
-    created_at: Optional[datetime] = None
-    expires_at: Optional[datetime] = None
-    last_used_at: Optional[datetime] = None
-    rate_limit: Optional[int] = None  # Requests per minute
-    metadata: Optional[dict] = None
+    created_at: datetime | None = None
+    expires_at: datetime | None = None
+    last_used_at: datetime | None = None
+    rate_limit: int | None = None  # Requests per minute
+    metadata: dict | None = None
 
     def has_scope(self, scope: APIKeyScope) -> bool:
         """Check if key has a specific scope."""
@@ -108,11 +108,11 @@ class APIKeyStore:
     Subclasses implement storage-specific retrieval.
     """
 
-    async def get_key_info(self, key_hash: str) -> Optional[APIKeyInfo]:
+    async def get_key_info(self, key_hash: str) -> APIKeyInfo | None:
         """Retrieve key info by hash."""
         raise NotImplementedError
 
-    async def validate_key(self, raw_key: str) -> Optional[APIKeyInfo]:
+    async def validate_key(self, raw_key: str) -> APIKeyInfo | None:
         """Validate a raw API key and return its info."""
         key_hash = _hash_key(raw_key)
         return await self.get_key_info(key_hash)
@@ -187,7 +187,7 @@ class EnvAPIKeyStore(APIKeyStore):
         if self._keys:
             logger.info(f"[API_KEY] Loaded {len(self._keys)} API keys from environment")
 
-    async def get_key_info(self, key_hash: str) -> Optional[APIKeyInfo]:
+    async def get_key_info(self, key_hash: str) -> APIKeyInfo | None:
         """Retrieve key info by hash with constant-time comparison."""
         # Use constant-time comparison to prevent timing attacks
         for stored_hash, key_info in self._keys.items():
@@ -209,7 +209,7 @@ class DatabaseAPIKeyStore(APIKeyStore):
         self._db = db
         logger.info("[API_KEY] Using database-backed API key store")
 
-    async def get_key_info(self, key_hash: str) -> Optional[APIKeyInfo]:
+    async def get_key_info(self, key_hash: str) -> APIKeyInfo | None:
         """Retrieve key info by hash with constant-time comparison."""
         record = self._db.get_api_key_by_hash(key_hash)
         if not record:
@@ -238,22 +238,16 @@ class DatabaseAPIKeyStore(APIKeyStore):
         last_used_at = None
 
         if record.get("created_at"):
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 created_at = datetime.fromisoformat(record["created_at"])
-            except (ValueError, TypeError):
-                pass
 
         if record.get("expires_at"):
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 expires_at = datetime.fromisoformat(record["expires_at"])
-            except (ValueError, TypeError):
-                pass
 
         if record.get("last_used_at"):
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 last_used_at = datetime.fromisoformat(record["last_used_at"])
-            except (ValueError, TypeError):
-                pass
 
         return APIKeyInfo(
             key_id=str(record["id"]),
@@ -295,10 +289,10 @@ class CombinedAPIKeyStore(APIKeyStore):
 
     def __init__(self):
         self._env_store = EnvAPIKeyStore()
-        self._db_store: Optional[DatabaseAPIKeyStore] = None
+        self._db_store: DatabaseAPIKeyStore | None = None
         self._db_initialized = False
 
-    def _get_db_store(self) -> Optional[DatabaseAPIKeyStore]:
+    def _get_db_store(self) -> DatabaseAPIKeyStore | None:
         """Lazy-load database store."""
         if not self._db_initialized:
             self._db_initialized = True
@@ -309,7 +303,7 @@ class CombinedAPIKeyStore(APIKeyStore):
                 self._db_store = None
         return self._db_store
 
-    async def get_key_info(self, key_hash: str) -> Optional[APIKeyInfo]:
+    async def get_key_info(self, key_hash: str) -> APIKeyInfo | None:
         """Check env first, then database."""
         # Try environment
         key_info = await self._env_store.get_key_info(key_hash)
@@ -333,7 +327,7 @@ class CombinedAPIKeyStore(APIKeyStore):
 
 
 # Global store instance
-_store: Optional[APIKeyStore] = None
+_store: APIKeyStore | None = None
 
 
 def _get_store() -> APIKeyStore:
@@ -363,8 +357,8 @@ def set_api_key_store(store: APIKeyStore) -> None:
 
 async def get_api_key(
     request: Request,
-    api_key: Optional[str] = Security(_api_key_header),
-) -> Optional[APIKeyInfo]:
+    api_key: str | None = Security(_api_key_header),
+) -> APIKeyInfo | None:
     """
     Get API key info from request (if provided).
 
@@ -396,7 +390,7 @@ async def get_api_key(
     return key_info
 
 
-def require_api_key(scope: Optional[APIKeyScope] = None) -> Callable:
+def require_api_key(scope: APIKeyScope | None = None) -> Callable:
     """
     Factory for requiring API key authentication.
 
@@ -415,7 +409,7 @@ def require_api_key(scope: Optional[APIKeyScope] = None) -> Callable:
             ...
     """
     async def _require_api_key(
-        key_info: Optional[APIKeyInfo] = Depends(get_api_key),
+        key_info: APIKeyInfo | None = Depends(get_api_key),
     ) -> APIKeyInfo:
         # Check if API keys are enabled
         api_keys_enabled = os.getenv("API_KEYS_ENABLED", "false").lower() == "true"
@@ -454,7 +448,7 @@ def require_api_key(scope: Optional[APIKeyScope] = None) -> Callable:
 
 # Convenience function for simple usage
 def api_key_required(
-    key_info: Optional[APIKeyInfo] = Depends(get_api_key),
+    key_info: APIKeyInfo | None = Depends(get_api_key),
 ) -> APIKeyInfo:
     """Simple dependency that requires any valid API key."""
     return require_api_key()(key_info)

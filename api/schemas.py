@@ -7,7 +7,7 @@ All POST/PUT endpoints should use these models for type-safe validation.
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -72,15 +72,15 @@ class FramePoint(BaseModel):
 
 class FrameConfig(BaseModel):
     """Configuration for frame effects."""
-    edge_blend: Optional[float] = Field(None, ge=0, le=1, description="Edge blend amount 0-1")
-    depth_enabled: Optional[bool] = Field(None, description="Enable depth effect")
-    vignette_amount: Optional[float] = Field(None, ge=0, le=1, description="Vignette amount 0-1")
-    shadow_opacity: Optional[float] = Field(None, ge=0, le=1, description="Shadow opacity 0-1")
-    brightness: Optional[float] = Field(None, ge=0, le=2, description="Brightness adjustment 0-2")
-    contrast: Optional[float] = Field(None, ge=0, le=2, description="Contrast adjustment 0-2")
-    saturation: Optional[float] = Field(None, ge=0, le=2, description="Saturation adjustment 0-2")
-    blur_amount: Optional[float] = Field(None, ge=0, le=20, description="Blur amount in pixels")
-    sharpen_amount: Optional[float] = Field(None, ge=0, le=5, description="Sharpen amount")
+    edge_blend: float | None = Field(None, ge=0, le=1, description="Edge blend amount 0-1")
+    depth_enabled: bool | None = Field(None, description="Enable depth effect")
+    vignette_amount: float | None = Field(None, ge=0, le=1, description="Vignette amount 0-1")
+    shadow_opacity: float | None = Field(None, ge=0, le=1, description="Shadow opacity 0-1")
+    brightness: float | None = Field(None, ge=0, le=2, description="Brightness adjustment 0-2")
+    contrast: float | None = Field(None, ge=0, le=2, description="Contrast adjustment 0-2")
+    saturation: float | None = Field(None, ge=0, le=2, description="Saturation adjustment 0-2")
+    blur_amount: float | None = Field(None, ge=0, le=20, description="Blur amount in pixels")
+    sharpen_amount: float | None = Field(None, ge=0, le=5, description="Sharpen amount")
 
     class Config:
         extra = "allow"  # Allow additional config options
@@ -89,7 +89,7 @@ class FrameConfig(BaseModel):
 class FrameData(BaseModel):
     """A single frame with points and optional config."""
     points: list[list[float]] = Field(..., min_length=4, max_length=4, description="4 corner points")
-    config: Optional[dict[str, Any]] = Field(default_factory=dict, description="Frame-specific config")
+    config: dict[str, Any] | None = Field(default_factory=dict, description="Frame-specific config")
 
     @field_validator("points")
     @classmethod
@@ -98,7 +98,7 @@ class FrameData(BaseModel):
         for i, point in enumerate(v):
             if not isinstance(point, list) or len(point) != 2:
                 raise ValueError(f"Point {i} must be [x, y] format, got {point}")
-            if not all(isinstance(coord, (int, float)) for coord in point):
+            if not all(isinstance(coord, int | float) for coord in point):
                 raise ValueError(f"Point {i} coordinates must be numbers")
             if any(coord < 0 for coord in point):
                 raise ValueError(f"Point {i} coordinates cannot be negative")
@@ -110,9 +110,9 @@ class MockupGenerateRequest(BaseModel):
     location_key: str = Field(..., min_length=1, max_length=100, description="Location identifier")
     time_of_day: TimeOfDay = Field(default=TimeOfDay.ALL, description="Time of day variant")
     finish: FinishType = Field(default=FinishType.ALL, description="Finish type variant")
-    ai_prompt: Optional[str] = Field(None, max_length=2000, description="AI prompt for generation")
-    specific_photo: Optional[str] = Field(None, max_length=255, description="Specific photo filename")
-    frame_config: Optional[dict[str, Any]] = Field(None, description="Override frame config")
+    ai_prompt: str | None = Field(None, max_length=2000, description="AI prompt for generation")
+    specific_photo: str | None = Field(None, max_length=255, description="Specific photo filename")
+    frame_config: dict[str, Any] | None = Field(None, description="Override frame config")
 
     @field_validator("ai_prompt")
     @classmethod
@@ -130,7 +130,7 @@ class SaveFrameRequest(BaseModel):
     time_of_day: TimeOfDay = Field(default=TimeOfDay.DAY)
     finish: FinishType = Field(default=FinishType.GOLD)
     frames: list[FrameData] = Field(..., min_length=1, description="List of frames with points")
-    config: Optional[dict[str, Any]] = Field(None, description="Global config for all frames")
+    config: dict[str, Any] | None = Field(None, description="Global config for all frames")
 
 
 # =============================================================================
@@ -140,11 +140,11 @@ class SaveFrameRequest(BaseModel):
 
 class CostsFilterRequest(BaseModel):
     """Query parameters for costs endpoint."""
-    start_date: Optional[str] = Field(None, description="Start date (ISO format YYYY-MM-DD)")
-    end_date: Optional[str] = Field(None, description="End date (ISO format YYYY-MM-DD)")
-    call_type: Optional[CallType] = Field(None, description="Filter by call type")
-    workflow: Optional[Workflow] = Field(None, description="Filter by workflow")
-    filter_user_id: Optional[str] = Field(None, max_length=100, description="Filter by user ID")
+    start_date: str | None = Field(None, description="Start date (ISO format YYYY-MM-DD)")
+    end_date: str | None = Field(None, description="End date (ISO format YYYY-MM-DD)")
+    call_type: CallType | None = Field(None, description="Filter by call type")
+    workflow: Workflow | None = Field(None, description="Filter by workflow")
+    filter_user_id: str | None = Field(None, max_length=100, description="Filter by user ID")
 
     @field_validator("start_date", "end_date")
     @classmethod
@@ -166,12 +166,12 @@ class CostsFilterRequest(BaseModel):
 class SlackEventPayload(BaseModel):
     """Slack Events API payload."""
     type: str
-    token: Optional[str] = None
-    challenge: Optional[str] = None
-    team_id: Optional[str] = None
-    event: Optional[dict[str, Any]] = None
-    event_id: Optional[str] = None
-    event_time: Optional[int] = None
+    token: str | None = None
+    challenge: str | None = None
+    team_id: str | None = None
+    event: dict[str, Any] | None = None
+    event_id: str | None = None
+    event_time: int | None = None
 
     class Config:
         extra = "allow"
@@ -181,13 +181,13 @@ class SlackInteractivePayload(BaseModel):
     """Slack interactive component payload."""
     type: str
     user: dict[str, Any]
-    trigger_id: Optional[str] = None
-    response_url: Optional[str] = None
-    actions: Optional[list[dict[str, Any]]] = None
-    view: Optional[dict[str, Any]] = None
-    container: Optional[dict[str, Any]] = None
-    channel: Optional[dict[str, Any]] = None
-    message: Optional[dict[str, Any]] = None
+    trigger_id: str | None = None
+    response_url: str | None = None
+    actions: list[dict[str, Any]] | None = None
+    view: dict[str, Any] | None = None
+    container: dict[str, Any] | None = None
+    channel: dict[str, Any] | None = None
+    message: dict[str, Any] | None = None
 
     class Config:
         extra = "allow"
@@ -217,7 +217,7 @@ ALLOWED_DOCUMENT_TYPES = {
 }
 
 
-def validate_image_upload(content_type: Optional[str], file_size: int) -> None:
+def validate_image_upload(content_type: str | None, file_size: int) -> None:
     """
     Validate an uploaded image file.
 
@@ -237,7 +237,7 @@ def validate_image_upload(content_type: Optional[str], file_size: int) -> None:
         )
 
 
-def validate_document_upload(content_type: Optional[str], file_size: int) -> None:
+def validate_document_upload(content_type: str | None, file_size: int) -> None:
     """
     Validate an uploaded document file.
 

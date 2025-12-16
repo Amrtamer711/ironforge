@@ -4,8 +4,9 @@ File Utilities - Download, validate, and convert files from messaging channels.
 Uses the unified channel abstraction layer for file downloads.
 """
 
+import contextlib
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from pptx import Presentation
 
@@ -47,7 +48,7 @@ def _validate_pdf_file(file_path: Path) -> bool:
         return False
 
 
-async def _convert_pdf_to_pptx(pdf_path: Path) -> Optional[Path]:
+async def _convert_pdf_to_pptx(pdf_path: Path) -> Path | None:
     """Convert PDF to PowerPoint with maximum quality (300 DPI).
 
     Args:
@@ -152,10 +153,8 @@ async def _convert_pdf_to_pptx(pdf_path: Path) -> Optional[Path]:
     finally:
         # Always cleanup temp files, even on error
         if doc is not None:
-            try:
+            with contextlib.suppress(Exception):
                 doc.close()
-            except Exception:
-                pass
         if temp_dir and os.path.exists(temp_dir):
             try:
                 shutil.rmtree(temp_dir)

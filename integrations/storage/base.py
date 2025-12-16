@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, BinaryIO, Optional, Union
+from typing import Any, BinaryIO
 
 
 class StorageType(str, Enum):
@@ -34,13 +34,13 @@ class StorageFile:
     name: str  # File name only
     size: int  # Size in bytes
     content_type: str  # MIME type
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     # URLs
-    url: Optional[str] = None  # Public URL if available
-    signed_url: Optional[str] = None  # Presigned URL for temporary access
+    url: str | None = None  # Public URL if available
+    signed_url: str | None = None  # Presigned URL for temporary access
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -62,17 +62,17 @@ class StorageFile:
 class UploadResult:
     """Result from upload operations."""
     success: bool
-    file: Optional[StorageFile] = None
-    error: Optional[str] = None
+    file: StorageFile | None = None
+    error: str | None = None
 
 
 @dataclass
 class DownloadResult:
     """Result from download operations."""
     success: bool
-    data: Optional[bytes] = None
-    file: Optional[StorageFile] = None
-    error: Optional[str] = None
+    data: bytes | None = None
+    file: StorageFile | None = None
+    error: str | None = None
 
 
 @dataclass
@@ -81,8 +81,8 @@ class ListResult:
     success: bool
     files: list[StorageFile] = field(default_factory=list)
     total: int = 0
-    continuation_token: Optional[str] = None  # For pagination
-    error: Optional[str] = None
+    continuation_token: str | None = None  # For pagination
+    error: str | None = None
 
 
 class StorageProvider(ABC):
@@ -114,9 +114,9 @@ class StorageProvider(ABC):
         self,
         bucket: str,
         key: str,
-        data: Union[bytes, BinaryIO],
-        content_type: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        data: bytes | BinaryIO,
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> UploadResult:
         """
         Upload a file to storage.
@@ -138,9 +138,9 @@ class StorageProvider(ABC):
         self,
         bucket: str,
         key: str,
-        local_path: Union[str, Path],
-        content_type: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        local_path: str | Path,
+        content_type: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> UploadResult:
         """
         Upload a file from local filesystem.
@@ -184,7 +184,7 @@ class StorageProvider(ABC):
         self,
         bucket: str,
         key: str,
-        local_path: Union[str, Path],
+        local_path: str | Path,
     ) -> DownloadResult:
         """
         Download a file to local filesystem.
@@ -244,7 +244,7 @@ class StorageProvider(ABC):
         self,
         bucket: str,
         key: str,
-    ) -> Optional[StorageFile]:
+    ) -> StorageFile | None:
         """
         Get file metadata without downloading contents.
 
@@ -261,9 +261,9 @@ class StorageProvider(ABC):
     async def list_files(
         self,
         bucket: str,
-        prefix: Optional[str] = None,
+        prefix: str | None = None,
         limit: int = 100,
-        continuation_token: Optional[str] = None,
+        continuation_token: str | None = None,
     ) -> ListResult:
         """
         List files in a bucket with optional prefix filtering.
@@ -332,7 +332,7 @@ class StorageProvider(ABC):
         self,
         bucket: str,
         key: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Get a public URL for a file (if bucket is public).
 
@@ -351,7 +351,7 @@ class StorageProvider(ABC):
         bucket: str,
         key: str,
         expires_in: int = 3600,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Get a presigned URL for temporary access.
 

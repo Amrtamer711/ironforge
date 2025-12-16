@@ -8,7 +8,7 @@ No external auth service required.
 import hashlib
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from integrations.auth.base import (
     AuthProvider,
@@ -69,7 +69,7 @@ class LocalDevAuthProvider(AuthProvider):
         result = await provider.verify_token(token)
     """
 
-    def __init__(self, custom_users: Optional[dict[str, dict]] = None):
+    def __init__(self, custom_users: dict[str, dict] | None = None):
         """
         Initialize local dev provider.
 
@@ -119,7 +119,7 @@ class LocalDevAuthProvider(AuthProvider):
         hash_part = hashlib.sha256(f"dev_secret_{email}".encode()).hexdigest()[:16]
         return f"dev_{hash_part}_{email_b64}"
 
-    def _decode_dev_token(self, token: str) -> Optional[str]:
+    def _decode_dev_token(self, token: str) -> str | None:
         """Decode a dev token to extract email."""
         try:
             import base64
@@ -185,11 +185,11 @@ class LocalDevAuthProvider(AuthProvider):
                 error=str(e)
             )
 
-    async def get_user_by_id(self, user_id: str) -> Optional[AuthUser]:
+    async def get_user_by_id(self, user_id: str) -> AuthUser | None:
         """Get user by ID from in-memory database."""
         return self._db_users.get(user_id)
 
-    async def get_user_by_email(self, email: str) -> Optional[AuthUser]:
+    async def get_user_by_email(self, email: str) -> AuthUser | None:
         """Get user by email."""
         user_data = self._users.get(email)
         if user_data:
@@ -223,9 +223,9 @@ class LocalDevAuthProvider(AuthProvider):
     async def create_user(
         self,
         email: str,
-        name: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
-    ) -> Optional[AuthUser]:
+        name: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> AuthUser | None:
         """Create a new user in memory."""
         try:
             if email in self._users:
@@ -260,11 +260,11 @@ class LocalDevAuthProvider(AuthProvider):
     async def update_user(
         self,
         user_id: str,
-        name: Optional[str] = None,
-        avatar_url: Optional[str] = None,
-        is_active: Optional[bool] = None,
-        metadata: Optional[dict[str, Any]] = None,
-    ) -> Optional[AuthUser]:
+        name: str | None = None,
+        avatar_url: str | None = None,
+        is_active: bool | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> AuthUser | None:
         """Update user in memory."""
         try:
             user = self._db_users.get(user_id)
@@ -314,7 +314,7 @@ class LocalDevAuthProvider(AuthProvider):
         self,
         limit: int = 100,
         offset: int = 0,
-        is_active: Optional[bool] = None,
+        is_active: bool | None = None,
     ) -> list[AuthUser]:
         """List users from memory."""
         users = list(self._db_users.values())
@@ -324,7 +324,7 @@ class LocalDevAuthProvider(AuthProvider):
 
         return users[offset:offset + limit]
 
-    def decode_token(self, token: str) -> Optional[TokenPayload]:
+    def decode_token(self, token: str) -> TokenPayload | None:
         """Decode dev token."""
         email = self._decode_dev_token(token)
         if not email:

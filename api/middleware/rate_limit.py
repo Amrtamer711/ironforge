@@ -34,7 +34,6 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Optional
 
 from fastapi import HTTPException, Request, status
 
@@ -95,9 +94,9 @@ class RedisRateLimitBackend(RateLimitBackend):
         REDIS_URL: Redis connection URL (e.g., redis://localhost:6379)
     """
 
-    def __init__(self, redis_url: Optional[str] = None):
+    def __init__(self, redis_url: str | None = None):
         self._redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379")
-        self._redis: Optional["redis.asyncio.Redis"] = None
+        self._redis: "redis.asyncio.Redis" | None = None
         self._initialized = False
 
     async def _get_redis(self) -> "redis.asyncio.Redis":
@@ -326,7 +325,7 @@ class MemoryRateLimitBackend(RateLimitBackend):
 
 
 # Global backend instance
-_backend: Optional[RateLimitBackend] = None
+_backend: RateLimitBackend | None = None
 
 
 def _get_backend() -> RateLimitBackend:
@@ -414,7 +413,7 @@ class RateLimiter:
 
     def __init__(
         self,
-        default_limit: Optional[int] = None,
+        default_limit: int | None = None,
         default_window: int = 60,
     ):
         """
@@ -432,9 +431,9 @@ class RateLimiter:
 
     def limit(
         self,
-        limit: Optional[int] = None,
-        window: Optional[int] = None,
-        key_func: Optional[Callable[[Request], str]] = None,
+        limit: int | None = None,
+        window: int | None = None,
+        key_func: Callable[[Request], str] | None = None,
     ) -> Callable:
         """
         Create a rate limit dependency.
@@ -484,7 +483,7 @@ class RateLimiter:
 
 
 # Global limiter instance for convenience
-_limiter: Optional[RateLimiter] = None
+_limiter: RateLimiter | None = None
 
 
 def get_rate_limiter() -> RateLimiter:
@@ -496,8 +495,8 @@ def get_rate_limiter() -> RateLimiter:
 
 
 def rate_limit(
-    limit: Optional[int] = None,
-    window: Optional[int] = None,
+    limit: int | None = None,
+    window: int | None = None,
 ) -> Callable:
     """
     Convenience function for rate limiting.

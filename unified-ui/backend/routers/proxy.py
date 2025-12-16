@@ -245,16 +245,15 @@ async def _proxy_streaming(
     """
 
     async def stream_generator():
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            async with client.stream(
-                method=method,
-                url=url,
-                headers=headers,
-                content=body,
-            ) as response:
-                logger.info(f"[PROXY] Streaming response: {response.status_code}")
-                async for chunk in response.aiter_bytes():
-                    yield chunk
+        async with httpx.AsyncClient(timeout=300.0) as client, client.stream(
+            method=method,
+            url=url,
+            headers=headers,
+            content=body,
+        ) as response:
+            logger.info(f"[PROXY] Streaming response: {response.status_code}")
+            async for chunk in response.aiter_bytes():
+                yield chunk
 
     # server.js:700-704 - SSE headers
     return StreamingResponse(

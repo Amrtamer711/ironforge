@@ -15,6 +15,7 @@ RBAC Level 1: Profile and Permission endpoints.
 9 endpoints total.
 """
 
+import contextlib
 import logging
 import re
 from datetime import datetime
@@ -369,7 +370,7 @@ async def create_profile(
             supabase.table("profile_permissions").insert(perm_inserts).execute()
 
         # server.js:2331-2338 - Audit log
-        try:
+        with contextlib.suppress(Exception):
             supabase.table("audit_log").insert({
                 "user_id": user.id,
                 "action": "profile.create",
@@ -383,8 +384,6 @@ async def create_profile(
                     "permissions": request.permissions or []
                 }
             }).execute()
-        except Exception:
-            pass
 
         # server.js:2340
         return {**profile, "permissions": request.permissions or []}
@@ -486,7 +485,7 @@ async def update_profile(
             invalidate_rbac_cache(u["id"])
 
         # server.js:2424-2432 - Audit log
-        try:
+        with contextlib.suppress(Exception):
             supabase.table("audit_log").insert({
                 "user_id": user.id,
                 "action": "profile.update",
@@ -504,8 +503,6 @@ async def update_profile(
                     "permissions": request.permissions if request.permissions is not None else old_permissions
                 }
             }).execute()
-        except Exception:
-            pass
 
         # server.js:2434
         return {
@@ -590,7 +587,7 @@ async def delete_profile(
         supabase.table("profiles").delete().eq("id", profile_id).execute()
 
         # server.js:2502-2509 - Audit log
-        try:
+        with contextlib.suppress(Exception):
             supabase.table("audit_log").insert({
                 "user_id": user.id,
                 "action": "profile.delete",
@@ -602,8 +599,6 @@ async def delete_profile(
                     "permissions": [p["permission"] for p in (perms_response.data or [])]
                 }
             }).execute()
-        except Exception:
-            pass
 
         # server.js:2511
         return {"success": True, "deleted": profile["name"]}

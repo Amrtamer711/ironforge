@@ -15,7 +15,7 @@ Trusted Headers (set by unified-ui proxy):
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from integrations.auth.base import (
     AuthProvider,
@@ -50,7 +50,7 @@ def clear_request_headers() -> None:
     _current_request_headers = {}
 
 
-def get_request_header(name: str) -> Optional[str]:
+def get_request_header(name: str) -> str | None:
     """Get a request header value."""
     return _current_request_headers.get(name)
 
@@ -135,7 +135,7 @@ class SupabaseAuthProvider(AuthProvider):
                 error=str(e)
             )
 
-    async def get_user_by_id(self, user_id: str) -> Optional[AuthUser]:
+    async def get_user_by_id(self, user_id: str) -> AuthUser | None:
         """
         Get user by ID.
 
@@ -145,7 +145,7 @@ class SupabaseAuthProvider(AuthProvider):
         logger.warning("[AUTH:SUPABASE] get_user_by_id not available in proxy mode")
         return None
 
-    async def get_user_by_email(self, email: str) -> Optional[AuthUser]:
+    async def get_user_by_email(self, email: str) -> AuthUser | None:
         """
         Get user by email.
 
@@ -166,9 +166,9 @@ class SupabaseAuthProvider(AuthProvider):
     async def create_user(
         self,
         email: str,
-        name: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
-    ) -> Optional[AuthUser]:
+        name: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> AuthUser | None:
         """
         Create user.
 
@@ -180,11 +180,11 @@ class SupabaseAuthProvider(AuthProvider):
     async def update_user(
         self,
         user_id: str,
-        name: Optional[str] = None,
-        avatar_url: Optional[str] = None,
-        is_active: Optional[bool] = None,
-        metadata: Optional[dict[str, Any]] = None,
-    ) -> Optional[AuthUser]:
+        name: str | None = None,
+        avatar_url: str | None = None,
+        is_active: bool | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> AuthUser | None:
         """
         Update user.
 
@@ -206,7 +206,7 @@ class SupabaseAuthProvider(AuthProvider):
         self,
         limit: int = 100,
         offset: int = 0,
-        is_active: Optional[bool] = None,
+        is_active: bool | None = None,
     ) -> list[AuthUser]:
         """
         List users.
@@ -216,7 +216,7 @@ class SupabaseAuthProvider(AuthProvider):
         logger.warning("[AUTH:SUPABASE] list_users not available in proxy mode")
         return []
 
-    def decode_token(self, token: str) -> Optional[TokenPayload]:
+    def decode_token(self, token: str) -> TokenPayload | None:
         """Decode JWT without verification (for debugging)."""
         try:
             import jwt

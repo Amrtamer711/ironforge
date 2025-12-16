@@ -28,7 +28,6 @@ Usage:
 import json
 import logging
 from collections.abc import Callable
-from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
 
@@ -37,7 +36,7 @@ from integrations.auth.base import AuthUser
 logger = logging.getLogger("proposal-bot")
 
 
-async def get_current_user(request: Request) -> Optional[AuthUser]:
+async def get_current_user(request: Request) -> AuthUser | None:
     """
     Get the current authenticated user from trusted proxy headers.
 
@@ -84,7 +83,7 @@ async def get_current_user(request: Request) -> Optional[AuthUser]:
 
 
 async def require_auth(
-    user: Optional[AuthUser] = Depends(get_current_user),
+    user: AuthUser | None = Depends(get_current_user),
 ) -> AuthUser:
     """
     Require authentication for an endpoint.
@@ -131,11 +130,7 @@ def _has_permission(permissions: list[str], required: str) -> bool:
     if required in permissions:
         return True
 
-    for perm in permissions:
-        if _matches_wildcard(perm, required):
-            return True
-
-    return False
+    return any(_matches_wildcard(perm, required) for perm in permissions)
 
 
 def require_permission(permission: str) -> Callable:

@@ -5,7 +5,6 @@ All chat endpoints require authentication. User info is extracted from the
 authenticated user token rather than being passed in the request body.
 """
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -27,8 +26,8 @@ MAX_MESSAGE_LENGTH = 10_000  # 10k characters max per message
 class ChatMessageRequest(BaseModel):
     """Request model for chat messages."""
     message: str
-    conversation_id: Optional[str] = None
-    file_ids: Optional[list[str]] = None  # IDs from /api/files/upload
+    conversation_id: str | None = None
+    file_ids: list[str] | None = None  # IDs from /api/files/upload
 
     @field_validator("message")
     @classmethod
@@ -42,7 +41,7 @@ class ChatMessageRequest(BaseModel):
 
     @field_validator("file_ids")
     @classmethod
-    def validate_file_ids(cls, v: Optional[list[str]]) -> Optional[list[str]]:
+    def validate_file_ids(cls, v: list[str] | None) -> list[str] | None:
         """Validate file_ids list."""
         if v is not None and len(v) > 10:
             raise ValueError("Maximum 10 files per message")
@@ -51,11 +50,11 @@ class ChatMessageRequest(BaseModel):
 
 class ChatMessageResponse(BaseModel):
     """Response model for chat messages."""
-    content: Optional[str] = None
-    tool_call: Optional[dict] = None
-    files: Optional[list[dict]] = None
-    error: Optional[str] = None
-    conversation_id: Optional[str] = None
+    content: str | None = None
+    tool_call: dict | None = None
+    files: list[dict] | None = None
+    error: str | None = None
+    conversation_id: str | None = None
 
 
 async def _get_user_profile(user: AuthUser) -> list[str]:

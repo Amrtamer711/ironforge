@@ -20,7 +20,6 @@ Apply the generated SQL in the Supabase dashboard SQL editor.
 import argparse
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 
 class PolicyType(str, Enum):
@@ -39,9 +38,9 @@ class RLSPolicy:
     table: str
     policy_type: PolicyType
     role: str = "authenticated"  # PostgreSQL role
-    using_clause: Optional[str] = None  # For SELECT, UPDATE, DELETE
-    check_clause: Optional[str] = None  # For INSERT, UPDATE
-    comment: Optional[str] = None
+    using_clause: str | None = None  # For SELECT, UPDATE, DELETE
+    check_clause: str | None = None  # For INSERT, UPDATE
+    comment: str | None = None
 
 
 # =============================================================================
@@ -390,7 +389,7 @@ def generate_policy_sql(policy: RLSPolicy) -> str:
     return "\n".join(lines)
 
 
-def generate_all_policies_sql(tables: Optional[set[str]] = None) -> str:
+def generate_all_policies_sql(tables: set[str] | None = None) -> str:
     """
     Generate complete RLS policy SQL for all or specified tables.
 

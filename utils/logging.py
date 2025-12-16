@@ -27,20 +27,20 @@ import logging
 import sys
 import uuid
 from contextvars import ContextVar
-from typing import Any, Optional
+from typing import Any
 
 from utils.time import get_uae_time
 
 # Context variable for request ID tracking
-_request_id_ctx: ContextVar[Optional[str]] = ContextVar("request_id", default=None)
+_request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
 
 
-def get_request_id() -> Optional[str]:
+def get_request_id() -> str | None:
     """Get the current request ID from context."""
     return _request_id_ctx.get()
 
 
-def set_request_id(request_id: Optional[str] = None) -> str:
+def set_request_id(request_id: str | None = None) -> str:
     """
     Set the request ID in context.
 
@@ -64,7 +64,7 @@ def clear_request_id() -> None:
 class RequestContextManager:
     """Context manager for request ID tracking."""
 
-    def __init__(self, request_id: Optional[str] = None):
+    def __init__(self, request_id: str | None = None):
         self.request_id = request_id
         self.token = None
 
@@ -76,7 +76,7 @@ class RequestContextManager:
         clear_request_id()
 
 
-def request_context(request_id: Optional[str] = None) -> RequestContextManager:
+def request_context(request_id: str | None = None) -> RequestContextManager:
     """
     Create a context manager for request ID tracking.
 
@@ -183,7 +183,7 @@ class RequestIDFilter(logging.Filter):
 def setup_logging(
     level: str = "INFO",
     json_format: bool = False,
-    module_levels: Optional[dict[str, str]] = None,
+    module_levels: dict[str, str] | None = None,
 ) -> None:
     """
     Configure application logging.

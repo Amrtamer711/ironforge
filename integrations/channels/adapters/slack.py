@@ -9,7 +9,7 @@ import logging
 import tempfile
 import uuid
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import aiohttp
 from slack_sdk.web.async_client import AsyncWebClient
@@ -40,7 +40,7 @@ class SlackAdapter(ChannelAdapter):
     Wraps slack_sdk's AsyncWebClient with the unified channel interface.
     """
 
-    def __init__(self, client: AsyncWebClient, bot_token: str, workspace_id: Optional[str] = None):
+    def __init__(self, client: AsyncWebClient, bot_token: str, workspace_id: str | None = None):
         """
         Initialize Slack adapter.
 
@@ -71,12 +71,12 @@ class SlackAdapter(ChannelAdapter):
         channel_id: str,
         content: str,
         *,
-        thread_id: Optional[str] = None,
-        buttons: Optional[list[Button]] = None,
-        attachments: Optional[list[Attachment]] = None,
+        thread_id: str | None = None,
+        buttons: list[Button] | None = None,
+        attachments: list[Attachment] | None = None,
         format: MessageFormat = MessageFormat.MARKDOWN,
         ephemeral: bool = False,
-        user_id: Optional[str] = None,
+        user_id: str | None = None,
     ) -> Message:
         """Send a message to a Slack channel."""
         # Format text for Slack
@@ -133,7 +133,7 @@ class SlackAdapter(ChannelAdapter):
         message_id: str,
         content: str,
         *,
-        buttons: Optional[list[Button]] = None,
+        buttons: list[Button] | None = None,
         format: MessageFormat = MessageFormat.MARKDOWN,
     ) -> Message:
         """Update an existing Slack message."""
@@ -228,12 +228,12 @@ class SlackAdapter(ChannelAdapter):
     async def upload_file(
         self,
         channel_id: str,
-        file_path: Union[str, Path],
+        file_path: str | Path,
         *,
-        filename: Optional[str] = None,
-        title: Optional[str] = None,
-        comment: Optional[str] = None,
-        thread_id: Optional[str] = None,
+        filename: str | None = None,
+        title: str | None = None,
+        comment: str | None = None,
+        thread_id: str | None = None,
     ) -> FileUpload:
         """Upload a file to Slack."""
         path = Path(file_path)
@@ -278,10 +278,10 @@ class SlackAdapter(ChannelAdapter):
         file_bytes: bytes,
         filename: str,
         *,
-        title: Optional[str] = None,
-        comment: Optional[str] = None,
-        thread_id: Optional[str] = None,
-        mimetype: Optional[str] = None,
+        title: str | None = None,
+        comment: str | None = None,
+        thread_id: str | None = None,
+        mimetype: str | None = None,
     ) -> FileUpload:
         """Upload file from bytes to Slack."""
         formatted_comment = self.format_text(comment) if comment else None
@@ -314,7 +314,7 @@ class SlackAdapter(ChannelAdapter):
     async def download_file(
         self,
         file_info: dict[str, Any],
-    ) -> Optional[Path]:
+    ) -> Path | None:
         """Download a file from Slack."""
         url = file_info.get("url_private_download") or file_info.get("url_private")
         if not url:
@@ -350,7 +350,7 @@ class SlackAdapter(ChannelAdapter):
     # USER MANAGEMENT
     # ========================================================================
 
-    async def get_user(self, user_id: str) -> Optional[User]:
+    async def get_user(self, user_id: str) -> User | None:
         """Get user information from Slack."""
         # Check cache first
         if user_id in self._user_cache:
@@ -404,7 +404,7 @@ class SlackAdapter(ChannelAdapter):
             return user.display_name or user.name or user_id
         return user_id
 
-    async def open_dm(self, user_id: str) -> Optional[str]:
+    async def open_dm(self, user_id: str) -> str | None:
         """Open a DM channel with a user."""
         try:
             response = await self._client.conversations_open(users=[user_id])
@@ -441,7 +441,7 @@ class SlackAdapter(ChannelAdapter):
         content: str,
         *,
         replace_original: bool = True,
-        buttons: Optional[list[Button]] = None,
+        buttons: list[Button] | None = None,
     ) -> bool:
         """Respond to an interactive action via response URL."""
         formatted_text = self.format_text(content)
@@ -496,7 +496,7 @@ class SlackAdapter(ChannelAdapter):
     def _build_blocks(
         self,
         text: str,
-        buttons: Optional[list[Button]] = None,
+        buttons: list[Button] | None = None,
     ) -> list[dict[str, Any]]:
         """Build Slack blocks from text and buttons."""
         blocks = []
@@ -583,7 +583,7 @@ class SlackAdapter(ChannelAdapter):
 
         return view
 
-    def _build_field_block(self, field: ModalField) -> Optional[dict[str, Any]]:
+    def _build_field_block(self, field: ModalField) -> dict[str, Any] | None:
         """Build a Slack input block from ModalField."""
         element: dict[str, Any] = {}
 
@@ -655,7 +655,7 @@ class SlackAdapter(ChannelAdapter):
     # SLACK-SPECIFIC METHODS (Not in base interface)
     # ========================================================================
 
-    async def get_file_info(self, file_id: str) -> Optional[dict[str, Any]]:
+    async def get_file_info(self, file_id: str) -> dict[str, Any] | None:
         """
         Get file information from Slack.
 

@@ -17,7 +17,7 @@ This provider reads from trusted headers and performs permission checks.
 
 import logging
 from contextvars import ContextVar
-from typing import Any, Optional
+from typing import Any
 
 from integrations.rbac.base import (
     AccessLevel,
@@ -45,14 +45,14 @@ def set_user_context(
     user_id: str,
     profile: str,
     permissions: list[str],
-    permission_sets: Optional[list[dict[str, Any]]] = None,
-    teams: Optional[list[dict[str, Any]]] = None,
-    team_ids: Optional[list[int]] = None,
-    manager_id: Optional[str] = None,
-    subordinate_ids: Optional[list[str]] = None,
-    sharing_rules: Optional[list[dict[str, Any]]] = None,
-    shared_records: Optional[dict[str, list[dict[str, Any]]]] = None,
-    shared_from_user_ids: Optional[list[str]] = None,
+    permission_sets: list[dict[str, Any]] | None = None,
+    teams: list[dict[str, Any]] | None = None,
+    team_ids: list[int] | None = None,
+    manager_id: str | None = None,
+    subordinate_ids: list[str] | None = None,
+    sharing_rules: list[dict[str, Any]] | None = None,
+    shared_records: dict[str, list[dict[str, Any]]] | None = None,
+    shared_from_user_ids: list[str] | None = None,
 ) -> None:
     """
     Set the current user context for RBAC checks.
@@ -252,7 +252,7 @@ class DatabaseRBACProvider(RBACProvider):
         self,
         user_id: str,
         permission: str,
-        context: Optional[RBACContext] = None,
+        context: RBACContext | None = None,
     ) -> bool:
         """
         Check if user has permission.
@@ -297,7 +297,7 @@ class DatabaseRBACProvider(RBACProvider):
 
         return True
 
-    async def get_user_profile(self, user_id: str) -> Optional[Profile]:
+    async def get_user_profile(self, user_id: str) -> Profile | None:
         """
         Get user's profile from trusted context.
         """
@@ -331,7 +331,7 @@ class DatabaseRBACProvider(RBACProvider):
         logger.warning("[RBAC:DATABASE] assign_profile - managed by unified-ui")
         return False
 
-    async def get_profile(self, profile_name: str) -> Optional[Profile]:
+    async def get_profile(self, profile_name: str) -> Profile | None:
         logger.warning("[RBAC:DATABASE] get_profile - managed by unified-ui")
         return None
 
@@ -343,19 +343,19 @@ class DatabaseRBACProvider(RBACProvider):
         self,
         name: str,
         display_name: str,
-        description: Optional[str] = None,
-        permissions: Optional[list[str]] = None,
-    ) -> Optional[Profile]:
+        description: str | None = None,
+        permissions: list[str] | None = None,
+    ) -> Profile | None:
         logger.warning("[RBAC:DATABASE] create_profile - managed by unified-ui")
         return None
 
     async def update_profile(
         self,
         name: str,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        permissions: Optional[list[str]] = None,
-    ) -> Optional[Profile]:
+        display_name: str | None = None,
+        description: str | None = None,
+        permissions: list[str] | None = None,
+    ) -> Profile | None:
         logger.warning("[RBAC:DATABASE] update_profile - managed by unified-ui")
         return None
 
@@ -370,8 +370,8 @@ class DatabaseRBACProvider(RBACProvider):
         self,
         user_id: str,
         permission_set_name: str,
-        granted_by: Optional[str] = None,
-        expires_at: Optional[str] = None,
+        granted_by: str | None = None,
+        expires_at: str | None = None,
     ) -> bool:
         logger.warning("[RBAC:DATABASE] assign_permission_set - managed by unified-ui")
         return False
@@ -380,7 +380,7 @@ class DatabaseRBACProvider(RBACProvider):
         logger.warning("[RBAC:DATABASE] revoke_permission_set - managed by unified-ui")
         return False
 
-    async def get_permission_set(self, name: str) -> Optional[PermissionSet]:
+    async def get_permission_set(self, name: str) -> PermissionSet | None:
         return None
 
     async def list_permission_sets(self) -> list[PermissionSet]:
@@ -390,20 +390,20 @@ class DatabaseRBACProvider(RBACProvider):
         self,
         name: str,
         display_name: str,
-        description: Optional[str] = None,
-        permissions: Optional[list[str]] = None,
-    ) -> Optional[PermissionSet]:
+        description: str | None = None,
+        permissions: list[str] | None = None,
+    ) -> PermissionSet | None:
         logger.warning("[RBAC:DATABASE] create_permission_set - managed by unified-ui")
         return None
 
     async def update_permission_set(
         self,
         name: str,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        permissions: Optional[list[str]] = None,
-        is_active: Optional[bool] = None,
-    ) -> Optional[PermissionSet]:
+        display_name: str | None = None,
+        description: str | None = None,
+        permissions: list[str] | None = None,
+        is_active: bool | None = None,
+    ) -> PermissionSet | None:
         logger.warning("[RBAC:DATABASE] update_permission_set - managed by unified-ui")
         return None
 
@@ -464,10 +464,10 @@ class DatabaseRBACProvider(RBACProvider):
         logger.warning("[RBAC:DATABASE] remove_user_from_team - managed by unified-ui")
         return False
 
-    async def get_team(self, team_id: int) -> Optional[Team]:
+    async def get_team(self, team_id: int) -> Team | None:
         return None
 
-    async def get_team_by_name(self, name: str) -> Optional[Team]:
+    async def get_team_by_name(self, name: str) -> Team | None:
         return None
 
     async def list_teams(self) -> list[Team]:
@@ -479,22 +479,22 @@ class DatabaseRBACProvider(RBACProvider):
     async def create_team(
         self,
         name: str,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        parent_team_id: Optional[int] = None,
-    ) -> Optional[Team]:
+        display_name: str | None = None,
+        description: str | None = None,
+        parent_team_id: int | None = None,
+    ) -> Team | None:
         logger.warning("[RBAC:DATABASE] create_team - managed by unified-ui")
         return None
 
     async def update_team(
         self,
         team_id: int,
-        name: Optional[str] = None,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        parent_team_id: Optional[int] = None,
-        is_active: Optional[bool] = None,
-    ) -> Optional[Team]:
+        name: str | None = None,
+        display_name: str | None = None,
+        description: str | None = None,
+        parent_team_id: int | None = None,
+        is_active: bool | None = None,
+    ) -> Team | None:
         logger.warning("[RBAC:DATABASE] update_team - managed by unified-ui")
         return None
 
@@ -507,12 +507,12 @@ class DatabaseRBACProvider(RBACProvider):
         object_type: str,
         record_id: str,
         shared_by: str,
-        shared_with_user_id: Optional[str] = None,
-        shared_with_team_id: Optional[int] = None,
+        shared_with_user_id: str | None = None,
+        shared_with_team_id: int | None = None,
         access_level: AccessLevel = AccessLevel.READ,
-        expires_at: Optional[str] = None,
-        reason: Optional[str] = None,
-    ) -> Optional[RecordShare]:
+        expires_at: str | None = None,
+        reason: str | None = None,
+    ) -> RecordShare | None:
         logger.warning("[RBAC:DATABASE] share_record - managed by unified-ui")
         return None
 
@@ -536,7 +536,7 @@ class DatabaseRBACProvider(RBACProvider):
     ) -> bool:
         return False
 
-    async def list_sharing_rules(self, object_type: Optional[str] = None) -> list[SharingRule]:
+    async def list_sharing_rules(self, object_type: str | None = None) -> list[SharingRule]:
         return []
 
     async def create_sharing_rule(
@@ -546,10 +546,10 @@ class DatabaseRBACProvider(RBACProvider):
         share_from_type: str,
         share_to_type: str,
         access_level: AccessLevel,
-        share_from_id: Optional[str] = None,
-        share_to_id: Optional[str] = None,
-        description: Optional[str] = None,
-    ) -> Optional[SharingRule]:
+        share_from_id: str | None = None,
+        share_to_id: str | None = None,
+        description: str | None = None,
+    ) -> SharingRule | None:
         logger.warning("[RBAC:DATABASE] create_sharing_rule - managed by unified-ui")
         return None
 

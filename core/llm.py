@@ -3,7 +3,7 @@ import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import config
 from core import bo_messaging
@@ -83,7 +83,7 @@ async def _generate_ai_mockup_queued(
     location_key: str,
     time_of_day: str,
     finish: str,
-    user_id: Optional[str] = None,
+    user_id: str | None = None,
     company_schemas: list = None,
 ):
     """
@@ -392,7 +392,7 @@ async def _handle_booking_order_parse(
         # Step 2: Upload combined PDF file as threaded reply
         logger.info("[BO APPROVAL] Uploading combined PDF in thread...")
         try:
-            file_upload = await channel_adapter.upload_file(
+            await channel_adapter.upload_file(
                 channel_id=coordinator_channel,
                 file_path=str(combined_pdf_path),
                 title=f"BO Draft - {result.data.get('client', 'Unknown')}",
@@ -667,7 +667,7 @@ async def main_llm_loop(
     user_input: str,
     channel_event: dict[str, Any] = None,
     is_admin_override: bool = None,
-    user_companies: Optional[list[str]] = None,
+    user_companies: list[str] | None = None,
 ):
     """
     Main LLM processing loop - channel-agnostic.

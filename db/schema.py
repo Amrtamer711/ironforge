@@ -20,7 +20,7 @@ to the appropriate SQL dialect when generating schema.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class ColumnType(Enum):
@@ -39,10 +39,10 @@ class Column:
     name: str
     type: ColumnType
     nullable: bool = True
-    default: Optional[Any] = None
+    default: Any | None = None
     primary_key: bool = False
     unique: bool = False
-    check: Optional[str] = None  # CHECK constraint expression
+    check: str | None = None  # CHECK constraint expression
 
 
 @dataclass
@@ -996,7 +996,7 @@ def get_sales_table_names() -> list[str]:
     return list(SALES_TABLES.keys())
 
 
-def get_table(name: str) -> Optional[Table]:
+def get_table(name: str) -> Table | None:
     """Get a table definition by name."""
     return TABLES.get(name)
 

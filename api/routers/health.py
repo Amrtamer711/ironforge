@@ -30,7 +30,7 @@ async def check_database() -> dict[str, Any]:
         # Try a simple operation to verify connectivity
         # Using get_proposals_summary as a lightweight check
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, db.get_proposals_summary)
+        await loop.run_in_executor(None, db.get_proposals_summary)
 
         return {
             "status": "healthy",

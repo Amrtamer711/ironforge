@@ -11,7 +11,6 @@ Environment configuration for unified-ui FastAPI backend.
 
 import logging
 from functools import lru_cache
-from typing import Optional
 
 from pydantic_settings import BaseSettings
 
@@ -39,19 +38,19 @@ class Settings(BaseSettings):
     # ==========================================================================
 
     # Production keys (used when ENVIRONMENT == 'production')
-    UI_PROD_SUPABASE_URL: Optional[str] = None
-    UI_PROD_SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
-    UI_PROD_SUPABASE_ANON_KEY: Optional[str] = None
+    UI_PROD_SUPABASE_URL: str | None = None
+    UI_PROD_SUPABASE_SERVICE_ROLE_KEY: str | None = None
+    UI_PROD_SUPABASE_ANON_KEY: str | None = None
 
     # Development keys (used when ENVIRONMENT != 'production')
-    UI_DEV_SUPABASE_URL: Optional[str] = None
-    UI_DEV_SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
-    UI_DEV_SUPABASE_ANON_KEY: Optional[str] = None
+    UI_DEV_SUPABASE_URL: str | None = None
+    UI_DEV_SUPABASE_SERVICE_ROLE_KEY: str | None = None
+    UI_DEV_SUPABASE_ANON_KEY: str | None = None
 
     # Fallback keys (for backwards compatibility) - server.js:28-37
-    SUPABASE_URL: Optional[str] = None
-    SUPABASE_SERVICE_KEY: Optional[str] = None
-    SUPABASE_ANON_KEY: Optional[str] = None
+    SUPABASE_URL: str | None = None
+    SUPABASE_SERVICE_KEY: str | None = None
+    SUPABASE_ANON_KEY: str | None = None
 
     # ==========================================================================
     # SERVICE REGISTRY - server.js:49-55
@@ -63,7 +62,7 @@ class Settings(BaseSettings):
     # PROXY SECRET - server.js:57-62
     # Shared secret for trusted proxy communication
     # ==========================================================================
-    PROXY_SECRET: Optional[str] = None
+    PROXY_SECRET: str | None = None
 
     # ==========================================================================
     # RATE LIMITING - server.js:64-102
@@ -76,7 +75,7 @@ class Settings(BaseSettings):
     # CORS CONFIGURATION - server.js:104-148
     # ==========================================================================
     CORS_ORIGINS: str = ""  # Comma-separated list of additional origins
-    RENDER_EXTERNAL_URL: Optional[str] = None  # Auto-set by Render
+    RENDER_EXTERNAL_URL: str | None = None  # Auto-set by Render
 
     # ==========================================================================
     # RBAC CACHE - server.js:519-521
@@ -108,7 +107,7 @@ class Settings(BaseSettings):
         return self.ENVIRONMENT == "local"
 
     @property
-    def supabase_url(self) -> Optional[str]:
+    def supabase_url(self) -> str | None:
         """
         Get the appropriate Supabase URL based on environment.
 
@@ -122,7 +121,7 @@ class Settings(BaseSettings):
         return self.UI_DEV_SUPABASE_URL or self.SUPABASE_URL
 
     @property
-    def supabase_service_key(self) -> Optional[str]:
+    def supabase_service_key(self) -> str | None:
         """
         Get the appropriate Supabase service key based on environment.
 
@@ -136,7 +135,7 @@ class Settings(BaseSettings):
         return self.UI_DEV_SUPABASE_SERVICE_ROLE_KEY or self.SUPABASE_SERVICE_KEY
 
     @property
-    def supabase_anon_key(self) -> Optional[str]:
+    def supabase_anon_key(self) -> str | None:
         """
         Get the appropriate Supabase anon key based on environment.
 

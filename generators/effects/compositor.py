@@ -10,7 +10,6 @@ This module provides the main compositing pipeline that:
 """
 
 import logging
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -104,7 +103,7 @@ class BillboardCompositor:
     All effects are configurable through EffectConfig.
     """
 
-    def __init__(self, config: Optional[EffectConfig] = None, time_of_day: str = "day"):
+    def __init__(self, config: EffectConfig | None = None, time_of_day: str = "day"):
         """
         Initialize compositor.
 
@@ -277,7 +276,7 @@ def warp_creative_to_billboard(
     billboard_image: np.ndarray,
     creative_image: np.ndarray,
     frame_points: list[list[float]],
-    config: Optional[dict] = None,
+    config: dict | None = None,
     time_of_day: str = "day"
 ) -> np.ndarray:
     """

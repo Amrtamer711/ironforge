@@ -5,7 +5,6 @@ Mockup generator endpoints.
 import json
 import os
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
@@ -82,7 +81,7 @@ async def save_mockup_frame(
     finish: str = Form("gold"),
     frames_data: str = Form(..., max_length=50000),
     photo: UploadFile = File(...),
-    config_json: Optional[str] = Form(None, max_length=10000),
+    config_json: str | None = Form(None, max_length=10000),
     user: AuthUser = Depends(require_permission("sales:mockups:setup"))
 ):
     """Save a billboard photo with multiple frame coordinates and optional config. Requires admin role."""
@@ -274,7 +273,7 @@ async def list_mockup_photos(location_key: str, time_of_day: str = "all", finish
                 for fin in variations[tod]:
                     photos = db.list_mockup_photos(location_key, user.companies, tod, fin)
                     all_photos.update(photos)
-            return {"photos": sorted(list(all_photos))}
+            return {"photos": sorted(all_photos)}
         else:
             photos = db.list_mockup_photos(location_key, user.companies, time_of_day, finish)
             return {"photos": photos}
@@ -447,10 +446,10 @@ async def generate_mockup_api(
     location_key: str = Form(...),
     time_of_day: str = Form("all"),
     finish: str = Form("all"),
-    ai_prompt: Optional[str] = Form(None),
-    creative: Optional[UploadFile] = File(None),
-    specific_photo: Optional[str] = Form(None),
-    frame_config: Optional[str] = Form(None),
+    ai_prompt: str | None = Form(None),
+    creative: UploadFile | None = File(None),
+    specific_photo: str | None = Form(None),
+    frame_config: str | None = Form(None),
     user: AuthUser = Depends(require_permission("sales:mockups:generate"))
 ):
     """Generate a mockup by warping creative onto billboard (upload or AI-generated). Requires sales:mockups:generate permission."""

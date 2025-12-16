@@ -11,7 +11,6 @@ Implements Hollywood VFX-grade compositing techniques:
 """
 
 import logging
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -164,7 +163,7 @@ class EdgeCompositor:
         logger.debug(f"[EDGE] Applied distance feathering ({feather_pixels:.1f}px)")
         return result
 
-    def apply_contact_shadow(self, mask: np.ndarray) -> tuple[np.ndarray, Optional[np.ndarray]]:
+    def apply_contact_shadow(self, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray | None]:
         """
         Create contact shadow / ambient occlusion at edges.
 
@@ -323,9 +322,9 @@ class EdgeCompositor:
         self,
         image_shape: tuple[int, int],
         dst_pts: np.ndarray,
-        billboard_image: Optional[np.ndarray] = None,
-        warped_image: Optional[np.ndarray] = None,
-    ) -> tuple[np.ndarray, Optional[np.ndarray]]:
+        billboard_image: np.ndarray | None = None,
+        warped_image: np.ndarray | None = None,
+    ) -> tuple[np.ndarray, np.ndarray | None]:
         """
         Full mask processing pipeline.
 

@@ -14,7 +14,7 @@ Follows the same pattern as integrations/llm/base.py and integrations/auth/base.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 class PermissionAction(str, Enum):
@@ -46,14 +46,14 @@ class Permission:
 
     Format: "{module}:{resource}:{action}" e.g., "sales:proposals:create", "core:users:manage"
     """
-    id: Optional[int] = None
+    id: int | None = None
     name: str = ""  # Full permission name (e.g., "sales:proposals:create")
     resource: str = ""  # Resource type (e.g., "proposals")
     action: str = ""  # Action (e.g., "create")
-    description: Optional[str] = None
+    description: str | None = None
 
     @classmethod
-    def from_name(cls, name: str, description: Optional[str] = None) -> "Permission":
+    def from_name(cls, name: str, description: str | None = None) -> "Permission":
         """Create a Permission from a name string."""
         parts = name.split(":", 1)
         resource = parts[0] if parts else ""
@@ -86,14 +86,14 @@ class Profile:
     Users are assigned exactly one profile which defines their base permissions.
     Profiles are like "job functions" - System Admin, Sales User, etc.
     """
-    id: Optional[int] = None
+    id: int | None = None
     name: str = ""  # e.g., "system_admin", "sales_user"
     display_name: str = ""
-    description: Optional[str] = None
+    description: str | None = None
     permissions: set[str] = field(default_factory=set)  # Permission names
     is_system: bool = False  # System profiles can't be deleted
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
     def has_permission(self, permission: str) -> bool:
         """Check if profile has a specific permission."""
@@ -101,10 +101,7 @@ class Profile:
             return True
 
         # Check wildcard patterns
-        for perm in self.permissions:
-            if self._matches_wildcard(perm, permission):
-                return True
-        return False
+        return any(self._matches_wildcard(perm, permission) for perm in self.permissions)
 
     def _matches_wildcard(self, pattern: str, permission: str) -> bool:
         """Check if a wildcard pattern matches a permission."""
@@ -144,14 +141,14 @@ class PermissionSet:
     Unlike profiles (one per user), users can have multiple permission sets.
     Used for temporary access, special capabilities, or feature toggles.
     """
-    id: Optional[int] = None
+    id: int | None = None
     name: str = ""  # e.g., "export_reports", "api_access"
     display_name: str = ""
-    description: Optional[str] = None
+    description: str | None = None
     permissions: set[str] = field(default_factory=set)
     is_active: bool = True
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
     def has_permission(self, permission: str) -> bool:
         """Check if permission set grants a specific permission."""
@@ -168,9 +165,9 @@ class UserPermissionSet:
     """
     user_id: str
     permission_set: PermissionSet
-    granted_by: Optional[str] = None
-    granted_at: Optional[str] = None
-    expires_at: Optional[str] = None  # NULL = permanent
+    granted_by: str | None = None
+    granted_at: str | None = None
+    expires_at: str | None = None  # NULL = permanent
 
 
 # =============================================================================
@@ -185,14 +182,14 @@ class Team:
     Teams can be nested (parent_team_id) to create hierarchies.
     Used for data visibility and sharing rules.
     """
-    id: Optional[int] = None
+    id: int | None = None
     name: str = ""
-    display_name: Optional[str] = None
-    description: Optional[str] = None
-    parent_team_id: Optional[int] = None
+    display_name: str | None = None
+    description: str | None = None
+    parent_team_id: int | None = None
     is_active: bool = True
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
     def __str__(self) -> str:
         return self.display_name or self.name
@@ -206,7 +203,7 @@ class TeamMember:
     team_id: int
     user_id: str
     role: TeamRole = TeamRole.MEMBER
-    joined_at: Optional[str] = None
+    joined_at: str | None = None
 
 
 # =============================================================================
@@ -221,18 +218,18 @@ class SharingRule:
     Defines how records are automatically shared based on ownership,
     profile, or team membership.
     """
-    id: Optional[int] = None
+    id: int | None = None
     name: str = ""
-    description: Optional[str] = None
+    description: str | None = None
     object_type: str = ""  # e.g., "proposal", "booking_order"
     share_from_type: str = ""  # "owner", "profile", "team"
-    share_from_id: Optional[str] = None
+    share_from_id: str | None = None
     share_to_type: str = ""  # "profile", "team", "all"
-    share_to_id: Optional[str] = None
+    share_to_id: str | None = None
     access_level: AccessLevel = AccessLevel.READ
     is_active: bool = True
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 @dataclass
@@ -242,16 +239,16 @@ class RecordShare:
 
     Grants specific users or teams access to individual records.
     """
-    id: Optional[int] = None
+    id: int | None = None
     object_type: str = ""
     record_id: str = ""
-    shared_with_user_id: Optional[str] = None
-    shared_with_team_id: Optional[int] = None
+    shared_with_user_id: str | None = None
+    shared_with_team_id: int | None = None
     access_level: AccessLevel = AccessLevel.READ
     shared_by: str = ""
-    shared_at: Optional[str] = None
-    expires_at: Optional[str] = None
-    reason: Optional[str] = None
+    shared_at: str | None = None
+    expires_at: str | None = None
+    reason: str | None = None
 
 
 # =============================================================================
@@ -269,12 +266,12 @@ class RBACContext:
     - Manager hierarchy
     """
     user_id: str
-    resource_id: Optional[str] = None
-    resource_owner_id: Optional[str] = None
-    resource_type: Optional[str] = None
-    user_profile_id: Optional[int] = None
+    resource_id: str | None = None
+    resource_owner_id: str | None = None
+    resource_type: str | None = None
+    user_profile_id: int | None = None
     user_team_ids: list[int] = field(default_factory=list)
-    user_manager_id: Optional[str] = None
+    user_manager_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def is_owner(self) -> bool:
@@ -336,7 +333,7 @@ class RBACProvider(ABC):
     # LEVEL 1: PROFILE OPERATIONS
     # =========================================================================
 
-    async def get_user_profile(self, user_id: str) -> Optional[Profile]:
+    async def get_user_profile(self, user_id: str) -> Profile | None:
         """
         Get the profile assigned to a user.
 
@@ -367,7 +364,7 @@ class RBACProvider(ABC):
         # Default implementation - override in providers
         return False
 
-    async def get_profile(self, profile_name: str) -> Optional[Profile]:
+    async def get_profile(self, profile_name: str) -> Profile | None:
         """
         Get a profile by name.
 
@@ -394,9 +391,9 @@ class RBACProvider(ABC):
         self,
         name: str,
         display_name: str,
-        description: Optional[str] = None,
-        permissions: Optional[list[str]] = None,
-    ) -> Optional[Profile]:
+        description: str | None = None,
+        permissions: list[str] | None = None,
+    ) -> Profile | None:
         """
         Create a new profile.
 
@@ -415,10 +412,10 @@ class RBACProvider(ABC):
     async def update_profile(
         self,
         name: str,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        permissions: Optional[list[str]] = None,
-    ) -> Optional[Profile]:
+        display_name: str | None = None,
+        description: str | None = None,
+        permissions: list[str] | None = None,
+    ) -> Profile | None:
         """
         Update an existing profile.
 
@@ -468,8 +465,8 @@ class RBACProvider(ABC):
         self,
         user_id: str,
         permission_set_name: str,
-        granted_by: Optional[str] = None,
-        expires_at: Optional[str] = None,
+        granted_by: str | None = None,
+        expires_at: str | None = None,
     ) -> bool:
         """
         Assign a permission set to a user.
@@ -500,7 +497,7 @@ class RBACProvider(ABC):
         # Default implementation - override in providers
         return False
 
-    async def get_permission_set(self, name: str) -> Optional[PermissionSet]:
+    async def get_permission_set(self, name: str) -> PermissionSet | None:
         """
         Get a permission set by name.
 
@@ -527,9 +524,9 @@ class RBACProvider(ABC):
         self,
         name: str,
         display_name: str,
-        description: Optional[str] = None,
-        permissions: Optional[list[str]] = None,
-    ) -> Optional[PermissionSet]:
+        description: str | None = None,
+        permissions: list[str] | None = None,
+    ) -> PermissionSet | None:
         """
         Create a new permission set.
 
@@ -548,11 +545,11 @@ class RBACProvider(ABC):
     async def update_permission_set(
         self,
         name: str,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        permissions: Optional[list[str]] = None,
-        is_active: Optional[bool] = None,
-    ) -> Optional[PermissionSet]:
+        display_name: str | None = None,
+        description: str | None = None,
+        permissions: list[str] | None = None,
+        is_active: bool | None = None,
+    ) -> PermissionSet | None:
         """
         Update an existing permission set.
 
@@ -633,7 +630,7 @@ class RBACProvider(ABC):
         # Default implementation - override in providers
         return False
 
-    async def get_team(self, team_id: int) -> Optional[Team]:
+    async def get_team(self, team_id: int) -> Team | None:
         """
         Get a team by ID.
 
@@ -646,7 +643,7 @@ class RBACProvider(ABC):
         # Default implementation - override in providers
         return None
 
-    async def get_team_by_name(self, name: str) -> Optional[Team]:
+    async def get_team_by_name(self, name: str) -> Team | None:
         """
         Get a team by name.
 
@@ -685,10 +682,10 @@ class RBACProvider(ABC):
     async def create_team(
         self,
         name: str,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        parent_team_id: Optional[int] = None,
-    ) -> Optional[Team]:
+        display_name: str | None = None,
+        description: str | None = None,
+        parent_team_id: int | None = None,
+    ) -> Team | None:
         """
         Create a new team.
 
@@ -707,12 +704,12 @@ class RBACProvider(ABC):
     async def update_team(
         self,
         team_id: int,
-        name: Optional[str] = None,
-        display_name: Optional[str] = None,
-        description: Optional[str] = None,
-        parent_team_id: Optional[int] = None,
-        is_active: Optional[bool] = None,
-    ) -> Optional[Team]:
+        name: str | None = None,
+        display_name: str | None = None,
+        description: str | None = None,
+        parent_team_id: int | None = None,
+        is_active: bool | None = None,
+    ) -> Team | None:
         """
         Update an existing team.
 
@@ -752,12 +749,12 @@ class RBACProvider(ABC):
         object_type: str,
         record_id: str,
         shared_by: str,
-        shared_with_user_id: Optional[str] = None,
-        shared_with_team_id: Optional[int] = None,
+        shared_with_user_id: str | None = None,
+        shared_with_team_id: int | None = None,
         access_level: AccessLevel = AccessLevel.READ,
-        expires_at: Optional[str] = None,
-        reason: Optional[str] = None,
-    ) -> Optional[RecordShare]:
+        expires_at: str | None = None,
+        reason: str | None = None,
+    ) -> RecordShare | None:
         """
         Share a record with a user or team.
 
@@ -837,7 +834,7 @@ class RBACProvider(ABC):
         # Default implementation - override in providers
         return False
 
-    async def list_sharing_rules(self, object_type: Optional[str] = None) -> list[SharingRule]:
+    async def list_sharing_rules(self, object_type: str | None = None) -> list[SharingRule]:
         """
         List sharing rules, optionally filtered by object type.
 
@@ -857,10 +854,10 @@ class RBACProvider(ABC):
         share_from_type: str,
         share_to_type: str,
         access_level: AccessLevel,
-        share_from_id: Optional[str] = None,
-        share_to_id: Optional[str] = None,
-        description: Optional[str] = None,
-    ) -> Optional[SharingRule]:
+        share_from_id: str | None = None,
+        share_to_id: str | None = None,
+        description: str | None = None,
+    ) -> SharingRule | None:
         """
         Create a sharing rule.
 
@@ -919,7 +916,7 @@ class RBACProvider(ABC):
         self,
         user_id: str,
         permission: str,
-        context: Optional[RBACContext] = None,
+        context: RBACContext | None = None,
     ) -> bool:
         """
         Check if user has a specific permission.

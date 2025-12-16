@@ -6,7 +6,7 @@ Handles cost tracking automatically.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from integrations.llm.base import (
     ContentPart,
@@ -76,7 +76,7 @@ class LLMClient:
         self._provider = provider
 
     @classmethod
-    def from_config(cls, provider_name: Optional[str] = None) -> "LLMClient":
+    def from_config(cls, provider_name: str | None = None) -> "LLMClient":
         """
         Create an LLMClient using configuration from config.py.
 
@@ -106,7 +106,7 @@ class LLMClient:
         return cls(provider)
 
     @classmethod
-    def for_images(cls, provider_name: Optional[str] = None) -> "LLMClient":
+    def for_images(cls, provider_name: str | None = None) -> "LLMClient":
         """
         Create an LLMClient specifically configured for image generation.
 
@@ -139,24 +139,24 @@ class LLMClient:
     async def complete(
         self,
         messages: list[LLMMessage],
-        model: Optional[str] = None,
-        tools: Optional[list[ToolDefinition]] = None,
-        tool_choice: Optional[str] = None,
-        json_schema: Optional[JSONSchema] = None,
-        reasoning: Optional[ReasoningEffort] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        model: str | None = None,
+        tools: list[ToolDefinition] | None = None,
+        tool_choice: str | None = None,
+        json_schema: JSONSchema | None = None,
+        reasoning: ReasoningEffort | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         store: bool = False,
         # Prompt caching parameters (OpenAI-specific)
-        cache_key: Optional[str] = None,
-        cache_retention: Optional[str] = None,
+        cache_key: str | None = None,
+        cache_retention: str | None = None,
         # Cost tracking parameters
         track_cost: bool = True,
         call_type: str = "llm_call",
-        user_id: Optional[str] = None,
-        workflow: Optional[str] = None,
-        context: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        user_id: str | None = None,
+        workflow: str | None = None,
+        context: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> LLMResponse:
         """
         Generate a completion from the LLM.
@@ -218,10 +218,10 @@ class LLMClient:
         n: int = 1,
         # Cost tracking parameters
         track_cost: bool = True,
-        user_id: Optional[str] = None,
-        workflow: Optional[str] = None,
-        context: Optional[str] = None,
-        metadata: Optional[dict[str, Any]] = None,
+        user_id: str | None = None,
+        workflow: str | None = None,
+        context: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> ImageResponse:
         """
         Generate an image from a text prompt.
@@ -297,10 +297,10 @@ class LLMClient:
         self,
         response: LLMResponse,
         call_type: str,
-        user_id: Optional[str],
-        workflow: Optional[str],
-        context: Optional[str],
-        metadata: Optional[dict[str, Any]],
+        user_id: str | None,
+        workflow: str | None,
+        context: str | None,
+        metadata: dict[str, Any] | None,
     ) -> None:
         """Track cost for a completion call."""
         try:
@@ -323,10 +323,10 @@ class LLMClient:
         self,
         response: ImageResponse,
         n: int,
-        user_id: Optional[str],
-        workflow: Optional[str],
-        context: Optional[str],
-        metadata: Optional[dict[str, Any]],
+        user_id: str | None,
+        workflow: str | None,
+        context: str | None,
+        metadata: dict[str, Any] | None,
     ) -> None:
         """Track cost for an image generation call."""
         try:

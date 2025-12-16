@@ -1,14 +1,13 @@
 # Chat prompts - Main LLM chat system prompt
 import os
 from datetime import datetime
-from typing import Optional
 
 
 def get_main_system_prompt(
     is_admin: bool,
     static_list: str,
     digital_list: str,
-    user_companies: Optional[list[str]] = None,
+    user_companies: list[str] | None = None,
 ) -> str:
     """
     Generate the main chat system prompt.

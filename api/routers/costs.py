@@ -5,7 +5,6 @@ Cost endpoints require authentication, with admin role required for
 sensitive operations like clearing costs.
 """
 
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
@@ -25,19 +24,19 @@ logger = get_logger("api.costs")
 @router.get("")
 async def get_costs(
     user: AuthUser = Depends(require_auth),
-    start_date: Optional[str] = Query(
+    start_date: str | None = Query(
         None,
         description="Start date (YYYY-MM-DD format)",
         pattern=r"^\d{4}-\d{2}-\d{2}$"
     ),
-    end_date: Optional[str] = Query(
+    end_date: str | None = Query(
         None,
         description="End date (YYYY-MM-DD format)",
         pattern=r"^\d{4}-\d{2}-\d{2}$"
     ),
-    call_type: Optional[CallType] = Query(None, description="Filter by call type"),
-    workflow: Optional[Workflow] = Query(None, description="Filter by workflow"),
-    filter_user_id: Optional[str] = Query(None, max_length=100, description="Filter by user ID (requires core:ai_costs:manage)")
+    call_type: CallType | None = Query(None, description="Filter by call type"),
+    workflow: Workflow | None = Query(None, description="Filter by workflow"),
+    filter_user_id: str | None = Query(None, max_length=100, description="Filter by user ID (requires core:ai_costs:manage)")
 ):
     """
     Get AI costs summary with optional filters.
@@ -91,7 +90,7 @@ async def get_costs(
 @router.delete("/clear")
 async def clear_costs(
     user: AuthUser = Depends(require_permission("core:ai_costs:manage")),
-    auth_code: Optional[str] = Query(None, min_length=1, max_length=100, description="Authorization code")
+    auth_code: str | None = Query(None, min_length=1, max_length=100, description="Authorization code")
 ):
     """
     Clear all AI cost tracking data (useful for testing/resetting).

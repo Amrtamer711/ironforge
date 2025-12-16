@@ -21,11 +21,12 @@ Auth router for unified-ui.
 12. POST /api/base/auth/force-logout/{userId} - Force logout (admin)
 """
 
+import contextlib
 import logging
 import re
 import secrets
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -82,8 +83,8 @@ class ValidateInviteRequest(BaseModel):
 class ConsumeInviteRequest(BaseModel):
     token: str
     email: EmailStr
-    user_id: Optional[str] = None
-    name: Optional[str] = None
+    user_id: str | None = None
+    name: str | None = None
 
 
 class ResendConfirmationRequest(BaseModel):
@@ -174,7 +175,6 @@ async def create_invite(
             email_error = "Email service not configured"
 
         # server.js:957-973 - Return response
-        status_code = 202 if (request.send_email and not email_sent) else 201
 
         return {
             "token": token,
@@ -753,7 +753,7 @@ async def force_logout(
             logger.warning(f"[UI AUTH] Supabase force signOut warning: {e}")
 
         # server.js:1516-1525 - Audit log
-        try:
+        with contextlib.suppress(Exception):
             supabase.table("audit_log").insert({
                 "user_id": user.id,
                 "user_email": user.email,
@@ -763,8 +763,6 @@ async def force_logout(
                 "target_user_id": user_id,
                 "success": True
             }).execute()
-        except Exception:
-            pass
 
         logger.info(f"[UI AUTH] User {user_id} force logged out by {user.email}")
         return {"success": True}

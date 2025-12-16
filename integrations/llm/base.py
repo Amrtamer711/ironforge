@@ -6,7 +6,7 @@ Each provider implements their own API-specific syntax.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 
 class ReasoningEffort(Enum):
@@ -31,7 +31,7 @@ class ReasoningEffort(Enum):
 class LLMMessage:
     """Unified message format."""
     role: str  # "system", "user", "assistant"
-    content: Union[str, list[dict[str, Any]]]  # String or multimodal content
+    content: str | list[dict[str, Any]]  # String or multimodal content
 
     @staticmethod
     def system(content: str) -> "LLMMessage":
@@ -39,7 +39,7 @@ class LLMMessage:
         return LLMMessage(role="system", content=content)
 
     @staticmethod
-    def user(content: Union[str, list[dict[str, Any]]]) -> "LLMMessage":
+    def user(content: str | list[dict[str, Any]]) -> "LLMMessage":
         """Create a user message."""
         return LLMMessage(role="user", content=content)
 
@@ -84,7 +84,7 @@ class LLMResponse:
     model: str
     usage: Optional["TokenUsage"] = None
     cost: Optional["CostInfo"] = None  # Provider-calculated cost
-    tool_calls: Optional[list["ToolCall"]] = None
+    tool_calls: list["ToolCall"] | None = None
     raw_response: Any = None  # Original provider response for advanced use
 
 
@@ -165,16 +165,16 @@ class LLMProvider(ABC):
     async def complete(
         self,
         messages: list[LLMMessage],
-        model: Optional[str] = None,
-        tools: Optional[list[ToolDefinition]] = None,
-        tool_choice: Optional[str] = None,
-        json_schema: Optional[JSONSchema] = None,
-        reasoning: Optional[ReasoningEffort] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        model: str | None = None,
+        tools: list[ToolDefinition] | None = None,
+        tool_choice: str | None = None,
+        json_schema: JSONSchema | None = None,
+        reasoning: ReasoningEffort | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         store: bool = False,
-        cache_key: Optional[str] = None,
-        cache_retention: Optional[str] = None,
+        cache_key: str | None = None,
+        cache_retention: str | None = None,
     ) -> LLMResponse:
         """
         Generate a completion from the LLM.
@@ -289,7 +289,7 @@ class CostInfo:
     reasoning_tokens: int = 0  # Separate from output_tokens
 
     # Image-specific
-    image_size: Optional[str] = None  # "1K", "2K", "4K" or "1024x1024"
+    image_size: str | None = None  # "1K", "2K", "4K" or "1024x1024"
     image_count: int = 0
 
 
@@ -298,6 +298,6 @@ class ImageResponse:
     """Response from image generation."""
     images: list[bytes]  # Raw image data
     model: str
-    usage: Optional[TokenUsage] = None
-    cost: Optional[CostInfo] = None  # Provider-calculated cost
+    usage: TokenUsage | None = None
+    cost: CostInfo | None = None  # Provider-calculated cost
     raw_response: Any = None
