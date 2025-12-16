@@ -726,6 +726,7 @@ class WebAdapter(ChannelAdapter):
                                 "timestamp": datetime.now().isoformat(),
                                 "parent_id": parent_id,
                                 "attachments": [{
+                                    "file_id": file_id,
                                     "url": url,
                                     "filename": actual_filename,
                                     "title": title
@@ -810,6 +811,7 @@ class WebAdapter(ChannelAdapter):
                     "timestamp": datetime.now().isoformat(),
                     "parent_id": parent_id,
                     "attachments": [{
+                        "file_id": file_id,
                         "url": url,
                         "filename": actual_filename,
                         "title": title
@@ -957,6 +959,7 @@ class WebAdapter(ChannelAdapter):
                                 "timestamp": datetime.now().isoformat(),
                                 "parent_id": parent_id,
                                 "attachments": [{
+                                    "file_id": file_id,
                                     "url": url,
                                     "filename": filename,
                                     "title": title

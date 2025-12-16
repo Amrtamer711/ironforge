@@ -258,6 +258,9 @@ async def get_chat_history(user: AuthUser = Depends(require_permission("sales:ch
         messages = load_chat_messages(user.id)
         session_info = get_chat_session_info(user.id)
 
+        # Refresh signed URLs for attachments (they expire after 24h)
+        messages = await _refresh_attachment_urls(messages)
+
         logger.info(f"[CHAT] Loaded {len(messages)} persisted messages for {user.email}")
 
         return {
@@ -274,3 +277,42 @@ async def get_chat_history(user: AuthUser = Depends(require_permission("sales:ch
             "message_count": 0,
             "error": str(e)
         }
+
+
+async def _refresh_attachment_urls(messages: list) -> list:
+    """
+    Refresh signed URLs for attachments that may have expired.
+
+    Looks up file storage info from the database and generates fresh signed URLs.
+    """
+    from db.database import db
+    from integrations.storage import get_storage_client
+
+    storage_client = get_storage_client()
+    if not storage_client or storage_client.provider_name == "local":
+        return messages  # No refresh needed for local storage
+
+    for msg in messages:
+        attachments = msg.get("attachments") or msg.get("files") or []
+        for attachment in attachments:
+            file_id = attachment.get("file_id")
+            if not file_id:
+                continue
+
+            # Look up file storage info from database
+            try:
+                doc = db.get_document(file_id)
+                if doc and doc.get("storage_provider") == "supabase":
+                    # Generate fresh signed URL
+                    signed_url = await storage_client.get_signed_url(
+                        bucket=doc["storage_bucket"],
+                        key=doc["storage_key"],
+                        expires_in=86400,  # 24 hours
+                    )
+                    if signed_url:
+                        attachment["url"] = signed_url
+            except Exception as e:
+                logger.warning(f"[CHAT] Failed to refresh URL for file {file_id}: {e}")
+                continue
+
+    return messages
