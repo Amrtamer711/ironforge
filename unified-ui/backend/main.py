@@ -117,6 +117,47 @@ app.add_middleware(
 
 
 # =============================================================================
+# SECURITY HEADERS MIDDLEWARE - server.js:151-167 (helmet)
+# =============================================================================
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Add security headers similar to helmet.js."""
+    response = await call_next(request)
+
+    # X-Content-Type-Options - Prevent MIME sniffing
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+    # X-Frame-Options - Prevent clickjacking
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+
+    # X-XSS-Protection - Enable XSS filter (legacy but still useful)
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+
+    # Referrer-Policy - Control referrer information
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    # Permissions-Policy - Restrict browser features
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+
+    # Content-Security-Policy - Only in production
+    if settings.is_production:
+        csp_directives = [
+            "default-src 'self'",
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+            "img-src 'self' data: blob: https:",
+            f"connect-src 'self' {settings.supabase_url or ''} https://*.supabase.co",
+            "font-src 'self' https: data: https://fonts.gstatic.com",
+            "object-src 'none'",
+            "upgrade-insecure-requests",
+        ]
+        response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
+
+    return response
+
+
+# =============================================================================
 # REQUEST LOGGING MIDDLEWARE - server.js:724-737
 # =============================================================================
 
