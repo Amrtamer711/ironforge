@@ -486,13 +486,15 @@ const Chat = {
                   break;
                 }
               }
-            } else if (parsed.type === 'file' && parsed.file) {
+            } else if (parsed.type === 'file' && (parsed.file || parsed.url)) {
               // Single file upload event
-              this.appendFiles(msgId, [parsed.file]);
+              // Backend sends file properties at top level (url, filename, etc.) OR nested under 'file'
+              const fileData = parsed.file || parsed;
+              this.appendFiles(msgId, [fileData]);
               filesReceived = true;
               // Display file comment as message content (e.g., "Billboard Mockup Generated...")
-              if (parsed.file.comment && !fullContent) {
-                fullContent = parsed.file.comment;
+              if (fileData.comment && !fullContent) {
+                fullContent = fileData.comment;
                 this.updateMessage(msgId, fullContent);
               }
             } else if (parsed.files) {

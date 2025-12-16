@@ -598,12 +598,13 @@ class SupabaseBackend(DatabaseBackend):
             # Use maybe_single() instead of single() - returns None for 0 rows instead of throwing
             response = client.schema(company_schema).table("mockup_frames").select("frames_data").eq("location_key", location_key).eq("time_of_day", time_of_day).eq("finish", finish).eq("photo_filename", photo_filename).maybe_single().execute()
 
-            if response.data:
+            if response and response.data:
                 # frames_data is JSONB - Supabase auto-deserializes it
                 return response.data["frames_data"]
             return None
         except Exception as e:
-            logger.error(f"[SUPABASE] Failed to get mockup frames for {location_key}/{photo_filename}: {e}", exc_info=True)
+            # Not finding data in a schema is expected when searching across multiple schemas
+            logger.debug(f"[SUPABASE] No mockup frames for {location_key}/{photo_filename} in {company_schema}: {e}")
             return None
 
     def get_mockup_config(
@@ -620,12 +621,13 @@ class SupabaseBackend(DatabaseBackend):
             # Use maybe_single() instead of single() - returns None for 0 rows instead of throwing
             response = client.schema(company_schema).table("mockup_frames").select("config_json").eq("location_key", location_key).eq("time_of_day", time_of_day).eq("finish", finish).eq("photo_filename", photo_filename).maybe_single().execute()
 
-            if response.data and response.data.get("config_json"):
+            if response and response.data and response.data.get("config_json"):
                 # config_json is JSONB - Supabase auto-deserializes it
                 return response.data["config_json"]
             return None
         except Exception as e:
-            logger.error(f"[SUPABASE] Failed to get mockup config for {location_key}/{photo_filename}: {e}", exc_info=True)
+            # Not finding data in a schema is expected when searching across multiple schemas
+            logger.debug(f"[SUPABASE] No mockup config for {location_key}/{photo_filename} in {company_schema}: {e}")
             return None
 
     def list_mockup_photos(
