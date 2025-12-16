@@ -138,6 +138,7 @@ async def handle_mockup_generation(
             user_id=user_id,
             channel=channel,
             status_ts=status_ts,
+            user_companies=user_companies,
             generate_mockup_queued_func=generate_mockup_queued_func,
         )
 
@@ -247,6 +248,7 @@ async def _handle_followup_mode(
     user_id: str,
     channel: str,
     status_ts: str,
+    user_companies: List[str],
     generate_mockup_queued_func: Callable,
 ) -> bool:
     """Handle follow-up request to apply previous creatives to new location."""
