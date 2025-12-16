@@ -717,11 +717,14 @@ class WebAdapter(ChannelAdapter):
                     session = self.get_session(channel_id)
                     if session:
                         if comment:
+                            # Get parent_id to link this response to the originating user message
+                            parent_id = current_parent_message_id.get()
                             session.messages.append({
                                 "id": str(uuid.uuid4()),
                                 "role": "assistant",
                                 "content": comment,
                                 "timestamp": datetime.now().isoformat(),
+                                "parent_id": parent_id,
                                 "attachments": [{
                                     "url": url,
                                     "filename": actual_filename,
@@ -798,11 +801,14 @@ class WebAdapter(ChannelAdapter):
         session = self.get_session(channel_id)
         if session:
             if comment:
+                # Get parent_id to link this response to the originating user message
+                parent_id = current_parent_message_id.get()
                 session.messages.append({
                     "id": str(uuid.uuid4()),
                     "role": "assistant",
                     "content": comment,
                     "timestamp": datetime.now().isoformat(),
+                    "parent_id": parent_id,
                     "attachments": [{
                         "url": url,
                         "filename": actual_filename,
@@ -942,11 +948,14 @@ class WebAdapter(ChannelAdapter):
                     if comment:
                         session = self.get_session(channel_id)
                         if session:
+                            # Get parent_id to link this response to the originating user message
+                            parent_id = current_parent_message_id.get()
                             session.messages.append({
                                 "id": str(uuid.uuid4()),
                                 "role": "assistant",
                                 "content": comment,
                                 "timestamp": datetime.now().isoformat(),
+                                "parent_id": parent_id,
                                 "attachments": [{
                                     "url": url,
                                     "filename": filename,

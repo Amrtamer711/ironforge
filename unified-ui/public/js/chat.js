@@ -100,9 +100,10 @@ const Chat = {
       messages.forEach(msg => {
         const msgId = this.addMessage(msg.role, msg.content || '', false);
 
-        // Render files if present
-        if (msg.files && msg.files.length > 0 && msgId) {
-          this.appendFiles(msgId, msg.files);
+        // Render files if present (user messages use 'files', assistant uses 'attachments')
+        const files = msg.files || msg.attachments || [];
+        if (files.length > 0 && msgId) {
+          this.appendFiles(msgId, files);
         }
       });
 
@@ -865,11 +866,25 @@ const Chat = {
 
         imageContainer.appendChild(img);
 
-        // Add filename below image
-        const caption = document.createElement('div');
+        // Add caption with filename and download button
+        const captionRow = document.createElement('div');
+        captionRow.className = 'chat-image-caption-row';
+
+        const caption = document.createElement('span');
         caption.className = 'chat-image-caption';
         caption.textContent = file.filename || 'Image';
-        imageContainer.appendChild(caption);
+        captionRow.appendChild(caption);
+
+        const downloadBtn = document.createElement('a');
+        downloadBtn.className = 'chat-image-download';
+        downloadBtn.href = fileUrl;
+        downloadBtn.download = file.filename || 'image';
+        downloadBtn.title = 'Download image';
+        downloadBtn.innerHTML = '⬇️';
+        downloadBtn.onclick = (e) => e.stopPropagation(); // Don't trigger image click
+        captionRow.appendChild(downloadBtn);
+
+        imageContainer.appendChild(captionRow);
 
         filesContainer.appendChild(imageContainer);
       } else {

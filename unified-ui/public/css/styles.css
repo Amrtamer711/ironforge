@@ -4132,13 +4132,33 @@ body.modal-open {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+.chat-image-caption-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
 .chat-image-caption {
   font-size: 0.8em;
   color: var(--neural-300);
-  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 280px;
+}
+
+.chat-image-download {
+  font-size: 0.9em;
+  text-decoration: none;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.chat-image-download:hover {
+  opacity: 1;
 }
 
 /* Chat loading state */
