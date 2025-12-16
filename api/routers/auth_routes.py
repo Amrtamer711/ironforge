@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from api.auth import get_current_user, require_auth
+from api.auth import get_current_user
 from integrations.auth import AuthUser, get_auth_client
 from integrations.auth.providers.local_dev import LocalDevAuthProvider
 from utils.logging import get_logger

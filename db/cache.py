@@ -4,27 +4,27 @@ Cache - In-memory caches for user sessions and mockup history.
 
 import os
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Any, Optional
 
 import config
 from db.database import db
 from utils.memory import cleanup_memory
 
 # Global for user conversation history
-user_history: Dict[str, list] = {}
+user_history: dict[str, list] = {}
 
 # Global for pending location additions (waiting for PPT upload)
-pending_location_additions: Dict[str, Dict[str, Any]] = {}
+pending_location_additions: dict[str, dict[str, Any]] = {}
 
 # Global for mockup history (30-minute memory per user)
 # Structure: {user_id: {"creative_paths": List[Path], "metadata": dict, "timestamp": datetime}}
 # Stores individual creative files (1-N files) so they can be reused on different locations with matching frame count
-mockup_history: Dict[str, Dict[str, Any]] = {}
+mockup_history: dict[str, dict[str, Any]] = {}
 
 # Global for booking order draft review sessions (active until approved/cancelled)
 # Structure: {user_id: {"data": dict, "warnings": List[str], "missing_required": List[str],
 #                        "original_file_path": Path, "company": str, "file_type": str}}
-pending_booking_orders: Dict[str, Dict[str, Any]] = {}
+pending_booking_orders: dict[str, dict[str, Any]] = {}
 
 
 def cleanup_expired_mockups():
@@ -97,7 +97,7 @@ def store_mockup_history(user_id: str, creative_paths: list, metadata: dict):
     cleanup_expired_mockups()
 
 
-def get_mockup_history(user_id: str) -> Optional[Dict[str, Any]]:
+def get_mockup_history(user_id: str) -> Optional[dict[str, Any]]:
     """Get user's creative files from history if still valid (within 30 minutes)
 
     Returns:
@@ -135,7 +135,7 @@ def get_mockup_history(user_id: str) -> Optional[Dict[str, Any]]:
 
 def get_location_frame_count(
     location_key: str,
-    company_schemas: List[str],
+    company_schemas: list[str],
     time_of_day: str = "all",
     finish: str = "all",
 ) -> Optional[int]:
@@ -150,7 +150,6 @@ def get_location_frame_count(
     Returns:
         Number of frames, or None if location not found or no mockups configured
     """
-    from config import COMPANY_SCHEMAS
 
     # Get available variations for the location (searches all user's schemas)
     variations = db.list_mockup_variations(location_key, company_schemas)

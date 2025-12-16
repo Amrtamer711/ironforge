@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 
 class ChannelType(str, Enum):
@@ -54,7 +54,7 @@ class User:
     email: Optional[str] = None
     avatar_url: Optional[str] = None
     is_bot: bool = False
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     # Platform-specific IDs (for cross-referencing)
     slack_id: Optional[str] = None
@@ -82,8 +82,8 @@ class Message:
     user_id: Optional[str] = None
     thread_id: Optional[str] = None
     timestamp: Optional[str] = None
-    attachments: List[Attachment] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    attachments: list[Attachment] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     # For tracking platform-specific IDs
     platform_message_id: Optional[str] = None  # e.g., Slack's ts
@@ -109,7 +109,7 @@ class ModalField:
     placeholder: Optional[str] = None
     default_value: Optional[str] = None
     required: bool = False
-    options: Optional[List[Dict[str, str]]] = None  # For select fields
+    options: Optional[list[dict[str, str]]] = None  # For select fields
     max_length: Optional[int] = None
     multiline: bool = False
     block_id: Optional[str] = None  # Custom block ID (for Slack submission handling)
@@ -120,7 +120,7 @@ class Modal:
     """Modal/dialog configuration."""
     modal_id: str
     title: str
-    fields: List[ModalField] = field(default_factory=list)
+    fields: list[ModalField] = field(default_factory=list)
     submit_text: str = "Submit"
     cancel_text: str = "Cancel"
     private_metadata: Optional[str] = None  # For passing data through
@@ -134,8 +134,8 @@ class ActionResult:
     user_id: str
     channel_id: str
     value: Optional[str] = None
-    form_values: Dict[str, Any] = field(default_factory=dict)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    form_values: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     # For tracking the source
     message_id: Optional[str] = None
@@ -209,8 +209,8 @@ class ChannelAdapter(ABC):
         content: str,
         *,
         thread_id: Optional[str] = None,
-        buttons: Optional[List[Button]] = None,
-        attachments: Optional[List[Attachment]] = None,
+        buttons: Optional[list[Button]] = None,
+        attachments: Optional[list[Attachment]] = None,
         format: MessageFormat = MessageFormat.MARKDOWN,
         ephemeral: bool = False,
         user_id: Optional[str] = None,  # For ephemeral messages
@@ -240,7 +240,7 @@ class ChannelAdapter(ABC):
         message_id: str,
         content: str,
         *,
-        buttons: Optional[List[Button]] = None,
+        buttons: Optional[list[Button]] = None,
         format: MessageFormat = MessageFormat.MARKDOWN,
     ) -> Message:
         """
@@ -383,7 +383,7 @@ class ChannelAdapter(ABC):
     @abstractmethod
     async def download_file(
         self,
-        file_info: Dict[str, Any],
+        file_info: dict[str, Any],
     ) -> Optional[Path]:
         """
         Download a file from the channel.
@@ -468,7 +468,7 @@ class ChannelAdapter(ABC):
         content: str,
         *,
         replace_original: bool = True,
-        buttons: Optional[List[Button]] = None,
+        buttons: Optional[list[Button]] = None,
     ) -> bool:
         """
         Respond to an interactive action via response URL.
@@ -536,7 +536,7 @@ class ChannelAdapter(ABC):
     # CAPABILITY CHECKS
     # ========================================================================
 
-    def get_capabilities(self) -> Dict[str, bool]:
+    def get_capabilities(self) -> dict[str, bool]:
         """Get all capabilities of this channel."""
         return {
             "threads": self.supports_threads,

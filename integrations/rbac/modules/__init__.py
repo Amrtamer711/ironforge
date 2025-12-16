@@ -20,18 +20,17 @@ Usage:
     permissions = get_all_permissions()
 """
 
+from integrations.rbac.modules.core import CoreModule
 from integrations.rbac.modules.registry import (
     ModuleDefinition,
-    register_module,
-    unregister_module,
-    get_module,
     get_all_modules,
     get_all_permissions,
+    get_module,
     get_permissions_for_module,
     is_module_registered,
+    register_module,
+    unregister_module,
 )
-
-from integrations.rbac.modules.core import CoreModule
 from integrations.rbac.modules.sales import SalesModule
 
 __all__ = [

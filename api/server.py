@@ -6,35 +6,35 @@ middleware, and background tasks.
 """
 
 import asyncio
-from datetime import datetime, timedelta
-import subprocess
 import shutil
+import subprocess
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from api.middleware.security_headers import SecurityHeadersMiddleware
 import config
-from app_settings import settings
-from font_utils import install_custom_fonts
-from utils.time import get_uae_time
-from utils.logging import logging_middleware_helper, get_logger
+from api.middleware.security_headers import SecurityHeadersMiddleware
 
 # Import routers
 from api.routers import (
-    slack_router,
-    health_router,
-    costs_router,
-    mockups_router,
-    chat_router,
-    auth_router,
-    proposals_router,
-    files_router,
     admin_router,
+    auth_router,
+    chat_router,
+    costs_router,
+    files_router,
+    health_router,
+    mockups_router,
     modules_router,
+    proposals_router,
+    slack_router,
 )
+from app_settings import settings
+from font_utils import install_custom_fonts
+from utils.logging import get_logger, logging_middleware_helper
+from utils.time import get_uae_time
 
 # Install custom fonts on startup
 install_custom_fonts()
@@ -69,7 +69,7 @@ async def periodic_cleanup():
         await asyncio.sleep(300)  # Every 5 minutes
         try:
             # Clean up old user histories
-            from db.cache import user_history, pending_location_additions
+            from db.cache import pending_location_additions, user_history
 
             # Clean user histories older than 1 hour
             cutoff = get_uae_time() - timedelta(hours=1)
@@ -104,9 +104,9 @@ async def periodic_cleanup():
                 logger.info(f"[CLEANUP] Removed {len(expired_locations)} pending locations")
 
             # Clean up old temporary files
+            import os
             import tempfile
             import time
-            import os
             temp_dir = tempfile.gettempdir()
             now = time.time()
 
@@ -245,7 +245,8 @@ async def trusted_user_middleware(request: Request, call_next):
     - X-Trusted-User-Subordinate-Ids (Level 3: user's direct reports + team members)
     """
     import json
-    from integrations.rbac.providers.database import set_user_context, clear_user_context
+
+    from integrations.rbac.providers.database import clear_user_context, set_user_context
 
     path = request.url.path
 
@@ -352,6 +353,7 @@ async def trusted_user_middleware(request: Request, call_next):
 
 # Setup centralized exception handlers
 from api.exceptions import setup_exception_handlers
+
 setup_exception_handlers(app)
 
 # Include routers

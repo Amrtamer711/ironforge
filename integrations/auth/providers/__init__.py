@@ -6,8 +6,8 @@ Available providers:
 - LocalDevAuthProvider: Local development with hardcoded users
 """
 
-from integrations.auth.providers.supabase import SupabaseAuthProvider
 from integrations.auth.providers.local_dev import LocalDevAuthProvider
+from integrations.auth.providers.supabase import SupabaseAuthProvider
 
 __all__ = [
     "SupabaseAuthProvider",

@@ -6,7 +6,7 @@ converted to any platform's native format.
 """
 
 import re
-from typing import List, Tuple
+
 from .base import MessageFormat
 
 
@@ -35,8 +35,8 @@ class ChannelFormatter:
             return text
 
         # Store code blocks to avoid processing them
-        code_blocks: List[Tuple[str, str]] = []
-        inline_codes: List[Tuple[str, str]] = []
+        code_blocks: list[tuple[str, str]] = []
+        inline_codes: list[tuple[str, str]] = []
 
         # Preserve code blocks
         def save_code_block(match):
@@ -112,8 +112,8 @@ class ChannelFormatter:
             return text
 
         # Store code blocks
-        code_blocks: List[Tuple[str, str]] = []
-        inline_codes: List[Tuple[str, str]] = []
+        code_blocks: list[tuple[str, str]] = []
+        inline_codes: list[tuple[str, str]] = []
 
         def save_code_block(match):
             placeholder = f"__CODE_BLOCK_{len(code_blocks)}__"

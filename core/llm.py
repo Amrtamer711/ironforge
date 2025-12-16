@@ -1,34 +1,26 @@
-import json
 import asyncio
-from typing import Dict, Any, Optional, List
+import json
 import os
-from pathlib import Path
 from datetime import datetime, timedelta
-from pptx import Presentation
-import shutil
+from pathlib import Path
+from typing import Any, Optional
 
 import config
-from db.database import db
-from core.proposals import process_proposals
-from integrations.channels.base import ChannelType
-from workflows.bo_parser import BookingOrderParser, COMBINED_BOS_DIR
-from utils.task_queue import mockup_queue
 from core import bo_messaging
-from core.file_utils import download_file, _validate_pdf_file, _convert_pdf_to_pptx
+from core.file_utils import _convert_pdf_to_pptx, _validate_pdf_file, download_file
+from core.tools import get_admin_tools, get_base_tools
+from db.cache import (
+    get_mockup_history,
+    pending_booking_orders,
+    pending_location_additions,
+    user_history,
+)
+from integrations.channels.base import ChannelType
 from integrations.llm.prompts.bo_editing import get_bo_edit_prompt
 from integrations.llm.prompts.chat import get_main_system_prompt
 from integrations.llm.schemas.bo_editing import get_bo_edit_response_schema
-from core.tools import get_base_tools, get_admin_tools
-from db.cache import (
-    user_history,
-    pending_location_additions,
-    mockup_history,
-    pending_booking_orders,
-    cleanup_expired_mockups,
-    store_mockup_history,
-    get_mockup_history,
-    get_location_frame_count,
-)
+from utils.task_queue import mockup_queue
+from workflows.bo_parser import BookingOrderParser
 
 
 async def _generate_mockup_queued(
@@ -87,7 +79,7 @@ async def _generate_mockup_queued(
 
 
 async def _generate_ai_mockup_queued(
-    ai_prompts: List[str],
+    ai_prompts: list[str],
     location_key: str,
     time_of_day: str,
     finish: str,
@@ -178,7 +170,7 @@ async def _persist_location_upload(location_key: str, pptx_path: Path, metadata_
 
 async def _handle_booking_order_parse(
     company: str,
-    channel_event: Dict[str, Any],
+    channel_event: dict[str, Any],
     channel: str,
     status_ts: str,
     user_notes: str,
@@ -324,7 +316,7 @@ async def _handle_booking_order_parse(
 
         # Send Excel + summary + Approve/Reject buttons to coordinator
         submitter_name = await bo_messaging.get_user_real_name(user_id)
-        preview_text = f"📋 **New Booking Order - Ready for Approval**\n\n"
+        preview_text = "📋 **New Booking Order - Ready for Approval**\n\n"
         preview_text += f"**Company:** {company.upper()}\n"
         preview_text += f"**Submitted by:** {submitter_name}\n\n"
         preview_text += f"**Client:** {result.data.get('client', 'N/A')}\n"
@@ -398,7 +390,7 @@ async def _handle_booking_order_parse(
         logger.info(f"[BO APPROVAL] Posted notification with ts: {notification_ts}")
 
         # Step 2: Upload combined PDF file as threaded reply
-        logger.info(f"[BO APPROVAL] Uploading combined PDF in thread...")
+        logger.info("[BO APPROVAL] Uploading combined PDF in thread...")
         try:
             file_upload = await channel_adapter.upload_file(
                 channel_id=coordinator_channel,
@@ -407,17 +399,17 @@ async def _handle_booking_order_parse(
                 comment=preview_text,
                 thread_id=notification_ts  # Post in thread
             )
-            logger.info(f"[BO APPROVAL] Combined PDF uploaded in thread successfully")
+            logger.info("[BO APPROVAL] Combined PDF uploaded in thread successfully")
         except Exception as upload_error:
             logger.error(f"[BO APPROVAL] Failed to upload combined PDF: {upload_error}", exc_info=True)
             raise Exception(f"Failed to send combined PDF to coordinator. Channel/User ID: {coordinator_channel}")
 
         # Wait for file to fully appear in Slack before posting buttons
-        logger.info(f"[BO APPROVAL] Waiting 10 seconds for file to render in Slack...")
+        logger.info("[BO APPROVAL] Waiting 10 seconds for file to render in Slack...")
         await asyncio.sleep(10)
 
         # Step 3: Post buttons in the same thread
-        logger.info(f"[BO APPROVAL] Posting approval buttons in thread...")
+        logger.info("[BO APPROVAL] Posting approval buttons in thread...")
         from integrations.channels import Button, ButtonStyle
 
         buttons = [
@@ -495,8 +487,8 @@ async def _handle_booking_order_parse(
 
 async def handle_booking_order_edit_flow(channel: str, user_id: str, user_input: str) -> str:
     """Handle booking order edit flow with structured LLM response"""
-    from integrations.llm import LLMClient, LLMMessage
     from core.bo_messaging import get_user_real_name
+    from integrations.llm import LLMClient, LLMMessage
 
     try:
         edit_data = pending_booking_orders.get(user_id, {})
@@ -673,9 +665,9 @@ async def main_llm_loop(
     channel: str,
     user_id: str,
     user_input: str,
-    channel_event: Dict[str, Any] = None,
+    channel_event: dict[str, Any] = None,
     is_admin_override: bool = None,
-    user_companies: Optional[List[str]] = None,
+    user_companies: Optional[list[str]] = None,
 ):
     """
     Main LLM processing loop - channel-agnostic.
@@ -702,7 +694,7 @@ async def main_llm_loop(
         logger.info(f"[MAIN_LLM] Channel event keys: {list(channel_event.keys())}")
         if "files" in channel_event:
             logger.info(f"[MAIN_LLM] Files found: {len(channel_event['files'])}")
-    
+
     # Check if message is in a coordinator thread (before sending status message)
     thread_ts = channel_event.get("thread_ts") if channel_event else None
     if thread_ts:
@@ -796,7 +788,7 @@ async def main_llm_loop(
 
         logger.info(f"[LOCATION_ADD] Found pending location for user {user_id}: {pending_data['location_key']}")
         logger.info(f"[LOCATION_ADD] Files in event: {len(channel_event.get('files', []))}")
-        
+
         # Check if any of the files is a PDF (we'll convert it to PPTX)
         pptx_file = None
         files = channel_event.get("files", [])
@@ -804,7 +796,7 @@ async def main_llm_loop(
         # If it's a file_share event, files might be structured differently
         if not files and channel_event.get("subtype") == "file_share" and "file" in channel_event:
             files = [channel_event["file"]]
-            logger.info(f"[LOCATION_ADD] Using file from file_share event")
+            logger.info("[LOCATION_ADD] Using file from file_share event")
 
         for f in files:
             logger.info(f"[LOCATION_ADD] Checking file: name={f.get('name')}, filetype={f.get('filetype')}, mimetype={f.get('mimetype')}")
@@ -842,7 +834,7 @@ async def main_llm_loop(
                 conversion_status_ts = conversion_status.platform_message_id or conversion_status.id
 
                 # Convert PDF to PPTX
-                logger.info(f"[LOCATION_ADD] Converting PDF to PPTX...")
+                logger.info("[LOCATION_ADD] Converting PDF to PPTX...")
                 pptx_file = await _convert_pdf_to_pptx(pdf_file)
 
                 # Clean up original PDF
@@ -863,7 +855,7 @@ async def main_llm_loop(
 
                 logger.info(f"[LOCATION_ADD] ✓ PDF converted to PPTX: {pptx_file}")
                 break
-        
+
         if pptx_file:
             # Build metadata.txt content matching exact format of existing files
             metadata_lines = []
@@ -871,7 +863,7 @@ async def main_llm_loop(
             metadata_lines.append(f"Display Name: {pending_data['display_name']}")
             metadata_lines.append(f"Display Type: {pending_data['display_type']}")
             metadata_lines.append(f"Number of Faces: {pending_data['number_of_faces']}")
-            
+
             # For digital locations, add digital-specific fields in the correct order
             if pending_data['display_type'] == 'Digital':
                 metadata_lines.append(f"Spot Duration: {pending_data['spot_duration']}")
@@ -879,24 +871,24 @@ async def main_llm_loop(
                 metadata_lines.append(f"SOV: {pending_data['sov']}")
                 if pending_data['upload_fee'] is not None:
                     metadata_lines.append(f"Upload Fee: {pending_data['upload_fee']}")
-            
+
             # Series, Height, Width come after digital fields
             metadata_lines.append(f"Series: {pending_data['series']}")
             metadata_lines.append(f"Height: {pending_data['height']}")
             metadata_lines.append(f"Width: {pending_data['width']}")
-            
+
             metadata_text = "\n".join(metadata_lines)
-            
+
             try:
                 # Save the location
                 await _persist_location_upload(pending_data['location_key'], pptx_file, metadata_text)
-                
+
                 # Clean up
                 del pending_location_additions[user_id]
-                
+
                 # Refresh templates
                 config.refresh_templates()
-                
+
                 # Delete status message
                 await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
 
@@ -945,6 +937,7 @@ async def main_llm_loop(
             try:
                 # Delete the location directory and all its contents
                 import shutil
+
                 from generators import mockup as mockup_generator
 
                 # Delete PowerPoint templates
@@ -1048,7 +1041,7 @@ async def main_llm_loop(
         logger.debug(f"[LLM] Digital locations: {digital_locations}")
     else:
         # Fallback to global cache (for Slack without company filtering)
-        logger.info(f"[LLM] No user_companies provided, using global location cache")
+        logger.info("[LLM] No user_companies provided, using global location cache")
         for key, meta in config.LOCATION_METADATA.items():
             display_name = meta.get('display_name', key)
             if meta.get('display_type', '').lower() == 'static':
@@ -1076,7 +1069,7 @@ async def main_llm_loop(
     document_files = []  # For PDFs, Excel, etc.
 
     if has_files and channel_event:
-        from utils.constants import is_image_mimetype, is_document_mimetype
+        from utils.constants import is_document_mimetype, is_image_mimetype
 
         files = channel_event.get("files", [])
         if not files and channel_event.get("subtype") == "file_share" and "file" in channel_event:
@@ -1101,7 +1094,7 @@ async def main_llm_loop(
 
         # PRE-ROUTING CLASSIFIER: Classify and route files before LLM
         if len(files) == 1:
-            logger.info(f"[PRE-ROUTER] Single file upload detected, running classification...")
+            logger.info("[PRE-ROUTER] Single file upload detected, running classification...")
 
             try:
                 file_info = files[0]
@@ -1111,8 +1104,8 @@ async def main_llm_loop(
                 logger.info(f"[PRE-ROUTER] Downloaded: {tmp_file}")
 
                 # Classify using existing classifier (converts to PDF, sends to OpenAI, returns classification)
-                from workflows.bo_parser import BookingOrderParser
                 from core.bo_messaging import get_user_real_name
+                from workflows.bo_parser import BookingOrderParser
                 user_name = await get_user_real_name(user_id) if user_id else None
                 parser = BookingOrderParser(company="backlite")  # Company will be determined by classifier
                 classification = await parser.classify_document(tmp_file, user_message=user_input, user_id=user_name)
@@ -1137,7 +1130,7 @@ async def main_llm_loop(
                     return  # Exit early - don't call LLM
 
                 elif classification.get("classification") == "ARTWORK" and classification.get("confidence") == "high":
-                    logger.info(f"[PRE-ROUTER] HIGH CONFIDENCE ARTWORK - letting LLM handle mockup")
+                    logger.info("[PRE-ROUTER] HIGH CONFIDENCE ARTWORK - letting LLM handle mockup")
                     tmp_file.unlink(missing_ok=True)
                     # Clear document_files and set as image for LLM to handle as mockup
                     document_files.clear()
@@ -1146,7 +1139,7 @@ async def main_llm_loop(
                     # Fall through to LLM for mockup generation
 
                 else:
-                    logger.info(f"[PRE-ROUTER] Low/medium confidence - letting LLM decide")
+                    logger.info("[PRE-ROUTER] Low/medium confidence - letting LLM decide")
                     tmp_file.unlink(missing_ok=True)
                     # Fall through to LLM
 
@@ -1190,8 +1183,8 @@ async def main_llm_loop(
     history = history[-10:]
 
     # Build LLM messages from history
-    from integrations.llm import LLMClient, LLMMessage
     from core.bo_messaging import get_user_real_name
+    from integrations.llm import LLMClient, LLMMessage
 
     # Sanitize placeholders that might have leaked from frontend formatting
     def _sanitize_content(text: str) -> str:
@@ -1347,4 +1340,4 @@ async def main_llm_loop(
             logger.debug(f"[LLM] Failed to delete status message during error cleanup: {cleanup_err}")
         channel_adapter = config.get_channel_adapter()
         if channel_adapter:
-            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** Something went wrong. Please try again.") 
+            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** Something went wrong. Please try again.")

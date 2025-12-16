@@ -12,15 +12,15 @@ import logging
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, BinaryIO, Dict, List, Optional, Union
+from typing import Any, BinaryIO, Optional, Union
 
 from integrations.storage.base import (
-    StorageProvider,
-    StorageFile,
-    StorageType,
-    UploadResult,
     DownloadResult,
     ListResult,
+    StorageFile,
+    StorageProvider,
+    StorageType,
+    UploadResult,
 )
 
 logger = logging.getLogger("proposal-bot")
@@ -120,7 +120,7 @@ class StorageClient:
         key: str,
         data: Union[bytes, BinaryIO],
         content_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> UploadResult:
         """
         Upload a file to storage.
@@ -143,7 +143,7 @@ class StorageClient:
         key: str,
         local_path: Union[str, Path],
         content_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> UploadResult:
         """
         Upload a file from local filesystem.
@@ -379,7 +379,7 @@ class StorageClient:
         """
         return await self._provider.ensure_bucket(bucket, public)
 
-    async def list_buckets(self) -> List[str]:
+    async def list_buckets(self) -> list[str]:
         """
         List all available buckets.
 
@@ -805,9 +805,10 @@ async def store_proposal_file(
     Returns:
         TrackedFile with storage info
     """
+    from datetime import datetime
+
     from db.database import db
     from utils.files import calculate_sha256, get_mime_type
-    from datetime import datetime
 
     storage = get_storage_client()
     file_id = str(uuid.uuid4())
@@ -1178,8 +1179,9 @@ async def soft_delete_tracked_file(
     Returns:
         True if deleted
     """
-    from db.database import db
     from datetime import datetime
+
+    from db.database import db
 
     try:
         client = db._get_client()
@@ -1214,8 +1216,9 @@ async def soft_delete_mockup_by_location(
     Returns:
         True if deleted
     """
-    from db.database import db
     from datetime import datetime
+
+    from db.database import db
 
     try:
         client = db._get_client()

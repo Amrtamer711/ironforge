@@ -13,20 +13,20 @@ Supports full 4-level enterprise RBAC:
 
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Set
+from typing import Optional
 
 from integrations.rbac.base import (
-    RBACProvider,
+    AccessLevel,
     Permission,
-    Profile,
     PermissionSet,
+    Profile,
+    RBACContext,
+    RBACProvider,
+    RecordShare,
+    SharingRule,
     Team,
     TeamMember,
     TeamRole,
-    SharingRule,
-    RecordShare,
-    AccessLevel,
-    RBACContext,
 )
 
 logger = logging.getLogger("proposal-bot")
@@ -59,29 +59,29 @@ class StaticRBACProvider(RBACProvider):
     def __init__(self):
         """Initialize static RBAC provider with empty in-memory stores."""
         # Level 1: Profiles
-        self._profiles: Dict[str, Profile] = {}
-        self._user_profiles: Dict[str, str] = {}  # user_id -> profile_name
+        self._profiles: dict[str, Profile] = {}
+        self._user_profiles: dict[str, str] = {}  # user_id -> profile_name
 
         # Level 2: Permission Sets
-        self._permission_sets: Dict[str, PermissionSet] = {}
-        self._user_permission_sets: Dict[str, List[str]] = {}  # user_id -> [ps_names]
+        self._permission_sets: dict[str, PermissionSet] = {}
+        self._user_permission_sets: dict[str, list[str]] = {}  # user_id -> [ps_names]
 
         # Level 3: Teams
-        self._teams: Dict[int, Team] = {}
-        self._team_members: Dict[int, List[TeamMember]] = {}  # team_id -> [members]
+        self._teams: dict[int, Team] = {}
+        self._team_members: dict[int, list[TeamMember]] = {}  # team_id -> [members]
         self._next_team_id: int = 1
 
         # Level 4: Record Sharing
-        self._sharing_rules: Dict[int, SharingRule] = {}
-        self._record_shares: Dict[int, RecordShare] = {}
+        self._sharing_rules: dict[int, SharingRule] = {}
+        self._record_shares: dict[int, RecordShare] = {}
         self._next_share_id: int = 1
         self._next_rule_id: int = 1
 
         # Record ownership tracking (object_type:record_id -> owner_user_id)
-        self._record_owners: Dict[str, str] = {}
+        self._record_owners: dict[str, str] = {}
 
         # Available permissions
-        self._permissions: List[Permission] = []
+        self._permissions: list[Permission] = []
 
         logger.info("[RBAC:STATIC] Provider initialized")
 
@@ -115,7 +115,7 @@ class StaticRBACProvider(RBACProvider):
         if len(granted_parts) != 3 or len(requested_parts) != 3:
             return False
 
-        for g, r in zip(granted_parts, requested_parts):
+        for g, r in zip(granted_parts, requested_parts, strict=False):
             if g != "*" and g != r:
                 # "manage" implies all actions
                 if granted_parts[2] == "manage":
@@ -154,7 +154,7 @@ class StaticRBACProvider(RBACProvider):
         """Get a profile by name."""
         return self._profiles.get(profile_name)
 
-    async def list_profiles(self) -> List[Profile]:
+    async def list_profiles(self) -> list[Profile]:
         """List all available profiles."""
         return list(self._profiles.values())
 
@@ -163,7 +163,7 @@ class StaticRBACProvider(RBACProvider):
         name: str,
         display_name: str,
         description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
+        permissions: Optional[list[str]] = None,
     ) -> Optional[Profile]:
         """Create a new profile."""
         if name in self._profiles:
@@ -189,7 +189,7 @@ class StaticRBACProvider(RBACProvider):
         name: str,
         display_name: Optional[str] = None,
         description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
+        permissions: Optional[list[str]] = None,
     ) -> Optional[Profile]:
         """Update an existing profile."""
         profile = self._profiles.get(name)
@@ -234,7 +234,7 @@ class StaticRBACProvider(RBACProvider):
     # LEVEL 2: PERMISSION SET OPERATIONS
     # =========================================================================
 
-    async def get_user_permission_sets(self, user_id: str) -> List[PermissionSet]:
+    async def get_user_permission_sets(self, user_id: str) -> list[PermissionSet]:
         """Get all permission sets assigned to a user."""
         ps_names = self._user_permission_sets.get(user_id, [])
         result = []
@@ -281,7 +281,7 @@ class StaticRBACProvider(RBACProvider):
         """Get a permission set by name."""
         return self._permission_sets.get(name)
 
-    async def list_permission_sets(self) -> List[PermissionSet]:
+    async def list_permission_sets(self) -> list[PermissionSet]:
         """List all available permission sets."""
         return list(self._permission_sets.values())
 
@@ -290,7 +290,7 @@ class StaticRBACProvider(RBACProvider):
         name: str,
         display_name: str,
         description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
+        permissions: Optional[list[str]] = None,
     ) -> Optional[PermissionSet]:
         """Create a new permission set."""
         if name in self._permission_sets:
@@ -316,7 +316,7 @@ class StaticRBACProvider(RBACProvider):
         name: str,
         display_name: Optional[str] = None,
         description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
+        permissions: Optional[list[str]] = None,
         is_active: Optional[bool] = None,
     ) -> Optional[PermissionSet]:
         """Update an existing permission set."""
@@ -355,7 +355,7 @@ class StaticRBACProvider(RBACProvider):
     # LEVEL 3: TEAM OPERATIONS
     # =========================================================================
 
-    async def get_user_teams(self, user_id: str) -> List[Team]:
+    async def get_user_teams(self, user_id: str) -> list[Team]:
         """Get all teams a user belongs to."""
         teams = []
         for team_id, members in self._team_members.items():
@@ -421,11 +421,11 @@ class StaticRBACProvider(RBACProvider):
                 return team
         return None
 
-    async def list_teams(self) -> List[Team]:
+    async def list_teams(self) -> list[Team]:
         """List all teams."""
         return list(self._teams.values())
 
-    async def get_team_members(self, team_id: int) -> List[TeamMember]:
+    async def get_team_members(self, team_id: int) -> list[TeamMember]:
         """Get all members of a team."""
         return self._team_members.get(team_id, [])
 
@@ -555,7 +555,7 @@ class StaticRBACProvider(RBACProvider):
         self,
         object_type: str,
         record_id: str,
-    ) -> List[RecordShare]:
+    ) -> list[RecordShare]:
         """Get all shares for a record."""
         shares = []
         for share in self._record_shares.values():
@@ -616,7 +616,7 @@ class StaticRBACProvider(RBACProvider):
 
         return False
 
-    async def list_sharing_rules(self, object_type: Optional[str] = None) -> List[SharingRule]:
+    async def list_sharing_rules(self, object_type: Optional[str] = None) -> list[SharingRule]:
         """List sharing rules, optionally filtered by object type."""
         rules = list(self._sharing_rules.values())
         if object_type:
@@ -669,9 +669,9 @@ class StaticRBACProvider(RBACProvider):
     # UNIFIED PERMISSION OPERATIONS
     # =========================================================================
 
-    async def get_user_permissions(self, user_id: str) -> Set[str]:
+    async def get_user_permissions(self, user_id: str) -> set[str]:
         """Get all permissions for a user from profile and permission sets."""
-        permissions: Set[str] = set()
+        permissions: set[str] = set()
 
         # From profile
         profile = await self.get_user_profile(user_id)
@@ -716,7 +716,7 @@ class StaticRBACProvider(RBACProvider):
     # PERMISSION MANAGEMENT
     # =========================================================================
 
-    async def list_permissions(self) -> List[Permission]:
+    async def list_permissions(self) -> list[Permission]:
         """List all available permissions."""
         if not self._permissions:
             # Lazy load from modules

@@ -11,15 +11,15 @@ To generate PostgreSQL/Supabase schema SQL for migrations, run:
 Apply the generated SQL in the Supabase dashboard SQL editor or via migrations.
 """
 
-import os
 import json
 import logging
+import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 from config import COMPANY_SCHEMAS
 from db.base import DatabaseBackend
-from db.schema import get_postgres_schema, get_table_names
+from db.schema import get_table_names
 from utils.time import get_uae_time
 
 logger = logging.getLogger("proposal-bot")
@@ -110,10 +110,10 @@ class SupabaseBackend(DatabaseBackend):
     def _find_in_schemas(
         self,
         table: str,
-        filters: Dict[str, Any],
-        user_companies: List[str],
+        filters: dict[str, Any],
+        user_companies: list[str],
         select: str = "*",
-    ) -> Tuple[Optional[Dict], Optional[str], str]:
+    ) -> tuple[Optional[dict], Optional[str], str]:
         """
         Search for a record across all company schemas with access control.
 
@@ -167,10 +167,10 @@ class SupabaseBackend(DatabaseBackend):
     def _query_schemas(
         self,
         table: str,
-        company_schemas: List[str],
+        company_schemas: list[str],
         select: str = "*",
-        filters: Optional[Dict[str, Any]] = None,
-    ) -> List[Dict[str, Any]]:
+        filters: Optional[dict[str, Any]] = None,
+    ) -> list[dict[str, Any]]:
         """
         Query a table across multiple company schemas and aggregate results.
 
@@ -238,7 +238,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Failed to log proposal for {client_name}: {e}", exc_info=True)
             raise SupabaseOperationError(f"Failed to log proposal: {e}") from e
 
-    def get_proposals_summary(self) -> Dict[str, Any]:
+    def get_proposals_summary(self) -> dict[str, Any]:
         try:
             client = self._get_client()
 
@@ -278,8 +278,9 @@ class SupabaseBackend(DatabaseBackend):
             }
 
     def export_to_excel(self) -> str:
-        import pandas as pd
         import tempfile
+
+        import pandas as pd
 
         try:
             client = self._get_client()
@@ -308,9 +309,9 @@ class SupabaseBackend(DatabaseBackend):
         self,
         limit: int = 50,
         offset: int = 0,
-        user_ids: Optional[Union[str, List[str]]] = None,
+        user_ids: Optional[Union[str, list[str]]] = None,
         client_name: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get proposals with optional filtering. user_ids supports single ID or list for team access."""
         try:
             client = self._get_client()
@@ -331,7 +332,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Failed to get proposals: {e}", exc_info=True)
             return []
 
-    def get_proposal_by_id(self, proposal_id: int) -> Optional[Dict[str, Any]]:
+    def get_proposal_by_id(self, proposal_id: int) -> Optional[dict[str, Any]]:
         """Get a single proposal by ID."""
         try:
             client = self._get_client()
@@ -341,7 +342,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Failed to get proposal {proposal_id}: {e}", exc_info=True)
             return None
 
-    def get_proposal_locations(self, proposal_id: int) -> List[Dict[str, Any]]:
+    def get_proposal_locations(self, proposal_id: int) -> list[dict[str, Any]]:
         """Get locations for a specific proposal."""
         try:
             client = self._get_client()
@@ -391,7 +392,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Failed to generate BO ref: {e}", exc_info=True)
             raise SupabaseOperationError(f"Failed to generate BO reference: {e}") from e
 
-    def save_booking_order(self, data: Dict[str, Any]) -> str:
+    def save_booking_order(self, data: dict[str, Any]) -> str:
         try:
             client = self._get_client()
 
@@ -449,7 +450,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Failed to save booking order {data.get('bo_ref', 'unknown')}: {e}", exc_info=True)
             raise SupabaseOperationError(f"Failed to save booking order: {e}") from e
 
-    def get_booking_order(self, bo_ref: str) -> Optional[Dict[str, Any]]:
+    def get_booking_order(self, bo_ref: str) -> Optional[dict[str, Any]]:
         try:
             client = self._get_client()
             response = client.table("booking_orders").select("*").eq("bo_ref", bo_ref).single().execute()
@@ -471,7 +472,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Failed to get booking order {bo_ref}: {e}", exc_info=True)
             return None
 
-    def get_booking_order_by_number(self, bo_number: str) -> Optional[Dict[str, Any]]:
+    def get_booking_order_by_number(self, bo_number: str) -> Optional[dict[str, Any]]:
         try:
             client = self._get_client()
             response = client.table("booking_orders").select("*").ilike("bo_number", bo_number.strip()).single().execute()
@@ -494,8 +495,9 @@ class SupabaseBackend(DatabaseBackend):
             return None
 
     def export_booking_orders_to_excel(self) -> str:
-        import pandas as pd
         import tempfile
+
+        import pandas as pd
 
         try:
             client = self._get_client()
@@ -533,12 +535,12 @@ class SupabaseBackend(DatabaseBackend):
         self,
         location_key: str,
         photo_filename: str,
-        frames_data: List[Dict],
+        frames_data: list[dict],
         company_schema: str,
         created_by: Optional[str] = None,
         time_of_day: str = "day",
         finish: str = "gold",
-        config: Optional[Dict] = None,
+        config: Optional[dict] = None,
     ) -> str:
         """Save mockup frame to company-specific schema."""
         import os
@@ -592,7 +594,7 @@ class SupabaseBackend(DatabaseBackend):
         company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> Optional[List[Dict]]:
+    ) -> Optional[list[dict]]:
         """Get mockup frames from company-specific schema."""
         try:
             client = self._get_client()
@@ -615,7 +617,7 @@ class SupabaseBackend(DatabaseBackend):
         company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> Optional[Dict]:
+    ) -> Optional[dict]:
         """Get mockup config from company-specific schema."""
         try:
             client = self._get_client()
@@ -634,10 +636,10 @@ class SupabaseBackend(DatabaseBackend):
     def list_mockup_photos(
         self,
         location_key: str,
-        company_schemas: List[str],
+        company_schemas: list[str],
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> List[str]:
+    ) -> list[str]:
         """List mockup photos from user's accessible company schemas."""
         try:
             client = self._get_client()
@@ -660,8 +662,8 @@ class SupabaseBackend(DatabaseBackend):
     def list_mockup_variations(
         self,
         location_key: str,
-        company_schemas: List[str],
-    ) -> Dict[str, List[str]]:
+        company_schemas: list[str],
+    ) -> dict[str, list[str]]:
         """List mockup variations from user's accessible company schemas."""
         try:
             client = self._get_client()
@@ -747,8 +749,8 @@ class SupabaseBackend(DatabaseBackend):
 
     def get_mockup_usage_stats(
         self,
-        company_schemas: List[str],
-    ) -> Dict[str, Any]:
+        company_schemas: list[str],
+    ) -> dict[str, Any]:
         """Get mockup usage stats from user's accessible company schemas."""
         try:
             client = self._get_client()
@@ -826,11 +828,12 @@ class SupabaseBackend(DatabaseBackend):
 
     def export_mockup_usage_to_excel(
         self,
-        company_schemas: List[str],
+        company_schemas: list[str],
     ) -> str:
         """Export mockup usage from user's accessible company schemas to Excel."""
-        import pandas as pd
         import tempfile
+
+        import pandas as pd
 
         try:
             client = self._get_client()
@@ -904,7 +907,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Failed to get BO workflow {workflow_id}: {e}", exc_info=True)
             return None
 
-    def get_all_active_bo_workflows(self) -> List[tuple]:
+    def get_all_active_bo_workflows(self) -> list[tuple]:
         try:
             client = self._get_client()
             response = client.table("bo_approval_workflows").select("workflow_id,workflow_data").order("updated_at", desc=True).execute()
@@ -983,7 +986,7 @@ class SupabaseBackend(DatabaseBackend):
         call_type: Optional[str] = None,
         workflow: Optional[str] = None,
         user_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         try:
             client = self._get_client()
 
@@ -1184,7 +1187,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Error upserting user: {e}")
             return False
 
-    def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+    def get_user_by_id(self, user_id: str) -> Optional[dict[str, Any]]:
         try:
             client = self._get_client()
             response = client.table("users").select("*").eq("id", user_id).single().execute()
@@ -1192,7 +1195,7 @@ class SupabaseBackend(DatabaseBackend):
         except Exception:
             return None
 
-    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+    def get_user_by_email(self, email: str) -> Optional[dict[str, Any]]:
         try:
             client = self._get_client()
             response = client.table("users").select("*").ilike("email", email).single().execute()
@@ -1204,7 +1207,7 @@ class SupabaseBackend(DatabaseBackend):
     # RBAC: PERMISSIONS
     # =========================================================================
 
-    def list_permissions(self) -> List[Dict[str, Any]]:
+    def list_permissions(self) -> list[dict[str, Any]]:
         try:
             client = self._get_client()
             response = client.table("permissions").select("*").order("name").execute()
@@ -1252,12 +1255,12 @@ class SupabaseBackend(DatabaseBackend):
         key_hash: str,
         key_prefix: str,
         name: str,
-        scopes: List[str],
+        scopes: list[str],
         description: Optional[str] = None,
         rate_limit: Optional[int] = None,
         expires_at: Optional[str] = None,
         created_by: Optional[str] = None,
-        metadata: Optional[Dict] = None,
+        metadata: Optional[dict] = None,
     ) -> Optional[int]:
         """Create a new API key."""
         created_at = datetime.now().isoformat()
@@ -1289,7 +1292,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Error creating API key: {e}")
             return None
 
-    def get_api_key_by_hash(self, key_hash: str) -> Optional[Dict[str, Any]]:
+    def get_api_key_by_hash(self, key_hash: str) -> Optional[dict[str, Any]]:
         """Get API key info by hash."""
         try:
             client = self._get_client()
@@ -1311,7 +1314,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Error getting API key by hash: {e}")
             return None
 
-    def get_api_key_by_id(self, key_id: int) -> Optional[Dict[str, Any]]:
+    def get_api_key_by_id(self, key_id: int) -> Optional[dict[str, Any]]:
         """Get API key info by ID."""
         try:
             client = self._get_client()
@@ -1336,7 +1339,7 @@ class SupabaseBackend(DatabaseBackend):
         self,
         created_by: Optional[str] = None,
         include_inactive: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """List all API keys, optionally filtered."""
         try:
             client = self._get_client()
@@ -1367,7 +1370,7 @@ class SupabaseBackend(DatabaseBackend):
         key_id: int,
         name: Optional[str] = None,
         description: Optional[str] = None,
-        scopes: Optional[List[str]] = None,
+        scopes: Optional[list[str]] = None,
         rate_limit: Optional[int] = None,
         is_active: Optional[bool] = None,
         expires_at: Optional[str] = None,
@@ -1494,7 +1497,7 @@ class SupabaseBackend(DatabaseBackend):
         api_key_id: Optional[int] = None,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get API key usage statistics."""
         try:
             client = self._get_client()
@@ -1612,7 +1615,7 @@ class SupabaseBackend(DatabaseBackend):
         end_date: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Query audit log entries with optional filters."""
         try:
             client = self._get_client()
@@ -1663,7 +1666,7 @@ class SupabaseBackend(DatabaseBackend):
     def save_chat_session(
         self,
         user_id: str,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         session_id: Optional[str] = None,
     ) -> bool:
         """Save or update a user's chat session."""
@@ -1691,7 +1694,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Error saving chat session for {user_id}: {e}")
             return False
 
-    def get_chat_session(self, user_id: str) -> Optional[Dict[str, Any]]:
+    def get_chat_session(self, user_id: str) -> Optional[dict[str, Any]]:
         """Get a user's chat session."""
         try:
             client = self._get_client()
@@ -1743,7 +1746,7 @@ class SupabaseBackend(DatabaseBackend):
         document_type: Optional[str] = None,
         bo_id: Optional[int] = None,
         proposal_id: Optional[int] = None,
-        metadata_json: Optional[Dict[str, Any]] = None,
+        metadata_json: Optional[dict[str, Any]] = None,
     ) -> Optional[int]:
         """Create a new document record."""
         try:
@@ -1785,7 +1788,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Error creating document: {e}")
             return None
 
-    def get_document(self, file_id: str) -> Optional[Dict[str, Any]]:
+    def get_document(self, file_id: str) -> Optional[dict[str, Any]]:
         """Get a document by file_id."""
         try:
             client = self._get_client()
@@ -1797,7 +1800,7 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Error getting document {file_id}: {e}")
             return None
 
-    def get_document_by_hash(self, file_hash: str) -> Optional[Dict[str, Any]]:
+    def get_document_by_hash(self, file_hash: str) -> Optional[dict[str, Any]]:
         """Get a document by file hash (for deduplication)."""
         try:
             client = self._get_client()
@@ -1842,7 +1845,7 @@ class SupabaseBackend(DatabaseBackend):
         include_deleted: bool = False,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """List documents with optional filters."""
         try:
             client = self._get_client()
@@ -1870,7 +1873,7 @@ class SupabaseBackend(DatabaseBackend):
         self,
         older_than_days: int = 30,
         limit: int = 100,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get soft-deleted documents older than specified days."""
         try:
             client = self._get_client()
@@ -1907,8 +1910,8 @@ class SupabaseBackend(DatabaseBackend):
 
     def get_locations_for_companies(
         self,
-        company_schemas: List[str],
-    ) -> List[Dict[str, Any]]:
+        company_schemas: list[str],
+    ) -> list[dict[str, Any]]:
         """
         Get all locations from the specified company schemas.
 
@@ -1955,8 +1958,8 @@ class SupabaseBackend(DatabaseBackend):
     def get_location_by_key(
         self,
         location_key: str,
-        company_schemas: List[str],
-    ) -> Optional[Dict[str, Any]]:
+        company_schemas: list[str],
+    ) -> Optional[dict[str, Any]]:
         """
         Get a specific location by key from the user's accessible company schemas.
 

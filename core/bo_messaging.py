@@ -5,7 +5,7 @@ Uses the unified channel abstraction layer for all messaging operations.
 """
 
 import asyncio
-from typing import Dict, Any, Optional
+from typing import Any, Optional
 
 import config
 from integrations.channels import Button, ButtonStyle
@@ -14,7 +14,7 @@ from utils.logging import get_logger
 logger = get_logger("core.bo_messaging")
 
 
-def _format_amount(data: Optional[Dict[str, Any]], amount: Optional[float]) -> str:
+def _format_amount(data: Optional[dict[str, Any]], amount: Optional[float]) -> str:
     currency = (data or {}).get("currency", config.DEFAULT_CURRENCY)
     return config.format_currency_value(amount, currency)
 
@@ -36,7 +36,7 @@ async def get_user_real_name(user_id: str) -> str:
         return user_id
 
 
-async def post_to_thread(channel_id: str, thread_ts: str, text: str) -> Dict[str, Any]:
+async def post_to_thread(channel_id: str, thread_ts: str, text: str) -> dict[str, Any]:
     """
     Post a simple message to a thread.
 
@@ -61,8 +61,8 @@ async def post_to_thread(channel_id: str, thread_ts: str, text: str) -> Dict[str
 async def send_coordinator_approval_buttons(
     channel_id: str,
     workflow_id: str,
-    data: Dict[str, Any]
-) -> Dict[str, Any]:
+    data: dict[str, Any]
+) -> dict[str, Any]:
     """
     Send Approve/Reject buttons to Sales Coordinator for initial review.
 
@@ -112,11 +112,11 @@ async def send_to_head_of_sales(
     channel_id: str,
     workflow_id: str,
     company: str,
-    data: Dict[str, Any],
+    data: dict[str, Any],
     warnings: list,
     missing_required: list,
     combined_pdf_path: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Send booking order to Head of Sales with Approve/Reject buttons.
 
@@ -130,7 +130,7 @@ async def send_to_head_of_sales(
         raise RuntimeError("No channel adapter available")
 
     # Build message text
-    text = f"**New Booking Order for Approval**\n\n"
+    text = "**New Booking Order for Approval**\n\n"
     text += f"**Company:** {company.upper()}\n"
     text += f"**Client:** {data.get('client', 'N/A')}\n"
     text += f"**Campaign:** {data.get('brand_campaign', 'N/A')}\n"
@@ -154,7 +154,7 @@ async def send_to_head_of_sales(
     if missing_required:
         text += f"\n**Missing Required Fields:** {', '.join(missing_required)}\n"
 
-    text += f"\nPlease review the combined PDF (parsed data + original BO) and approve, reject, or cancel."
+    text += "\nPlease review the combined PDF (parsed data + original BO) and approve, reject, or cancel."
 
     # Upload combined PDF file
     file_result = await channel.upload_file(
@@ -207,14 +207,14 @@ async def send_to_coordinator(
     channel_id: str,
     workflow_id: str,
     company: str,
-    data: Dict[str, Any],
+    data: dict[str, Any],
     combined_pdf_path: str,
     warnings: Optional[list] = None,
     missing_required: Optional[list] = None,
     is_revision: bool = False,
     original_bo_ref: Optional[str] = None,
     user_notes: Optional[str] = None
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Send booking order to Sales Coordinator with Approve/Reject buttons.
 
@@ -229,10 +229,10 @@ async def send_to_coordinator(
 
     # Build message text
     if is_revision and original_bo_ref:
-        text = f"**Booking Order Revision Request**\n\n"
+        text = "**Booking Order Revision Request**\n\n"
         text += f"**Original BO:** {original_bo_ref}\n"
     else:
-        text = f"**New Booking Order for Review**\n\n"
+        text = "**New Booking Order for Review**\n\n"
 
     text += f"**Company:** {company.upper()}\n"
     text += f"**Client:** {data.get('client', 'N/A')}\n"
@@ -262,7 +262,7 @@ async def send_to_coordinator(
     if missing_required:
         text += f"**Missing Required Fields:** {', '.join(missing_required)}\n"
 
-    text += f"\nPlease review the combined PDF (parsed data + original BO) and approve, reject, or cancel."
+    text += "\nPlease review the combined PDF (parsed data + original BO) and approve, reject, or cancel."
 
     # Upload combined PDF file
     file_result = await channel.upload_file(
@@ -312,9 +312,9 @@ async def notify_finance(
     channel_id: str,
     bo_ref: str,
     company: str,
-    data: Dict[str, Any],
+    data: dict[str, Any],
     excel_path: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Notify Finance department (no buttons, just notification).
 
@@ -331,13 +331,13 @@ async def notify_finance(
     safe_bo_number = sanitize_filename(bo_number)
 
     # Build message text
-    text = f"**Booking Order Approved & Finalized**\n\n"
+    text = "**Booking Order Approved & Finalized**\n\n"
     text += f"**BO Number:** {bo_number}\n"
     text += f"**Company:** {company.upper()}\n"
     text += f"**Client:** {data.get('client', 'N/A')}\n"
     text += f"**Campaign:** {data.get('brand_campaign', 'N/A')}\n"
     text += f"**Gross Total:** {_format_amount(data, data.get('gross_calc'))}\n\n"
-    text += f"This booking order has been approved by all stakeholders and is now finalized."
+    text += "This booking order has been approved by all stakeholders and is now finalized."
 
     # Upload Excel file
     result = await channel.upload_file(
@@ -387,8 +387,8 @@ async def send_rejection_to_thread(
     channel_id: str,
     thread_ts: str,
     rejection_reason: str,
-    data: Dict[str, Any]
-) -> Dict[str, Any]:
+    data: dict[str, Any]
+) -> dict[str, Any]:
     """
     Send rejection message to thread with current BO details.
 
@@ -398,13 +398,13 @@ async def send_rejection_to_thread(
     if not channel:
         raise RuntimeError("No channel adapter available")
 
-    text = f"**Booking Order Rejected**\n\n"
+    text = "**Booking Order Rejected**\n\n"
     text += f"**Reason:** {rejection_reason}\n\n"
-    text += f"**Current Details:**\n"
+    text += "**Current Details:**\n"
     text += f"- Client: {data.get('client', 'N/A')}\n"
     text += f"- Campaign: {data.get('brand_campaign', 'N/A')}\n"
     text += f"- Gross Total: {_format_amount(data, data.get('gross_calc'))}\n\n"
-    text += f"Please tell me what changes are needed, and I'll update the booking order."
+    text += "Please tell me what changes are needed, and I'll update the booking order."
 
     message = await channel.send_message(
         channel_id=channel_id,
@@ -415,7 +415,7 @@ async def send_rejection_to_thread(
     return {"message_id": message.platform_message_id or message.id}
 
 
-async def post_response_url(response_url: str, payload: Dict[str, Any]):
+async def post_response_url(response_url: str, payload: dict[str, Any]):
     """Post response to channel response_url (for deferred responses)."""
     channel = config.get_channel_adapter()
     if not channel:

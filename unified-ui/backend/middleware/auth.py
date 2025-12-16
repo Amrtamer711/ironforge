@@ -10,13 +10,14 @@ These middlewares are implemented as FastAPI dependencies.
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Optional
 
 from fastapi import Depends, HTTPException, Request
 
+from backend.services.rbac_service import get_user_rbac_data
 from backend.services.supabase_client import get_supabase
-from backend.services.rbac_service import get_user_rbac_data, RBACContext
 
 logger = logging.getLogger("unified-ui")
 
@@ -34,7 +35,7 @@ class AuthUser:
     id: str
     email: str
     role: Optional[str] = None
-    user_metadata: Optional[Dict[str, Any]] = None
+    user_metadata: Optional[dict[str, Any]] = None
 
     @property
     def name(self) -> str:
@@ -60,21 +61,21 @@ class TrustedUser:
     # Level 1: Profile
     profile: str
     # Level 1 + 2: Combined permissions
-    permissions: List[str]
+    permissions: list[str]
     # Level 2: Permission sets
-    permission_sets: List[Dict[str, Any]]
+    permission_sets: list[dict[str, Any]]
     # Level 3: Teams
-    teams: List[Dict[str, Any]]
-    team_ids: List[int]
+    teams: list[dict[str, Any]]
+    team_ids: list[int]
     # Level 3: Hierarchy
     manager_id: Optional[str]
-    subordinate_ids: List[str]
+    subordinate_ids: list[str]
     # Level 4: Sharing
-    sharing_rules: List[Dict[str, Any]]
-    shared_records: Dict[str, List[Dict[str, Any]]]
-    shared_from_user_ids: List[str]
+    sharing_rules: list[dict[str, Any]]
+    shared_records: dict[str, list[dict[str, Any]]]
+    shared_from_user_ids: list[str]
     # Level 5: Company access
-    companies: List[str]
+    companies: list[str]
 
 
 # =============================================================================

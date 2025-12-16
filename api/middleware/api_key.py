@@ -29,10 +29,11 @@ import hashlib
 import hmac
 import os
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Callable, Dict, List, Optional
+from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
@@ -57,12 +58,12 @@ class APIKeyInfo:
     """Information about a validated API key."""
     key_id: str
     client_name: str
-    scopes: List[APIKeyScope]
+    scopes: list[APIKeyScope]
     created_at: Optional[datetime] = None
     expires_at: Optional[datetime] = None
     last_used_at: Optional[datetime] = None
     rate_limit: Optional[int] = None  # Requests per minute
-    metadata: Optional[Dict] = None
+    metadata: Optional[dict] = None
 
     def has_scope(self, scope: APIKeyScope) -> bool:
         """Check if key has a specific scope."""
@@ -140,7 +141,7 @@ class EnvAPIKeyStore(APIKeyStore):
     """
 
     def __init__(self):
-        self._keys: Dict[str, APIKeyInfo] = {}
+        self._keys: dict[str, APIKeyInfo] = {}
         self._load_from_env()
 
     def _load_from_env(self) -> None:

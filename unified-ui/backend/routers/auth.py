@@ -25,7 +25,7 @@ import logging
 import re
 import secrets
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -33,8 +33,8 @@ from pydantic import BaseModel, EmailStr, Field
 
 from backend.middleware.auth import AuthUser, require_auth, require_profile
 from backend.middleware.rate_limit import rate_limiter
-from backend.services.supabase_client import get_supabase
 from backend.services.rbac_service import invalidate_rbac_cache
+from backend.services.supabase_client import get_supabase
 
 logger = logging.getLogger("unified-ui")
 
@@ -98,7 +98,7 @@ class ResendConfirmationRequest(BaseModel):
 async def create_invite(
     request: CreateInviteRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create invite token.
     Mirrors server.js:872-978
@@ -199,7 +199,7 @@ async def create_invite(
 async def list_invites(
     include_used: bool = False,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     List invite tokens.
     Mirrors server.js:980-1020
@@ -282,7 +282,7 @@ async def revoke_invite(
 async def delete_auth_user(
     user_id: str,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Delete a user from auth.users.
     Mirrors server.js:1061-1094
@@ -316,7 +316,7 @@ async def delete_auth_user(
 async def delete_auth_user_by_email(
     email: str,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Delete a user by email from auth.users.
     Mirrors server.js:1096-1142
@@ -369,7 +369,7 @@ async def delete_auth_user_by_email(
 async def resend_confirmation(
     request: ResendConfirmationRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Resend confirmation email for a user.
     Mirrors server.js:1144-1179
@@ -405,7 +405,7 @@ async def resend_confirmation(
 # =============================================================================
 
 @router.post("/validate-invite", dependencies=[Depends(rate_limiter(5))])
-async def validate_invite(request: ValidateInviteRequest) -> Dict[str, Any]:
+async def validate_invite(request: ValidateInviteRequest) -> dict[str, Any]:
     """
     Validate invite token (PUBLIC).
     Mirrors server.js:1181-1251
@@ -463,7 +463,7 @@ async def validate_invite(request: ValidateInviteRequest) -> Dict[str, Any]:
 
 
 @router.post("/consume-invite", dependencies=[Depends(rate_limiter(5))])
-async def consume_invite(request: ConsumeInviteRequest) -> Dict[str, Any]:
+async def consume_invite(request: ConsumeInviteRequest) -> dict[str, Any]:
     """
     Consume invite token after successful signup.
     Mirrors server.js:1253-1351
@@ -544,7 +544,7 @@ async def consume_invite(request: ConsumeInviteRequest) -> Dict[str, Any]:
 # =============================================================================
 
 @router.get("/session")
-async def get_session(request: Request) -> Dict[str, Any]:
+async def get_session(request: Request) -> dict[str, Any]:
     """
     Verify session endpoint.
     Mirrors server.js:1358-1394
@@ -587,7 +587,7 @@ async def get_session(request: Request) -> Dict[str, Any]:
 
 
 @router.get("/me")
-async def get_me(user: AuthUser = Depends(require_auth)) -> Dict[str, Any]:
+async def get_me(user: AuthUser = Depends(require_auth)) -> dict[str, Any]:
     """
     Get current user's profile and permissions.
     Mirrors server.js:1396-1454
@@ -653,7 +653,7 @@ async def get_me(user: AuthUser = Depends(require_auth)) -> Dict[str, Any]:
         invalidate_rbac_cache(user.id)
 
         # Fetch permissions from profile
-        permissions: List[str] = []
+        permissions: list[str] = []
         profile_id = user_data.get("profiles", {}).get("id")
         if profile_id:
             perms_response = (
@@ -684,7 +684,7 @@ async def get_me(user: AuthUser = Depends(require_auth)) -> Dict[str, Any]:
 
 
 @router.post("/logout")
-async def logout(user: AuthUser = Depends(require_auth)) -> Dict[str, Any]:
+async def logout(user: AuthUser = Depends(require_auth)) -> dict[str, Any]:
     """
     Logout endpoint.
     Mirrors server.js:1459-1497
@@ -731,7 +731,7 @@ async def logout(user: AuthUser = Depends(require_auth)) -> Dict[str, Any]:
 async def force_logout(
     user_id: str,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Force logout a user (admin only).
     Mirrors server.js:1499-1534

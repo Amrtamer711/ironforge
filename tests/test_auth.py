@@ -7,9 +7,7 @@ These tests verify:
 - API key authentication works
 """
 
-import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, AsyncMock
 
 
 class TestAuthentication:

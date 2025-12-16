@@ -30,7 +30,7 @@ Usage:
 import asyncio
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import aiohttp
 
@@ -67,7 +67,7 @@ class ChannelIdentity:
         display_name: Optional[str] = None,
         real_name: Optional[str] = None,
         avatar_url: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Record a channel user interaction.
 
@@ -119,7 +119,7 @@ class ChannelIdentity:
             return {"recorded": False, "is_authorized": True}
 
     @staticmethod
-    async def check(provider: str, provider_user_id: str) -> Dict[str, Any]:
+    async def check(provider: str, provider_user_id: str) -> dict[str, Any]:
         """
         Check if a channel user is authorized.
 

@@ -17,7 +17,7 @@ Channel Identity router for unified-ui.
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -66,7 +66,7 @@ class UpdateSettingsRequest(BaseModel):
 @router.post("/record")
 async def record_interaction(
     request: RecordInteractionRequest,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Record a channel user interaction.
     Called by bot services internally - no auth required.
@@ -122,7 +122,7 @@ async def record_interaction(
 async def check_authorization(
     provider: str,
     provider_id: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Check authorization status.
     No auth required - called by bot services.
@@ -156,7 +156,7 @@ async def list_identities(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=100),
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     List all channel identities.
     Admin only.
@@ -204,7 +204,7 @@ async def list_identities(
 @router.get("/pending-links")
 async def get_pending_links(
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Get pending links.
     Admin only.
@@ -232,7 +232,7 @@ async def get_pending_links(
 async def link_identity(
     request: LinkIdentityRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Link identity to platform user.
     Admin only.
@@ -271,7 +271,7 @@ async def link_identity(
 @router.post("/auto-link")
 async def auto_link_by_email(
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Auto-link identities by email.
     Admin only.
@@ -301,7 +301,7 @@ async def auto_link_by_email(
 async def block_identity(
     request: BlockIdentityRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Block/unblock channel user.
     Admin only.
@@ -341,7 +341,7 @@ async def block_identity(
 @router.get("/settings")
 async def get_settings(
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get channel identity settings.
     Admin only.
@@ -376,7 +376,7 @@ async def get_settings(
 async def update_settings(
     request: UpdateSettingsRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Update channel identity settings.
     Admin only.

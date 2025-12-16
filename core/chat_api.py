@@ -8,14 +8,15 @@ Key principle: ALL functionality is channel-agnostic. The web UI gets
 exactly the same capabilities as Slack by using the same main_llm_loop.
 """
 
-import json
 import asyncio
+import json
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import Dict, Any, Optional, List, AsyncGenerator
+from typing import Any, Optional
 
 import config
+from core.chat_persistence import clear_chat_messages, save_chat_messages
 from db.cache import user_history
-from core.chat_persistence import save_chat_messages, clear_chat_messages
 from integrations.channels import WebAdapter
 
 logger = config.logger
@@ -44,10 +45,10 @@ async def process_chat_message(
     user_id: str,
     user_name: str,
     message: str,
-    roles: Optional[List[str]] = None,
-    files: Optional[List[Dict[str, Any]]] = None,
-    companies: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+    roles: Optional[list[str]] = None,
+    files: Optional[list[dict[str, Any]]] = None,
+    companies: Optional[list[str]] = None,
+) -> dict[str, Any]:
     """
     Process a chat message from the unified UI.
 
@@ -191,9 +192,9 @@ async def stream_chat_message(
     user_id: str,
     user_name: str,
     message: str,
-    roles: Optional[List[str]] = None,
-    files: Optional[List[Dict[str, Any]]] = None,
-    companies: Optional[List[str]] = None,
+    roles: Optional[list[str]] = None,
+    files: Optional[list[dict[str, Any]]] = None,
+    companies: Optional[list[str]] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Stream a chat response using Server-Sent Events format.
@@ -215,9 +216,10 @@ async def stream_chat_message(
         files: Optional list of file info dicts (for uploads)
         companies: List of company schemas user can access (for data filtering)
     """
-    from core.llm import main_llm_loop
-    from integrations.channels.adapters.web import current_request_id, current_parent_message_id
     import uuid as uuid_module
+
+    from core.llm import main_llm_loop
+    from integrations.channels.adapters.web import current_parent_message_id, current_request_id
 
     # Generate unique request ID for parallel request support
     request_id = str(uuid_module.uuid4())
@@ -413,7 +415,7 @@ def _get_filetype_from_mimetype(mimetype: str) -> str:
     return mime_to_type.get(mimetype, "")
 
 
-def get_conversation_history(user_id: str) -> List[Dict[str, Any]]:
+def get_conversation_history(user_id: str) -> list[dict[str, Any]]:
     """Get conversation history for a user."""
     web_adapter = get_web_adapter()
     return web_adapter.get_conversation_history(user_id)

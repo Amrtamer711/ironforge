@@ -17,26 +17,26 @@ NEW Multi-stage approval chain (IMMEDIATE EXCEL FLOW):
 Thread lifecycle: Created only on rejection, used for edits, revived on HoS rejection
 """
 
-import json
 import asyncio
-import os
-from pathlib import Path
-from typing import Dict, Any, Optional
-from datetime import datetime
+import json
 import logging
+import os
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Optional
 
 import config
 from db.database import db
-from workflows.bo_parser import BookingOrderParser, COMBINED_BOS_DIR
+from integrations.llm import LLMClient, LLMMessage, ReasoningEffort
 from integrations.llm.prompts.bo_editing import get_coordinator_thread_prompt
 from integrations.llm.schemas.bo_editing import get_coordinator_response_schema
-from integrations.llm import LLMClient, LLMMessage, ReasoningEffort
 from utils.time import UAE_TZ, get_uae_time
+from workflows.bo_parser import BookingOrderParser
 
 logger = logging.getLogger("proposal-bot")
 
 
-def _convert_booking_order_currency(data: Dict[str, Any], from_currency: str, to_currency: str) -> None:
+def _convert_booking_order_currency(data: dict[str, Any], from_currency: str, to_currency: str) -> None:
     """Mutate booking order dict to convert monetary fields between currencies."""
     if not data or from_currency == to_currency:
         return
@@ -67,7 +67,7 @@ def _convert_booking_order_currency(data: Dict[str, Any], from_currency: str, to
     # Notes or other numeric strings are left untouched intentionally
 
 
-def _format_amount(data: Dict[str, Any], amount: Optional[float]) -> str:
+def _format_amount(data: dict[str, Any], amount: Optional[float]) -> str:
     currency = data.get("currency", config.DEFAULT_CURRENCY) if data else config.DEFAULT_CURRENCY
     return config.format_currency_value(amount, currency)
 
@@ -77,7 +77,7 @@ def get_uae_time():
     return datetime.now(UAE_TZ)
 
 # In-memory cache for active approval workflows
-approval_workflows: Dict[str, Dict[str, Any]] = {}
+approval_workflows: dict[str, dict[str, Any]] = {}
 
 
 async def load_workflows_from_db():
@@ -101,10 +101,10 @@ else:
     CONFIG_PATH = Path(__file__).parent / "render_main_data" / "hos_config.json"
 
 
-def load_stakeholders_config() -> Dict[str, Any]:
+def load_stakeholders_config() -> dict[str, Any]:
     """Load stakeholders configuration"""
     try:
-        with open(CONFIG_PATH, 'r') as f:
+        with open(CONFIG_PATH) as f:
             config_data = json.load(f)
             return config_data.get("booking_order_stakeholders", {})
     except Exception as e:
@@ -215,7 +215,7 @@ def create_workflow_id(company: str) -> str:
 async def create_approval_workflow(
     user_id: str,
     company: str,
-    data: Dict[str, Any],
+    data: dict[str, Any],
     warnings: list,
     missing_required: list,
     original_file_path: Path,
@@ -229,9 +229,10 @@ async def create_approval_workflow(
 
     Returns workflow_id
     """
-    from workflows.bo_parser import ORIGINAL_BOS_DIR
-    from integrations.storage import store_bo_file
     import shutil
+
+    from integrations.storage import store_bo_file
+    from workflows.bo_parser import ORIGINAL_BOS_DIR
 
     workflow_id = create_workflow_id(company)
 
@@ -317,7 +318,7 @@ async def create_approval_workflow(
     return workflow_id
 
 
-async def save_workflow_to_db(workflow_id: str, workflow_data: Dict[str, Any]):
+async def save_workflow_to_db(workflow_id: str, workflow_data: dict[str, Any]):
     """Persist workflow to database"""
     try:
         db.save_bo_workflow(
@@ -329,7 +330,7 @@ async def save_workflow_to_db(workflow_id: str, workflow_data: Dict[str, Any]):
         logger.error(f"[BO APPROVAL] Failed to save workflow {workflow_id}: {e}")
 
 
-async def get_workflow_from_db(workflow_id: str) -> Optional[Dict[str, Any]]:
+async def get_workflow_from_db(workflow_id: str) -> Optional[dict[str, Any]]:
     """Retrieve workflow from database"""
     try:
         workflow_json = db.get_bo_workflow(workflow_id)
@@ -341,7 +342,7 @@ async def get_workflow_from_db(workflow_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-async def get_workflow_with_cache(workflow_id: str) -> Optional[Dict[str, Any]]:
+async def get_workflow_with_cache(workflow_id: str) -> Optional[dict[str, Any]]:
     """Get workflow from cache or database"""
     # Check cache first
     if workflow_id in approval_workflows:
@@ -354,7 +355,7 @@ async def get_workflow_with_cache(workflow_id: str) -> Optional[Dict[str, Any]]:
     return workflow
 
 
-async def update_workflow(workflow_id: str, updates: Dict[str, Any]):
+async def update_workflow(workflow_id: str, updates: dict[str, Any]):
     """Update workflow with new data"""
     workflow = await get_workflow_with_cache(workflow_id)
     if not workflow:
@@ -369,7 +370,7 @@ async def update_workflow(workflow_id: str, updates: Dict[str, Any]):
     await save_workflow_to_db(workflow_id, workflow)
 
 
-def is_coordinator_thread_active(workflow: Dict[str, Any], thread_ts: str) -> bool:
+def is_coordinator_thread_active(workflow: dict[str, Any], thread_ts: str) -> bool:
     """
     Check if a thread is the active coordinator thread for EDITING
 
@@ -418,8 +419,9 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
     - Move to HoS stage
     - Send to appropriate Head of Sales with buttons
     """
-    from core import bo_messaging
     from pathlib import Path
+
+    from core import bo_messaging
 
     workflow = await get_workflow_with_cache(workflow_id)
     if not workflow:
@@ -464,7 +466,7 @@ async def handle_coordinator_approval(workflow_id: str, user_id: str, response_u
         )
 
     # IMPORTANT: Wait 5 seconds for file upload to complete before proceeding
-    logger.info(f"[BO APPROVAL] Waiting 5 seconds for file upload to complete...")
+    logger.info("[BO APPROVAL] Waiting 5 seconds for file upload to complete...")
     await asyncio.sleep(5)
 
     # Notify sales person who submitted (in their main DM, not thread)
@@ -612,9 +614,9 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     - Notify finance (no buttons)
     - Close coordinator thread
     """
-    from core import bo_messaging
     from pathlib import Path
-    import shutil
+
+    from core import bo_messaging
 
     workflow = await get_workflow_with_cache(workflow_id)
     if not workflow:
@@ -666,7 +668,7 @@ async def handle_hos_approval(workflow_id: str, user_id: str, response_url: str)
     # Track combined PDF in storage system
     combined_pdf_file_id = None
     try:
-        from integrations.storage import store_bo_file, soft_delete_tracked_file
+        from integrations.storage import soft_delete_tracked_file, store_bo_file
 
         # Store combined PDF
         tracked = await store_bo_file(
@@ -887,10 +889,10 @@ async def handle_hos_rejection(workflow_id: str, user_id: str, response_url: str
 # =========================
 
 async def start_revision_workflow(
-    bo_data: Dict[str, Any],
+    bo_data: dict[str, Any],
     requester_user_id: str,
     requester_channel: str
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Start a revision workflow for an existing booking order (ADMIN ONLY)
 
@@ -908,14 +910,15 @@ async def start_revision_workflow(
     Returns:
         Dictionary with workflow_id and status
     """
-    from core import bo_messaging
     from pathlib import Path
+
+    from core import bo_messaging
 
     logger.info(f"[BO_REVISE] Starting revision workflow for BO: {bo_data.get('bo_ref')} requested by {requester_user_id}")
 
     company = bo_data.get("company")
     if not company:
-        logger.error(f"[BO_REVISE] No company found in BO data")
+        logger.error("[BO_REVISE] No company found in BO data")
         return {"success": False, "error": "Company not specified in booking order"}
 
     # Create new workflow for revision (similar to new BO but marked as revision)

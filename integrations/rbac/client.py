@@ -12,22 +12,22 @@ Enterprise RBAC with 4 levels:
 - Level 4: Record-Level Sharing
 """
 
-import os
 import logging
-from typing import List, Optional, Set
+import os
+from typing import Optional
 
 from integrations.rbac.base import (
-    RBACProvider,
+    AccessLevel,
     Permission,
-    Profile,
     PermissionSet,
+    Profile,
+    RBACContext,
+    RBACProvider,
+    RecordShare,
+    SharingRule,
     Team,
     TeamMember,
     TeamRole,
-    SharingRule,
-    RecordShare,
-    AccessLevel,
-    RBACContext,
 )
 
 logger = logging.getLogger("proposal-bot")
@@ -144,7 +144,7 @@ class RBACClient:
         """
         return await self._provider.get_profile(profile_name)
 
-    async def list_profiles(self) -> List[Profile]:
+    async def list_profiles(self) -> list[Profile]:
         """
         List all available profiles.
 
@@ -158,7 +158,7 @@ class RBACClient:
         name: str,
         display_name: str,
         description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
+        permissions: Optional[list[str]] = None,
     ) -> Optional[Profile]:
         """
         Create a new profile.
@@ -179,7 +179,7 @@ class RBACClient:
         name: str,
         display_name: Optional[str] = None,
         description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
+        permissions: Optional[list[str]] = None,
     ) -> Optional[Profile]:
         """
         Update an existing profile.
@@ -211,7 +211,7 @@ class RBACClient:
     # LEVEL 2: PERMISSION SET OPERATIONS
     # =========================================================================
 
-    async def get_user_permission_sets(self, user_id: str) -> List[PermissionSet]:
+    async def get_user_permission_sets(self, user_id: str) -> list[PermissionSet]:
         """
         Get all permission sets assigned to a user.
 
@@ -271,7 +271,7 @@ class RBACClient:
         """
         return await self._provider.get_permission_set(name)
 
-    async def list_permission_sets(self) -> List[PermissionSet]:
+    async def list_permission_sets(self) -> list[PermissionSet]:
         """
         List all available permission sets.
 
@@ -285,7 +285,7 @@ class RBACClient:
         name: str,
         display_name: str,
         description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
+        permissions: Optional[list[str]] = None,
     ) -> Optional[PermissionSet]:
         """
         Create a new permission set.
@@ -306,7 +306,7 @@ class RBACClient:
         name: str,
         display_name: Optional[str] = None,
         description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
+        permissions: Optional[list[str]] = None,
         is_active: Optional[bool] = None,
     ) -> Optional[PermissionSet]:
         """
@@ -342,7 +342,7 @@ class RBACClient:
     # LEVEL 3: TEAM OPERATIONS
     # =========================================================================
 
-    async def get_user_teams(self, user_id: str) -> List[Team]:
+    async def get_user_teams(self, user_id: str) -> list[Team]:
         """
         Get all teams a user belongs to.
 
@@ -410,7 +410,7 @@ class RBACClient:
         """
         return await self._provider.get_team_by_name(name)
 
-    async def list_teams(self) -> List[Team]:
+    async def list_teams(self) -> list[Team]:
         """
         List all teams.
 
@@ -419,7 +419,7 @@ class RBACClient:
         """
         return await self._provider.list_teams()
 
-    async def get_team_members(self, team_id: int) -> List[TeamMember]:
+    async def get_team_members(self, team_id: int) -> list[TeamMember]:
         """
         Get all members of a team.
 
@@ -544,7 +544,7 @@ class RBACClient:
         self,
         object_type: str,
         record_id: str,
-    ) -> List[RecordShare]:
+    ) -> list[RecordShare]:
         """
         Get all shares for a record.
 
@@ -580,7 +580,7 @@ class RBACClient:
             user_id, object_type, record_id, required_access
         )
 
-    async def list_sharing_rules(self, object_type: Optional[str] = None) -> List[SharingRule]:
+    async def list_sharing_rules(self, object_type: Optional[str] = None) -> list[SharingRule]:
         """
         List sharing rules.
 
@@ -640,7 +640,7 @@ class RBACClient:
     # PERMISSION OPERATIONS
     # =========================================================================
 
-    async def get_user_permissions(self, user_id: str) -> Set[str]:
+    async def get_user_permissions(self, user_id: str) -> set[str]:
         """
         Get all permissions for a user.
 
@@ -693,7 +693,7 @@ class RBACClient:
                 f"User {user_id} lacks required permission: {permission}"
             )
 
-    async def list_permissions(self) -> List[Permission]:
+    async def list_permissions(self) -> list[Permission]:
         """
         List all available permissions.
 

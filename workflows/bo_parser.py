@@ -9,32 +9,29 @@ import os
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+from pypdf import PdfMerger
 
 import config
 from integrations.llm import (
+    ContentPart,
     LLMClient,
     LLMMessage,
-    ContentPart,
     ReasoningEffort,
 )
 from integrations.llm.prompts.bo_parsing import (
-    get_classification_prompt,
     get_backlite_parsing_prompt,
-    get_viola_parsing_prompt,
+    get_classification_prompt,
     get_data_extractor_prompt,
+    get_viola_parsing_prompt,
 )
 from integrations.llm.schemas.bo_parsing import (
-    get_classification_schema,
     get_booking_order_extraction_schema,
+    get_classification_schema,
 )
-from pypdf import PdfMerger, PdfReader, PdfWriter
-from PIL import Image
-import io
-from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
 
 logger = logging.getLogger("proposal-bot")
 
@@ -84,9 +81,9 @@ def sanitize_filename(filename: str) -> str:
 @dataclass
 class ParseResult:
     """Result from parsing a booking order"""
-    data: Dict[str, Any]
-    warnings: List[str]
-    missing_required: List[str]
+    data: dict[str, Any]
+    warnings: list[str]
+    missing_required: list[str]
     needs_review: bool
 
 
@@ -110,7 +107,7 @@ class BookingOrderParser:
         else:
             return "unknown"
 
-    async def classify_document(self, file_path: Path, user_message: str = "", user_id: str = None) -> Dict[str, str]:
+    async def classify_document(self, file_path: Path, user_message: str = "", user_id: str = None) -> dict[str, str]:
         """
         Classify document as BOOKING_ORDER or ARTWORK using OpenAI Responses API.
         Biased toward ARTWORK unless clear booking order fields present.
@@ -134,7 +131,7 @@ class BookingOrderParser:
 
         # Convert images to PDF
         if suffix in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']:
-            logger.info(f"[BOOKING PARSER] Converting image to PDF for classification...")
+            logger.info("[BOOKING PARSER] Converting image to PDF for classification...")
             try:
                 from PIL import Image
                 pdf_path = file_path.with_suffix('.pdf')
@@ -151,7 +148,7 @@ class BookingOrderParser:
 
         # Convert Excel to PDF
         elif suffix in ['.xlsx', '.xls']:
-            logger.info(f"[BOOKING PARSER] Converting Excel to PDF for classification...")
+            logger.info("[BOOKING PARSER] Converting Excel to PDF for classification...")
             try:
                 pdf_path = await self._convert_excel_to_pdf(file_path)
                 cleanup_pdf = True
@@ -337,8 +334,8 @@ The user provided this message with the file: "{user_message}"
             if file_ref:
                 await llm_client.delete_file(file_ref)
 
-    
-    def _extract_json_from_response(self, text: str) -> Dict[str, Any]:
+
+    def _extract_json_from_response(self, text: str) -> dict[str, Any]:
         """Extract JSON from LLM response (may have markdown code blocks)"""
         # Remove markdown code blocks if present
         text = text.strip()
@@ -357,7 +354,7 @@ The user provided this message with the file: "{user_message}"
             logger.error(f"[BOOKING PARSER] Response text: {text[:500]}")
             raise ValueError(f"Invalid JSON in response: {e}")
 
-    def _post_process_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _post_process_data(self, data: dict[str, Any]) -> dict[str, Any]:
         """Post-process parsed data: normalize, calculate derived fields"""
         currency = data.get("currency")
         if isinstance(currency, str) and currency.strip():
@@ -451,7 +448,7 @@ The user provided this message with the file: "{user_message}"
 
         return f"{day}{suffix} {month} {year}"
 
-    def _generate_warnings(self, data: Dict[str, Any]) -> List[str]:
+    def _generate_warnings(self, data: dict[str, Any]) -> list[str]:
         """Generate warnings about inconsistencies"""
         warnings = []
 
@@ -479,7 +476,7 @@ The user provided this message with the file: "{user_message}"
 
         return warnings
 
-    def _check_missing_required(self, data: Dict[str, Any]) -> List[str]:
+    def _check_missing_required(self, data: dict[str, Any]) -> list[str]:
         """Check for missing required fields"""
         missing = []
 
@@ -496,7 +493,7 @@ The user provided this message with the file: "{user_message}"
 
         return missing
 
-    def format_for_slack(self, data: Dict[str, Any], bo_ref: str) -> str:
+    def format_for_slack(self, data: dict[str, Any], bo_ref: str) -> str:
         """Format booking order data for Slack display"""
         currency = data.get("currency", config.DEFAULT_CURRENCY)
         lines = [
@@ -523,7 +520,7 @@ The user provided this message with the file: "{user_message}"
 
         return "\n".join(lines)
 
-    async def generate_excel(self, data: Dict[str, Any], bo_ref: str) -> Path:
+    async def generate_excel(self, data: dict[str, Any], bo_ref: str) -> Path:
         """
         Generate branded Excel using company-specific template
 
@@ -805,7 +802,7 @@ The user provided this message with the file: "{user_message}"
 
         return temp_excel_path
 
-    async def generate_combined_pdf(self, data: Dict[str, Any], bo_ref: str, original_bo_path: Path, apply_stamp: bool = False) -> Path:
+    async def generate_combined_pdf(self, data: dict[str, Any], bo_ref: str, original_bo_path: Path, apply_stamp: bool = False) -> Path:
         """
         Generate combined PDF: Excel (converted to PDF) + Original BO PDF concatenated
 
@@ -832,7 +829,7 @@ The user provided this message with the file: "{user_message}"
             logger.info(f"[BOOKING PARSER] Excel generated: {excel_path}")
 
             # Step 2: Convert Excel to PDF using LibreOffice
-            logger.info(f"[BOOKING PARSER] Step 2: Converting Excel to PDF")
+            logger.info("[BOOKING PARSER] Step 2: Converting Excel to PDF")
             excel_pdf_path = await self._convert_excel_to_pdf(excel_path)
             logger.info(f"[BOOKING PARSER] Excel PDF created: {excel_pdf_path}")
 
@@ -843,11 +840,11 @@ The user provided this message with the file: "{user_message}"
 
             # Step 3.5: Apply stamp to original BO PDF (only if HoS approved)
             if apply_stamp:
-                logger.info(f"[BOOKING PARSER] Step 3.5: Applying HoS approval stamp to original BO")
+                logger.info("[BOOKING PARSER] Step 3.5: Applying HoS approval stamp to original BO")
                 stamped_original_pdf_path = await self._apply_stamp_to_pdf(original_pdf_path)
                 logger.info(f"[BOOKING PARSER] Stamped original BO ready: {stamped_original_pdf_path}")
             else:
-                logger.info(f"[BOOKING PARSER] Skipping stamp application (not HoS approved)")
+                logger.info("[BOOKING PARSER] Skipping stamp application (not HoS approved)")
                 stamped_original_pdf_path = original_pdf_path
 
             # Step 4: Concatenate PDFs (Excel PDF first, then original BO)
@@ -954,14 +951,15 @@ The user provided this message with the file: "{user_message}"
             return pdf_path
 
         try:
-            import cv2
-            import numpy as np
-            from pypdf import PdfReader, PdfWriter
-            from PIL import Image
             import io
-            from reportlab.pdfgen import canvas
-            from reportlab.lib.utils import ImageReader
+
+            import cv2
             import fitz  # PyMuPDF
+            import numpy as np
+            from PIL import Image
+            from pypdf import PdfReader, PdfWriter
+            from reportlab.lib.utils import ImageReader
+            from reportlab.pdfgen import canvas
 
             # Helper functions for smart placement
             def mm_to_in(mm):
@@ -1096,7 +1094,7 @@ The user provided this message with the file: "{user_message}"
 
                 # Fallback: distance transform to find largest empty area
                 if found is None:
-                    logger.info(f"[STAMP] No corner worked, using distance transform fallback")
+                    logger.info("[STAMP] No corner worked, using distance transform fallback")
                     try:
                         # Use the smallest ink mask (least clearance) for fallback
                         ink_fallback = ink_masks[0.50]
@@ -1118,7 +1116,7 @@ The user provided this message with the file: "{user_message}"
                                 y0, x0 = np.unravel_index(np.argmax(dist_masked), dist_masked.shape)
                                 x = int(x0 - ww0 // 2)
                                 y = int(y0 - wh0 // 2)
-                                if 0 <= x and 0 <= y and x + ww0 <= W and y + wh0 <= H:
+                                if x >= 0 and y >= 0 and x + ww0 <= W and y + wh0 <= H:
                                     s = integral_sum(integral_fallback, x, y, ww0, wh0)
                                     # Accept up to 20% ink for fallback (more lenient)
                                     if s / (ww0 * wh0) <= 0.20:
@@ -1129,7 +1127,7 @@ The user provided this message with the file: "{user_message}"
 
                         # Last resort: just place it at bottom-right corner regardless
                         if found is None:
-                            logger.warning(f"[STAMP] All fallbacks failed, forcing placement at bottom-right")
+                            logger.warning("[STAMP] All fallbacks failed, forcing placement at bottom-right")
                             ww0 = max(8, int(round(stamp_w_px * 0.4)))  # 40% size
                             wh0 = max(8, int(round(stamp_h_px * 0.4)))
                             x = max(0, W - ww0 - margin_px)
@@ -1159,9 +1157,10 @@ The user provided this message with the file: "{user_message}"
             # Add today's date to the original stamp
             dated_stamp_path = None
             try:
-                from datetime import datetime
-                from PIL import ImageDraw, ImageFont
                 import tempfile
+                from datetime import datetime
+
+                from PIL import ImageDraw, ImageFont
 
                 # Get today's date in DD-MM-YYYY format
                 today = datetime.now().strftime("%d-%m-%Y")
@@ -1177,13 +1176,13 @@ The user provided this message with the file: "{user_message}"
                 try:
                     # Use Helvetica Bold
                     font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 60, index=1)  # index=1 for bold
-                except (OSError, IOError):
+                except OSError:
                     try:
                         font = ImageFont.truetype("/Library/Fonts/Arial Bold.ttf", 48)
-                    except (OSError, IOError):
+                    except OSError:
                         try:
                             font = ImageFont.truetype("/Library/Fonts/Arial.ttf", 48)
-                        except (OSError, IOError):
+                        except OSError:
                             logger.debug("[BO PARSER] Using default font for stamp - system fonts not available")
                             font = ImageFont.load_default()
 
@@ -1249,7 +1248,7 @@ The user provided this message with the file: "{user_message}"
 
                 # Build multiple ink masks with different clearance levels
                 # Larger stamps need more clearance, smaller stamps need less
-                logger.info(f"[STAMP] Building ink masks with scaled clearance for content detection")
+                logger.info("[STAMP] Building ink masks with scaled clearance for content detection")
                 ink_masks = {}
                 for scale_level in [1.0, 0.85, 0.70, 0.50]:
                     scaled_size = stamp_width_mm * scale_level
@@ -1261,14 +1260,14 @@ The user provided this message with the file: "{user_message}"
                 return pdf_path
 
             # Find optimal placement
-            logger.info(f"[STAMP] Searching for optimal stamp placement")
+            logger.info("[STAMP] Searching for optimal stamp placement")
             (found, ww, wh) = find_spot(
                 ink_masks, stamp_w_px, stamp_h_px, margin_px, corner_order,
                 stride_px, max_ink_ratio, min_scale, scale_step
             )
 
             if not found:
-                logger.warning(f"[STAMP] Could not find suitable placement, skipping stamp")
+                logger.warning("[STAMP] Could not find suitable placement, skipping stamp")
                 doc.close()
                 return pdf_path
 
@@ -1349,7 +1348,7 @@ The user provided this message with the file: "{user_message}"
             # Return original PDF if stamping fails
             return pdf_path
 
-    async def _concatenate_pdfs(self, pdf_paths: List[Path], output_path: Path) -> None:
+    async def _concatenate_pdfs(self, pdf_paths: list[Path], output_path: Path) -> None:
         """Concatenate multiple PDFs into one"""
         logger.info(f"[BOOKING PARSER] Concatenating {len(pdf_paths)} PDFs")
 

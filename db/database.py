@@ -22,12 +22,12 @@ Configuration:
     - SUPABASE_SERVICE_KEY: Your Supabase service role key
 """
 
-import os
 import logging
-from typing import Any, Dict, List, Optional, Union
+import os
+from typing import Any, Optional, Union
 
-from db.base import DatabaseBackend
 from db.backends.sqlite import SQLiteBackend
+from db.base import DatabaseBackend
 
 logger = logging.getLogger("proposal-bot")
 
@@ -132,7 +132,7 @@ class _DatabaseNamespace:
             locations, total_amount, date_generated
         )
 
-    def get_proposals_summary(self) -> Dict[str, Any]:
+    def get_proposals_summary(self) -> dict[str, Any]:
         return self._backend.get_proposals_summary()
 
     def export_to_excel(self) -> str:
@@ -142,17 +142,17 @@ class _DatabaseNamespace:
         self,
         limit: int = 50,
         offset: int = 0,
-        user_ids: Optional[Union[str, List[str]]] = None,
+        user_ids: Optional[Union[str, list[str]]] = None,
         client_name: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get proposals with optional filtering. user_ids can be a single ID or list for team access."""
         return self._backend.get_proposals(limit, offset, user_ids, client_name)
 
-    def get_proposal_by_id(self, proposal_id: int) -> Optional[Dict[str, Any]]:
+    def get_proposal_by_id(self, proposal_id: int) -> Optional[dict[str, Any]]:
         """Get a single proposal by ID."""
         return self._backend.get_proposal_by_id(proposal_id)
 
-    def get_proposal_locations(self, proposal_id: int) -> List[Dict[str, Any]]:
+    def get_proposal_locations(self, proposal_id: int) -> list[dict[str, Any]]:
         """Get locations for a specific proposal."""
         return self._backend.get_proposal_locations(proposal_id)
 
@@ -167,13 +167,13 @@ class _DatabaseNamespace:
     def generate_next_bo_ref(self) -> str:
         return self._backend.generate_next_bo_ref()
 
-    def save_booking_order(self, data: Dict[str, Any]) -> str:
+    def save_booking_order(self, data: dict[str, Any]) -> str:
         return self._backend.save_booking_order(data)
 
-    def get_booking_order(self, bo_ref: str) -> Optional[Dict[str, Any]]:
+    def get_booking_order(self, bo_ref: str) -> Optional[dict[str, Any]]:
         return self._backend.get_booking_order(bo_ref)
 
-    def get_booking_order_by_number(self, bo_number: str) -> Optional[Dict[str, Any]]:
+    def get_booking_order_by_number(self, bo_number: str) -> Optional[dict[str, Any]]:
         return self._backend.get_booking_order_by_number(bo_number)
 
     def export_booking_orders_to_excel(self) -> str:
@@ -185,15 +185,15 @@ class _DatabaseNamespace:
 
     def get_locations_for_companies(
         self,
-        company_schemas: List[str],
-    ) -> List[Dict[str, Any]]:
+        company_schemas: list[str],
+    ) -> list[dict[str, Any]]:
         return self._backend.get_locations_for_companies(company_schemas)
 
     def get_location_by_key(
         self,
         location_key: str,
-        company_schemas: List[str],
-    ) -> Optional[Dict[str, Any]]:
+        company_schemas: list[str],
+    ) -> Optional[dict[str, Any]]:
         return self._backend.get_location_by_key(location_key, company_schemas)
 
     # =========================================================================
@@ -204,12 +204,12 @@ class _DatabaseNamespace:
         self,
         location_key: str,
         photo_filename: str,
-        frames_data: List[Dict],
+        frames_data: list[dict],
         company_schema: str,
         created_by: Optional[str] = None,
         time_of_day: str = "day",
         finish: str = "gold",
-        config: Optional[Dict] = None,
+        config: Optional[dict] = None,
     ) -> str:
         return self._backend.save_mockup_frame(
             location_key, photo_filename, frames_data, company_schema,
@@ -223,7 +223,7 @@ class _DatabaseNamespace:
         company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> Optional[List[Dict]]:
+    ) -> Optional[list[dict]]:
         return self._backend.get_mockup_frames(
             location_key, photo_filename, company_schema, time_of_day, finish
         )
@@ -235,7 +235,7 @@ class _DatabaseNamespace:
         company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> Optional[Dict]:
+    ) -> Optional[dict]:
         return self._backend.get_mockup_config(
             location_key, photo_filename, company_schema, time_of_day, finish
         )
@@ -243,10 +243,10 @@ class _DatabaseNamespace:
     def list_mockup_photos(
         self,
         location_key: str,
-        company_schemas: List[str],
+        company_schemas: list[str],
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> List[str]:
+    ) -> list[str]:
         return self._backend.list_mockup_photos(
             location_key, company_schemas, time_of_day, finish
         )
@@ -254,8 +254,8 @@ class _DatabaseNamespace:
     def list_mockup_variations(
         self,
         location_key: str,
-        company_schemas: List[str],
-    ) -> Dict[str, List[str]]:
+        company_schemas: list[str],
+    ) -> dict[str, list[str]]:
         return self._backend.list_mockup_variations(location_key, company_schemas)
 
     def delete_mockup_frame(
@@ -294,13 +294,13 @@ class _DatabaseNamespace:
 
     def get_mockup_usage_stats(
         self,
-        company_schemas: List[str],
-    ) -> Dict[str, Any]:
+        company_schemas: list[str],
+    ) -> dict[str, Any]:
         return self._backend.get_mockup_usage_stats(company_schemas)
 
     def export_mockup_usage_to_excel(
         self,
-        company_schemas: List[str],
+        company_schemas: list[str],
     ) -> str:
         return self._backend.export_mockup_usage_to_excel(company_schemas)
 
@@ -319,7 +319,7 @@ class _DatabaseNamespace:
     def get_bo_workflow(self, workflow_id: str) -> Optional[str]:
         return self._backend.get_bo_workflow(workflow_id)
 
-    def get_all_active_bo_workflows(self) -> List[tuple]:
+    def get_all_active_bo_workflows(self) -> list[tuple]:
         return self._backend.get_all_active_bo_workflows()
 
     def delete_bo_workflow(self, workflow_id: str) -> None:
@@ -360,7 +360,7 @@ class _DatabaseNamespace:
         call_type: Optional[str] = None,
         workflow: Optional[str] = None,
         user_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         return self._backend.get_ai_costs_summary(
             start_date, end_date, call_type, workflow, user_id
         )
@@ -393,7 +393,7 @@ class _DatabaseNamespace:
         self,
         query: str,
         params: tuple = (),
-    ) -> Optional[List[Dict[str, Any]]]:
+    ) -> Optional[list[dict[str, Any]]]:
         """
         Execute a raw SQL query for invite_tokens table.
         Bridges SQLite (?) and Supabase syntax.
@@ -406,7 +406,7 @@ class _DatabaseNamespace:
                 columns = [desc[0] for desc in cursor.description]
                 rows = cursor.fetchall()
                 conn.commit()
-                return [dict(zip(columns, row)) for row in rows]
+                return [dict(zip(columns, row, strict=False)) for row in rows]
             conn.commit()
             return None
 
@@ -494,7 +494,7 @@ class _DatabaseNamespace:
         end_date: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         return self._backend.query_audit_log(
             user_id, action, resource_type, resource_id,
             start_date, end_date, limit, offset
@@ -507,13 +507,13 @@ class _DatabaseNamespace:
     def save_chat_session(
         self,
         user_id: str,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         session_id: Optional[str] = None,
     ) -> bool:
         """Save or update a user's chat session."""
         return self._backend.save_chat_session(user_id, messages, session_id)
 
-    def get_chat_session(self, user_id: str) -> Optional[Dict[str, Any]]:
+    def get_chat_session(self, user_id: str) -> Optional[dict[str, Any]]:
         """Get a user's chat session."""
         return self._backend.get_chat_session(user_id)
 
@@ -540,7 +540,7 @@ class _DatabaseNamespace:
         document_type: Optional[str] = None,
         bo_id: Optional[int] = None,
         proposal_id: Optional[int] = None,
-        metadata_json: Optional[Dict[str, Any]] = None,
+        metadata_json: Optional[dict[str, Any]] = None,
     ) -> Optional[int]:
         """Create a new document record."""
         return self._backend.create_document(
@@ -550,11 +550,11 @@ class _DatabaseNamespace:
             bo_id, proposal_id, metadata_json
         )
 
-    def get_document(self, file_id: str) -> Optional[Dict[str, Any]]:
+    def get_document(self, file_id: str) -> Optional[dict[str, Any]]:
         """Get a document by file_id."""
         return self._backend.get_document(file_id)
 
-    def get_document_by_hash(self, file_hash: str) -> Optional[Dict[str, Any]]:
+    def get_document_by_hash(self, file_hash: str) -> Optional[dict[str, Any]]:
         """Get a document by file hash (for deduplication)."""
         return self._backend.get_document_by_hash(file_hash)
 

@@ -14,18 +14,18 @@ RBAC Level 2: Permission Set Management endpoints.
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.middleware.auth import AuthUser, require_profile
-from backend.services.supabase_client import get_supabase
-from backend.services.rbac_service import invalidate_rbac_cache
 from backend.routers.rbac.models import (
+    AssignPermissionSetRequest,
     CreatePermissionSetRequest,
     UpdatePermissionSetRequest,
-    AssignPermissionSetRequest,
 )
+from backend.services.rbac_service import invalidate_rbac_cache
+from backend.services.supabase_client import get_supabase
 
 logger = logging.getLogger("unified-ui")
 
@@ -39,7 +39,7 @@ router = APIRouter()
 @router.get("/permission-sets")
 async def list_permission_sets(
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     List all permission sets.
     Mirrors server.js:2578-2603
@@ -83,7 +83,7 @@ async def list_permission_sets(
 async def create_permission_set(
     request: CreatePermissionSetRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create permission set.
     Mirrors server.js:2606-2640
@@ -139,7 +139,7 @@ async def update_permission_set(
     set_id: int,
     request: UpdatePermissionSetRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Update permission set.
     Mirrors server.js:2643-2685
@@ -201,7 +201,7 @@ async def update_permission_set(
 async def delete_permission_set(
     set_id: int,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Delete permission set.
     Mirrors server.js:2688-2757
@@ -293,7 +293,7 @@ async def assign_permission_set(
     user_id: str,
     request: AssignPermissionSetRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Assign permission set to user.
     Mirrors server.js:2760-2792
@@ -338,7 +338,7 @@ async def revoke_permission_set(
     user_id: str,
     set_id: int,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Revoke permission set from user.
     Mirrors server.js:2795-2817
@@ -371,7 +371,7 @@ async def revoke_permission_set(
 async def get_user_permission_sets(
     user_id: str,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Get user's permission sets.
     Mirrors server.js:2820-2839

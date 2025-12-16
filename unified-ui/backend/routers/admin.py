@@ -19,14 +19,14 @@ Admin router for unified-ui.
 import logging
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 
 from backend.middleware.auth import AuthUser, require_profile
-from backend.services.supabase_client import get_supabase
 from backend.services.rbac_service import invalidate_rbac_cache
+from backend.services.supabase_client import get_supabase
 
 logger = logging.getLogger("unified-ui")
 
@@ -61,7 +61,7 @@ class UpdateUserRequest(BaseModel):
 @router.get("/users")
 async def get_all_users(
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, List[Dict[str, Any]]]:
+) -> dict[str, list[dict[str, Any]]]:
     """
     Get all users.
     Mirrors server.js:1541-1559
@@ -92,7 +92,7 @@ async def get_all_users(
 @router.get("/users/pending")
 async def get_pending_users(
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, List[Dict[str, Any]]]:
+) -> dict[str, list[dict[str, Any]]]:
     """
     Get pending users awaiting approval.
     Mirrors server.js:1561-1580
@@ -124,7 +124,7 @@ async def get_pending_users(
 async def create_user(
     request: CreateUserRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Pre-create a user for SSO approval flow.
     Mirrors server.js:1582-1670
@@ -230,7 +230,7 @@ async def approve_user(
     user_id: str,
     request: ApproveUserRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Approve a pending user.
     Mirrors server.js:1672-1753
@@ -326,7 +326,7 @@ async def approve_user(
 async def deactivate_user(
     user_id: str,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Deactivate a user.
     Mirrors server.js:1755-1812
@@ -400,7 +400,7 @@ async def update_user(
     user_id: str,
     request: UpdateUserRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Update user's profile/role.
     Mirrors server.js:1814-1887
@@ -490,7 +490,7 @@ async def update_user(
 @router.get("/profiles")
 async def get_profiles(
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, List[Dict[str, Any]]]:
+) -> dict[str, list[dict[str, Any]]]:
     """
     Get available profiles for admin UI dropdowns.
     Mirrors server.js:1889-1904
@@ -517,7 +517,7 @@ async def get_profiles(
 @router.get("/teams")
 async def get_teams(
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, List[Dict[str, Any]]]:
+) -> dict[str, list[dict[str, Any]]]:
     """
     Get available teams for admin UI dropdowns.
     Mirrors server.js:1906-1921

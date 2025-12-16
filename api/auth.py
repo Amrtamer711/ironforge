@@ -27,7 +27,8 @@ Usage:
 
 import json
 import logging
-from typing import Callable, List, Optional
+from collections.abc import Callable
+from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
 
@@ -115,7 +116,7 @@ def _matches_wildcard(pattern: str, permission: str) -> bool:
     if len(pattern_parts) != 3 or len(perm_parts) != 3:
         return False
 
-    for i, (p, t) in enumerate(zip(pattern_parts, perm_parts)):
+    for i, (p, t) in enumerate(zip(pattern_parts, perm_parts, strict=False)):
         if p != "*" and p != t:
             # "manage" action implies all other actions
             if i == 2 and p == "manage":
@@ -125,7 +126,7 @@ def _matches_wildcard(pattern: str, permission: str) -> bool:
     return True
 
 
-def _has_permission(permissions: List[str], required: str) -> bool:
+def _has_permission(permissions: list[str], required: str) -> bool:
     """Check if user has a permission (direct match or wildcard)."""
     if required in permissions:
         return True
@@ -155,7 +156,7 @@ def require_permission(permission: str) -> Callable:
     async def _require_permission(
         user: AuthUser = Depends(require_auth),
     ) -> AuthUser:
-        permissions: List[str] = user.metadata.get("permissions", [])
+        permissions: list[str] = user.metadata.get("permissions", [])
 
         if not _has_permission(permissions, permission):
             logger.warning(

@@ -7,14 +7,14 @@ This router handles:
 - User-module assignments (admin)
 """
 
-from typing import List, Optional
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from api.auth import get_current_user, require_auth, require_permission
+from api.auth import require_auth, require_permission
 from integrations.auth import AuthUser
 from integrations.rbac import get_rbac_client, has_permission
-from integrations.rbac.modules import get_all_modules, get_module
 from utils.logging import get_logger
 from utils.time import get_uae_time
 
@@ -35,12 +35,12 @@ class ModuleInfo(BaseModel):
     icon: Optional[str] = None
     is_default: bool = False
     sort_order: int = 0
-    tools: List[str] = []  # Tools within this module
+    tools: list[str] = []  # Tools within this module
 
 
 class AccessibleModulesResponse(BaseModel):
     """Response for accessible modules endpoint."""
-    modules: List[ModuleInfo]
+    modules: list[ModuleInfo]
     default_module: Optional[str] = None
     user_default_module: Optional[str] = None
 
@@ -61,7 +61,7 @@ class ModuleCreateRequest(BaseModel):
     is_default: bool = False
     sort_order: int = 0
     required_permission: Optional[str] = None
-    tools: List[str] = []
+    tools: list[str] = []
 
 
 # =============================================================================

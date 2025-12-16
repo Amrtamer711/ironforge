@@ -1,13 +1,11 @@
-from pathlib import Path
-from typing import List, Tuple
 from datetime import datetime
 
-from pptx import Presentation
-from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN, MSO_VERTICAL_ANCHOR
-from pptx.oxml.xmlchemy import OxmlElement
+from pptx.enum.text import PP_ALIGN
 from pptx.oxml.ns import qn
+from pptx.oxml.xmlchemy import OxmlElement
+from pptx.util import Inches, Pt
+
 import config
 
 # Optional DM Guidelines URL - if set, the T&C text will include a hyperlink
@@ -110,11 +108,11 @@ def set_cell_border(cell, edges=("L", "R", "T", "B")) -> None:
 
 
 def _calc_vat_and_total_for_rates(
-    net_rates: List[str],
+    net_rates: list[str],
     upload_fee: int,
     municipality_fee: int = 520,
     currency: str = None
-) -> Tuple[List[str], List[str]]:
+) -> tuple[list[str], list[str]]:
     """Calculate VAT and total amounts for given net rates.
 
     All calculations are done in AED, then converted to target currency for display.
@@ -171,11 +169,11 @@ def build_location_text(location_key: str, spots: int) -> str:
     """
     logger = config.logger
     logger.info(f"[BUILD_LOC_TEXT] Building text for location '{location_key}' with {spots} spots")
-    
+
     # Get metadata from config (loaded from metadata.txt files)
     meta = config.LOCATION_METADATA.get(location_key.lower(), {})
     logger.info(f"[BUILD_LOC_TEXT] Metadata for '{location_key}': {meta}")
-    
+
     # Extract values from metadata
     series = meta.get("series", "")
     location_name = meta.get("display_name", location_key.title())
@@ -186,16 +184,16 @@ def build_location_text(location_key: str, spots: int) -> str:
     spot_duration = meta.get("spot_duration", 16)
     loop_duration = meta.get("loop_duration", 96)
     base_sov = float(meta.get("sov", "16.6").replace("%", ""))
-    
+
     # Build description parts
     parts = []
-    
+
     # Series: Location
     if series:
         parts.append(f"{series}: {location_name}")
     else:
         parts.append(location_name)
-    
+
     # Size (Width x Height)
     if height and width:
         # Check for "Multiple Sizes" special case
@@ -206,10 +204,10 @@ def build_location_text(location_key: str, spots: int) -> str:
             h = str(height).replace('m', '').strip()
             w = str(width).replace('m', '').strip()
             parts.append(f"Size ({w}m x {h}m)")
-    
+
     # Number of faces
     parts.append(f"{num_faces} faces")
-    
+
     # For digital displays, add spot-related info
     if display_type == "digital":
         # Number of spots
@@ -226,15 +224,15 @@ def build_location_text(location_key: str, spots: int) -> str:
         # Loop duration
         parts.append(f"{loop_duration} seconds loop")
     # Note: Static displays don't show spot numbers (makes no sense for static billboards)
-    
+
     # Join all parts with " - "
     description = " - ".join(parts)
-    
+
     logger.info(f"[BUILD_LOC_TEXT] Final description: '{description}'")
     return description
 
 
-def create_financial_proposal_slide(slide, financial_data: dict, slide_width, slide_height, currency: str = None) -> Tuple[List[str], List[str]]:
+def create_financial_proposal_slide(slide, financial_data: dict, slide_width, slide_height, currency: str = None) -> tuple[list[str], list[str]]:
     """Create a financial proposal slide with optional currency conversion.
 
     Args:
@@ -250,7 +248,7 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     logger = config.logger
     logger.info(f"[CREATE_FINANCIAL] Creating financial slide with data: {financial_data}")
     logger.info(f"[CREATE_FINANCIAL] Target currency: {currency or 'AED'}")
-    
+
     scale_x = slide_width / Inches(20)
     scale_y = slide_height / Inches(12)
     scale = min(scale_x, scale_y)
@@ -273,7 +271,7 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     net_rates = financial_data["net_rates"]
     spots = int(financial_data.get("spots", 1))
     production_fee_str = financial_data.get("production_fee")
-    
+
     logger.info(f"[CREATE_FINANCIAL] Location: '{location_name}', Spots: {spots}")
     logger.info(f"[CREATE_FINANCIAL] Durations: {durations}, Net rates: {net_rates}")
     logger.info(f"[CREATE_FINANCIAL] Production fee: {production_fee_str}")
@@ -283,7 +281,7 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     # Check if location is static
     location_meta = config.LOCATION_METADATA.get(location_name.lower(), {})
     is_static = location_meta.get('display_type', '').lower() == 'static'
-    
+
     if is_static and production_fee_str:
         # Use production fee for static locations
         fee_label = "Production Fee:"
@@ -668,11 +666,11 @@ def create_combined_financial_proposal_slide(
         start_dates.append(date_range)
 
         durations.append(proposal["durations"][0] if proposal["durations"] else "2 Weeks")
-        
+
         # Check if location is static
         location_meta = config.LOCATION_METADATA.get(loc_name.lower(), {})
         is_static = location_meta.get('display_type', '').lower() == 'static'
-        
+
         if is_static:
             has_static = True
             if production_fee_str:
@@ -690,7 +688,7 @@ def create_combined_financial_proposal_slide(
             upload_fee = config.UPLOAD_FEES_MAPPING.get(loc_name.lower(), 3000)
             upload_fees.append(_format_fee_in_currency(upload_fee, currency))
             total_fees += upload_fee
-        
+
         logger.info(f"[CREATE_COMBINED] Location {idx + 1} text: '{location_text}'")
         logger.info(f"[CREATE_COMBINED] Location {idx + 1} fee: {upload_fees[-1]} (static: {is_static})")
 
@@ -955,4 +953,4 @@ def create_combined_financial_proposal_slide(
     date_p.font.size = Pt(int(9 * scale))
     date_p.font.color.rgb = RGBColor(100, 100, 100)
 
-    return total_str 
+    return total_str

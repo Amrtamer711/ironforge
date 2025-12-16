@@ -26,10 +26,8 @@ Migration logic:
   - day/ photos → day/gold/ + all/  (assuming day was gold finish)
 """
 
-import os
 import shutil
 from pathlib import Path
-import config
 
 # Mapping from old subfolder to new (time_of_day, finish)
 MIGRATION_MAP = {
@@ -51,7 +49,7 @@ def migrate_location(location_key: str, mockups_dir: Path, dry_run: bool = True)
 
     # Check if already migrated (has day/ or night/ folders)
     if (location_path / 'day').exists() or (location_path / 'night').exists():
-        print(f"  ✅ Already migrated (has day/ or night/ folders)")
+        print("  ✅ Already migrated (has day/ or night/ folders)")
         return
 
     # Create all/ folder for all photos
@@ -161,10 +159,10 @@ def main():
     print("=" * 70)
 
     if dry_run:
-        print(f"✅ Dry run completed - no changes made")
-        print(f"   Run with --execute to perform actual migration")
+        print("✅ Dry run completed - no changes made")
+        print("   Run with --execute to perform actual migration")
     else:
-        print(f"✅ Migration completed!")
+        print("✅ Migration completed!")
         print(f"   Processed {len(locations)} locations")
 
     print("\nNext steps:")

@@ -20,19 +20,19 @@ RBAC Level 4: Record Sharing endpoints.
 
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.middleware.auth import AuthUser, require_auth, require_profile
-from backend.services.supabase_client import get_supabase
-from backend.services.rbac_service import invalidate_rbac_cache
 from backend.routers.rbac.models import (
-    CreateSharingRuleRequest,
-    UpdateSharingRuleRequest,
     CreateShareRequest,
+    CreateSharingRuleRequest,
     UpdateRecordShareRequest,
+    UpdateSharingRuleRequest,
 )
+from backend.services.rbac_service import invalidate_rbac_cache
+from backend.services.supabase_client import get_supabase
 
 logger = logging.getLogger("unified-ui")
 
@@ -47,7 +47,7 @@ router = APIRouter()
 async def list_sharing_rules(
     object_type: Optional[str] = None,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     List sharing rules.
     Mirrors server.js:3091-3112
@@ -81,7 +81,7 @@ async def list_sharing_rules(
 async def create_sharing_rule(
     request: CreateSharingRuleRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create sharing rule.
     Mirrors server.js:3115-3138
@@ -134,7 +134,7 @@ async def update_sharing_rule(
     rule_id: int,
     request: UpdateSharingRuleRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Update sharing rule.
     Mirrors server.js:3141-3172
@@ -190,7 +190,7 @@ async def update_sharing_rule(
 async def delete_sharing_rule(
     rule_id: int,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Delete sharing rule.
     Mirrors server.js:3175-3193
@@ -220,7 +220,7 @@ async def list_record_shares(
     object_type: str,
     record_id: str,
     user: AuthUser = Depends(require_auth),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     List shares for a record.
     Mirrors server.js:3199-3221
@@ -259,7 +259,7 @@ async def list_record_shares(
 async def revoke_record_share(
     share_id: int,
     user: AuthUser = Depends(require_auth),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Revoke a record share.
     Mirrors server.js:3224-3259
@@ -312,7 +312,7 @@ async def update_record_share(
     share_id: int,
     request: UpdateRecordShareRequest,
     user: AuthUser = Depends(require_auth),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Update record share.
     Mirrors server.js:3524-3569
@@ -381,7 +381,7 @@ async def update_record_share(
 async def create_share(
     request: CreateShareRequest,
     user: AuthUser = Depends(require_auth),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Share a record with a user or team.
     Mirrors server.js:3632-3718
@@ -495,7 +495,7 @@ async def get_shares_for_record(
     object_type: str,
     record_id: str,
     user: AuthUser = Depends(require_auth),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Get shares for a specific record.
     Mirrors server.js:3721-3749
@@ -552,7 +552,7 @@ async def get_shares_shared_with_me(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=100),
     user: AuthUser = Depends(require_auth),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get all shares for the current user.
     Mirrors server.js:3752-3812
@@ -620,7 +620,7 @@ async def get_shares_shared_with_me(
 async def delete_share(
     share_id: int,
     user: AuthUser = Depends(require_auth),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Delete a share.
     Mirrors server.js:3815-3872
@@ -695,7 +695,7 @@ async def check_access(
     record_id: str,
     required_level: Optional[str] = None,
     user: AuthUser = Depends(require_auth),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Check if user has access to a specific record.
     Mirrors server.js:3875-3950

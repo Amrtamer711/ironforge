@@ -16,20 +16,20 @@ RBAC Level 3: Team Management endpoints.
 """
 
 import logging
-from typing import Any, Dict, List
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.middleware.auth import AuthUser, require_profile
-from backend.services.supabase_client import get_supabase
-from backend.services.rbac_service import invalidate_rbac_cache
 from backend.routers.rbac.models import (
-    CreateTeamRequest,
-    UpdateTeamRequest,
     AddTeamMemberRequest,
-    UpdateTeamMemberRequest,
+    CreateTeamRequest,
     SetManagerRequest,
+    UpdateTeamMemberRequest,
+    UpdateTeamRequest,
 )
+from backend.services.rbac_service import invalidate_rbac_cache
+from backend.services.supabase_client import get_supabase
 
 logger = logging.getLogger("unified-ui")
 
@@ -43,7 +43,7 @@ router = APIRouter()
 @router.get("/teams")
 async def list_teams(
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     List all teams.
     Mirrors server.js:2846-2865
@@ -78,7 +78,7 @@ async def list_teams(
 async def create_team(
     request: CreateTeamRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create team.
     Mirrors server.js:2868-2891
@@ -124,7 +124,7 @@ async def update_team(
     team_id: int,
     request: UpdateTeamRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Update team.
     Mirrors server.js:2894-2922
@@ -174,7 +174,7 @@ async def update_team(
 async def delete_team(
     team_id: int,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Delete team.
     Mirrors server.js:2925-2943
@@ -203,7 +203,7 @@ async def delete_team(
 async def get_team_members(
     team_id: int,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     Get team members.
     Mirrors server.js:2946-2965
@@ -237,7 +237,7 @@ async def add_team_member(
     team_id: int,
     request: AddTeamMemberRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Add user to team.
     Mirrors server.js:2968-2999
@@ -286,7 +286,7 @@ async def update_team_member(
     member_user_id: str,
     request: UpdateTeamMemberRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Update team member role.
     Mirrors server.js:3002-3031
@@ -332,7 +332,7 @@ async def remove_team_member(
     team_id: int,
     member_user_id: str,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Remove user from team.
     Mirrors server.js:3034-3056
@@ -366,7 +366,7 @@ async def set_user_manager(
     user_id: str,
     request: SetManagerRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Set user's manager.
     Mirrors server.js:3059-3084

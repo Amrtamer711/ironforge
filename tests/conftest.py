@@ -9,9 +9,10 @@ This module provides:
 """
 
 import os
+from collections.abc import Generator
+from typing import Any
+
 import pytest
-from typing import Generator, Dict, Any
-from unittest.mock import AsyncMock, MagicMock, patch
 
 # Set test environment before importing app modules
 os.environ["ENVIRONMENT"] = "test"
@@ -20,11 +21,10 @@ os.environ["AUTH_PROVIDER"] = "static"
 os.environ["RBAC_PROVIDER"] = "static"
 
 from fastapi.testclient import TestClient
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 from api.server import app
 from integrations.auth import AuthUser
-
 
 # =============================================================================
 # TEST CLIENT FIXTURES
@@ -76,14 +76,14 @@ def mock_admin_user() -> AuthUser:
 
 
 @pytest.fixture
-def auth_headers(mock_user: AuthUser) -> Dict[str, str]:
+def auth_headers(mock_user: AuthUser) -> dict[str, str]:
     """Create auth headers for a regular user."""
     # For static auth, we can use a simple token format
     return {"Authorization": f"Bearer test-token-{mock_user.id}"}
 
 
 @pytest.fixture
-def admin_auth_headers(mock_admin_user: AuthUser) -> Dict[str, str]:
+def admin_auth_headers(mock_admin_user: AuthUser) -> dict[str, str]:
     """Create auth headers for an admin user."""
     return {"Authorization": f"Bearer test-token-{mock_admin_user.id}"}
 
@@ -135,6 +135,7 @@ def mock_admin_auth(mock_admin_user: AuthUser):
 def mock_db():
     """Create a mock database for isolated testing."""
     from unittest.mock import MagicMock
+
     from db import database
 
     original_db = database.db
@@ -156,7 +157,7 @@ def mock_db():
 
 
 @pytest.fixture
-def sample_proposal_data() -> Dict[str, Any]:
+def sample_proposal_data() -> dict[str, Any]:
     """Sample proposal data for testing."""
     return {
         "client_name": "Test Client",
@@ -175,7 +176,7 @@ def sample_proposal_data() -> Dict[str, Any]:
 
 
 @pytest.fixture
-def sample_mockup_data() -> Dict[str, Any]:
+def sample_mockup_data() -> dict[str, Any]:
     """Sample mockup data for testing."""
     return {
         "location_key": "test-location",

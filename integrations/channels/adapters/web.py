@@ -12,15 +12,14 @@ File Storage:
 - Signed URLs are used for secure access
 """
 
-import asyncio
 import contextvars
 import logging
 import uuid
-from collections import defaultdict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Union, Callable, Awaitable
+from typing import Any, Optional, Union
 
 # Context variable to track current request ID for parallel request support
 # This allows adapter methods to tag events with the correct request_id
@@ -35,15 +34,15 @@ current_parent_message_id: contextvars.ContextVar[Optional[str]] = contextvars.C
 )
 
 from ..base import (
+    Attachment,
+    Button,
     ChannelAdapter,
     ChannelType,
-    Message,
-    User,
     FileUpload,
-    Button,
-    Attachment,
+    Message,
     MessageFormat,
     Modal,
+    User,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,23 +73,23 @@ class WebSession:
     user_id: str
     user_name: str
     email: Optional[str] = None
-    roles: List[str] = field(default_factory=list)
+    roles: list[str] = field(default_factory=list)
     conversation_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    messages: List[Dict[str, Any]] = field(default_factory=list)
+    messages: list[dict[str, Any]] = field(default_factory=list)
     created_at: datetime = field(default_factory=datetime.now)
     last_activity: datetime = field(default_factory=datetime.now)
 
     # For streaming responses
     pending_response: Optional[str] = None
     response_complete: bool = False
-    response_chunks: List[str] = field(default_factory=list)
+    response_chunks: list[str] = field(default_factory=list)
 
     # Real-time event queue for SSE streaming (supports parallel requests)
     # Events: {"type": "status"|"message"|"file"|"delete"|"done", "request_id": str, ...}
-    events: List[Dict[str, Any]] = field(default_factory=list)
+    events: list[dict[str, Any]] = field(default_factory=list)
 
     # Track active requests by request_id (supports parallel processing)
-    active_requests: Dict[str, bool] = field(default_factory=dict)
+    active_requests: dict[str, bool] = field(default_factory=dict)
 
     # Legacy field for backwards compatibility (deprecated, use active_requests)
     processing_complete: bool = False
@@ -119,14 +118,14 @@ class WebAdapter(ChannelAdapter):
         Args:
             file_base_url: Base URL for file downloads
         """
-        self._sessions: Dict[str, WebSession] = {}
+        self._sessions: dict[str, WebSession] = {}
         self._file_base_url = file_base_url
-        self._users: Dict[str, User] = {}
-        self._uploaded_files: Dict[str, Path] = {}  # Legacy: file_id -> path (for local storage)
-        self._stored_files: Dict[str, StoredFileInfo] = {}  # file_id -> StoredFileInfo
+        self._users: dict[str, User] = {}
+        self._uploaded_files: dict[str, Path] = {}  # Legacy: file_id -> path (for local storage)
+        self._stored_files: dict[str, StoredFileInfo] = {}  # file_id -> StoredFileInfo
 
         # Callbacks for streaming (set by the API layer)
-        self._stream_callbacks: Dict[str, Callable[[str], Awaitable[None]]] = {}
+        self._stream_callbacks: dict[str, Callable[[str], Awaitable[None]]] = {}
 
         # Storage client (lazy loaded)
         self._storage_client = None
@@ -181,7 +180,7 @@ class WebAdapter(ChannelAdapter):
         user_id: str,
         user_name: str,
         email: Optional[str] = None,
-        roles: Optional[List[str]] = None
+        roles: Optional[list[str]] = None
     ) -> WebSession:
         """Create a new web session for a user."""
         session = WebSession(
@@ -215,7 +214,7 @@ class WebAdapter(ChannelAdapter):
         user_id: str,
         user_name: str,
         email: Optional[str] = None,
-        roles: Optional[List[str]] = None
+        roles: Optional[list[str]] = None
     ) -> WebSession:
         """Get existing session or create new one.
 
@@ -373,7 +372,7 @@ class WebAdapter(ChannelAdapter):
 
         return removed
 
-    def get_conversation_history(self, user_id: str) -> List[Dict[str, Any]]:
+    def get_conversation_history(self, user_id: str) -> list[dict[str, Any]]:
         """Get conversation history for a user."""
         session = self.get_session(user_id)
         if session:
@@ -418,8 +417,8 @@ class WebAdapter(ChannelAdapter):
         content: str,
         *,
         thread_id: Optional[str] = None,
-        buttons: Optional[List[Button]] = None,
-        attachments: Optional[List[Attachment]] = None,
+        buttons: Optional[list[Button]] = None,
+        attachments: Optional[list[Attachment]] = None,
         format: MessageFormat = MessageFormat.MARKDOWN,
         ephemeral: bool = False,
         user_id: Optional[str] = None,
@@ -497,7 +496,7 @@ class WebAdapter(ChannelAdapter):
         message_id: str,
         content: str,
         *,
-        buttons: Optional[List[Button]] = None,
+        buttons: Optional[list[Button]] = None,
         format: MessageFormat = MessageFormat.MARKDOWN,
     ) -> Message:
         """Update an existing message in the session."""
@@ -1067,7 +1066,7 @@ class WebAdapter(ChannelAdapter):
 
     async def download_file(
         self,
-        file_info: Dict[str, Any],
+        file_info: dict[str, Any],
     ) -> Optional[Path]:
         """
         Download a file from file_info.
@@ -1129,7 +1128,7 @@ class WebAdapter(ChannelAdapter):
         """Open a DM channel (for web, this is just the user_id)."""
         return user_id
 
-    async def get_file_info(self, file_id: str) -> Optional[Dict[str, Any]]:
+    async def get_file_info(self, file_id: str) -> Optional[dict[str, Any]]:
         """Get file info for a file ID."""
         path = self._uploaded_files.get(file_id)
         if path and path.exists():
@@ -1160,7 +1159,7 @@ class WebAdapter(ChannelAdapter):
         content: str,
         *,
         replace_original: bool = True,
-        buttons: Optional[List[Button]] = None,
+        buttons: Optional[list[Button]] = None,
     ) -> bool:
         """Actions handled by frontend."""
         logger.warning("[WebAdapter] respond_to_action called - handled by frontend")

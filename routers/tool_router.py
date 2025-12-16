@@ -4,20 +4,20 @@ Tool Router - Handles dispatching LLM function calls to appropriate handlers.
 
 import os
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import Optional
 
 import config
-from db.database import db
 from core.proposals import process_proposals
-from workflows.bo_parser import BookingOrderParser, sanitize_filename
 from db.cache import pending_location_additions
+from db.database import db
 from integrations.llm import ToolCall
 from routers.mockup_handler import handle_mockup_generation
+from workflows.bo_parser import BookingOrderParser, sanitize_filename
 
 logger = config.logger
 
 
-def _validate_company_access(user_companies: Optional[List[str]]) -> Tuple[bool, str]:
+def _validate_company_access(user_companies: Optional[list[str]]) -> tuple[bool, str]:
     """
     Validate that user has company access for data operations.
 
@@ -41,8 +41,8 @@ def _validate_company_access(user_companies: Optional[List[str]]) -> Tuple[bool,
 
 def _validate_location_access(
     location_key: str,
-    user_companies: List[str],
-) -> Tuple[bool, str, Optional[str]]:
+    user_companies: list[str],
+) -> tuple[bool, str, Optional[str]]:
     """
     Validate that a specific location belongs to user's accessible companies.
 
@@ -211,7 +211,7 @@ async def handle_tool_call(
                 logger.info(f"[COMBINED] Transformed proposal: {proposal}")
 
         result = await process_proposals(proposals_data, "combined", combined_net_rate, user_id, client_name, payment_terms, currency)
-    
+
     # Handle result for both get_separate_proposals and get_combined_proposal
     if tool_name in ["get_separate_proposals", "get_combined_proposal"] and 'result' in locals():
         logger.info(f"[RESULT] Processing result: {result}")
@@ -331,7 +331,7 @@ async def handle_tool_call(
                 await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
                 await channel_adapter.send_message(channel_id=channel, content=f"❌ **Error:** Invalid loop duration '{loop_duration}'. Please provide a number in seconds (e.g., 96, 100).")
                 return True
-        
+
         # Validate required fields
         missing = []
         if not display_name:
@@ -344,7 +344,7 @@ async def handle_tool_call(
             missing.append("width")
         if not series:
             missing.append("series")
-        
+
         # For digital locations only, these fields are required
         if display_type == "Digital":
             if not sov:
@@ -355,7 +355,7 @@ async def handle_tool_call(
                 missing.append("loop_duration")
             if upload_fee is None:
                 missing.append("upload_fee")
-        
+
         if missing:
             await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
             await channel_adapter.send_message(
@@ -670,7 +670,7 @@ async def handle_tool_call(
                 await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="📤 Uploading BO...")
 
                 # Send BO details with file (show user-facing bo_number)
-                details = f"📋 **Booking Order Found**\n\n"
+                details = "📋 **Booking Order Found**\n\n"
                 details += f"**BO Number:** {bo_number}\n"
                 details += f"**Client:** {bo_data.get('client', 'N/A')}\n"
                 details += f"**Campaign:** {bo_data.get('brand_campaign', 'N/A')}\n"
@@ -697,13 +697,13 @@ async def handle_tool_call(
                 # Generate Excel from stored data (use bo_ref for internal reference)
                 excel_path = await parser.generate_excel(bo_data, bo_ref)
 
-                details = f"📋 **Booking Order Found (Regenerated)**\n\n"
+                details = "📋 **Booking Order Found (Regenerated)**\n\n"
                 details += f"**BO Number:** {bo_number}\n"
                 details += f"**Client:** {bo_data.get('client', 'N/A')}\n"
                 details += f"**Campaign:** {bo_data.get('brand_campaign', 'N/A')}\n"
                 details += f"**Gross Total:** AED {bo_data.get('gross_amount', 0):,.2f}\n"
                 details += f"**Created:** {bo_data.get('created_at', 'N/A')}\n"
-                details += f"\n⚠️ _Original file not found - regenerated from database_"
+                details += "\n⚠️ _Original file not found - regenerated from database_"
 
                 await channel_adapter.upload_file(
                     channel_id=channel,

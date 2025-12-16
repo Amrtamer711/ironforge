@@ -24,11 +24,10 @@ Usage:
 import argparse
 import asyncio
 import logging
-import os
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Optional
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -44,7 +43,7 @@ async def cleanup_documents(
     older_than_days: int = 30,
     dry_run: bool = False,
     batch_size: int = 100,
-) -> Dict[str, int]:
+) -> dict[str, int]:
     """
     Cleanup soft-deleted documents.
 
@@ -136,7 +135,7 @@ async def cleanup_table(
     older_than_days: int = 30,
     dry_run: bool = False,
     batch_size: int = 100,
-) -> Dict[str, int]:
+) -> dict[str, int]:
     """
     Generic cleanup for any file table (mockup_files, proposal_files).
 
@@ -227,7 +226,7 @@ async def run_cleanup(
     older_than_days: int = 30,
     dry_run: bool = False,
     table: Optional[str] = None,
-) -> Dict[str, int]:
+) -> dict[str, int]:
     """
     Run cleanup for all or specific file tables.
 

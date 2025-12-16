@@ -10,10 +10,11 @@ Implements Hollywood VFX-grade compositing techniques:
 - Background bleed prevention
 """
 
+import logging
+from typing import Optional
+
 import cv2
 import numpy as np
-import logging
-from typing import Tuple, Optional
 
 from generators.effects.config import EffectConfig
 
@@ -41,7 +42,7 @@ class EdgeCompositor:
 
     def create_antialiased_mask(
         self,
-        image_shape: Tuple[int, int],
+        image_shape: tuple[int, int],
         dst_pts: np.ndarray,
     ) -> np.ndarray:
         """
@@ -163,7 +164,7 @@ class EdgeCompositor:
         logger.debug(f"[EDGE] Applied distance feathering ({feather_pixels:.1f}px)")
         return result
 
-    def apply_contact_shadow(self, mask: np.ndarray) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+    def apply_contact_shadow(self, mask: np.ndarray) -> tuple[np.ndarray, Optional[np.ndarray]]:
         """
         Create contact shadow / ambient occlusion at edges.
 
@@ -315,16 +316,16 @@ class EdgeCompositor:
         billboard_filled = billboard_image.copy().astype(np.float32)
         billboard_filled[frame_region] = fill_color
 
-        logger.debug(f"[EDGE] Pre-filled billboard frame to prevent background bleed")
+        logger.debug("[EDGE] Pre-filled billboard frame to prevent background bleed")
         return billboard_filled
 
     def process_mask(
         self,
-        image_shape: Tuple[int, int],
+        image_shape: tuple[int, int],
         dst_pts: np.ndarray,
         billboard_image: Optional[np.ndarray] = None,
         warped_image: Optional[np.ndarray] = None,
-    ) -> Tuple[np.ndarray, Optional[np.ndarray]]:
+    ) -> tuple[np.ndarray, Optional[np.ndarray]]:
         """
         Full mask processing pipeline.
 

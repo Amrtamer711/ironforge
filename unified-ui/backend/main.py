@@ -19,7 +19,6 @@ Routers:
 """
 
 import logging
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -30,11 +29,11 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.config import get_settings
 from backend.middleware.rate_limit import start_rate_limit_cleanup
-from backend.services.supabase_client import get_supabase
 
 # Import routers
 from backend.routers import admin, auth, channel_identity, modules, proxy
 from backend.routers.rbac import router as rbac_router
+from backend.services.supabase_client import get_supabase
 
 # Configure logging
 logging.basicConfig(

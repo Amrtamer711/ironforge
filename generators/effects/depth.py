@@ -6,10 +6,10 @@ Implements time-of-day aware depth effects:
 - Day: Atmospheric perspective (haze, reduced saturation/contrast)
 """
 
+import logging
+
 import cv2
 import numpy as np
-import logging
-from typing import Tuple
 
 from generators.effects.config import EffectConfig
 

@@ -17,7 +17,7 @@ All costs are logged with full metadata for analytics and debugging.
 
 import json
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from db.database import db
 from integrations.llm.base import CostInfo
@@ -31,7 +31,7 @@ def track_cost(
     user_id: Optional[str] = None,
     workflow: Optional[str] = None,
     context: Optional[str] = None,
-    metadata: Optional[Dict[str, Any]] = None,
+    metadata: Optional[dict[str, Any]] = None,
 ) -> None:
     """
     Track AI API costs from a provider-calculated CostInfo object.
@@ -140,6 +140,7 @@ def get_user_name_sync(user_id: Optional[str]) -> Optional[str]:
 
     try:
         import asyncio
+
         from core.bo_messaging import get_user_real_name
 
         # Run async function synchronously

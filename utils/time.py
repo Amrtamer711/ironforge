@@ -8,7 +8,7 @@ Usage:
     from utils.time import UAE_TZ, get_uae_time, format_uae_datetime
 """
 
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 # UAE timezone (GMT+4)
 UAE_TZ = timezone(timedelta(hours=4))

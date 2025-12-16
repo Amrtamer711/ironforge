@@ -27,8 +27,7 @@ import logging
 import sys
 import uuid
 from contextvars import ContextVar
-from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from utils.time import get_uae_time
 
@@ -97,7 +96,7 @@ class JSONFormatter(logging.Formatter):
     """
 
     def format(self, record: logging.LogRecord) -> str:
-        log_data: Dict[str, Any] = {
+        log_data: dict[str, Any] = {
             "timestamp": get_uae_time().isoformat(),
             "level": record.levelname,
             "logger": record.name,
@@ -184,7 +183,7 @@ class RequestIDFilter(logging.Filter):
 def setup_logging(
     level: str = "INFO",
     json_format: bool = False,
-    module_levels: Optional[Dict[str, str]] = None,
+    module_levels: Optional[dict[str, str]] = None,
 ) -> None:
     """
     Configure application logging.

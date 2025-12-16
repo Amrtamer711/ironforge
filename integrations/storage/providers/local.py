@@ -10,16 +10,15 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Any, BinaryIO, Dict, List, Optional, Union
+from typing import Any, BinaryIO, Optional, Union
 
 from integrations.storage.base import (
-    StorageProvider,
-    StorageFile,
-    UploadResult,
     DownloadResult,
     ListResult,
+    StorageFile,
+    StorageProvider,
+    UploadResult,
 )
-from utils.time import get_uae_time
 
 logger = logging.getLogger("proposal-bot")
 
@@ -116,7 +115,7 @@ class LocalStorageProvider(StorageProvider):
         key: str,
         data: Union[bytes, BinaryIO],
         content_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> UploadResult:
         """Upload data to local storage."""
         try:
@@ -148,7 +147,7 @@ class LocalStorageProvider(StorageProvider):
         key: str,
         local_path: Union[str, Path],
         content_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> UploadResult:
         """Upload file from local path to storage."""
         try:
@@ -446,7 +445,7 @@ class LocalStorageProvider(StorageProvider):
             logger.error(f"[STORAGE:LOCAL] Ensure bucket failed {bucket}: {e}")
             return False
 
-    async def list_buckets(self) -> List[str]:
+    async def list_buckets(self) -> list[str]:
         """List all buckets (directories)."""
         try:
             buckets = []

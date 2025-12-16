@@ -18,14 +18,14 @@ RBAC Level 1: Profile and Permission endpoints.
 import logging
 import re
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.middleware.auth import AuthUser, require_profile
-from backend.services.supabase_client import get_supabase
-from backend.services.rbac_service import invalidate_rbac_cache
 from backend.routers.rbac.models import CreateProfileRequest, UpdateProfileRequest
+from backend.services.rbac_service import invalidate_rbac_cache
+from backend.services.supabase_client import get_supabase
 
 logger = logging.getLogger("unified-ui")
 
@@ -40,7 +40,7 @@ router = APIRouter()
 async def get_user_rbac_info(
     user_id: str,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get user's profile and permissions.
     Mirrors server.js:2069-2141
@@ -70,7 +70,7 @@ async def get_user_rbac_info(
         profile_name = profile.get("name") if profile else None
 
         # server.js:2090-2100 - Get user's permissions from profile
-        permissions: List[str] = []
+        permissions: list[str] = []
         if profile and profile.get("id"):
             perms_response = (
                 supabase.table("profile_permissions")
@@ -135,7 +135,7 @@ async def check_permission(
     user_id: str = Query(...),
     permission: str = Query(...),
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Check if user has a specific permission.
     Mirrors server.js:2144-2198
@@ -201,7 +201,7 @@ async def check_permission(
 @router.get("/profiles")
 async def list_profiles(
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     List all profiles.
     Mirrors server.js:2201-2240
@@ -257,7 +257,7 @@ async def list_profiles(
 async def get_profile(
     profile_id: int,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get single profile by ID.
     Mirrors server.js:2243-2276
@@ -311,7 +311,7 @@ async def get_profile(
 async def create_profile(
     request: CreateProfileRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Create profile.
     Mirrors server.js:2279-2346
@@ -405,7 +405,7 @@ async def update_profile(
     profile_id: int,
     request: UpdateProfileRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Update profile.
     Mirrors server.js:2349-2440
@@ -528,7 +528,7 @@ async def update_profile(
 async def delete_profile(
     profile_id: int,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Delete profile.
     Mirrors server.js:2443-2517
@@ -622,7 +622,7 @@ async def delete_profile(
 @router.get("/permissions")
 async def list_permissions(
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """
     List all permissions.
     Mirrors server.js:2520-2539
@@ -656,7 +656,7 @@ async def list_permissions(
 @router.get("/permissions/grouped")
 async def list_permissions_grouped(
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, List[Dict[str, Any]]]:
+) -> dict[str, list[dict[str, Any]]]:
     """
     Get permissions grouped by resource.
     Mirrors server.js:2542-2571
@@ -677,7 +677,7 @@ async def list_permissions_grouped(
         )
 
         # server.js:2556-2563 - Group by resource
-        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        grouped: dict[str, list[dict[str, Any]]] = {}
         for perm in (response.data or []):
             key = f"{perm['module']}:{perm['resource']}"
             if key not in grouped:

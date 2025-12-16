@@ -53,11 +53,11 @@ Permission Format:
 
 # Import and register modules FIRST (before importing base types)
 from integrations.rbac.modules import (
-    register_module,
-    get_all_permissions,
-    get_permissions_for_module,
     CoreModule,
     SalesModule,
+    get_all_permissions,
+    get_permissions_for_module,
+    register_module,
 )
 
 # Register default modules
@@ -66,32 +66,30 @@ register_module(SalesModule())
 
 # Now import base types (they will use the registered modules)
 from integrations.rbac.base import (
-    RBACProvider,
+    AccessLevel,
     Permission,
     PermissionAction,
-    RBACContext,
-    get_default_permissions,
+    PermissionSet,
     # Enterprise RBAC models
     Profile,
-    PermissionSet,
-    UserPermissionSet,
+    RBACContext,
+    RBACProvider,
+    RecordShare,
+    SharingRule,
     Team,
     TeamMember,
     TeamRole,
-    SharingRule,
-    RecordShare,
-    AccessLevel,
+    UserPermissionSet,
+    get_default_permissions,
 )
-
 from integrations.rbac.client import (
     RBACClient,
     get_rbac_client,
-    set_rbac_client,
-    reset_rbac_client,
     has_permission,
     require_permission,
+    reset_rbac_client,
+    set_rbac_client,
 )
-
 from integrations.rbac.providers import (
     DatabaseRBACProvider,
     StaticRBACProvider,

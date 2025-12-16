@@ -14,7 +14,7 @@ Follows the same pattern as integrations/llm/base.py and integrations/auth/base.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING
+from typing import Any, Optional
 
 
 class PermissionAction(str, Enum):
@@ -90,7 +90,7 @@ class Profile:
     name: str = ""  # e.g., "system_admin", "sales_user"
     display_name: str = ""
     description: Optional[str] = None
-    permissions: Set[str] = field(default_factory=set)  # Permission names
+    permissions: set[str] = field(default_factory=set)  # Permission names
     is_system: bool = False  # System profiles can't be deleted
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
@@ -119,7 +119,7 @@ class Profile:
         if len(pattern_parts) != 3 or len(perm_parts) != 3:
             return False
 
-        for i, (p, t) in enumerate(zip(pattern_parts, perm_parts)):
+        for i, (p, t) in enumerate(zip(pattern_parts, perm_parts, strict=False)):
             if p != "*" and p != t:
                 # Special case: "manage" implies all actions
                 if i == 2 and p == "manage":
@@ -148,7 +148,7 @@ class PermissionSet:
     name: str = ""  # e.g., "export_reports", "api_access"
     display_name: str = ""
     description: Optional[str] = None
-    permissions: Set[str] = field(default_factory=set)
+    permissions: set[str] = field(default_factory=set)
     is_active: bool = True
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
@@ -273,9 +273,9 @@ class RBACContext:
     resource_owner_id: Optional[str] = None
     resource_type: Optional[str] = None
     user_profile_id: Optional[int] = None
-    user_team_ids: List[int] = field(default_factory=list)
+    user_team_ids: list[int] = field(default_factory=list)
     user_manager_id: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def is_owner(self) -> bool:
         """Check if user owns the resource."""
@@ -296,7 +296,7 @@ class RBACContext:
 # MODULE REGISTRY INTEGRATION
 # =============================================================================
 
-def get_default_permissions() -> List[Permission]:
+def get_default_permissions() -> list[Permission]:
     """
     Get all permissions from registered modules.
 
@@ -380,7 +380,7 @@ class RBACProvider(ABC):
         # Default implementation - override in providers
         return None
 
-    async def list_profiles(self) -> List[Profile]:
+    async def list_profiles(self) -> list[Profile]:
         """
         List all available profiles.
 
@@ -395,7 +395,7 @@ class RBACProvider(ABC):
         name: str,
         display_name: str,
         description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
+        permissions: Optional[list[str]] = None,
     ) -> Optional[Profile]:
         """
         Create a new profile.
@@ -417,7 +417,7 @@ class RBACProvider(ABC):
         name: str,
         display_name: Optional[str] = None,
         description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
+        permissions: Optional[list[str]] = None,
     ) -> Optional[Profile]:
         """
         Update an existing profile.
@@ -451,7 +451,7 @@ class RBACProvider(ABC):
     # LEVEL 2: PERMISSION SET OPERATIONS
     # =========================================================================
 
-    async def get_user_permission_sets(self, user_id: str) -> List[PermissionSet]:
+    async def get_user_permission_sets(self, user_id: str) -> list[PermissionSet]:
         """
         Get all permission sets assigned to a user.
 
@@ -513,7 +513,7 @@ class RBACProvider(ABC):
         # Default implementation - override in providers
         return None
 
-    async def list_permission_sets(self) -> List[PermissionSet]:
+    async def list_permission_sets(self) -> list[PermissionSet]:
         """
         List all available permission sets.
 
@@ -528,7 +528,7 @@ class RBACProvider(ABC):
         name: str,
         display_name: str,
         description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
+        permissions: Optional[list[str]] = None,
     ) -> Optional[PermissionSet]:
         """
         Create a new permission set.
@@ -550,7 +550,7 @@ class RBACProvider(ABC):
         name: str,
         display_name: Optional[str] = None,
         description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
+        permissions: Optional[list[str]] = None,
         is_active: Optional[bool] = None,
     ) -> Optional[PermissionSet]:
         """
@@ -586,7 +586,7 @@ class RBACProvider(ABC):
     # LEVEL 3: TEAM OPERATIONS
     # =========================================================================
 
-    async def get_user_teams(self, user_id: str) -> List[Team]:
+    async def get_user_teams(self, user_id: str) -> list[Team]:
         """
         Get all teams a user belongs to.
 
@@ -659,7 +659,7 @@ class RBACProvider(ABC):
         # Default implementation - override in providers
         return None
 
-    async def list_teams(self) -> List[Team]:
+    async def list_teams(self) -> list[Team]:
         """
         List all teams.
 
@@ -669,7 +669,7 @@ class RBACProvider(ABC):
         # Default implementation - override in providers
         return []
 
-    async def get_team_members(self, team_id: int) -> List[TeamMember]:
+    async def get_team_members(self, team_id: int) -> list[TeamMember]:
         """
         Get all members of a team.
 
@@ -794,7 +794,7 @@ class RBACProvider(ABC):
         self,
         object_type: str,
         record_id: str,
-    ) -> List[RecordShare]:
+    ) -> list[RecordShare]:
         """
         Get all shares for a record.
 
@@ -837,7 +837,7 @@ class RBACProvider(ABC):
         # Default implementation - override in providers
         return False
 
-    async def list_sharing_rules(self, object_type: Optional[str] = None) -> List[SharingRule]:
+    async def list_sharing_rules(self, object_type: Optional[str] = None) -> list[SharingRule]:
         """
         List sharing rules, optionally filtered by object type.
 
@@ -898,7 +898,7 @@ class RBACProvider(ABC):
     # =========================================================================
 
     @abstractmethod
-    async def get_user_permissions(self, user_id: str) -> Set[str]:
+    async def get_user_permissions(self, user_id: str) -> set[str]:
         """
         Get all permissions for a user.
 
@@ -944,7 +944,7 @@ class RBACProvider(ABC):
     # =========================================================================
 
     @abstractmethod
-    async def list_permissions(self) -> List[Permission]:
+    async def list_permissions(self) -> list[Permission]:
         """
         List all available permissions.
 

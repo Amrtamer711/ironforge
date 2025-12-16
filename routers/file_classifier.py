@@ -4,8 +4,8 @@ Classifies uploads as BOOKING_ORDER or ARTWORK with high confidence routing.
 """
 
 import config
-from workflows.bo_parser import BookingOrderParser
 from core.bo_messaging import get_user_real_name
+from workflows.bo_parser import BookingOrderParser
 
 logger = config.logger
 
@@ -33,7 +33,7 @@ async def classify_and_route_file(
     """
     # PRE-ROUTING CLASSIFIER: Classify and route files before LLM
     if len(files) == 1:
-        logger.info(f"[PRE-ROUTER] Single file upload detected, running classification...")
+        logger.info("[PRE-ROUTER] Single file upload detected, running classification...")
 
         try:
             file_info = files[0]
@@ -67,7 +67,7 @@ async def classify_and_route_file(
                 return True  # Exit early - don't call LLM
 
             elif classification.get("classification") == "ARTWORK" and classification.get("confidence") == "high":
-                logger.info(f"[PRE-ROUTER] HIGH CONFIDENCE ARTWORK - letting LLM handle mockup")
+                logger.info("[PRE-ROUTER] HIGH CONFIDENCE ARTWORK - letting LLM handle mockup")
                 tmp_file.unlink(missing_ok=True)
                 # Clear document_files and set as image for LLM to handle as mockup
                 document_files.clear()
@@ -77,7 +77,7 @@ async def classify_and_route_file(
                 return False
 
             else:
-                logger.info(f"[PRE-ROUTER] Low/medium confidence - letting LLM decide")
+                logger.info("[PRE-ROUTER] Low/medium confidence - letting LLM decide")
                 tmp_file.unlink(missing_ok=True)
                 # Fall through to LLM
                 return False

@@ -10,7 +10,7 @@ profile permissions. Used by frontend to show available navigation items.
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -52,7 +52,7 @@ def _check_permission_match(user_permissions: set, required_perm: str) -> bool:
 @router.get("/accessible")
 async def get_accessible_modules(
     user: AuthUser = Depends(require_auth),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get accessible modules for the authenticated user.
 
@@ -116,7 +116,7 @@ async def get_accessible_modules(
         all_modules = modules_response.data or []
 
         # server.js:1979-2012 - Filter modules based on permissions
-        accessible_modules: List[Dict[str, Any]] = []
+        accessible_modules: list[dict[str, Any]] = []
 
         for module in all_modules:
             # server.js:1983-1987 - Admins can access everything

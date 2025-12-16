@@ -4,9 +4,9 @@ Each provider implements their own API-specific syntax.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union
+from dataclasses import dataclass
 from enum import Enum
+from typing import Any, Optional, Union
 
 
 class ReasoningEffort(Enum):
@@ -31,7 +31,7 @@ class ReasoningEffort(Enum):
 class LLMMessage:
     """Unified message format."""
     role: str  # "system", "user", "assistant"
-    content: Union[str, List[Dict[str, Any]]]  # String or multimodal content
+    content: Union[str, list[dict[str, Any]]]  # String or multimodal content
 
     @staticmethod
     def system(content: str) -> "LLMMessage":
@@ -39,7 +39,7 @@ class LLMMessage:
         return LLMMessage(role="system", content=content)
 
     @staticmethod
-    def user(content: Union[str, List[Dict[str, Any]]]) -> "LLMMessage":
+    def user(content: Union[str, list[dict[str, Any]]]) -> "LLMMessage":
         """Create a user message."""
         return LLMMessage(role="user", content=content)
 
@@ -54,22 +54,22 @@ class ContentPart:
     """Helper for building multimodal content parts."""
 
     @staticmethod
-    def text(text: str) -> Dict[str, Any]:
+    def text(text: str) -> dict[str, Any]:
         """Create a text content part (OpenAI: input_text)."""
         return {"type": "input_text", "text": text}
 
     @staticmethod
-    def file(file_id: str) -> Dict[str, Any]:
+    def file(file_id: str) -> dict[str, Any]:
         """Create a file content part (OpenAI: input_file)."""
         return {"type": "input_file", "file_id": file_id}
 
     @staticmethod
-    def image_url(url: str, detail: str = "auto") -> Dict[str, Any]:
+    def image_url(url: str, detail: str = "auto") -> dict[str, Any]:
         """Create an image URL content part."""
         return {"type": "image_url", "image_url": {"url": url, "detail": detail}}
 
     @staticmethod
-    def image_base64(base64_data: str, media_type: str = "image/png") -> Dict[str, Any]:
+    def image_base64(base64_data: str, media_type: str = "image/png") -> dict[str, Any]:
         """Create a base64 image content part."""
         return {
             "type": "image_url",
@@ -84,7 +84,7 @@ class LLMResponse:
     model: str
     usage: Optional["TokenUsage"] = None
     cost: Optional["CostInfo"] = None  # Provider-calculated cost
-    tool_calls: Optional[List["ToolCall"]] = None
+    tool_calls: Optional[list["ToolCall"]] = None
     raw_response: Any = None  # Original provider response for advanced use
 
 
@@ -107,7 +107,7 @@ class ToolCall:
     """Unified tool/function call format."""
     id: str
     name: str
-    arguments: Dict[str, Any]
+    arguments: dict[str, Any]
 
 
 @dataclass
@@ -115,7 +115,7 @@ class ToolDefinition:
     """Unified tool definition format for function tools."""
     name: str
     description: str
-    parameters: Dict[str, Any]  # JSON Schema
+    parameters: dict[str, Any]  # JSON Schema
 
 
 @dataclass
@@ -129,14 +129,14 @@ class RawTool:
 
     These tools are passed directly to the API without conversion.
     """
-    raw: Dict[str, Any]  # Raw tool definition to pass through
+    raw: dict[str, Any]  # Raw tool definition to pass through
 
 
 @dataclass
 class JSONSchema:
     """JSON Schema for structured outputs."""
     name: str
-    schema: Dict[str, Any]
+    schema: dict[str, Any]
     strict: bool = True
 
 
@@ -164,9 +164,9 @@ class LLMProvider(ABC):
     @abstractmethod
     async def complete(
         self,
-        messages: List[LLMMessage],
+        messages: list[LLMMessage],
         model: Optional[str] = None,
-        tools: Optional[List[ToolDefinition]] = None,
+        tools: Optional[list[ToolDefinition]] = None,
         tool_choice: Optional[str] = None,
         json_schema: Optional[JSONSchema] = None,
         reasoning: Optional[ReasoningEffort] = None,
@@ -296,7 +296,7 @@ class CostInfo:
 @dataclass
 class ImageResponse:
     """Response from image generation."""
-    images: List[bytes]  # Raw image data
+    images: list[bytes]  # Raw image data
     model: str
     usage: Optional[TokenUsage] = None
     cost: Optional[CostInfo] = None  # Provider-calculated cost

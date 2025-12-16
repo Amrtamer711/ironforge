@@ -17,10 +17,10 @@ Usage:
 Apply the generated SQL in the Supabase dashboard SQL editor.
 """
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Dict, List, Optional, Set
 import argparse
+from dataclasses import dataclass
+from enum import Enum
+from typing import Optional
 
 
 class PolicyType(str, Enum):
@@ -99,7 +99,7 @@ def get_admin_check() -> str:
     """.strip()
 
 
-def get_role_check(role_names: List[str]) -> str:
+def get_role_check(role_names: list[str]) -> str:
     """
     SQL expression to check if user has any of the specified roles.
 
@@ -122,7 +122,7 @@ def get_role_check(role_names: List[str]) -> str:
 # POLICY DEFINITIONS
 # =============================================================================
 
-def generate_user_owned_policies(table: str) -> List[RLSPolicy]:
+def generate_user_owned_policies(table: str) -> list[RLSPolicy]:
     """
     Generate standard policies for user-owned tables.
 
@@ -183,7 +183,7 @@ def generate_user_owned_policies(table: str) -> List[RLSPolicy]:
     return policies
 
 
-def generate_auth_table_policies() -> List[RLSPolicy]:
+def generate_auth_table_policies() -> list[RLSPolicy]:
     """Generate policies for auth/RBAC tables."""
     policies = []
 
@@ -297,7 +297,7 @@ def generate_auth_table_policies() -> List[RLSPolicy]:
     return policies
 
 
-def generate_shared_table_policies() -> List[RLSPolicy]:
+def generate_shared_table_policies() -> list[RLSPolicy]:
     """Generate policies for shared/system tables."""
     policies = []
 
@@ -352,7 +352,7 @@ def generate_shared_table_policies() -> List[RLSPolicy]:
 # SQL GENERATION
 # =============================================================================
 
-def generate_enable_rls_sql(tables: List[str]) -> str:
+def generate_enable_rls_sql(tables: list[str]) -> str:
     """Generate SQL to enable RLS on tables."""
     lines = ["-- Enable Row Level Security on tables"]
     for table in tables:
@@ -390,7 +390,7 @@ def generate_policy_sql(policy: RLSPolicy) -> str:
     return "\n".join(lines)
 
 
-def generate_all_policies_sql(tables: Optional[Set[str]] = None) -> str:
+def generate_all_policies_sql(tables: Optional[set[str]] = None) -> str:
     """
     Generate complete RLS policy SQL for all or specified tables.
 

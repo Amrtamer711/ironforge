@@ -7,7 +7,6 @@ These tests verify:
 - Metrics endpoint requires authentication
 """
 
-import pytest
 from fastapi.testclient import TestClient
 
 

@@ -34,9 +34,10 @@ import os
 import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from functools import wraps
-from typing import Any, Callable, Dict, Optional, TypeVar, Union
+from typing import Any, Optional, TypeVar
 
 from utils.logging import get_logger
 
@@ -114,7 +115,7 @@ class CacheBackend(ABC):
         """Get cache statistics."""
         pass
 
-    async def get_many(self, keys: list[str]) -> Dict[str, Any]:
+    async def get_many(self, keys: list[str]) -> dict[str, Any]:
         """Get multiple values from cache."""
         results = {}
         for key in keys:
@@ -125,7 +126,7 @@ class CacheBackend(ABC):
 
     async def set_many(
         self,
-        mapping: Dict[str, Any],
+        mapping: dict[str, Any],
         ttl: Optional[int] = None,
     ) -> bool:
         """Set multiple values in cache."""
@@ -448,7 +449,7 @@ class RedisCacheBackend(CacheBackend):
             evictions=0,  # Redis handles eviction internally
         )
 
-    async def get_many(self, keys: list[str]) -> Dict[str, Any]:
+    async def get_many(self, keys: list[str]) -> dict[str, Any]:
         """Get multiple values from cache (optimized for Redis)."""
         if not keys:
             return {}
@@ -459,7 +460,7 @@ class RedisCacheBackend(CacheBackend):
             values = await redis_client.mget(redis_keys)
 
             results = {}
-            for key, value in zip(keys, values):
+            for key, value in zip(keys, values, strict=False):
                 if value is not None:
                     results[key] = json.loads(value)
                     self._stats.hits += 1

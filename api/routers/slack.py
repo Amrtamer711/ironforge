@@ -8,7 +8,7 @@ import time
 from collections import defaultdict
 from urllib.parse import unquote_plus
 
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 import config
@@ -88,9 +88,9 @@ DEBOUNCE_WINDOW = 3
 @router.post("/interactive")
 async def slack_interactive(request: Request):
     """Handle Slack interactive components (buttons, modals, etc.)"""
-    from workflows import bo_approval as bo_approval_workflow
     from core import bo_messaging
-    from integrations.channels import to_slack, Modal, ModalField, FieldType
+    from integrations.channels import FieldType, Modal, ModalField, to_slack
+    from workflows import bo_approval as bo_approval_workflow
 
     # Verify signature
     body = await request.body()

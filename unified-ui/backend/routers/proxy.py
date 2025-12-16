@@ -20,7 +20,6 @@ re-validating tokens.
 
 import json
 import logging
-from typing import Any, Dict
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -34,7 +33,7 @@ logger = logging.getLogger("unified-ui")
 router = APIRouter(tags=["proxy"])
 
 
-def _build_trusted_headers(user: TrustedUser, proxy_secret: str | None) -> Dict[str, str]:
+def _build_trusted_headers(user: TrustedUser, proxy_secret: str | None) -> dict[str, str]:
     """
     Build trusted headers to inject into proxy request.
 
@@ -47,7 +46,7 @@ def _build_trusted_headers(user: TrustedUser, proxy_secret: str | None) -> Dict[
     Returns:
         Dictionary of headers to inject
     """
-    headers: Dict[str, str] = {}
+    headers: dict[str, str] = {}
 
     # server.js:652-655 - Send proxy secret
     if proxy_secret:
@@ -191,7 +190,7 @@ async def proxy_to_sales_bot(
 async def _proxy_regular(
     method: str,
     url: str,
-    headers: Dict[str, str],
+    headers: dict[str, str],
     body: bytes,
 ) -> Response:
     """
@@ -236,7 +235,7 @@ async def _proxy_regular(
 async def _proxy_streaming(
     method: str,
     url: str,
-    headers: Dict[str, str],
+    headers: dict[str, str],
     body: bytes,
 ) -> StreamingResponse:
     """

@@ -30,13 +30,13 @@ Configuration:
 """
 
 import asyncio
-import os
 import traceback
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Optional
 
 from utils.logging import get_logger
 from utils.time import get_uae_time
@@ -68,7 +68,7 @@ class JobStatus:
     error_traceback: Optional[str] = None
     progress: Optional[float] = None  # 0.0 to 1.0
     progress_message: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def is_done(self) -> bool:
@@ -88,7 +88,7 @@ class JobStatus:
         end_time = self.completed_at or datetime.now()
         return (end_time - self.started_at).total_seconds()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
             "job_id": self.job_id,
@@ -124,7 +124,7 @@ class Job:
     error_traceback: Optional[str] = None
     progress: Optional[float] = None
     progress_message: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     started_event: asyncio.Event = field(default_factory=asyncio.Event)
     completed_event: asyncio.Event = field(default_factory=asyncio.Event)
     _task: Optional[asyncio.Task] = None
@@ -177,11 +177,11 @@ class JobQueue:
         self.default_timeout = default_timeout
         self.max_history = max_history
 
-        self._jobs: Dict[str, Job] = {}
-        self._pending_queue: List[str] = []
+        self._jobs: dict[str, Job] = {}
+        self._pending_queue: list[str] = []
         self._active_count = 0
         self._lock = asyncio.Lock()
-        self._history: List[str] = []  # Completed job IDs for cleanup
+        self._history: list[str] = []  # Completed job IDs for cleanup
 
         logger.info(
             f"[JOB_QUEUE] Initialized (max_concurrent={max_concurrent}, "
@@ -194,7 +194,7 @@ class JobQueue:
         *args,
         name: Optional[str] = None,
         timeout: Optional[float] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
         **kwargs,
     ) -> str:
         """
@@ -456,7 +456,7 @@ class JobQueue:
         self,
         state: Optional[JobState] = None,
         limit: int = 100,
-    ) -> List[JobStatus]:
+    ) -> list[JobStatus]:
         """
         List jobs, optionally filtered by state.
 
@@ -477,7 +477,7 @@ class JobQueue:
 
         return [j.get_status() for j in jobs[:limit]]
 
-    def get_queue_stats(self) -> Dict[str, Any]:
+    def get_queue_stats(self) -> dict[str, Any]:
         """Get queue statistics."""
         states = {}
         for job in self._jobs.values():

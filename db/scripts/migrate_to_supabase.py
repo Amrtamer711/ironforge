@@ -37,17 +37,18 @@ import re
 import sqlite3
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from dotenv import load_dotenv
+
 # Load both .env and .env.secrets
 load_dotenv()
 load_dotenv(Path(__file__).parent.parent.parent / ".env.secrets")
 
-from supabase import create_client, Client
+from supabase import Client, create_client
 
 # =============================================================================
 # CONFIGURATION
@@ -142,7 +143,7 @@ def get_schema_table(supabase: Client, table: str):
     return supabase.schema(COMPANY_SCHEMA).table(table)
 
 
-def batch_insert(supabase: Client, table: str, records: List[Dict],
+def batch_insert(supabase: Client, table: str, records: list[dict],
                  batch_size: int = 50, on_conflict: Optional[str] = None,
                  dry_run: bool = False) -> int:
     """Insert records in batches into company schema, return count of inserted records."""
@@ -449,12 +450,12 @@ def upload_booking_orders(supabase: Client, company: str, dry_run: bool = False)
 # STEP 1: SEED LOCATIONS FROM METADATA.TXT FILES
 # =============================================================================
 
-def parse_metadata_file(filepath: Path) -> Dict[str, Any]:
+def parse_metadata_file(filepath: Path) -> dict[str, Any]:
     """Parse a metadata.txt file into location data."""
     metadata = {}
 
     try:
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if not line or ':' not in line:
@@ -526,7 +527,7 @@ def get_template_path(location_key: str, templates_dir: Path, company: str) -> O
     return None
 
 
-def seed_locations(supabase: Client, dry_run: bool = False) -> Tuple[int, Dict[str, int]]:
+def seed_locations(supabase: Client, dry_run: bool = False) -> tuple[int, dict[str, int]]:
     """
     Seed locations from metadata.txt files.
 
@@ -545,7 +546,7 @@ def seed_locations(supabase: Client, dry_run: bool = False) -> Tuple[int, Dict[s
             break
 
     if not templates_dir:
-        print(f"  ERROR: No templates directory found")
+        print("  ERROR: No templates directory found")
         print(f"  Checked: {TEMPLATES_DIR}")
         print(f"  Checked: {RENDER_TEMPLATES_DIR}")
         return 0, {}
@@ -620,7 +621,7 @@ def seed_locations(supabase: Client, dry_run: bool = False) -> Tuple[int, Dict[s
 # =============================================================================
 
 def load_proposals_log(supabase: Client, conn: sqlite3.Connection,
-                       dry_run: bool = False) -> Tuple[int, List[Dict]]:
+                       dry_run: bool = False) -> tuple[int, list[dict]]:
     """
     Load proposals_log from SQLite.
 
@@ -803,7 +804,7 @@ def load_mockup_usage(supabase: Client, conn: sqlite3.Connection,
 
 
 def load_booking_orders(supabase: Client, conn: sqlite3.Connection,
-                        dry_run: bool = False) -> Tuple[int, List[Dict]]:
+                        dry_run: bool = False) -> tuple[int, list[dict]]:
     """
     Load booking_orders from SQLite.
 
@@ -1028,8 +1029,8 @@ def load_ai_costs(supabase: Client, conn: sqlite3.Connection,
 # STEP 3: LINK RECORDS TO LOCATIONS
 # =============================================================================
 
-def link_mockups_to_locations(supabase: Client, location_map: Dict[str, int],
-                              dry_run: bool = False) -> Tuple[int, int]:
+def link_mockups_to_locations(supabase: Client, location_map: dict[str, int],
+                              dry_run: bool = False) -> tuple[int, int]:
     """Link mockup_frames and mockup_usage to locations table."""
     print("\n--- Linking mockups to locations ---")
 
@@ -1079,8 +1080,8 @@ def link_mockups_to_locations(supabase: Client, location_map: Dict[str, int],
     return frames_updated, usage_updated
 
 
-def create_proposal_locations(supabase: Client, location_map: Dict[str, int],
-                             proposal_mapping: List[Dict], dry_run: bool = False) -> int:
+def create_proposal_locations(supabase: Client, location_map: dict[str, int],
+                             proposal_mapping: list[dict], dry_run: bool = False) -> int:
     """Create proposal_locations entries from proposals_log locations text."""
     print("\n--- Creating proposal_locations ---")
 
@@ -1128,8 +1129,8 @@ def create_proposal_locations(supabase: Client, location_map: Dict[str, int],
     return inserted
 
 
-def create_bo_locations(supabase: Client, location_map: Dict[str, int],
-                        bo_mapping: List[Dict], dry_run: bool = False) -> int:
+def create_bo_locations(supabase: Client, location_map: dict[str, int],
+                        bo_mapping: list[dict], dry_run: bool = False) -> int:
     """Create bo_locations entries from booking_orders locations_json."""
     print("\n--- Creating bo_locations ---")
 
@@ -1243,7 +1244,7 @@ def create_bo_locations(supabase: Client, location_map: Dict[str, int],
 
 def run_migration(company: str, dry_run: bool = False, skip_locations: bool = False,
                   skip_storage: bool = False, storage_only: bool = False,
-                  tables: Optional[List[str]] = None):
+                  tables: Optional[list[str]] = None):
     """Run the complete migration to a company schema."""
     global COMPANY_SCHEMA
     COMPANY_SCHEMA = company

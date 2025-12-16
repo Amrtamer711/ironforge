@@ -1,18 +1,18 @@
-import os
 import asyncio
-import tempfile
+import os
 import shutil
+import tempfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, Any, List, Tuple, Optional
-from datetime import datetime, timezone, timedelta
+from typing import Any, Optional
 
 from pptx import Presentation
 from pypdf import PdfReader, PdfWriter
 
 import config
 from db.database import db
-from generators.pptx import create_financial_proposal_slide, create_combined_financial_proposal_slide
 from generators.pdf import convert_pptx_to_pdf, merge_pdfs, remove_slides_and_convert_to_pdf
+from generators.pptx import create_combined_financial_proposal_slide, create_financial_proposal_slide
 
 
 def _generate_timestamp_code() -> str:
@@ -35,39 +35,39 @@ def _template_path_for_key(key: str) -> Path:
     return config.TEMPLATES_DIR / filename
 
 
-def _extract_pages_from_pdf(pdf_path: str, pages: List[int]) -> str:
+def _extract_pages_from_pdf(pdf_path: str, pages: list[int]) -> str:
     """Extract specific pages from a PDF and save to a new PDF file.
-    
+
     Args:
         pdf_path: Path to the source PDF
         pages: List of page numbers to extract (0-indexed)
-    
+
     Returns:
         Path to the new PDF file
     """
     logger = config.logger
     logger.info(f"[EXTRACT_PDF] Extracting pages {pages} from {pdf_path}")
-    
+
     reader = PdfReader(pdf_path)
     writer = PdfWriter()
-    
+
     for page_num in pages:
         if page_num < len(reader.pages):
             writer.add_page(reader.pages[page_num])
-    
+
     output_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
     output_file.close()
-    
+
     with open(output_file.name, 'wb') as f:
         writer.write(f)
-    
+
     logger.info(f"[EXTRACT_PDF] Saved extracted pages to {output_file.name}")
     return output_file.name
 
 
 
 
-def _get_location_info_for_intro_outro(proposals_data: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def _get_location_info_for_intro_outro(proposals_data: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
     """Find a suitable location for intro/outro slides based on series."""
     logger = config.logger
 
@@ -109,12 +109,12 @@ def _get_location_info_for_intro_outro(proposals_data: List[Dict[str, Any]]) -> 
                 }
 
     # If no Landmark Series found, use the first location from proposals
-    logger.info(f"[INTRO_OUTRO] ❌ No Landmark Series location found in proposals")
-    
+    logger.info("[INTRO_OUTRO] ❌ No Landmark Series location found in proposals")
+
     if proposals_data:
         first_location = proposals_data[0].get("location", "").lower().strip()
         logger.info(f"[INTRO_OUTRO] 📍 Falling back to first location: '{first_location}'")
-        
+
         # Get the actual key from display name or direct match
         matched_key = config.get_location_key_from_display_name(first_location)
         if not matched_key:
@@ -123,7 +123,7 @@ def _get_location_info_for_intro_outro(proposals_data: List[Dict[str, Any]]) -> 
                 if key in first_location or first_location in key:
                     matched_key = key
                     break
-        
+
         if matched_key:
             location_meta = config.LOCATION_METADATA.get(matched_key, {})
             series = location_meta.get('series', '')
@@ -142,12 +142,12 @@ def _get_location_info_for_intro_outro(proposals_data: List[Dict[str, Any]]) -> 
                 'metadata': location_meta,
                 'is_non_landmark': True  # Flag to use rest.pdf
             }
-    
-    logger.info(f"[INTRO_OUTRO] ⚠️ No suitable location found for intro/outro")
+
+    logger.info("[INTRO_OUTRO] ⚠️ No suitable location found for intro/outro")
     return None
 
 
-def create_proposal_with_template(source_path: str, financial_data: dict, currency: str = None) -> Tuple[str, List[str], List[str]]:
+def create_proposal_with_template(source_path: str, financial_data: dict, currency: str = None) -> tuple[str, list[str], list[str]]:
     import tempfile
 
     pres = Presentation(source_path)
@@ -171,7 +171,7 @@ def create_proposal_with_template(source_path: str, financial_data: dict, curren
     return tmp.name, vat_amounts, total_amounts
 
 
-def create_combined_proposal_with_template(source_path: str, proposals_data: list, combined_net_rate: str, client_name: str, payment_terms: str = "100% upfront", currency: str = None) -> Tuple[str, str]:
+def create_combined_proposal_with_template(source_path: str, proposals_data: list, combined_net_rate: str, client_name: str, payment_terms: str = "100% upfront", currency: str = None) -> tuple[str, str]:
     import tempfile
 
     pres = Presentation(source_path)
@@ -208,22 +208,22 @@ def create_combined_proposal_with_template(source_path: str, proposals_data: lis
     return tmp.name, total_combined
 
 
-async def process_combined_package(proposals_data: list, combined_net_rate: str, submitted_by: str, client_name: str, payment_terms: str = "100% upfront", currency: str = None) -> Dict[str, Any]:
+async def process_combined_package(proposals_data: list, combined_net_rate: str, submitted_by: str, client_name: str, payment_terms: str = "100% upfront", currency: str = None) -> dict[str, Any]:
     logger = config.logger
-    logger.info(f"[COMBINED] Starting process_combined_package")
+    logger.info("[COMBINED] Starting process_combined_package")
     logger.info(f"[COMBINED] Proposals: {proposals_data}")
     logger.info(f"[COMBINED] Combined rate: {combined_net_rate}")
     logger.info(f"[COMBINED] Client: {client_name}, Submitted by: {submitted_by}")
     logger.info(f"[COMBINED] Payment terms received: {payment_terms}")
     logger.info(f"[COMBINED] Currency: {currency or 'AED'}")
-    
+
     validated_proposals = []
     for idx, proposal in enumerate(proposals_data):
         location = proposal.get("location", "").lower().strip()
         start_date = proposal.get("start_date", "1st December 2025")
         durations = proposal.get("durations", [])
         spots = int(proposal.get("spots", 1))
-        
+
         logger.info(f"[COMBINED] Validating proposal {idx + 1}:")
         logger.info(f"[COMBINED]   Location: '{location}'")
         logger.info(f"[COMBINED]   Start date: {start_date}")
@@ -232,14 +232,14 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
 
         # Get the mapping first (we'll need it later)
         mapping = config.get_location_mapping()
-        
+
         # First try to get key from display name
         matched_key = config.get_location_key_from_display_name(location)
-        
+
         # If that didn't work, try the old matching logic
         if not matched_key:
             logger.info(f"[COMBINED] Available mappings: {list(mapping.keys())}")
-            
+
             for key in mapping.keys():
                 if key in location or location in key:
                     matched_key = key
@@ -247,7 +247,7 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
                     break
         else:
             logger.info(f"[COMBINED] Matched display name '{location}' to key '{matched_key}'")
-                
+
         if not matched_key:
             logger.error(f"[COMBINED] No match found for location '{location}'")
             return {"success": False, "error": f"Unknown location '{location}' in proposal {idx + 1}"}
@@ -275,7 +275,7 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
         validated_proposals.append(validated_proposal)
 
     loop = asyncio.get_event_loop()
-    pdf_files: List[str] = []
+    pdf_files: list[str] = []
 
     # Check if we'll have intro/outro slides
     intro_outro_info = _get_location_info_for_intro_outro(validated_proposals)
@@ -339,21 +339,21 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
                 os.unlink(pptx_file)
             except OSError as e:
                 logger.warning(f"[COMBINED] Failed to cleanup temp PPTX file {pptx_file}: {e}")
-    
+
     # For combined proposals, create intro and outro slides
     if intro_outro_info:
         series = intro_outro_info.get('series', '')
         location_key = intro_outro_info.get('key', '')
         display_name = intro_outro_info.get('metadata', {}).get('display_name', location_key)
-        
-        logger.info(f"[COMBINED] 🎬 Creating intro/outro slides")
+
+        logger.info("[COMBINED] 🎬 Creating intro/outro slides")
         logger.info(f"[COMBINED] 📍 Selected location: '{display_name}' (key: {location_key})")
         logger.info(f"[COMBINED] 📂 Series: '{series}'")
-        
+
         # Check for pre-made PDFs in intro_outro directory
         intro_outro_dir = config.TEMPLATES_DIR / "intro_outro"
         pdf_path = None
-        
+
         # Map series to PDF filenames
         is_landmark = intro_outro_info.get('is_landmark', False)
         is_non_landmark = intro_outro_info.get('is_non_landmark', False)
@@ -361,17 +361,17 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
         if is_landmark or series == 'The Landmark Series':
             # Use landmark_series.pdf for The Landmark Series
             pdf_path = intro_outro_dir / "landmark_series.pdf"
-            logger.info(f"[COMBINED] 🏆 LANDMARK SERIES DETECTED! Looking for pre-made PDF...")
+            logger.info("[COMBINED] 🏆 LANDMARK SERIES DETECTED! Looking for pre-made PDF...")
         elif is_non_landmark:
             # Use rest.pdf for non-Landmark Series locations
             pdf_path = intro_outro_dir / "rest.pdf"
-            logger.info(f"[COMBINED] 🏢 NON-LANDMARK LOCATIONS DETECTED! Using rest.pdf...")
+            logger.info("[COMBINED] 🏢 NON-LANDMARK LOCATIONS DETECTED! Using rest.pdf...")
         elif 'Digital Icons' in series:
             pdf_path = intro_outro_dir / "digital_icons.pdf"
-            logger.info(f"[COMBINED] 💎 DIGITAL ICONS SERIES DETECTED! Looking for pre-made PDF...")
+            logger.info("[COMBINED] 💎 DIGITAL ICONS SERIES DETECTED! Looking for pre-made PDF...")
         else:
             logger.info(f"[COMBINED] ❓ No pre-made PDF mapping for series '{series}'")
-        
+
         if pdf_path and pdf_path.exists():
             logger.info(f"[COMBINED] ✅ PRE-MADE PDF FOUND! Using: {pdf_path}")
             # Extract first page for intro
@@ -384,15 +384,15 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
             # Fall back to PowerPoint extraction
             if pdf_path:
                 logger.info(f"[COMBINED] ❌ PRE-MADE PDF NOT FOUND at: {pdf_path}")
-            logger.info(f"[COMBINED] 🔄 FALLING BACK to PowerPoint extraction")
+            logger.info("[COMBINED] 🔄 FALLING BACK to PowerPoint extraction")
             template_path = intro_outro_info['template_path']
             logger.info(f"[COMBINED] 📄 Using PowerPoint template: {template_path}")
-            
+
             # Create intro by keeping only the first slide
             intro_pptx = tempfile.NamedTemporaryFile(delete=False, suffix=".pptx")
             intro_pptx.close()
             shutil.copy2(template_path, intro_pptx.name)
-            
+
             # Remove all slides except the first
             pres = Presentation(intro_pptx.name)
             xml_slides = pres.slides._sldIdLst
@@ -400,14 +400,14 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
             for slide_id in slides_to_remove:
                 xml_slides.remove(slide_id)
             pres.save(intro_pptx.name)
-            
+
             intro_pdf = await loop.run_in_executor(None, convert_pptx_to_pdf, intro_pptx.name)
-            
+
             # Create outro by keeping only the last slide
             outro_pptx = tempfile.NamedTemporaryFile(delete=False, suffix=".pptx")
             outro_pptx.close()
             shutil.copy2(template_path, outro_pptx.name)
-            
+
             # Remove all slides except the last
             pres = Presentation(outro_pptx.name)
             xml_slides = pres.slides._sldIdLst
@@ -415,16 +415,16 @@ async def process_combined_package(proposals_data: list, combined_net_rate: str,
             for slide_id in slides_to_remove:
                 xml_slides.remove(slide_id)
             pres.save(outro_pptx.name)
-            
+
             outro_pdf = await loop.run_in_executor(None, convert_pptx_to_pdf, outro_pptx.name)
-            
+
             # Clean up temp files
             try:
                 os.unlink(intro_pptx.name)
                 os.unlink(outro_pptx.name)
             except Exception as e:
                 logger.warning(f"Failed to clean up intro/outro files: {e}")
-        
+
         # Insert intro at beginning and outro at end
         pdf_files.insert(0, intro_pdf)
         pdf_files.append(outro_pdf)
@@ -475,7 +475,7 @@ async def process_proposals(
     client_name: str = "",
     payment_terms: str = "100% upfront",
     currency: str = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Process proposal generation with optional currency conversion.
 
     Args:
@@ -491,7 +491,7 @@ async def process_proposals(
         Dict with success status and file paths
     """
     logger = config.logger
-    logger.info(f"[PROCESS] Starting process_proposals")
+    logger.info("[PROCESS] Starting process_proposals")
     logger.info(f"[PROCESS] Package type: {package_type}")
     logger.info(f"[PROCESS] Proposals data: {proposals_data}")
     logger.info(f"[PROCESS] Combined rate: {combined_net_rate}")
@@ -514,7 +514,7 @@ async def process_proposals(
     locations = []
 
     loop = asyncio.get_event_loop()
-    
+
     # Check if we'll have intro/outro slides for multiple proposals
     intro_outro_info = None
     if len(proposals_data) > 1:
@@ -527,7 +527,7 @@ async def process_proposals(
         durations = proposal.get("durations", [])
         net_rates = proposal.get("net_rates", [])
         spots = int(proposal.get("spots", 1))
-        
+
         logger.info(f"[PROCESS] Processing proposal {idx + 1}:")
         logger.info(f"[PROCESS]   Location: '{location}'")
         logger.info(f"[PROCESS]   Start date: {start_date}")
@@ -537,14 +537,14 @@ async def process_proposals(
 
         # Get the mapping first (we'll need it later)
         mapping = config.get_location_mapping()
-        
+
         # First try to get key from display name
         matched_key = config.get_location_key_from_display_name(location)
-        
+
         # If that didn't work, try the old matching logic
         if not matched_key:
             logger.info(f"[PROCESS] Available location mappings: {list(mapping.keys())}")
-            
+
             for key in mapping.keys():
                 if key in location or location in key:
                     matched_key = key
@@ -552,7 +552,7 @@ async def process_proposals(
                     break
         else:
             logger.info(f"[PROCESS] Matched display name '{location}' to key '{matched_key}'")
-        
+
         if not matched_key:
             logger.error(f"[PROCESS] No match found for location '{location}'")
             return {"success": False, "error": f"Unknown location '{location}' in proposal {idx + 1}"}
@@ -625,26 +625,26 @@ async def process_proposals(
                     remove_first = True
             pdf_file = await remove_slides_and_convert_to_pdf(pptx_file, remove_first, remove_last)
             result["pdf_file"] = pdf_file
-            
+
         return {"success": True, "result": result}
 
     # Process all proposals in parallel
     tasks = [process_single_proposal(idx, proposal) for idx, proposal in enumerate(proposals_data)]
     results = await asyncio.gather(*tasks, return_exceptions=True)
-    
+
     # Check for errors and organize results
     for idx, result in enumerate(results):
         if isinstance(result, Exception):
             return {"success": False, "error": f"Error processing proposal {idx + 1}: {str(result)}"}
         if isinstance(result, dict) and not result.get("success"):
             return result  # Return the error
-    
+
     # Sort results by original index to maintain order
     sorted_results = sorted(
         [r for r in results if r.get("success")],
         key=lambda x: x["result"]["idx"]
     )
-    
+
     # Extract successful results in order
     for result in sorted_results:
         proposal_result = result["result"]
@@ -660,31 +660,31 @@ async def process_proposals(
         if "pdf_file" in proposal_result:
             pdf_files.append(proposal_result["pdf_file"])
         locations.append(proposal_result["location"])
-    
+
     # For multiple proposals, create intro and outro slides
     if len(pdf_files) > 1 and intro_outro_info:
             series = intro_outro_info.get('series', '')
             location_key = intro_outro_info.get('key', '')
             display_name = intro_outro_info.get('metadata', {}).get('display_name', location_key)
-            
-            logger.info(f"[PROCESS] 🎬 Creating intro/outro slides")
+
+            logger.info("[PROCESS] 🎬 Creating intro/outro slides")
             logger.info(f"[PROCESS] 📍 Selected location: '{display_name}' (key: {location_key})")
             logger.info(f"[PROCESS] 📂 Series: '{series}'")
-            
+
             # Check for pre-made PDFs in intro_outro directory
             intro_outro_dir = config.TEMPLATES_DIR / "intro_outro"
             pdf_path = None
-            
+
             # Map series to PDF filenames
             if 'Landmark' in series:
                 pdf_path = intro_outro_dir / "landmark_series.pdf"
-                logger.info(f"[PROCESS] 🏆 LANDMARK SERIES DETECTED! Looking for pre-made PDF...")
+                logger.info("[PROCESS] 🏆 LANDMARK SERIES DETECTED! Looking for pre-made PDF...")
             elif 'Digital Icons' in series:
                 pdf_path = intro_outro_dir / "digital_icons.pdf"
-                logger.info(f"[PROCESS] 💎 DIGITAL ICONS SERIES DETECTED! Looking for pre-made PDF...")
+                logger.info("[PROCESS] 💎 DIGITAL ICONS SERIES DETECTED! Looking for pre-made PDF...")
             else:
                 logger.info(f"[PROCESS] ❓ No pre-made PDF mapping for series '{series}'")
-            
+
             if pdf_path and pdf_path.exists():
                 logger.info(f"[PROCESS] ✅ PRE-MADE PDF FOUND! Using: {pdf_path}")
                 # Extract first page for intro
@@ -697,15 +697,15 @@ async def process_proposals(
                 # Fall back to PowerPoint extraction
                 if pdf_path:
                     logger.info(f"[PROCESS] ❌ PRE-MADE PDF NOT FOUND at: {pdf_path}")
-                logger.info(f"[PROCESS] 🔄 FALLING BACK to PowerPoint extraction")
+                logger.info("[PROCESS] 🔄 FALLING BACK to PowerPoint extraction")
                 template_path = intro_outro_info['template_path']
                 logger.info(f"[PROCESS] 📄 Using PowerPoint template: {template_path}")
-                
+
                 # Create intro by keeping only the first slide
                 intro_pptx = tempfile.NamedTemporaryFile(delete=False, suffix=".pptx")
                 intro_pptx.close()
                 shutil.copy2(template_path, intro_pptx.name)
-                
+
                 # Remove all slides except the first
                 pres = Presentation(intro_pptx.name)
                 xml_slides = pres.slides._sldIdLst
@@ -713,14 +713,14 @@ async def process_proposals(
                 for slide_id in slides_to_remove:
                     xml_slides.remove(slide_id)
                 pres.save(intro_pptx.name)
-                
+
                 intro_pdf = await loop.run_in_executor(None, convert_pptx_to_pdf, intro_pptx.name)
-                
+
                 # Create outro by keeping only the last slide
                 outro_pptx = tempfile.NamedTemporaryFile(delete=False, suffix=".pptx")
                 outro_pptx.close()
                 shutil.copy2(template_path, outro_pptx.name)
-                
+
                 # Remove all slides except the last
                 pres = Presentation(outro_pptx.name)
                 xml_slides = pres.slides._sldIdLst
@@ -728,16 +728,16 @@ async def process_proposals(
                 for slide_id in slides_to_remove:
                     xml_slides.remove(slide_id)
                 pres.save(outro_pptx.name)
-                
+
                 outro_pdf = await loop.run_in_executor(None, convert_pptx_to_pdf, outro_pptx.name)
-                
+
                 # Clean up temp files
                 try:
                     os.unlink(intro_pptx.name)
                     os.unlink(outro_pptx.name)
                 except OSError as e:
                     logger.warning(f"[PROCESS] Failed to cleanup temp intro/outro PPTX files: {e}")
-            
+
             # Insert intro at beginning and outro at end
             pdf_files.insert(0, intro_pdf)
             pdf_files.append(outro_pdf)
@@ -789,4 +789,4 @@ async def process_proposals(
         "merged_pdf_path": merged_pdf,
         "locations": ", ".join(locations),
         "merged_pdf_filename": f"{client_prefix}_{timestamp_code}.pdf",
-    } 
+    }

@@ -10,7 +10,6 @@ Usage:
 """
 
 import argparse
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -138,7 +137,7 @@ def downgrade(conn):
 
     filepath.write_text(template)
     print(f"✓ Created migration: {filepath}")
-    print(f"  Edit the file to add your migration logic")
+    print("  Edit the file to add your migration logic")
 
 
 def main():

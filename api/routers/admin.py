@@ -10,24 +10,17 @@ Enterprise RBAC with 4 levels:
 All endpoints require system_admin profile or appropriate permissions.
 """
 
-from typing import List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from api.auth import require_auth, require_permission
+from api.auth import require_permission
 from integrations.auth import AuthUser, get_auth_client
 from integrations.rbac import (
-    get_rbac_client,
-    Permission,
-    Profile,
-    PermissionSet,
-    Team,
-    TeamMember,
-    TeamRole,
     AccessLevel,
-    SharingRule,
-    RecordShare,
+    TeamRole,
+    get_rbac_client,
 )
 from utils.logging import get_logger
 
@@ -52,8 +45,8 @@ class UserPermissionsInfo(BaseModel):
     """Response model for user permission information."""
     user_id: str
     profile: Optional[str]
-    permission_sets: List[str]
-    permissions: List[str]
+    permission_sets: list[str]
+    permissions: list[str]
 
 
 class UserResponse(BaseModel):
@@ -86,8 +79,8 @@ class AdminDashboard(BaseModel):
     total_profiles: int
     total_permission_sets: int
     total_permissions: int
-    system_profiles: List[str]
-    custom_profiles: List[str]
+    system_profiles: list[str]
+    custom_profiles: list[str]
 
 
 # =============================================================================
@@ -95,7 +88,7 @@ class AdminDashboard(BaseModel):
 # =============================================================================
 
 
-@router.get("/permissions", response_model=List[PermissionResponse])
+@router.get("/permissions", response_model=list[PermissionResponse])
 async def list_permissions(
     user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
@@ -240,7 +233,7 @@ class APIKeyCreate(BaseModel):
     """Request model for creating an API key."""
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-    scopes: List[str] = Field(default_factory=lambda: ["read"])
+    scopes: list[str] = Field(default_factory=lambda: ["read"])
     rate_limit: Optional[int] = Field(None, ge=1, le=10000)
     expires_at: Optional[str] = None
 
@@ -249,7 +242,7 @@ class APIKeyUpdate(BaseModel):
     """Request model for updating an API key."""
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-    scopes: Optional[List[str]] = None
+    scopes: Optional[list[str]] = None
     rate_limit: Optional[int] = Field(None, ge=1, le=10000)
     is_active: Optional[bool] = None
     expires_at: Optional[str] = None
@@ -261,7 +254,7 @@ class APIKeyResponse(BaseModel):
     key_prefix: str
     name: str
     description: Optional[str]
-    scopes: List[str]
+    scopes: list[str]
     rate_limit: Optional[int]
     is_active: bool
     created_at: str
@@ -277,11 +270,11 @@ class APIKeyCreateResponse(BaseModel):
     raw_key: str  # Only shown once!
     key_prefix: str
     name: str
-    scopes: List[str]
+    scopes: list[str]
     message: str
 
 
-@router.get("/api-keys", response_model=List[APIKeyResponse])
+@router.get("/api-keys", response_model=list[APIKeyResponse])
 async def list_api_keys(
     include_inactive: bool = False,
     user: AuthUser = Depends(require_permission("core:system:admin")),
@@ -292,7 +285,7 @@ async def list_api_keys(
     Requires: system:admin permission
     """
     from db.database import db
-    
+
 
     keys = db.list_api_keys(include_inactive=include_inactive)
 
@@ -326,7 +319,7 @@ async def get_api_key(
     Requires: system:admin permission
     """
     from db.database import db
-    
+
 
     k = db.get_api_key_by_id(key_id)
 
@@ -365,10 +358,10 @@ async def create_api_key(
     IMPORTANT: The raw API key is only returned ONCE in this response.
     Store it securely - it cannot be retrieved again.
     """
-    from db.database import db
     from api.middleware import generate_api_key
+    from db.database import db
 
-    
+
 
     # Generate the key
     raw_key, key_hash = generate_api_key(prefix="sk")
@@ -425,7 +418,7 @@ async def update_api_key(
     Requires: system:admin permission
     """
     from db.database import db
-    
+
 
     # Check key exists
     existing = db.get_api_key_by_id(key_id)
@@ -496,11 +489,11 @@ async def rotate_api_key(
     IMPORTANT: The new raw key is only returned ONCE.
     Store it securely - it cannot be retrieved again.
     """
-    from db.database import db
     from api.middleware import generate_api_key
+    from db.database import db
     from utils.time import get_uae_time
 
-    
+
 
     # Check key exists
     existing = db.get_api_key_by_id(key_id)
@@ -549,7 +542,7 @@ async def delete_api_key(
     Requires: system:admin permission
     """
     from db.database import db
-    
+
 
     # Check key exists
     existing = db.get_api_key_by_id(key_id)
@@ -581,7 +574,7 @@ async def deactivate_api_key(
     Requires: system:admin permission
     """
     from db.database import db
-    
+
 
     # Check key exists
     existing = db.get_api_key_by_id(key_id)
@@ -617,7 +610,7 @@ async def get_api_key_usage(
     Requires: system:admin permission
     """
     from db.database import db
-    
+
 
     # Check key exists
     existing = db.get_api_key_by_id(key_id)
@@ -645,7 +638,7 @@ async def get_api_key_usage(
 # =============================================================================
 
 
-@router.get("/users", response_model=List[UserResponse])
+@router.get("/users", response_model=list[UserResponse])
 async def list_users(
     limit: int = 100,
     offset: int = 0,
@@ -879,14 +872,14 @@ class ProfileCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=50, pattern=r"^[a-z_]+$")
     display_name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-    permissions: List[str] = Field(default_factory=list)
+    permissions: list[str] = Field(default_factory=list)
 
 
 class ProfileUpdate(BaseModel):
     """Request model for updating a profile."""
     display_name: Optional[str] = Field(None, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-    permissions: Optional[List[str]] = None
+    permissions: Optional[list[str]] = None
 
 
 class ProfileResponse(BaseModel):
@@ -895,13 +888,13 @@ class ProfileResponse(BaseModel):
     name: str
     display_name: str
     description: Optional[str]
-    permissions: List[str]
+    permissions: list[str]
     is_system: bool
     created_at: Optional[str]
     updated_at: Optional[str]
 
 
-@router.get("/profiles", response_model=List[ProfileResponse])
+@router.get("/profiles", response_model=list[ProfileResponse])
 async def list_profiles(
     user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
@@ -1143,14 +1136,14 @@ class PermissionSetCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=50, pattern=r"^[a-z_]+$")
     display_name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-    permissions: List[str] = Field(default_factory=list)
+    permissions: list[str] = Field(default_factory=list)
 
 
 class PermissionSetUpdate(BaseModel):
     """Request model for updating a permission set."""
     display_name: Optional[str] = Field(None, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-    permissions: Optional[List[str]] = None
+    permissions: Optional[list[str]] = None
     is_active: Optional[bool] = None
 
 
@@ -1160,7 +1153,7 @@ class PermissionSetResponse(BaseModel):
     name: str
     display_name: str
     description: Optional[str]
-    permissions: List[str]
+    permissions: list[str]
     is_active: bool
     created_at: Optional[str]
     updated_at: Optional[str]
@@ -1171,7 +1164,7 @@ class UserPermissionSetAssign(BaseModel):
     expires_at: Optional[str] = None  # ISO datetime or None for permanent
 
 
-@router.get("/permission-sets", response_model=List[PermissionSetResponse])
+@router.get("/permission-sets", response_model=list[PermissionSetResponse])
 async def list_permission_sets(
     user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
@@ -1466,7 +1459,7 @@ class TeamMemberResponse(BaseModel):
     joined_at: Optional[str]
 
 
-@router.get("/teams", response_model=List[TeamResponse])
+@router.get("/teams", response_model=list[TeamResponse])
 async def list_teams(
     user: AuthUser = Depends(require_permission("core:system:admin")),
 ):
@@ -1649,7 +1642,7 @@ async def delete_team(
     logger.info(f"[ADMIN] Team deleted: {team_id} by {user.email}")
 
 
-@router.get("/teams/{team_id}/members", response_model=List[TeamMemberResponse])
+@router.get("/teams/{team_id}/members", response_model=list[TeamMemberResponse])
 async def get_team_members(
     team_id: int,
     user: AuthUser = Depends(require_permission("core:system:admin")),
@@ -1758,7 +1751,7 @@ async def set_user_manager(
     from db.database import db
     from utils.time import get_uae_time
 
-    
+
     now = get_uae_time().isoformat()
 
     try:
@@ -1811,7 +1804,7 @@ class SharingRuleResponse(BaseModel):
     updated_at: Optional[str]
 
 
-@router.get("/sharing-rules", response_model=List[SharingRuleResponse])
+@router.get("/sharing-rules", response_model=list[SharingRuleResponse])
 async def list_sharing_rules(
     object_type: Optional[str] = None,
     user: AuthUser = Depends(require_permission("core:system:admin")),

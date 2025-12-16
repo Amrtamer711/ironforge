@@ -22,16 +22,16 @@ Usage:
         ...
 """
 
+import functools
 import json
 import logging
-import functools
-from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
-from utils.time import get_uae_time
 from utils.logging import get_request_id
+from utils.time import get_uae_time
 
 logger = logging.getLogger("proposal-bot")
 
@@ -113,7 +113,7 @@ class AuditEvent:
     user_id: Optional[str] = None
     resource_type: Optional[str] = None
     resource_id: Optional[str] = None
-    details: Dict[str, Any] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
     ip_address: Optional[str] = None
     user_agent: Optional[str] = None
     timestamp: Optional[str] = None
@@ -125,7 +125,7 @@ class AuditEvent:
         if self.request_id is None:
             self.request_id = get_request_id()
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for storage."""
         return {
             "action": self.action,
@@ -178,7 +178,7 @@ class AuditLogger:
             self._db = db
         return self._db
 
-    def _extract_request_info(self, request) -> Dict[str, Optional[str]]:
+    def _extract_request_info(self, request) -> dict[str, Optional[str]]:
         """Extract IP address and user agent from a request object."""
         ip_address = None
         user_agent = None
@@ -207,7 +207,7 @@ class AuditLogger:
         user_id: Optional[str] = None,
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        details: Optional[dict[str, Any]] = None,
         request: Optional[Any] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
@@ -277,7 +277,7 @@ class AuditLogger:
         user_id: Optional[str] = None,
         resource_type: Optional[str] = None,
         resource_id: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        details: Optional[dict[str, Any]] = None,
         request: Optional[Any] = None,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None,
@@ -330,7 +330,7 @@ class AuditLogger:
         end_date: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Query audit log entries.
 
@@ -367,7 +367,7 @@ class AuditLogger:
         self,
         user_id: str,
         limit: int = 50,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get recent activity for a specific user."""
         return await self.query(user_id=user_id, limit=limit)
 
@@ -376,7 +376,7 @@ class AuditLogger:
         resource_type: str,
         resource_id: str,
         limit: int = 50,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get audit history for a specific resource."""
         return await self.query(
             resource_type=resource_type,

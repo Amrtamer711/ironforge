@@ -5,12 +5,14 @@ Limits concurrent mockup generation tasks to prevent memory exhaustion.
 
 import asyncio
 import logging
-from typing import Callable, Any, Optional
-from datetime import datetime
-from dataclasses import dataclass
-import uuid
-import psutil
 import os
+import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Optional
+
+import psutil
 
 logger = logging.getLogger(__name__)
 

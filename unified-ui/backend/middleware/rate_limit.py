@@ -11,7 +11,7 @@ Rate limiting middleware for unified-ui.
 import logging
 import threading
 import time
-from typing import Dict, Optional
+from typing import Optional
 
 from fastapi import HTTPException, Request
 
@@ -25,7 +25,7 @@ logger = logging.getLogger("unified-ui")
 # =============================================================================
 
 # Format: {key: {"window_start": timestamp, "count": int}}
-_rate_limit_store: Dict[str, Dict[str, float]] = {}
+_rate_limit_store: dict[str, dict[str, float]] = {}
 _store_lock = threading.Lock()
 
 

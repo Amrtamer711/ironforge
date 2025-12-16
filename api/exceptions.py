@@ -6,13 +6,11 @@ return consistent JSON error responses.
 """
 
 import logging
-import traceback
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from fastapi import FastAPI, Request, status
-from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from pydantic import ValidationError
+from fastapi.responses import JSONResponse
 
 from utils.time import get_uae_time
 
@@ -36,7 +34,7 @@ class APIError(Exception):
         message: str,
         status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR,
         error_code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        details: Optional[dict[str, Any]] = None,
     ):
         self.message = message
         self.status_code = status_code
@@ -174,9 +172,9 @@ def build_error_response(
     message: str,
     status_code: int,
     error_code: str,
-    details: Optional[Dict[str, Any]] = None,
+    details: Optional[dict[str, Any]] = None,
     request_id: Optional[str] = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Build a standardized error response dictionary.
 
@@ -286,7 +284,6 @@ def setup_exception_handlers(app: FastAPI) -> None:
         from api.exceptions import setup_exception_handlers
         setup_exception_handlers(app)
     """
-    import os
 
     # Custom API errors
     app.add_exception_handler(APIError, api_error_handler)

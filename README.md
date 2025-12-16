@@ -1,502 +1,797 @@
-# BackLite Media Sales Proposal Bot
+# Sales Proposals Bot
 
-An AI-powered Slack bot for BackLite Media that streamlines sales operations including proposal generation, mockup visualization, and booking order management.
-
----
+An enterprise-grade AI-powered sales intelligence platform that automates proposal generation, billboard mockup creation, and booking order management. Built with a dual-service architecture featuring a Python FastAPI backend and Node.js Express frontend.
 
 ## Table of Contents
 
-- [For Sales People &amp; Head of Sales](#for-sales-people--head-of-sales)
-  - [1. Proposal Generation](#1-proposal-generation)
-  - [2. Mockup Generation](#2-mockup-generation)
-  - [3. Booking Order Submission](#3-booking-order-submission)
-  - [4. Booking Order Approval (Head of Sales)](#4-booking-order-approval-head-of-sales)
-- [For Sales Coordinators](#for-sales-coordinators)
-  - [Booking Order Edit Process](#booking-order-edit-process)
-- [Technical Setup](#technical-setup)
-- [Admin Tools](#admin-tools)
+- [Overview](#overview)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Directory Structure](#directory-structure)
+- [Getting Started](#getting-started)
+- [Configuration](#configuration)
+- [Backend (proposal-bot)](#backend-proposal-bot)
+- [Frontend (unified-ui)](#frontend-unified-ui)
+- [Database Schema](#database-schema)
+- [RBAC System](#rbac-system)
+- [Deployment](#deployment)
+- [Development](#development)
+- [Security](#security)
 
 ---
 
-## For Sales People & Head of Sales
+## Overview
 
-### 1. Proposal Generation
+Sales Proposals Bot provides:
 
-Generate professional financial proposals for advertising locations with automatic calculations and formatting.
-
-#### Available Location Types
-
-**Digital Locations** (LED screens):
-
-- Net rate + upload fee (automatically added by system)
-- No need to specify upload fee - it's pre-configured per location
-
-**Static Locations** (Traditional billboards):
-
-- Net rate + production fee (you must provide)
-- Always ask: "What's the production fee?" for static locations
-
-#### How to Generate Proposals
-
-##### Single Location Proposal
-
-```
-make me a landmark proposal
-start date: Jan 1st 2026
-durations: 2 weeks, 4 weeks, 6 weeks
-rates: 1.5M, 2.8M, 4M
-client: Nike
-```
-
-Bot will generate a PowerPoint with multiple duration/rate options.
-
-##### Multiple Locations (Separate Proposals)
-
-```
-make me proposals for gateway, jawhara, and landmark
-all start Dec 1st
-2 weeks each at 2M each
-client: Adidas
-```
-
-Bot generates:
-
-- Individual PowerPoint for each location
-- Combined PDF with all proposals
-
-##### Combined Package Proposal
-
-```
-make me a combined package for landmark, gateway, and oryx
-landmark: 2 weeks starting Jan 1
-gateway: 4 weeks starting Jan 5
-oryx: 6 weeks starting Jan 10
-total package rate: 5M
-client: Coca Cola
-```
-
-Bot generates a single slide with all locations and one total rate.
-
-#### Quick Proposal Tips
-
-- **Context switching**: Just mention new location names - bot automatically generates NEW proposals
-  - Example: After making "gateway" proposal, just say "jawhara 2M 2 weeks Dec 1" - bot understands it's a new request
-- **Intelligent location matching**: Say "gateway" or "the gateway" - bot matches to correct location
-- **Abbreviations work**: "uae03", "jawhara", "landmark" all match automatically
-- **Missing info**: Bot will ask for any missing details (client name, dates, rates)
-
-#### What You'll Receive
-
-1. **PowerPoint file(s)** - Professional branded proposals
-2. **PDF document** - Combined proposals for easy sharing
-3. **Database tracking** - All proposals saved automatically
+- **AI-Powered Proposal Generation**: Create professional sales proposals with financial calculations, VAT, and currency conversion
+- **Billboard Mockup Generation**: Generate realistic billboard mockups with perspective transformation and effects
+- **Booking Order Management**: Multi-stage approval workflows with Slack integration
+- **Multi-Channel Support**: Slack bot and web interface with feature parity
+- **Enterprise RBAC**: 4-level role-based access control with multi-tenancy
+- **Microsoft SSO**: Enterprise authentication via Azure AD
 
 ---
 
-### 2. Mockup Generation
-
-Visualize your creative designs on actual billboard locations.
-
-#### Setup Required (One-Time)
-
-The mockup generator coordinator must visit the mockup setup website to upload billboard photos:
+## Architecture
 
 ```
-[Bot will provide URL when asked]
-```
-
-Upload high-quality photos of billboard locations with frames marked for creative placement.
-
-#### Two Ways to Generate Mockups
-
-##### A) Upload Your Own Creative
-
-Upload image(s) with your request:
-
-```
-[Attach image file(s)]
-make me a mockup for landmark
-```
-
-**Frame Matching**:
-
-- Upload 1 image → Works with any location (image duplicated across frames)
-- Upload 3 images → Only uses locations with exactly 3 frames
-- Upload N images → Only uses locations with exactly N frames
-
-##### B) AI-Generated Creative
-
-Describe what you want - AI generates it:
-
-```
-make me a landmark mockup with a luxury watch on black background with gold accents
-```
-
-Bot generates the creative and places it on the billboard automatically.
-
-#### What You'll Receive
-
-- High-quality mockup image
-- Creative is automatically sized and placed on billboard
-- 30-minute memory: Reuse same creative for different locations
-
----
-
-### 3. Booking Order Submission
-
-Submit booking orders for approval workflow (Sales → Coordinator → Head of Sales → Finance).
-
-#### How to Submit a Booking Order
-
-Upload the booking order document with your message:
-
-```
-[Attach PDF/Excel/Image file]
-parse this booking order for Backlite
-```
-
-Or:
-
-```
-[Attach file]
-booking order for Viola, upload fee is 2000, client is Nike
-```
-
-#### What Happens Next
-
-1. **AI Parsing**: Bot extracts all data (client, locations, fees, dates, rates)
-2. **Review**: You review extracted data in thread
-3. **Confirmation**: Bot shows preview with calculated totals (VAT, gross)
-4. **Approval Flow Begins**:
-   - ✅ **Sales Person** (you) - Approve to send forward
-   - ⏳ **Sales Coordinator** - Reviews and approves
-   - ⏳ **Head of Sales** - Final approval
-   - ✅ **Finance** - Receives approved booking order
-
-#### During Approval
-
-- You can **edit** booking order data in the thread (change fees, locations, dates)
-- You can **reject** and provide feedback
-- Bot recalculates VAT/totals automatically when you edit fees
-- Each approver sees current status and can approve/reject
-
-#### Key Information Extracted
-
-- Client name and brand/campaign
-- Category (OOH, DOOH, Print, etc.)
-- All locations with individual net amounts
-- Municipality fee, production/upload fee
-- Payment terms and tenure
-- Automatic VAT calculation (5%)
-- Automatic gross total calculation
-
----
-
-### 4. Booking Order Approval (Head of Sales)
-
-As Head of Sales, you're part of the approval workflow.
-
-#### When You Receive a Booking Order
-
-You'll get a Slack message with:
-
-- All booking order details
-- Current approval status
-- PDF preview of the booking order
-- **Accept** and **Reject** buttons
-
-#### How to Approve
-
-1. **Review** the booking order details
-2. Click **Accept** button
-3. Bot automatically:
-   - Adds your signature to the booking order (using your configured name)
-   - Sends to Finance team
-   - Notifies all stakeholders
-   - Updates workflow status
-
-#### How to Reject
-
-1. Click **Reject** button
-2. Write reason in the thread
-3. Bot sends feedback back to Sales Coordinator with your comments
-
-#### After Approval
-
-- Finance team receives the approved booking order
-- Booking order PDF includes your signature
-- All stakeholders are notified
-- Status tracked in database
-
----
-
-## For Sales Coordinators
-
-### Booking Order Edit Process
-
-As a Sales Coordinator, you're the second approval stage in the workflow.
-
-#### Your Role in the Workflow
-
-```
-Sales Person → YOU (Sales Coordinator) → Head of Sales → Finance
-```
-
-#### When You Receive a Booking Order
-
-You'll get a Slack DM with:
-
-- Complete booking order details
-- All extracted data (client, locations, fees, dates)
-- PDF preview
-- **Accept** and **Reject** buttons
-
-#### Review Process
-
-Check for:
-
-- ✅ Client name and campaign details correct
-- ✅ Locations are correct with proper net amounts
-- ✅ Municipality fee included (if applicable)
-- ✅ Production/upload fees correct
-- ✅ Payment terms accurate
-- ✅ Tenure dates correct
-- ✅ VAT calculation (5%) looks correct
-- ✅ Gross total is accurate
-
-#### How to Request Edits
-
-If something needs to be changed:
-
-1. **Reply in the thread** with what needs changing:
-
-   ```
-   change municipality fee to 5000
-   ```
-
-   Or:
-
-   ```
-   update location dubai_gateway net amount to 150000
-   ```
-2. **Bot updates automatically**:
-
-   - Recalculates VAT and gross total
-   - Updates the PDF preview
-   - Shows you the new values
-3. **Multiple edits supported**:
-
-   ```
-   change client to "Nike Middle East"
-   change payment terms to "50% upfront, 50% on installation"
-   change tenure to "1st December 2025 - 31st December 2025"
-   ```
-
-#### Edit Examples
-
-##### Change fees:
-
-```
-change municipality fee to 8000
-change production upload fee to 3000
-```
-
-##### Change location amounts:
-
-```
-change location landmark net amount to 250000
-```
-
-##### Change client details:
-
-```
-change client to "Adidas UAE"
-change brand campaign to "Winter Collection 2025"
-```
-
-##### Change dates:
-
-```
-change tenure to "1st Jan 2026 - 31st Jan 2026"
-```
-
-##### Change payment terms:
-
-```
-change payment terms to "100% advance payment"
-```
-
-#### What Gets Recalculated Automatically
-
-When you edit:
-
-- **Fees** (municipality, production/upload) → Net pre-VAT recalculated
-- **Location amounts** → Net pre-VAT recalculated
-- **Net pre-VAT changes** → VAT (5%) recalculated
-- **VAT changes** → Gross total recalculated
-
-Bot ensures all totals are always accurate.
-
-#### How to Approve
-
-Once everything looks correct:
-
-1. Click **Accept** button
-2. Bot automatically:
-   - Sends to Head of Sales
-   - Updates all stakeholders
-   - Updates workflow status
-   - Notifies you of successful submission
-
-#### How to Reject
-
-If booking order needs major changes:
-
-1. Click **Reject** button
-2. Write detailed feedback in thread:
-   ```
-   Rejecting because:
-   - Client name needs confirmation from sales
-   - Location rates don't match approved rate card
-   - Payment terms need finance approval first
-   ```
-3. Bot sends your feedback back to Sales Person
-4. Sales Person can resubmit after addressing issues
-
-#### Key Things to Know
-
-- **Edit in thread**: Don't approve until everything is correct - just edit in the thread
-- **Recalculation**: Bot handles all math automatically
-- **Preview updates**: PDF preview updates after each edit
-- **No rush**: Take your time to review - workflow waits for your approval
-- **Context aware**: Bot understands what you want to edit based on your message
-- **Multiple fields**: You can change multiple things at once
-
-#### Common Edit Scenarios
-
-##### Scenario 1: Wrong Fee Amount
-
-```
-Coordinator: "change municipality fee to 12000"
-Bot: Updates fee, recalculates net, VAT, gross, shows new totals
-Coordinator: Reviews, clicks Accept
-```
-
-##### Scenario 2: Location Amount Error
-
-```
-Coordinator: "change location dubai_gateway net amount to 180000"
-Bot: Updates location, recalculates totals
-Coordinator: "looks good now" → Clicks Accept
-```
-
-##### Scenario 3: Multiple Changes Needed
-
-```
-Coordinator: "change client to Nike UAE"
-Coordinator: "change payment terms to 50% advance 50% on completion"
-Coordinator: "change municipality fee to 8000"
-Bot: Updates all three, recalculates
-Coordinator: Reviews all changes, clicks Accept
-```
-
-##### Scenario 4: Major Issues - Rejection
-
-```
-Coordinator: Reviews booking order, spots issues
-Coordinator: Clicks Reject
-Coordinator: "Location rates don't match rate card. Dubai Gateway should be 200K not 150K. Please resubmit with correct rates."
-Bot: Sends feedback to Sales Person
+┌─────────────────────────────────────────────────────────────────────┐
+│                           CLIENTS                                    │
+├─────────────────────┬───────────────────────────────────────────────┤
+│     Slack Bot       │              Web Browser                       │
+│   (Events API)      │                                               │
+└─────────┬───────────┴───────────────────┬───────────────────────────┘
+          │                               │
+          │                               ▼
+          │                   ┌───────────────────────┐
+          │                   │   unified-ui:3005     │
+          │                   │   ─────────────────   │
+          │                   │   • Express.js Server │
+          │                   │   • JWT Validation    │
+          │                   │   • RBAC Lookup       │
+          │                   │   • Trusted Headers   │
+          │                   │   • SPA Frontend      │
+          │                   │   • Microsoft SSO     │
+          │                   └───────────┬───────────┘
+          │                               │
+          ▼                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      proposal-bot:8000 (FastAPI)                     │
+├─────────────────────────────────────────────────────────────────────┤
+│  API Layer                                                           │
+│  ├── /api/chat          Chat messaging & streaming                   │
+│  ├── /api/proposals     Proposal CRUD & listing                      │
+│  ├── /api/mockup        Mockup generation                            │
+│  ├── /api/files         File upload/download                         │
+│  ├── /api/admin         User & permission management                 │
+│  ├── /slack             Slack events & interactive handlers          │
+│  └── /health            Health checks & metrics                      │
+├─────────────────────────────────────────────────────────────────────┤
+│  Core Layer                                                          │
+│  ├── llm.py             Main LLM orchestration loop                  │
+│  ├── chat_api.py        Unified chat interface                       │
+│  ├── proposals.py       Proposal generation logic                    │
+│  └── tools.py           LLM tool definitions                         │
+├─────────────────────────────────────────────────────────────────────┤
+│  Generators                                                          │
+│  ├── pptx.py            PowerPoint generation                        │
+│  ├── pdf.py             PDF conversion & merging                     │
+│  └── mockup.py          Billboard mockup compositing                 │
+├─────────────────────────────────────────────────────────────────────┤
+│  Integrations                                                        │
+│  ├── llm/               OpenAI & Google Generative AI                │
+│  ├── auth/              Supabase Auth                                │
+│  ├── storage/           Local & Supabase Storage                     │
+│  ├── rbac/              Role-based access control                    │
+│  └── channels/          Slack & Web adapters                         │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                         DATA LAYER                                   │
+├───────────────────────────┬─────────────────────────────────────────┤
+│   SQLite (Development)    │     Supabase PostgreSQL (Production)    │
+│   proposals.db            │     ├── UI Project (Auth/RBAC)          │
+│                           │     └── Sales Bot Project (Business)    │
+└───────────────────────────┴─────────────────────────────────────────┘
 ```
 
 ---
 
-## Technical Setup
+## Tech Stack
+
+### Backend (proposal-bot)
+
+| Component | Technology |
+|-----------|------------|
+| Runtime | Python 3.11 |
+| Framework | FastAPI, Uvicorn |
+| Database | SQLite (dev) / Supabase PostgreSQL (prod) |
+| LLM | OpenAI GPT-4 / Google Gemini Pro |
+| Storage | Local filesystem / Supabase Storage |
+| Document Gen | python-pptx, LibreOffice, PyPDF2 |
+| Image Processing | Pillow, NumPy, OpenCV |
+
+### Frontend (unified-ui)
+
+| Component | Technology |
+|-----------|------------|
+| Runtime | Node.js 18+ |
+| Framework | Express.js |
+| Authentication | Supabase Auth, Microsoft SSO |
+| Frontend | Vanilla JavaScript SPA |
+| Styling | Custom CSS Design System ("The Void") |
+| Real-time | Server-Sent Events (SSE) |
+
+---
+
+## Directory Structure
+
+```
+Sales Proposals/
+├── api/                          # FastAPI application
+│   ├── server.py                 # App initialization & middleware
+│   ├── auth.py                   # Authentication dependencies
+│   ├── schemas.py                # Pydantic request/response models
+│   ├── middleware/               # Custom middleware
+│   │   ├── security_headers.py
+│   │   ├── api_key.py
+│   │   └── rate_limit.py
+│   └── routers/                  # API endpoint modules
+│       ├── proposals.py          # Proposal CRUD
+│       ├── chat.py               # Chat messaging
+│       ├── mockups.py            # Mockup generation
+│       ├── files.py              # File handling
+│       ├── slack.py              # Slack integration
+│       ├── admin.py              # User management
+│       ├── costs.py              # AI cost tracking
+│       └── health.py             # Health checks
+│
+├── core/                         # Business logic
+│   ├── llm.py                    # Main LLM loop & tool execution
+│   ├── chat_api.py               # Unified chat interface
+│   ├── chat_persistence.py       # Session management
+│   ├── proposals.py              # Proposal generation
+│   ├── tools.py                  # LLM tool definitions
+│   ├── bo_messaging.py           # Booking order messaging
+│   └── file_utils.py             # File operations
+│
+├── db/                           # Database layer
+│   ├── database.py               # Database facade
+│   ├── schema.py                 # Schema definitions
+│   ├── cache.py                  # In-memory caching
+│   ├── rls.py                    # Row-level security
+│   ├── backends/
+│   │   ├── sqlite.py             # SQLite backend
+│   │   └── supabase.py           # Supabase backend
+│   └── migrations/               # Database migrations
+│
+├── generators/                   # Content generation
+│   ├── pptx.py                   # PowerPoint slides
+│   ├── pdf.py                    # PDF conversion
+│   ├── mockup.py                 # Billboard mockups
+│   └── effects/                  # Image effects
+│       ├── compositor.py         # Perspective compositing
+│       ├── color.py              # Color adjustments
+│       ├── depth.py              # Depth effects
+│       └── edge.py               # Edge enhancement
+│
+├── integrations/                 # External services
+│   ├── llm/                      # LLM providers
+│   │   ├── client.py             # Unified client
+│   │   ├── providers/            # OpenAI, Google
+│   │   ├── prompts/              # System prompts
+│   │   └── cost_tracker.py       # Cost tracking
+│   ├── auth/                     # Authentication
+│   ├── storage/                  # File storage
+│   ├── rbac/                     # Access control
+│   └── channels/                 # Slack/Web adapters
+│
+├── workflows/                    # Business workflows
+│   ├── bo_approval.py            # BO approval state machine
+│   └── bo_parser.py              # BO parsing & validation
+│
+├── utils/                        # Utilities
+│   ├── logging.py                # Structured logging
+│   ├── time.py                   # UAE timezone
+│   ├── task_queue.py             # Background tasks
+│   └── memory.py                 # Memory management
+│
+├── unified-ui/                   # Frontend application
+│   ├── server.js                 # Express server (auth gateway + proxy)
+│   ├── email-service.js          # Email provider abstraction
+│   ├── email-templates.js        # HTML email templates
+│   ├── package.json              # Node.js dependencies
+│   ├── Dockerfile                # Frontend Docker image
+│   ├── public/                   # Static assets (SPA)
+│   │   ├── index.html            # Main HTML shell
+│   │   ├── css/
+│   │   │   └── styles.css        # Design system
+│   │   └── js/
+│   │       ├── app.js            # App initialization
+│   │       ├── auth.js           # Authentication module
+│   │       ├── api.js            # API client library
+│   │       ├── chat.js           # Chat interface
+│   │       ├── mockup.js         # Mockup generator
+│   │       ├── sidebar.js        # Navigation
+│   │       ├── modules.js        # Module registry
+│   │       └── admin.js          # Admin panel
+│   └── uploads/                  # Frontend file storage
+│
+├── data/                         # Runtime data
+│   ├── templates/                # PowerPoint templates
+│   └── currency_config.json      # Currency rates
+│
+├── config.py                     # Backend configuration
+├── requirements.txt              # Python dependencies
+├── Dockerfile                    # Backend Docker image
+├── docker-compose.local.yml      # Local development
+└── render.yaml                   # Render deployment
+```
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.11+
+- Node.js 18+
+- LibreOffice (for PDF conversion)
+- Docker & Docker Compose (optional)
+
+### Local Development Setup
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/Amrtamer711/SalesProposalAI.git
+   cd "Sales Proposals"
+   ```
+
+2. **Backend Setup**
+   ```bash
+   # Create virtual environment
+   python -m venv venv
+   source venv/bin/activate  # Linux/Mac
+   # or: venv\Scripts\activate  # Windows
+
+   # Install dependencies
+   pip install -r requirements.txt
+
+   # Set up environment
+   cp .env.example .env.secrets
+   # Edit .env.secrets with your credentials
+
+   # Run backend
+   python main.py
+   # Server starts at http://localhost:8000
+   ```
+
+3. **Frontend Setup** (in a separate terminal)
+   ```bash
+   cd unified-ui
+   npm install
+   npm start
+   # Frontend starts at http://localhost:3005
+   ```
+
+### Docker Development
+
+```bash
+# Start both services
+docker-compose -f docker-compose.local.yml --env-file .env.secrets up -d
+
+# View logs
+docker-compose -f docker-compose.local.yml logs -f
+
+# Stop services
+docker-compose -f docker-compose.local.yml down
+```
+
+**Access Points:**
+- Unified UI: http://localhost:3005
+- Proposal Bot API: http://localhost:8000
+- Health Check: http://localhost:8000/health
+
+---
+
+## Configuration
 
 ### Environment Variables
 
-Required:
+Create `.env.secrets` from `.env.example`:
 
-```
-SLACK_BOT_TOKEN=xoxb-...
-SLACK_APP_TOKEN=xapp-...
+```bash
+# =============================================================================
+# CORE SETTINGS
+# =============================================================================
+ENVIRONMENT=development          # development | staging | production
+DEBUG=true
+LOG_LEVEL=INFO
+
+# =============================================================================
+# DATABASE (Backend)
+# =============================================================================
+DB_BACKEND=supabase              # sqlite | supabase
+
+# Supabase - Sales Bot Project (business data)
+SALESBOT_DEV_SUPABASE_URL=https://xxx.supabase.co
+SALESBOT_DEV_SUPABASE_SERVICE_ROLE_KEY=eyJ...
+SALESBOT_PROD_SUPABASE_URL=https://yyy.supabase.co
+SALESBOT_PROD_SUPABASE_SERVICE_ROLE_KEY=eyJ...
+
+# =============================================================================
+# AUTHENTICATION (Frontend + Backend)
+# =============================================================================
+AUTH_PROVIDER=supabase           # local | supabase
+
+# Supabase - UI Project (auth & RBAC)
+UI_DEV_SUPABASE_URL=https://aaa.supabase.co
+UI_DEV_SUPABASE_ANON_KEY=eyJ...
+UI_DEV_SUPABASE_SERVICE_ROLE_KEY=eyJ...
+UI_PROD_SUPABASE_URL=https://bbb.supabase.co
+UI_PROD_SUPABASE_ANON_KEY=eyJ...
+UI_PROD_SUPABASE_SERVICE_ROLE_KEY=eyJ...
+
+# =============================================================================
+# LLM PROVIDERS
+# =============================================================================
+LLM_PROVIDER=openai              # openai | google
+IMAGE_PROVIDER=openai            # openai | google
 OPENAI_API_KEY=sk-...
-DATABASE_URL=sqlite:///./proposals.db
+GOOGLE_API_KEY=...
+
+# =============================================================================
+# SLACK INTEGRATION
+# =============================================================================
+SLACK_BOT_TOKEN=xoxb-...
+SLACK_SIGNING_SECRET=...
+
+# =============================================================================
+# STORAGE
+# =============================================================================
+STORAGE_PROVIDER=supabase        # local | supabase
+
+# =============================================================================
+# API SETTINGS
+# =============================================================================
+API_HOST=0.0.0.0
+API_PORT=8000
+CORS_ORIGINS=http://localhost:3005,http://localhost:8000
+
+# Proxy secret for trusted header authentication
+PROXY_SECRET=your-secure-random-string
+
+# =============================================================================
+# EMAIL SERVICE (Frontend)
+# =============================================================================
+EMAIL_PROVIDER=resend            # resend | sendgrid | smtp | console
+EMAIL_FROM=noreply@yourcompany.com
+RESEND_API_KEY=re_...
+
+# =============================================================================
+# BUSINESS SETTINGS
+# =============================================================================
+DEFAULT_CURRENCY=AED
 ```
-
-### Database
-
-SQLite database with tables:
-
-- `proposals` - All generated proposals
-- `booking_orders` - All booking orders with workflow status
-- `workflow_state` - Active approval workflows
-- `mockup_frames` - Billboard photo frame coordinates
-
-### Deployment
-
-The bot runs on Render and connects to Slack workspace. Updates are deployed via GitHub:
-
-- `dev` branch - Testing environment
-- `main` branch - Production environment
 
 ---
 
-## Admin Tools
+## Backend (proposal-bot)
 
-Admin users have access to additional tools:
+### API Endpoints
 
-### Location Management
+| Endpoint | Method | Description | Permission |
+|----------|--------|-------------|------------|
+| **Chat** |
+| `/api/chat/message` | POST | Send chat message | `sales:chat:use` |
+| `/api/chat/stream` | POST | Stream response (SSE) | `sales:chat:use` |
+| **Proposals** |
+| `/api/proposals` | GET | List proposals | `sales:proposals:read` |
+| `/api/proposals/{id}` | GET | Get proposal details | `sales:proposals:read` |
+| `/api/proposals/history` | GET | Get proposal history | `sales:proposals:read` |
+| **Mockups** |
+| `/api/mockup/locations` | GET | List mockup locations | `sales:mockups:read` |
+| `/api/mockup/generate` | POST | Generate mockup | `sales:mockups:create` |
+| `/api/mockup/save-frame` | POST | Save frame reference | `sales:mockups:setup` |
+| **Files** |
+| `/api/files/upload` | POST | Upload single file | authenticated |
+| `/api/files/upload/multi` | POST | Upload multiple files | authenticated |
+| `/api/files/{id}/{name}` | GET | Download file | authenticated |
+| **Admin** |
+| `/api/admin/users` | GET/POST | User management | `core:users:manage` |
+| `/api/admin/profiles` | GET/POST | Profile management | `core:system:admin` |
+| `/api/admin/permissions` | GET | List all permissions | `core:system:admin` |
+| **Costs** |
+| `/costs` | GET | Get AI cost summary | authenticated |
+| `/costs/clear` | DELETE | Clear cost history | `core:ai_costs:manage` |
+| **Modules** |
+| `/api/modules` | GET | List accessible modules | authenticated |
+| **Health** |
+| `/health` | GET | Basic health check | public |
+| `/health/ready` | GET | Readiness probe | public |
+| `/metrics` | GET | Performance metrics | public |
+| **Slack** |
+| `/slack/events` | POST | Slack Events API | Slack signature |
+| `/slack/interactive` | POST | Interactive components | Slack signature |
+
+### Core Modules
+
+#### LLM Orchestration (`core/llm.py`)
+
+Central AI orchestration that:
+1. Receives messages from chat or Slack
+2. Loads conversation history from session
+3. Calls LLM with system prompt and tool definitions
+4. Executes tool calls (proposals, mockups, BOs)
+5. Handles streaming responses
+6. Persists conversation and results
+
+**Available Tools:**
+| Tool | Description |
+|------|-------------|
+| `get_separate_proposals` | Individual location proposals |
+| `get_combined_proposal` | Multi-location package proposal |
+| `generate_mockup` | Billboard mockup generation |
+| `get_booking_orders` | Retrieve booking orders |
+| `submit_booking_order` | Create booking order |
+| `list_locations` | List available locations |
+| `add_location` | Admin: Add new location |
+| `delete_location` | Admin: Remove location |
+
+#### Proposal Generation (`core/proposals.py`)
+
+1. Creates financial slides with duration/rate matrix
+2. Applies location templates from `data/templates/`
+3. Calculates VAT (5%) and municipality fees
+4. Converts PPTX to PDF via LibreOffice
+5. Merges individual PDFs into combined document
+6. Logs proposal to database
+
+#### Mockup Generation (`generators/mockup.py`)
+
+1. Selects location photo (day/night, gold/silver variants)
+2. Loads creative image
+3. Applies perspective transformation to frame coordinates
+4. Composites creative onto billboard
+5. Applies post-processing effects
+6. Saves and returns mockup URL
+
+---
+
+## Frontend (unified-ui)
+
+### Server Architecture (`server.js`)
+
+The Express.js server acts as:
+- **Authentication Gateway**: Validates JWT tokens from Supabase
+- **RBAC Provider**: Fetches user profiles, permissions, teams, companies
+- **Proxy Layer**: Routes requests to proposal-bot with trusted headers
+- **Static Server**: Serves the SPA frontend
+
+#### Trusted Header Injection
+
+When proxying requests to proposal-bot, unified-ui injects:
+```
+X-Trusted-User-Id: user-uuid
+X-Trusted-User-Email: user@example.com
+X-Trusted-User-Name: John Doe
+X-Trusted-User-Profile: sales_user
+X-Trusted-User-Permissions: ["sales:proposals:create", ...]
+X-Trusted-User-Companies: ["company-uuid-1", ...]
+X-Proxy-Secret: configured-secret
+```
+
+### Frontend Modules
+
+| Module | File | Purpose |
+|--------|------|---------|
+| **Auth** | `auth.js` | Authentication, SSO, session management |
+| **API** | `api.js` | Backend communication, token injection |
+| **Chat** | `chat.js` | AI chat interface, streaming responses |
+| **Mockup** | `mockup.js` | Billboard mockup creation |
+| **Sidebar** | `sidebar.js` | Tool navigation |
+| **Modules** | `modules.js` | Dynamic module loading |
+| **Admin** | `admin.js` | User/permission management |
+| **App** | `app.js` | Application initialization |
+
+### Authentication Flow
+
+**Production (Microsoft SSO):**
+```
+1. User clicks "Sign in with Microsoft"
+2. Redirect to Microsoft Azure OAuth
+3. User authenticates with Microsoft credentials
+4. Microsoft redirects back with auth code
+5. Supabase exchanges code for JWT token
+6. Frontend stores token in localStorage
+7. Frontend fetches user profile from /api/base/auth/me
+8. Shows app with user permissions loaded
+```
+
+**Development Mode:**
+```
+Pre-configured test users:
+- admin@mmg.com / admin123 (admin, hos, sales_person)
+- hos@mmg.com / hos123 (hos, sales_person)
+- sales@mmg.com / sales123 (sales_person)
+```
+
+### Design System
+
+**Theme: "The Void"** - Dark, futuristic design
+
+| Category | Colors | Usage |
+|----------|--------|-------|
+| Void | `#000` - `#1E1E26` | Backgrounds |
+| Quantum Blue | `#3381FF` | Primary CTAs |
+| Plasma Cyan | `#06B6D4` | Secondary highlights |
+| Nebula Purple | `#A855F7` | Tertiary accents |
+| Aurora Green | `#22C55E` | Success states |
+| Solar Yellow | `#EAB308` | Warnings |
+| Crimson Red | `#F43F5E` | Errors |
+
+**Features:**
+- Glass morphism effects
+- Gradient animations
+- Quantum glow shadows
+- Spring easing animations
+- Inter font family
+
+### Tools/Panels
+
+1. **AI Chat** (Default)
+   - Streaming AI responses
+   - File attachments (images, PDFs, documents)
+   - Suggestion buttons
+   - Conversation history
+
+2. **Mockup Generator**
+   - **Setup Mode** (Admin): Configure billboard frames, upload photos
+   - **Generate Mode**: Create mockups from creatives
+   - Canvas-based frame drawing
+   - Live preview
+
+3. **Proposals**
+   - Proposal listing with filters
+   - Proposal details view
+
+4. **Admin Panel** (Admins only)
+   - User CRUD
+   - Profile/permission management
+   - Team management
+   - Invite system
+
+### Email Service
+
+**Supported Providers:**
+- Resend (recommended)
+- SendGrid
+- SMTP (generic)
+- Console (development)
+
+**Templates:**
+- User invitation
+- Welcome email
+- Password reset
+
+---
+
+## Database Schema
+
+### UI Supabase (Auth & RBAC)
+
+```sql
+-- Users & Authentication
+users (id, email, password_hash, name, created_at)
+profiles (id, name, display_name, description, is_system)
+user_profiles (user_id, profile_id)
+
+-- RBAC Level 1: Base Permissions
+profile_permissions (id, profile_id, permission)
+
+-- RBAC Level 2: Permission Sets
+permission_sets (id, name, display_name, is_active)
+permission_set_permissions (id, permission_set_id, permission)
+user_permission_sets (user_id, permission_set_id)
+
+-- RBAC Level 3: Teams & Hierarchy
+teams (id, name, parent_team_id)
+team_members (id, team_id, user_id, role)
+team_roles (id, team_id, name)
+
+-- RBAC Level 4: Record Sharing
+sharing_rules (id, name)
+record_shares (id, sharing_rule_id, user_id, record_key)
+
+-- Multi-Tenancy
+companies (id, name, is_group, parent_company_id)
+user_companies (user_id, company_id)
+
+-- Modules & Sessions
+modules (id, name, display_name, icon)
+chat_sessions (user_id, session_id, messages)
+invite_tokens (token, email, expires_at)
+```
+
+### Sales Bot Supabase (Business Data)
+
+```sql
+-- Public Schema
+proposals_log (id, submitted_by, client_name, date_generated, total_amount)
+proposal_locations (proposal_id, location_key, start_date, duration_weeks, net_rate)
+booking_orders (id, user_id, client_name, total_value, status)
+bo_locations (bo_id, location_key, start_date, end_date, spots, rate)
+bo_approval_workflows (id, bo_id, status, stage, assignee)
+ai_costs (id, user_id, provider, model, tokens_in, tokens_out, cost, workflow)
+documents (id, user_id, filename, file_id, storage_path, created_at)
+mockup_files (id, location_key, finish, time_of_day, filename, file_id)
+
+-- Company Schemas (e.g., backlite_dubai, backlite_uk)
+locations (id, location_key, display_name, height, width, series)
+location_photos (id, location_id, photo_path, time_of_day, finish)
+mockup_frames (id, location_id, frame_points, config)
+rate_cards (id, location_id, duration, net_rate, upload_fee)
+location_occupations (id, location_id, sov, spot_duration, loop_duration)
+```
+
+---
+
+## RBAC System
+
+### 4-Level Permission Architecture
+
+| Level | Description | Example |
+|-------|-------------|---------|
+| **1. Profiles** | Base permission templates | `sales_user` profile has `sales:proposals:create` |
+| **2. Permission Sets** | Additive permissions (can expire) | Grant `mockup:setup` temporarily |
+| **3. Teams** | Hierarchical access | Team leaders see members' data |
+| **4. Record Sharing** | Individual record access | Share specific proposal with user |
+
+### Permission Format
 
 ```
-add location [provides form for location details]
-delete location [location_name]
-list locations
+{module}:{resource}:{action}
 ```
 
-### Database Exports
+**Examples:**
+- `sales:proposals:create` - Create proposals
+- `sales:*:*` - All sales module actions
+- `core:system:admin` - System administration
+- `*:*:*` - Super admin
+
+### User Roles
+
+| Role | Description | Permissions |
+|------|-------------|-------------|
+| `system_admin` | Full system access | `*:*:*` |
+| `sales_manager` | Manage sales team | `sales:*:*`, team visibility |
+| `sales_user` | Standard sales | `sales:proposals:*`, `sales:chat:use` |
+| `coordinator` | BO coordination | `sales:bo:*` |
+| `finance` | Financial review | `sales:bo:approve`, cost viewing |
+| `viewer` | Read-only access | `*:*:read` |
+
+---
+
+## Deployment
+
+### Render.com (`render.yaml`)
+
+Three microservices:
+
+| Service | Type | Port | Health Check |
+|---------|------|------|--------------|
+| `proposal-bot` | Docker | 8000 | `/health` |
+| `unified-ui` | Docker | 3005 | `/health` |
+| `ai-costs-dashboard` | Docker | 3000 | `/health` |
+
+**Environment Strategy:**
+- `dev` branch → DEV environment variables
+- `main` branch → PROD environment variables
+
+### Docker Images
+
+**Backend (`Dockerfile`):**
+```dockerfile
+FROM python:3.11-slim
+RUN apt-get update && apt-get install -y libreoffice fonts-dejavu
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+CMD ["python", "main.py"]
+```
+
+**Frontend (`unified-ui/Dockerfile`):**
+```dockerfile
+FROM node:18-slim
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+CMD ["node", "server.js"]
+```
+
+---
+
+## Development
+
+### Code Quality
+
+```bash
+# Linting
+ruff check .
+
+# Format
+ruff format .
+
+# Type checking
+mypy .
+
+# Security scan
+bandit -r .
+```
+
+### Testing
+
+```bash
+# Run all tests
+pytest
+
+# With coverage
+pytest --cov=. --cov-report=html
+
+# Specific test
+pytest tests/test_proposals.py -v
+```
+
+### Database Migrations
+
+```bash
+python -m db.migrations
+```
+
+---
+
+## Security
+
+### Authentication Flow
 
 ```
-export all proposals to excel
-export all booking orders to excel
+User Login (Web) → Supabase Auth → JWT Token
+    ↓
+Request to unified-ui with JWT
+    ↓
+unified-ui validates token with Supabase
+    ↓
+Fetches RBAC data (profiles, permissions, teams, companies)
+    ↓
+Injects trusted headers + proxy secret
+    ↓
+Routes to proposal-bot
+    ↓
+proposal-bot reads trusted headers (trusts proxy)
+    ↓
+Serves protected resources
 ```
 
-### Configuration
+### Security Measures
 
-- **hos_config.json** - Configure Head of Sales and Finance team members
-- **Admin permissions** - Set via slack_user_id in hos_config.json
+- **CORS**: Strict origin validation
+- **Helmet.js**: Security headers (CSP, COEP, CORP)
+- **Rate Limiting**: 10 requests/minute on auth endpoints
+- **Proxy Secret**: Prevents header spoofing
+- **Row-Level Security**: Supabase RLS policies
+- **Company Isolation**: Multi-tenant data separation
 
-### Booking Order Number Format
+---
 
-- **User-facing**: DPD-XXX, VLA-XXX (shown on documents)
-- **Internal**: bo_TIMESTAMP_COMPANY (database reference)
+## License
+
+Proprietary - All rights reserved.
 
 ---
 
 ## Support
 
-For issues or questions:
-
-1. Check the bot's help: Send "help" in Slack
-2. Check logs for errors (admin access required)
-3. Contact development team
-
----
-
-## Key Features
-
-✅ **Intelligent context switching** - Bot recognizes new requests immediately
-✅ **Location name inference** - Say "gateway" or "the gateway" - bot matches correctly
-✅ **Automatic calculations** - VAT, totals, fees calculated automatically
-✅ **Edit-friendly** - Change any field, bot recalculates everything
-✅ **Multi-stage approval** - Sales → Coordinator → HoS → Finance
-✅ **Digital signatures** - Automatically adds Head of Sales signature
-✅ **Database tracking** - All proposals and booking orders saved
-✅ **PDF generation** - Professional documents for all outputs
-✅ **Mockup visualization** - Upload-based or AI-generated creatives
-✅ **Multi-company support** - Backlite and Viola with separate configurations
-
----
-
-**Version**: 1.0
-**Last Updated**: October 2025
+For issues and feature requests, contact the development team or open an issue in the repository.

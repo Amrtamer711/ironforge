@@ -13,14 +13,14 @@ RBAC User Management endpoints.
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.middleware.auth import AuthUser, require_auth, require_profile
-from backend.services.supabase_client import get_supabase
-from backend.services.rbac_service import get_user_rbac_data, invalidate_rbac_cache
 from backend.routers.rbac.models import UpdateUserRequest
+from backend.services.rbac_service import get_user_rbac_data, invalidate_rbac_cache
+from backend.services.supabase_client import get_supabase
 
 logger = logging.getLogger("unified-ui")
 
@@ -34,7 +34,7 @@ router = APIRouter()
 @router.get("/my-context")
 async def get_my_context(
     user: AuthUser = Depends(require_auth),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get current user's RBAC context.
     Mirrors server.js:3262-3279
@@ -74,7 +74,7 @@ async def list_users(
     team: Optional[int] = None,
     is_active: Optional[str] = None,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     List all users with pagination and filters.
     Mirrors server.js:3286-3354
@@ -158,7 +158,7 @@ async def update_user(
     user_id: str,
     request: UpdateUserRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Update user details.
     Mirrors server.js:3357-3410
@@ -232,7 +232,7 @@ async def update_user(
 async def deactivate_user(
     user_id: str,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Deactivate user (soft delete).
     Mirrors server.js:3413-3495
@@ -331,7 +331,7 @@ async def deactivate_user(
 async def reactivate_user(
     user_id: str,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Reactivate user.
     Mirrors server.js:3498-3521
@@ -379,7 +379,7 @@ async def get_audit_log(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     user: AuthUser = Depends(require_profile("system_admin")),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get audit log with filters.
     Mirrors server.js:3573-3625

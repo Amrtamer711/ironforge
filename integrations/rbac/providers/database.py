@@ -17,20 +17,20 @@ This provider reads from trusted headers and performs permission checks.
 
 import logging
 from contextvars import ContextVar
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Optional
 
 from integrations.rbac.base import (
-    RBACProvider,
+    AccessLevel,
     Permission,
-    Profile,
     PermissionSet,
+    Profile,
+    RBACContext,
+    RBACProvider,
+    RecordShare,
+    SharingRule,
     Team,
     TeamMember,
     TeamRole,
-    SharingRule,
-    RecordShare,
-    AccessLevel,
-    RBACContext,
     get_default_permissions,
 )
 
@@ -44,15 +44,15 @@ _current_user_context: ContextVar[dict] = ContextVar("user_context", default={})
 def set_user_context(
     user_id: str,
     profile: str,
-    permissions: List[str],
-    permission_sets: Optional[List[Dict[str, Any]]] = None,
-    teams: Optional[List[Dict[str, Any]]] = None,
-    team_ids: Optional[List[int]] = None,
+    permissions: list[str],
+    permission_sets: Optional[list[dict[str, Any]]] = None,
+    teams: Optional[list[dict[str, Any]]] = None,
+    team_ids: Optional[list[int]] = None,
     manager_id: Optional[str] = None,
-    subordinate_ids: Optional[List[str]] = None,
-    sharing_rules: Optional[List[Dict[str, Any]]] = None,
-    shared_records: Optional[Dict[str, List[Dict[str, Any]]]] = None,
-    shared_from_user_ids: Optional[List[str]] = None,
+    subordinate_ids: Optional[list[str]] = None,
+    sharing_rules: Optional[list[dict[str, Any]]] = None,
+    shared_records: Optional[dict[str, list[dict[str, Any]]]] = None,
+    shared_from_user_ids: Optional[list[str]] = None,
 ) -> None:
     """
     Set the current user context for RBAC checks.
@@ -167,7 +167,7 @@ def can_access_record(object_type: str, record_id: str, record_owner_id: str = N
     return False
 
 
-def get_shared_record_ids(object_type: str) -> List[str]:
+def get_shared_record_ids(object_type: str) -> list[str]:
     """
     Get list of record IDs directly shared with the current user for an object type.
 
@@ -184,7 +184,7 @@ def get_shared_record_ids(object_type: str) -> List[str]:
     return []
 
 
-def get_accessible_user_ids() -> List[str]:
+def get_accessible_user_ids() -> list[str]:
     """
     Get list of user IDs the current user can access data for.
 
@@ -235,7 +235,7 @@ class DatabaseRBACProvider(RBACProvider):
     def name(self) -> str:
         return "database"
 
-    async def get_user_permissions(self, user_id: str) -> Set[str]:
+    async def get_user_permissions(self, user_id: str) -> set[str]:
         """
         Get permissions for user from trusted context.
 
@@ -289,7 +289,7 @@ class DatabaseRBACProvider(RBACProvider):
         if len(pattern_parts) != 3 or len(perm_parts) != 3:
             return False
 
-        for i, (p, t) in enumerate(zip(pattern_parts, perm_parts)):
+        for i, (p, t) in enumerate(zip(pattern_parts, perm_parts, strict=False)):
             if p != "*" and p != t:
                 if i == 2 and p == "manage":
                     return True
@@ -310,7 +310,7 @@ class DatabaseRBACProvider(RBACProvider):
             )
         return None
 
-    async def list_permissions(self) -> List[Permission]:
+    async def list_permissions(self) -> list[Permission]:
         """List all available permissions."""
         return get_default_permissions()
 
@@ -335,7 +335,7 @@ class DatabaseRBACProvider(RBACProvider):
         logger.warning("[RBAC:DATABASE] get_profile - managed by unified-ui")
         return None
 
-    async def list_profiles(self) -> List[Profile]:
+    async def list_profiles(self) -> list[Profile]:
         logger.warning("[RBAC:DATABASE] list_profiles - managed by unified-ui")
         return []
 
@@ -344,7 +344,7 @@ class DatabaseRBACProvider(RBACProvider):
         name: str,
         display_name: str,
         description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
+        permissions: Optional[list[str]] = None,
     ) -> Optional[Profile]:
         logger.warning("[RBAC:DATABASE] create_profile - managed by unified-ui")
         return None
@@ -354,7 +354,7 @@ class DatabaseRBACProvider(RBACProvider):
         name: str,
         display_name: Optional[str] = None,
         description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
+        permissions: Optional[list[str]] = None,
     ) -> Optional[Profile]:
         logger.warning("[RBAC:DATABASE] update_profile - managed by unified-ui")
         return None
@@ -363,7 +363,7 @@ class DatabaseRBACProvider(RBACProvider):
         logger.warning("[RBAC:DATABASE] delete_profile - managed by unified-ui")
         return False
 
-    async def get_user_permission_sets(self, user_id: str) -> List[PermissionSet]:
+    async def get_user_permission_sets(self, user_id: str) -> list[PermissionSet]:
         return []
 
     async def assign_permission_set(
@@ -383,7 +383,7 @@ class DatabaseRBACProvider(RBACProvider):
     async def get_permission_set(self, name: str) -> Optional[PermissionSet]:
         return None
 
-    async def list_permission_sets(self) -> List[PermissionSet]:
+    async def list_permission_sets(self) -> list[PermissionSet]:
         return []
 
     async def create_permission_set(
@@ -391,7 +391,7 @@ class DatabaseRBACProvider(RBACProvider):
         name: str,
         display_name: str,
         description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
+        permissions: Optional[list[str]] = None,
     ) -> Optional[PermissionSet]:
         logger.warning("[RBAC:DATABASE] create_permission_set - managed by unified-ui")
         return None
@@ -401,7 +401,7 @@ class DatabaseRBACProvider(RBACProvider):
         name: str,
         display_name: Optional[str] = None,
         description: Optional[str] = None,
-        permissions: Optional[List[str]] = None,
+        permissions: Optional[list[str]] = None,
         is_active: Optional[bool] = None,
     ) -> Optional[PermissionSet]:
         logger.warning("[RBAC:DATABASE] update_permission_set - managed by unified-ui")
@@ -411,7 +411,7 @@ class DatabaseRBACProvider(RBACProvider):
         logger.warning("[RBAC:DATABASE] delete_permission_set - managed by unified-ui")
         return False
 
-    async def get_user_teams(self, user_id: str) -> List[Team]:
+    async def get_user_teams(self, user_id: str) -> list[Team]:
         """Get user's teams from context (populated by trusted headers)."""
         ctx = get_user_context()
         if ctx.get("user_id") == user_id:
@@ -427,14 +427,14 @@ class DatabaseRBACProvider(RBACProvider):
             ]
         return []
 
-    def get_user_team_ids(self, user_id: str) -> List[int]:
+    def get_user_team_ids(self, user_id: str) -> list[int]:
         """Get just team IDs for a user (sync helper)."""
         ctx = get_user_context()
         if ctx.get("user_id") == user_id:
             return ctx.get("team_ids", [])
         return []
 
-    def get_subordinate_ids(self, user_id: str) -> List[str]:
+    def get_subordinate_ids(self, user_id: str) -> list[str]:
         """Get subordinate IDs for a user (sync helper)."""
         ctx = get_user_context()
         if ctx.get("user_id") == user_id:
@@ -470,10 +470,10 @@ class DatabaseRBACProvider(RBACProvider):
     async def get_team_by_name(self, name: str) -> Optional[Team]:
         return None
 
-    async def list_teams(self) -> List[Team]:
+    async def list_teams(self) -> list[Team]:
         return []
 
-    async def get_team_members(self, team_id: int) -> List[TeamMember]:
+    async def get_team_members(self, team_id: int) -> list[TeamMember]:
         return []
 
     async def create_team(
@@ -524,7 +524,7 @@ class DatabaseRBACProvider(RBACProvider):
         self,
         object_type: str,
         record_id: str,
-    ) -> List[RecordShare]:
+    ) -> list[RecordShare]:
         return []
 
     async def check_record_access(
@@ -536,7 +536,7 @@ class DatabaseRBACProvider(RBACProvider):
     ) -> bool:
         return False
 
-    async def list_sharing_rules(self, object_type: Optional[str] = None) -> List[SharingRule]:
+    async def list_sharing_rules(self, object_type: Optional[str] = None) -> list[SharingRule]:
         return []
 
     async def create_sharing_rule(

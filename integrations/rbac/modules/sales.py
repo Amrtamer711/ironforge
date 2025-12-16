@@ -8,7 +8,6 @@ This module provides RBAC permissions for:
 - Templates
 """
 
-from typing import List
 
 from integrations.rbac.base import Permission
 from integrations.rbac.modules.registry import ModuleDefinition
@@ -33,7 +32,7 @@ class SalesModule(ModuleDefinition):
     def description(self) -> str:
         return "Sales proposal generation, booking orders, and mockup management"
 
-    def get_permissions(self) -> List[Permission]:
+    def get_permissions(self) -> list[Permission]:
         return [
             # Proposals
             Permission.from_name("sales:proposals:create", "Create new proposals"),

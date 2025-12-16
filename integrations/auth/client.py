@@ -5,15 +5,14 @@ Provides a single interface to interact with any auth provider.
 Follows the same pattern as integrations/llm/client.py (LLMClient).
 """
 
-import os
 import logging
-from typing import Any, Dict, List, Optional
+import os
+from typing import Any, Optional
 
 from integrations.auth.base import (
     AuthProvider,
-    AuthUser,
     AuthResult,
-    AuthStatus,
+    AuthUser,
     TokenPayload,
 )
 
@@ -223,7 +222,7 @@ class AuthClient:
         self,
         email: str,
         name: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> Optional[AuthUser]:
         """
         Create a new user.
@@ -244,7 +243,7 @@ class AuthClient:
         name: Optional[str] = None,
         avatar_url: Optional[str] = None,
         is_active: Optional[bool] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> Optional[AuthUser]:
         """
         Update user profile.
@@ -280,7 +279,7 @@ class AuthClient:
         limit: int = 100,
         offset: int = 0,
         is_active: Optional[bool] = None,
-    ) -> List[AuthUser]:
+    ) -> list[AuthUser]:
         """
         List users with pagination.
 

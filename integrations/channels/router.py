@@ -6,9 +6,9 @@ manages multiple channel adapters and provides a unified interface.
 """
 
 import logging
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
-from .base import ChannelAdapter, ChannelType
+from .base import ChannelAdapter
 
 if TYPE_CHECKING:
     pass
@@ -36,7 +36,7 @@ class ChannelRouter:
     """
 
     def __init__(self):
-        self._adapters: Dict[str, ChannelAdapter] = {}
+        self._adapters: dict[str, ChannelAdapter] = {}
         self._active_channel: Optional[str] = None
 
     def register(self, adapter: ChannelAdapter) -> None:
@@ -101,7 +101,7 @@ class ChannelRouter:
         """Get the active channel type."""
         return self._active_channel
 
-    def list_adapters(self) -> Dict[str, str]:
+    def list_adapters(self) -> dict[str, str]:
         """
         List all registered adapters.
 

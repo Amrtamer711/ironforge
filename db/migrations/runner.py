@@ -5,13 +5,13 @@ Handles discovery, execution, and tracking of database migrations.
 """
 
 import importlib.util
-import os
 import re
 import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Optional
 
 from utils.logging import get_logger
 
@@ -58,7 +58,7 @@ class MigrationRunner:
             db_path: Path to SQLite database
         """
         self.db_path = db_path
-        self._migrations: List[Migration] = []
+        self._migrations: list[Migration] = []
         self._ensure_migrations_table()
         self._discover_migrations()
 
@@ -150,7 +150,7 @@ class MigrationRunner:
 
         logger.info(f"[MIGRATIONS] Discovered {len(self._migrations)} migrations")
 
-    def get_applied_migrations(self) -> List[str]:
+    def get_applied_migrations(self) -> list[str]:
         """Get list of applied migration versions."""
         conn = self._connect()
         try:
@@ -161,12 +161,12 @@ class MigrationRunner:
         finally:
             conn.close()
 
-    def get_pending_migrations(self) -> List[Migration]:
+    def get_pending_migrations(self) -> list[Migration]:
         """Get list of pending (unapplied) migrations."""
         applied = set(self.get_applied_migrations())
         return [m for m in self._migrations if m.version not in applied]
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         """Get migration status."""
         applied = self.get_applied_migrations()
         pending = self.get_pending_migrations()
@@ -200,7 +200,7 @@ class MigrationRunner:
             ),
         }
 
-    def migrate(self, target_version: Optional[str] = None) -> Tuple[int, List[str]]:
+    def migrate(self, target_version: Optional[str] = None) -> tuple[int, list[str]]:
         """
         Run pending migrations.
 
@@ -264,7 +264,7 @@ class MigrationRunner:
 
         return len(applied), applied
 
-    def rollback(self, steps: int = 1) -> Tuple[int, List[str]]:
+    def rollback(self, steps: int = 1) -> tuple[int, list[str]]:
         """
         Rollback migrations.
 
@@ -343,19 +343,19 @@ def get_migration_runner() -> MigrationRunner:
     return _runner
 
 
-def run_migrations(target_version: Optional[str] = None) -> Tuple[int, List[str]]:
+def run_migrations(target_version: Optional[str] = None) -> tuple[int, list[str]]:
     """Run pending migrations (convenience function)."""
     runner = get_migration_runner()
     return runner.migrate(target_version)
 
 
-def rollback_migration(steps: int = 1) -> Tuple[int, List[str]]:
+def rollback_migration(steps: int = 1) -> tuple[int, list[str]]:
     """Rollback migrations (convenience function)."""
     runner = get_migration_runner()
     return runner.rollback(steps)
 
 
-def get_migration_status() -> Dict[str, Any]:
+def get_migration_status() -> dict[str, Any]:
     """Get migration status (convenience function)."""
     runner = get_migration_runner()
     return runner.get_status()

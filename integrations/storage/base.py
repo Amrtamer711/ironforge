@@ -7,10 +7,10 @@ Follows the same pattern as integrations/auth/base.py and integrations/llm/base.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, BinaryIO, Dict, List, Optional, Union
-from datetime import datetime
+from typing import Any, BinaryIO, Optional, Union
 
 
 class StorageType(str, Enum):
@@ -36,13 +36,13 @@ class StorageFile:
     content_type: str  # MIME type
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     # URLs
     url: Optional[str] = None  # Public URL if available
     signed_url: Optional[str] = None  # Presigned URL for temporary access
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "key": self.key,
@@ -79,7 +79,7 @@ class DownloadResult:
 class ListResult:
     """Result from list operations."""
     success: bool
-    files: List[StorageFile] = field(default_factory=list)
+    files: list[StorageFile] = field(default_factory=list)
     total: int = 0
     continuation_token: Optional[str] = None  # For pagination
     error: Optional[str] = None
@@ -116,7 +116,7 @@ class StorageProvider(ABC):
         key: str,
         data: Union[bytes, BinaryIO],
         content_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> UploadResult:
         """
         Upload a file to storage.
@@ -140,7 +140,7 @@ class StorageProvider(ABC):
         key: str,
         local_path: Union[str, Path],
         content_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> UploadResult:
         """
         Upload a file from local filesystem.
@@ -388,7 +388,7 @@ class StorageProvider(ABC):
         pass
 
     @abstractmethod
-    async def list_buckets(self) -> List[str]:
+    async def list_buckets(self) -> list[str]:
         """
         List all available buckets.
 

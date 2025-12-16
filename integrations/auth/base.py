@@ -8,7 +8,7 @@ Follows the same pattern as integrations/llm/base.py.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Optional
 
 
 class AuthStatus(str, Enum):
@@ -31,7 +31,7 @@ class AuthUser:
     name: Optional[str] = None
     avatar_url: Optional[str] = None
     is_active: bool = True
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     # Token info (if applicable)
     access_token: Optional[str] = None
@@ -43,7 +43,7 @@ class AuthUser:
     local_id: Optional[str] = None
 
     @property
-    def companies(self) -> List[str]:
+    def companies(self) -> list[str]:
         """
         Get list of company schema names user has access to.
 
@@ -68,7 +68,7 @@ class AuthUser:
         """
         return company_schema in self.companies
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {
             "id": self.id,
@@ -90,7 +90,7 @@ class TokenPayload:
     iat: Optional[int] = None  # Issued at timestamp
     aud: Optional[str] = None  # Audience
     role: Optional[str] = None  # Supabase role
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -182,7 +182,7 @@ class AuthProvider(ABC):
         self,
         email: str,
         name: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> Optional[AuthUser]:
         """
         Create a new user in the auth system.
@@ -207,7 +207,7 @@ class AuthProvider(ABC):
         name: Optional[str] = None,
         avatar_url: Optional[str] = None,
         is_active: Optional[bool] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> Optional[AuthUser]:
         """
         Update user profile.
@@ -243,7 +243,7 @@ class AuthProvider(ABC):
         limit: int = 100,
         offset: int = 0,
         is_active: Optional[bool] = None,
-    ) -> List[AuthUser]:
+    ) -> list[AuthUser]:
         """
         List users with pagination.
 

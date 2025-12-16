@@ -2,9 +2,9 @@
 Shared Pydantic models for RBAC endpoints.
 """
 
-from typing import List, Optional
-from pydantic import BaseModel
+from typing import Optional
 
+from pydantic import BaseModel
 
 # =============================================================================
 # PROFILE MODELS
@@ -14,13 +14,13 @@ class CreateProfileRequest(BaseModel):
     name: str
     display_name: str
     description: Optional[str] = None
-    permissions: Optional[List[str]] = None
+    permissions: Optional[list[str]] = None
 
 
 class UpdateProfileRequest(BaseModel):
     display_name: Optional[str] = None
     description: Optional[str] = None
-    permissions: Optional[List[str]] = None
+    permissions: Optional[list[str]] = None
 
 
 # =============================================================================
@@ -31,14 +31,14 @@ class CreatePermissionSetRequest(BaseModel):
     name: str
     display_name: str
     description: Optional[str] = None
-    permissions: Optional[List[str]] = None
+    permissions: Optional[list[str]] = None
 
 
 class UpdatePermissionSetRequest(BaseModel):
     display_name: Optional[str] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
-    permissions: Optional[List[str]] = None
+    permissions: Optional[list[str]] = None
 
 
 class AssignPermissionSetRequest(BaseModel):

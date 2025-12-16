@@ -9,14 +9,14 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app_settings import settings
-from db.database import db
 from api.auth import require_auth, require_permission
 from api.schemas import CallType, Workflow
+from app_settings import settings
+from db.database import db
 from integrations.auth import AuthUser
-from integrations.rbac import get_rbac_client, has_permission
-from utils.time import get_uae_time
+from integrations.rbac import has_permission
 from utils.logging import get_logger
+from utils.time import get_uae_time
 
 router = APIRouter(prefix="/costs", tags=["costs"])
 logger = get_logger("api.costs")

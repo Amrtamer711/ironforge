@@ -11,7 +11,7 @@ Environment configuration for unified-ui FastAPI backend.
 
 import logging
 from functools import lru_cache
-from typing import List, Optional
+from typing import Optional
 
 from pydantic_settings import BaseSettings
 
@@ -150,7 +150,7 @@ class Settings(BaseSettings):
         return self.UI_DEV_SUPABASE_ANON_KEY or self.SUPABASE_ANON_KEY
 
     @property
-    def allowed_origins(self) -> List[str]:
+    def allowed_origins(self) -> list[str]:
         """
         Get allowed CORS origins based on environment.
 
@@ -220,7 +220,7 @@ class Settings(BaseSettings):
         logger.info(f"[UI] Sales Bot URL: {self.SALES_BOT_URL}")
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()

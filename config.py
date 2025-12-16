@@ -10,10 +10,10 @@ This module handles:
 - User permissions
 """
 
-import os
 import json
+import os
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Optional
 
 from dotenv import load_dotenv
 from slack_sdk.signature import SignatureVerifier
@@ -25,7 +25,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).parent
 
 # Set up structured logging
-from utils.logging import setup_logging, get_logger
+from utils.logging import get_logger, setup_logging
 
 # Determine if we should use JSON format (production) or console format (development)
 _is_production = os.path.exists("/data/") or os.getenv("ENVIRONMENT") == "production"
@@ -87,8 +87,9 @@ def init_channels() -> None:
     if _channel_initialized:
         return
 
-    from integrations.channels import register_channel, SlackAdapter
     from slack_sdk.web.async_client import AsyncWebClient
+
+    from integrations.channels import SlackAdapter, register_channel
 
     # Initialize Slack adapter
     if SLACK_BOT_TOKEN:
@@ -182,16 +183,16 @@ COMPANY_SCHEMAS = ['backlite_dubai', 'backlite_uk', 'backlite_abudhabi', 'viola'
 # ============================================================================
 
 # Dynamic data populated from templates directory
-UPLOAD_FEES_MAPPING: Dict[str, int] = {}
-LOCATION_DETAILS: Dict[str, str] = {}
-LOCATION_METADATA: Dict[str, Dict[str, object]] = {}
+UPLOAD_FEES_MAPPING: dict[str, int] = {}
+LOCATION_DETAILS: dict[str, str] = {}
+LOCATION_METADATA: dict[str, dict[str, object]] = {}
 
 # Cache for templates
-_MAPPING_CACHE: Optional[Dict[str, str]] = None
-_DISPLAY_CACHE: Optional[List[str]] = None
+_MAPPING_CACHE: Optional[dict[str, str]] = None
+_DISPLAY_CACHE: Optional[list[str]] = None
 
 # HOS config
-_HOS_CONFIG: Dict[str, Dict[str, Dict[str, object]]] = {}
+_HOS_CONFIG: dict[str, dict[str, dict[str, object]]] = {}
 
 # ============================================================================
 # CURRENCY CONFIGURATION
@@ -203,11 +204,11 @@ else:
     CURRENCY_CONFIG_FILE = BASE_DIR / "render_main_data" / "currency_config.json"
 
 DEFAULT_CURRENCY: str = os.getenv("DEFAULT_CURRENCY", "AED").upper()
-CURRENCY_CONFIG: Dict[str, Any] = {}
+CURRENCY_CONFIG: dict[str, Any] = {}
 CURRENCY_PROMPT_CONTEXT: str = ""
 
 
-def _default_currency_config() -> Dict[str, Any]:
+def _default_currency_config() -> dict[str, Any]:
     """Static fallback currency configuration (base AED)."""
     return {
         "base_currency": "AED",
@@ -240,14 +241,14 @@ def _default_currency_config() -> Dict[str, Any]:
     }
 
 
-def _apply_currency_config(config_data: Dict[str, Any], source: str = "static") -> None:
+def _apply_currency_config(config_data: dict[str, Any], source: str = "static") -> None:
     """Normalize and cache currency config (supports dynamic overrides)."""
     global CURRENCY_CONFIG, CURRENCY_PROMPT_CONTEXT, DEFAULT_CURRENCY
 
     base_currency = str(config_data.get("base_currency", DEFAULT_CURRENCY or "AED")).upper()
     currencies_in = config_data.get("currencies", {}) or {}
 
-    normalized: Dict[str, Dict[str, Any]] = {}
+    normalized: dict[str, dict[str, Any]] = {}
     for code, meta in currencies_in.items():
         if not isinstance(meta, dict):
             continue
@@ -276,7 +277,7 @@ def _apply_currency_config(config_data: Dict[str, Any], source: str = "static") 
     }
 
     # Build prompt reference for LLM instructions
-    lines: List[str] = []
+    lines: list[str] = []
     lines.append("**CURRENCY REFERENCE**")
     lines.append(f"Base currency: {base_currency}. Amounts default to this unless explicitly changed.")
     lines.append("For conversions use the ratios below (AED per 1 unit). Keep numeric fields as pure numbers without symbols.")
@@ -315,7 +316,7 @@ def load_currency_config() -> None:
     _apply_currency_config(config_data)
 
 
-def update_currency_config(config_data: Dict[str, Any], source: str = "dynamic") -> None:
+def update_currency_config(config_data: dict[str, Any], source: str = "dynamic") -> None:
     """Allow runtime overrides (e.g., future API fetch)."""
     if not isinstance(config_data, dict):
         raise ValueError("Currency config must be a dict")
@@ -326,7 +327,7 @@ def update_currency_config(config_data: Dict[str, Any], source: str = "dynamic")
     _apply_currency_config(merged, source=source)
 
 
-def get_currency_metadata(currency: Optional[str]) -> Dict[str, Any]:
+def get_currency_metadata(currency: Optional[str]) -> dict[str, Any]:
     """Return metadata for currency (falls back to default)."""
     code = str(currency or DEFAULT_CURRENCY).upper()
     currencies = CURRENCY_CONFIG.get("currencies", {})
@@ -418,7 +419,7 @@ def can_manage_locations(user_id: str) -> bool:
 def is_admin(user_id: str) -> bool:
     """Check if user has admin privileges (user_id is platform-agnostic)."""
     if not _HOS_CONFIG:
-        logger.info(f"[ADMIN_CHECK] Loading HOS config")
+        logger.info("[ADMIN_CHECK] Loading HOS config")
         load_hos_config()
 
     # Admin users are those in the 'admin' group
@@ -449,8 +450,8 @@ def _normalize_key(name: str) -> str:
     return os.path.splitext(name)[0].strip().lower()
 
 
-def _parse_metadata_file(folder: Path) -> Dict[str, object]:
-    meta: Dict[str, object] = {}
+def _parse_metadata_file(folder: Path) -> dict[str, object]:
+    meta: dict[str, object] = {}
     path = folder / "metadata.txt"
     if not path.exists():
         return meta
@@ -522,10 +523,10 @@ def _parse_metadata_file(folder: Path) -> Dict[str, object]:
     }
 
 
-def _discover_templates() -> Tuple[Dict[str, str], List[str]]:
+def _discover_templates() -> tuple[dict[str, str], list[str]]:
     logger.info(f"[DISCOVER] Starting template discovery in '{TEMPLATES_DIR}'")
-    key_to_relpath: Dict[str, str] = {}
-    display_names: List[str] = []
+    key_to_relpath: dict[str, str] = {}
+    display_names: list[str] = []
 
     UPLOAD_FEES_MAPPING.clear()
     LOCATION_DETAILS.clear()
@@ -584,7 +585,7 @@ def refresh_templates() -> None:
     logger.info(f"[REFRESH] Location metadata: {LOCATION_METADATA}")
 
 
-def get_location_mapping() -> Dict[str, str]:
+def get_location_mapping() -> dict[str, str]:
     global _MAPPING_CACHE
     if _MAPPING_CACHE is None:
         logger.info("[GET_MAPPING] Cache is empty, refreshing templates")
@@ -594,7 +595,7 @@ def get_location_mapping() -> Dict[str, str]:
     return _MAPPING_CACHE or {}
 
 
-def available_location_names() -> List[str]:
+def available_location_names() -> list[str]:
     global _DISPLAY_CACHE
     if _DISPLAY_CACHE is None:
         refresh_templates()

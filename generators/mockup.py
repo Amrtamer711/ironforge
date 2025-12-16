@@ -1,17 +1,17 @@
+import logging
 import os
 import random
+from pathlib import Path
+from typing import Optional
+
 import cv2
 import numpy as np
-from pathlib import Path
-from typing import Optional, Tuple, List
-import logging
 
-import config
 from db.database import db
-from utils.memory import cleanup_memory
 
 # Import compositing from effects module
-from generators.effects import warp_creative_to_billboard, order_points
+from generators.effects import warp_creative_to_billboard
+from utils.memory import cleanup_memory
 
 logger = logging.getLogger("proposal-bot")
 
@@ -56,7 +56,7 @@ def save_location_photo(location_key: str, photo_filename: str, photo_data: byte
             # Verify we can read it back
             test_read = photo_path.read_bytes()
             if len(test_read) == len(photo_data):
-                logger.info(f"[MOCKUP] ✓ Photo verified readable")
+                logger.info("[MOCKUP] ✓ Photo verified readable")
             else:
                 logger.error(f"[MOCKUP] ✗ Photo size mismatch! Written: {len(photo_data)}, Read: {len(test_read)}")
         else:
@@ -65,6 +65,7 @@ def save_location_photo(location_key: str, photo_filename: str, photo_data: byte
         # Track in storage system (async operation with error handling)
         try:
             import asyncio
+
             from integrations.storage import store_mockup_file
 
             async def _track_photo():
@@ -95,7 +96,7 @@ def save_location_photo(location_key: str, photo_filename: str, photo_data: byte
                 task.add_done_callback(lambda t: t.exception() if not t.cancelled() and t.exception() else None)
             except RuntimeError:
                 # No running loop - skip DB tracking for sync context
-                logger.debug(f"[MOCKUP] No event loop - skipping storage tracking")
+                logger.debug("[MOCKUP] No event loop - skipping storage tracking")
         except Exception as track_err:
             logger.warning(f"[MOCKUP] Failed to setup storage tracking: {track_err}")
             # Don't fail the save if tracking fails
@@ -107,7 +108,7 @@ def save_location_photo(location_key: str, photo_filename: str, photo_data: byte
     return photo_path
 
 
-def list_location_photos(location_key: str, time_of_day: str = "day", finish: str = "gold") -> List[str]:
+def list_location_photos(location_key: str, time_of_day: str = "day", finish: str = "gold") -> list[str]:
     """List all photo files for a location with time_of_day and finish."""
     location_dir = get_location_photos_dir(location_key, time_of_day, finish)
     if not location_dir.exists():
@@ -125,8 +126,8 @@ def get_random_location_photo(
     location_key: str,
     time_of_day: str = "all",
     finish: str = "all",
-    company_schemas: Optional[List[str]] = None,
-) -> Optional[Tuple[str, str, str, Path]]:
+    company_schemas: Optional[list[str]] = None,
+) -> Optional[tuple[str, str, str, Path]]:
     """Get a random photo for a location that has a frame configured. Returns (photo_filename, time_of_day, finish, photo_path)."""
     from config import COMPANY_SCHEMAS
 
@@ -204,7 +205,7 @@ def get_random_location_photo(
 
 def is_portrait_location(
     location_key: str,
-    company_schemas: Optional[List[str]] = None,
+    company_schemas: Optional[list[str]] = None,
 ) -> bool:
     """Check if a location has portrait orientation based on actual frame dimensions from database.
 
@@ -299,6 +300,7 @@ async def generate_ai_creative(
         Path to generated image, or None if failed
     """
     import tempfile
+
     from integrations.llm import LLMClient
     from integrations.llm.prompts.mockup import get_mockup_prompt
 
@@ -342,6 +344,7 @@ async def generate_ai_creative(
 
         # Apply sharpening and quality enhancement to AI-generated image
         import io
+
         from PIL import Image
 
         # Load image from bytes
@@ -390,13 +393,13 @@ async def generate_ai_creative(
 
 def generate_mockup(
     location_key: str,
-    creative_images: List[Path],
+    creative_images: list[Path],
     output_path: Optional[Path] = None,
     specific_photo: Optional[str] = None,
     time_of_day: str = "day",
     finish: str = "gold",
     config_override: Optional[dict] = None,
-    company_schemas: Optional[List[str]] = None,
+    company_schemas: Optional[list[str]] = None,
 ) -> Optional[Path]:
     """
     Generate a mockup by warping creatives onto a location billboard.
@@ -580,6 +583,7 @@ def delete_location_photo(
         # Soft-delete from storage system if tracked
         try:
             import asyncio
+
             from integrations.storage import soft_delete_mockup_by_location
 
             async def _soft_delete():

@@ -21,7 +21,7 @@ Image generation: gpt-image-1 via images.generate()
 
 import base64
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 from openai import AsyncOpenAI
 
@@ -105,9 +105,9 @@ class OpenAIProvider(LLMProvider):
 
     async def complete(
         self,
-        messages: List[LLMMessage],
+        messages: list[LLMMessage],
         model: Optional[str] = None,
-        tools: Optional[List[ToolDefinition]] = None,
+        tools: Optional[list[ToolDefinition]] = None,
         tool_choice: Optional[str] = None,
         json_schema: Optional[JSONSchema] = None,
         reasoning: Optional[ReasoningEffort] = None,
@@ -148,7 +148,7 @@ class OpenAIProvider(LLMProvider):
                 input_messages.append({"role": msg.role, "content": msg.content})
 
         # Build request
-        kwargs: Dict[str, Any] = {
+        kwargs: dict[str, Any] = {
             "model": model,
             "input": input_messages,
             "store": store,
@@ -189,7 +189,7 @@ class OpenAIProvider(LLMProvider):
             kwargs["prompt_cache_retention"] = cache_retention
 
         # Debug: Log message order being sent to API
-        logger.info(f"[OPENAI] === API Request Message Order ===")
+        logger.info("[OPENAI] === API Request Message Order ===")
         if instructions:
             # Just show length - system prompt is too long to log
             logger.info(f"[OPENAI] instructions (system): [{len(instructions)} chars]")
@@ -202,7 +202,7 @@ class OpenAIProvider(LLMProvider):
             else:
                 preview = f"[complex content: {type(content).__name__}]"
             logger.info(f"[OPENAI] input[{i}] {role}: {preview}")
-        logger.info(f"[OPENAI] === End Message Order ===")
+        logger.info("[OPENAI] === End Message Order ===")
 
         response = await self._client.responses.create(**kwargs)
         return self._parse_text_response(response, model)
@@ -307,8 +307,8 @@ class OpenAIProvider(LLMProvider):
     # ========================================================================
 
     def _convert_tools(
-        self, tools: List[Union[ToolDefinition, RawTool]]
-    ) -> List[Dict[str, Any]]:
+        self, tools: list[Union[ToolDefinition, RawTool]]
+    ) -> list[dict[str, Any]]:
         """Convert tool definitions to OpenAI format."""
         result = []
         for tool in tools:

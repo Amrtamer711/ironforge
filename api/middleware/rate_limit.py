@@ -32,13 +32,13 @@ import os
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Tuple
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Optional
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import HTTPException, Request, status
 
 from utils.logging import get_logger
-from utils.time import get_uae_time
 
 logger = get_logger("api.middleware.rate_limit")
 
@@ -61,7 +61,7 @@ class RateLimitBackend(ABC):
         key: str,
         limit: int,
         window_seconds: int,
-    ) -> Tuple[bool, RateLimitInfo]:
+    ) -> tuple[bool, RateLimitInfo]:
         """
         Check if request is allowed under rate limit.
 
@@ -128,7 +128,7 @@ class RedisRateLimitBackend(RateLimitBackend):
         key: str,
         limit: int,
         window_seconds: int,
-    ) -> Tuple[bool, RateLimitInfo]:
+    ) -> tuple[bool, RateLimitInfo]:
         """
         Check rate limit using Redis sorted sets with sliding window.
 
@@ -245,7 +245,7 @@ class MemoryRateLimitBackend(RateLimitBackend):
 
     def __init__(self, cleanup_interval: int = 60):
         # key -> list of request timestamps
-        self._requests: Dict[str, List[float]] = defaultdict(list)
+        self._requests: dict[str, list[float]] = defaultdict(list)
         self._lock = asyncio.Lock()
         self._cleanup_interval = cleanup_interval
         self._last_cleanup = time.time()
@@ -275,7 +275,7 @@ class MemoryRateLimitBackend(RateLimitBackend):
         key: str,
         limit: int,
         window_seconds: int,
-    ) -> Tuple[bool, RateLimitInfo]:
+    ) -> tuple[bool, RateLimitInfo]:
         """Check rate limit using sliding window."""
         now = time.time()
         window_start = now - window_seconds

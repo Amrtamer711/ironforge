@@ -9,9 +9,8 @@ Supports both local file storage and Supabase Storage:
 """
 
 from pathlib import Path
-from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
@@ -46,8 +45,8 @@ class UploadResponse(BaseModel):
 
 class MultiUploadResponse(BaseModel):
     """Response from multiple file upload."""
-    files: List[UploadResponse]
-    errors: List[str] = []
+    files: list[UploadResponse]
+    errors: list[str] = []
 
 
 @router.post("/upload", response_model=UploadResponse)
@@ -130,7 +129,7 @@ async def upload_file(
 
 @router.post("/upload/multi", response_model=MultiUploadResponse)
 async def upload_multiple_files(
-    files: List[UploadFile] = File(...),
+    files: list[UploadFile] = File(...),
     user: AuthUser = Depends(require_auth),
 ):
     """

@@ -16,7 +16,7 @@ Returns None if credentials are not configured (mirrors Node.js null check).
 import logging
 from typing import Optional
 
-from supabase import create_client, Client
+from supabase import Client, create_client
 
 from backend.config import get_settings
 

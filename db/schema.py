@@ -19,8 +19,8 @@ to the appropriate SQL dialect when generating schema.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
 from enum import Enum
+from typing import Any, Optional
 
 
 class ColumnType(Enum):
@@ -49,7 +49,7 @@ class Column:
 class Index:
     """Index definition."""
     name: str
-    columns: List[str]
+    columns: list[str]
     unique: bool = False
 
 
@@ -57,16 +57,16 @@ class Index:
 class Table:
     """Table definition."""
     name: str
-    columns: List[Column]
-    indexes: List[Index] = field(default_factory=list)
-    unique_constraints: List[List[str]] = field(default_factory=list)  # Composite unique
+    columns: list[Column]
+    indexes: list[Index] = field(default_factory=list)
+    unique_constraints: list[list[str]] = field(default_factory=list)  # Composite unique
 
 
 # =============================================================================
 # CORE/AUTH TABLES - For UI Supabase (authentication, authorization, modules)
 # =============================================================================
 
-CORE_TABLES: Dict[str, Table] = {
+CORE_TABLES: dict[str, Table] = {
     # =========================================================================
     # LEVEL 1: PROFILES (Salesforce-style base permission templates)
     # =========================================================================
@@ -578,7 +578,7 @@ CORE_TABLES: Dict[str, Table] = {
 # SALES MODULE TABLES - For Sales Bot Supabase (business data)
 # =============================================================================
 
-SALES_TABLES: Dict[str, Table] = {
+SALES_TABLES: dict[str, Table] = {
     # -------------------------------------------------------------------------
     # PROPOSALS_LOG
     # -------------------------------------------------------------------------
@@ -790,7 +790,7 @@ SALES_TABLES: Dict[str, Table] = {
 # COMBINED TABLES (for backwards compatibility with existing code)
 # =============================================================================
 
-TABLES: Dict[str, Table] = {**CORE_TABLES, **SALES_TABLES}
+TABLES: dict[str, Table] = {**CORE_TABLES, **SALES_TABLES}
 
 
 # =============================================================================
@@ -806,7 +806,7 @@ class SQLGenerator:
     def generate_create_index(self, table_name: str, index: Index) -> str:
         raise NotImplementedError
 
-    def generate_schema(self, tables: Dict[str, Table]) -> str:
+    def generate_schema(self, tables: dict[str, Table]) -> str:
         """Generate schema SQL for given tables."""
         statements = []
         for table in tables.values():
@@ -981,17 +981,17 @@ def get_sales_postgres_schema() -> str:
     return PostgresGenerator().generate_sales_schema()
 
 
-def get_table_names() -> List[str]:
+def get_table_names() -> list[str]:
     """Get list of all table names."""
     return list(TABLES.keys())
 
 
-def get_core_table_names() -> List[str]:
+def get_core_table_names() -> list[str]:
     """Get list of core/auth table names."""
     return list(CORE_TABLES.keys())
 
 
-def get_sales_table_names() -> List[str]:
+def get_sales_table_names() -> list[str]:
     """Get list of sales table names."""
     return list(SALES_TABLES.keys())
 
@@ -1045,17 +1045,17 @@ if __name__ == "__main__":
         label = "All"
 
     if args.generate in ("sqlite", "both"):
-        output_lines.append(f"-- ===========================================")
+        output_lines.append("-- ===========================================")
         output_lines.append(f"-- SQLite Schema ({label} Tables)")
-        output_lines.append(f"-- ===========================================")
+        output_lines.append("-- ===========================================")
         output_lines.append("")
         output_lines.append(sqlite_fn())
         output_lines.append("")
 
     if args.generate in ("postgres", "both"):
-        output_lines.append(f"-- ===========================================")
+        output_lines.append("-- ===========================================")
         output_lines.append(f"-- PostgreSQL/Supabase Schema ({label} Tables)")
-        output_lines.append(f"-- ===========================================")
+        output_lines.append("-- ===========================================")
         output_lines.append("")
         output_lines.append(postgres_fn())
         output_lines.append("")

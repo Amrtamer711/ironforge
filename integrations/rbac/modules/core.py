@@ -5,7 +5,6 @@ These are platform-level permissions for user management, system administration,
 and other cross-cutting concerns.
 """
 
-from typing import List
 
 from integrations.rbac.base import Permission
 from integrations.rbac.modules.registry import ModuleDefinition
@@ -34,7 +33,7 @@ class CoreModule(ModuleDefinition):
     def description(self) -> str:
         return "Base platform permissions for user management and system administration"
 
-    def get_permissions(self) -> List[Permission]:
+    def get_permissions(self) -> list[Permission]:
         return [
             # User Management
             Permission.from_name("core:users:read", "View users"),

@@ -5,10 +5,9 @@ Uses the unified channel abstraction layer for file downloads.
 """
 
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Optional
+
 from pptx import Presentation
-from pptx.util import Inches
-from PIL import Image
 
 import config
 from utils.memory import cleanup_memory
@@ -57,13 +56,14 @@ async def _convert_pdf_to_pptx(pdf_path: Path) -> Optional[Path]:
     Returns:
         Path to converted PPTX file, or None if conversion failed
     """
-    import fitz  # PyMuPDF
-    from pptx import Presentation
-    from pptx.util import Inches
-    from PIL import Image
-    import tempfile
     import os
     import shutil
+    import tempfile
+
+    import fitz  # PyMuPDF
+    from PIL import Image
+    from pptx import Presentation
+    from pptx.util import Inches
 
     temp_dir = None
     image_paths = []
@@ -221,7 +221,7 @@ def _validate_powerpoint_file(file_path: Path) -> bool:
         return False
 
 
-async def download_file(file_info: Dict[str, Any]) -> Path:
+async def download_file(file_info: dict[str, Any]) -> Path:
     """
     Download a file from the messaging channel.
 

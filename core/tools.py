@@ -3,11 +3,12 @@ Tool definitions for the main LLM chat interface.
 Centralized tool definitions using the unified ToolDefinition format.
 """
 
-from typing import List, Union
-from integrations.llm import ToolDefinition, RawTool
+from typing import Union
+
+from integrations.llm import RawTool, ToolDefinition
 
 
-def get_base_tools() -> List[Union[ToolDefinition, RawTool]]:
+def get_base_tools() -> list[Union[ToolDefinition, RawTool]]:
     """Get base tools available to all users."""
     return [
         ToolDefinition(
@@ -232,6 +233,6 @@ def get_base_tools() -> List[Union[ToolDefinition, RawTool]]:
     ]
 
 
-def get_admin_tools() -> List[ToolDefinition]:
+def get_admin_tools() -> list[ToolDefinition]:
     """Get additional tools available only to admins."""
     return []

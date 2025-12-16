@@ -9,17 +9,17 @@ Access Control (Team-based):
 - Regular users see only their own proposals
 """
 
-from typing import Optional, List
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from db.database import db
-from api.auth import require_auth, require_profile
-from integrations.auth import AuthUser
-from integrations.rbac import get_rbac_client, has_permission
-from integrations.rbac.providers.database import get_accessible_user_ids, can_access_user_data
 import config
+from api.auth import require_auth
+from db.database import db
+from integrations.auth import AuthUser
+from integrations.rbac import has_permission
+from integrations.rbac.providers.database import can_access_user_data, get_accessible_user_ids
 
 logger = config.logger
 
@@ -55,11 +55,11 @@ class ProposalResponse(BaseModel):
 
 
 class ProposalDetailResponse(ProposalResponse):
-    proposal_locations: List[ProposalLocation] = []
+    proposal_locations: list[ProposalLocation] = []
 
 
 class ProposalListResponse(BaseModel):
-    proposals: List[ProposalResponse]
+    proposals: list[ProposalResponse]
     total: int
     limit: int
     offset: int
@@ -224,7 +224,7 @@ async def delete_proposal(
         raise HTTPException(status_code=500, detail="Failed to delete proposal")
 
 
-@router.get("/{proposal_id}/locations", response_model=List[ProposalLocation])
+@router.get("/{proposal_id}/locations", response_model=list[ProposalLocation])
 async def get_proposal_locations(
     proposal_id: int,
     user: AuthUser = Depends(require_auth),

@@ -2,17 +2,17 @@
 SQLite database backend implementation.
 """
 
-import sqlite3
 import json
-import os
 import logging
-from pathlib import Path
+import os
+import sqlite3
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from pathlib import Path
+from typing import Any, Optional, Union
 
 from db.base import DatabaseBackend
 from db.schema import get_sqlite_schema
-from utils.time import UAE_TZ, get_uae_time
+from utils.time import get_uae_time
 
 logger = logging.getLogger("proposal-bot")
 
@@ -251,7 +251,7 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
-    def get_proposals_summary(self) -> Dict[str, Any]:
+    def get_proposals_summary(self) -> dict[str, Any]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -286,8 +286,9 @@ class SQLiteBackend(DatabaseBackend):
             conn.close()
 
     def export_to_excel(self) -> str:
-        import pandas as pd
         import tempfile
+
+        import pandas as pd
 
         conn = self._connect()
         try:
@@ -319,9 +320,9 @@ class SQLiteBackend(DatabaseBackend):
         self,
         limit: int = 50,
         offset: int = 0,
-        user_ids: Optional[Union[str, List[str]]] = None,
+        user_ids: Optional[Union[str, list[str]]] = None,
         client_name: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get proposals with optional filtering. user_ids supports single ID or list for team access."""
         conn = self._connect()
         try:
@@ -346,11 +347,11 @@ class SQLiteBackend(DatabaseBackend):
             cursor = conn.execute(query, params)
             columns = [desc[0] for desc in cursor.description]
             rows = cursor.fetchall()
-            return [dict(zip(columns, row)) for row in rows]
+            return [dict(zip(columns, row, strict=False)) for row in rows]
         finally:
             conn.close()
 
-    def get_proposal_by_id(self, proposal_id: int) -> Optional[Dict[str, Any]]:
+    def get_proposal_by_id(self, proposal_id: int) -> Optional[dict[str, Any]]:
         """Get a single proposal by ID."""
         conn = self._connect()
         try:
@@ -361,12 +362,12 @@ class SQLiteBackend(DatabaseBackend):
             columns = [desc[0] for desc in cursor.description]
             row = cursor.fetchone()
             if row:
-                return dict(zip(columns, row))
+                return dict(zip(columns, row, strict=False))
             return None
         finally:
             conn.close()
 
-    def get_proposal_locations(self, proposal_id: int) -> List[Dict[str, Any]]:
+    def get_proposal_locations(self, proposal_id: int) -> list[dict[str, Any]]:
         """Get locations for a specific proposal (SQLite doesn't have this table yet)."""
         # SQLite schema doesn't have proposal_locations table
         # Return empty list for compatibility
@@ -411,7 +412,7 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
-    def save_booking_order(self, data: Dict[str, Any]) -> str:
+    def save_booking_order(self, data: dict[str, Any]) -> str:
         conn = self._connect()
         try:
             conn.execute("BEGIN")
@@ -470,7 +471,7 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
-    def get_booking_order(self, bo_ref: str) -> Optional[Dict[str, Any]]:
+    def get_booking_order(self, bo_ref: str) -> Optional[dict[str, Any]]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -480,7 +481,7 @@ class SQLiteBackend(DatabaseBackend):
                 return None
 
             columns = [desc[0] for desc in cursor.description]
-            record = dict(zip(columns, row))
+            record = dict(zip(columns, row, strict=False))
 
             if record.get("locations_json"):
                 record["locations"] = json.loads(record["locations_json"])
@@ -493,7 +494,7 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
-    def get_booking_order_by_number(self, bo_number: str) -> Optional[Dict[str, Any]]:
+    def get_booking_order_by_number(self, bo_number: str) -> Optional[dict[str, Any]]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -506,7 +507,7 @@ class SQLiteBackend(DatabaseBackend):
                 return None
 
             columns = [desc[0] for desc in cursor.description]
-            record = dict(zip(columns, row))
+            record = dict(zip(columns, row, strict=False))
 
             if record.get("locations_json"):
                 record["locations"] = json.loads(record["locations_json"])
@@ -520,8 +521,9 @@ class SQLiteBackend(DatabaseBackend):
             conn.close()
 
     def export_booking_orders_to_excel(self) -> str:
-        import pandas as pd
         import tempfile
+
+        import pandas as pd
 
         conn = self._connect()
         try:
@@ -560,8 +562,8 @@ class SQLiteBackend(DatabaseBackend):
 
     def get_locations_for_companies(
         self,
-        company_schemas: List[str],
-    ) -> List[Dict[str, Any]]:
+        company_schemas: list[str],
+    ) -> list[dict[str, Any]]:
         """SQLite doesn't support multi-company, return empty list."""
         # SQLite backend doesn't have company-based location tables
         # This is only used in Supabase multi-tenant setup
@@ -570,8 +572,8 @@ class SQLiteBackend(DatabaseBackend):
     def get_location_by_key(
         self,
         location_key: str,
-        company_schemas: List[str],
-    ) -> Optional[Dict[str, Any]]:
+        company_schemas: list[str],
+    ) -> Optional[dict[str, Any]]:
         """SQLite doesn't support multi-company location lookup."""
         # SQLite backend doesn't have company-based location tables
         # This is only used in Supabase multi-tenant setup
@@ -585,12 +587,12 @@ class SQLiteBackend(DatabaseBackend):
         self,
         location_key: str,
         photo_filename: str,
-        frames_data: List[Dict],
+        frames_data: list[dict],
         company_schema: str,  # Ignored in SQLite - single database
         created_by: Optional[str] = None,
         time_of_day: str = "day",
         finish: str = "gold",
-        config: Optional[Dict] = None,
+        config: Optional[dict] = None,
     ) -> str:
         conn = self._connect()
         try:
@@ -648,7 +650,7 @@ class SQLiteBackend(DatabaseBackend):
         company_schema: str,  # Ignored in SQLite - single database
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> Optional[List[Dict]]:
+    ) -> Optional[list[dict]]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -668,7 +670,7 @@ class SQLiteBackend(DatabaseBackend):
         company_schema: str,  # Ignored in SQLite - single database
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> Optional[Dict]:
+    ) -> Optional[dict]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -684,10 +686,10 @@ class SQLiteBackend(DatabaseBackend):
     def list_mockup_photos(
         self,
         location_key: str,
-        company_schemas: List[str],  # Ignored in SQLite - single database
+        company_schemas: list[str],  # Ignored in SQLite - single database
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> List[str]:
+    ) -> list[str]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -702,8 +704,8 @@ class SQLiteBackend(DatabaseBackend):
     def list_mockup_variations(
         self,
         location_key: str,
-        company_schemas: List[str],  # Ignored in SQLite - single database
-    ) -> Dict[str, List[str]]:
+        company_schemas: list[str],  # Ignored in SQLite - single database
+    ) -> dict[str, list[str]]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -782,8 +784,8 @@ class SQLiteBackend(DatabaseBackend):
 
     def get_mockup_usage_stats(
         self,
-        company_schemas: List[str],  # Ignored in SQLite - single database
-    ) -> Dict[str, Any]:
+        company_schemas: list[str],  # Ignored in SQLite - single database
+    ) -> dict[str, Any]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -847,10 +849,11 @@ class SQLiteBackend(DatabaseBackend):
 
     def export_mockup_usage_to_excel(
         self,
-        company_schemas: List[str],  # Ignored in SQLite - single database
+        company_schemas: list[str],  # Ignored in SQLite - single database
     ) -> str:
-        import pandas as pd
         import tempfile
+
+        import pandas as pd
 
         conn = self._connect()
         try:
@@ -928,7 +931,7 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
-    def get_all_active_bo_workflows(self) -> List[tuple]:
+    def get_all_active_bo_workflows(self) -> list[tuple]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -1011,7 +1014,7 @@ class SQLiteBackend(DatabaseBackend):
         call_type: Optional[str] = None,
         workflow: Optional[str] = None,
         user_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         conn = self._connect()
         try:
             where_parts = []
@@ -1207,7 +1210,7 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
-    def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+    def get_user_by_id(self, user_id: str) -> Optional[dict[str, Any]]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -1216,11 +1219,11 @@ class SQLiteBackend(DatabaseBackend):
             if not row:
                 return None
             columns = [desc[0] for desc in cursor.description]
-            return dict(zip(columns, row))
+            return dict(zip(columns, row, strict=False))
         finally:
             conn.close()
 
-    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+    def get_user_by_email(self, email: str) -> Optional[dict[str, Any]]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -1229,7 +1232,7 @@ class SQLiteBackend(DatabaseBackend):
             if not row:
                 return None
             columns = [desc[0] for desc in cursor.description]
-            return dict(zip(columns, row))
+            return dict(zip(columns, row, strict=False))
         finally:
             conn.close()
 
@@ -1237,14 +1240,14 @@ class SQLiteBackend(DatabaseBackend):
     # RBAC: PERMISSIONS
     # =========================================================================
 
-    def list_permissions(self) -> List[Dict[str, Any]]:
+    def list_permissions(self) -> list[dict[str, Any]]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM permissions ORDER BY name")
             rows = cursor.fetchall()
             columns = [desc[0] for desc in cursor.description]
-            return [dict(zip(columns, row)) for row in rows]
+            return [dict(zip(columns, row, strict=False)) for row in rows]
         finally:
             conn.close()
 
@@ -1295,12 +1298,12 @@ class SQLiteBackend(DatabaseBackend):
         key_hash: str,
         key_prefix: str,
         name: str,
-        scopes: List[Dict],
+        scopes: list[dict],
         description: Optional[str] = None,
         rate_limit: Optional[int] = None,
         expires_at: Optional[str] = None,
         created_by: Optional[str] = None,
-        metadata: Optional[Dict] = None,
+        metadata: Optional[dict] = None,
     ) -> Optional[int]:
         created_at = datetime.now().isoformat()
         scopes_json = json.dumps(scopes)
@@ -1334,7 +1337,7 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
-    def get_api_key_by_hash(self, key_hash: str) -> Optional[Dict[str, Any]]:
+    def get_api_key_by_hash(self, key_hash: str) -> Optional[dict[str, Any]]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -1346,7 +1349,7 @@ class SQLiteBackend(DatabaseBackend):
             if not row:
                 return None
             columns = [desc[0] for desc in cursor.description]
-            record = dict(zip(columns, row))
+            record = dict(zip(columns, row, strict=False))
             # Parse JSON fields
             if record.get("scopes_json"):
                 record["scopes"] = json.loads(record["scopes_json"])
@@ -1356,7 +1359,7 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
-    def get_api_key_by_id(self, key_id: int) -> Optional[Dict[str, Any]]:
+    def get_api_key_by_id(self, key_id: int) -> Optional[dict[str, Any]]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -1365,7 +1368,7 @@ class SQLiteBackend(DatabaseBackend):
             if not row:
                 return None
             columns = [desc[0] for desc in cursor.description]
-            record = dict(zip(columns, row))
+            record = dict(zip(columns, row, strict=False))
             if record.get("scopes_json"):
                 record["scopes"] = json.loads(record["scopes_json"])
             if record.get("metadata_json"):
@@ -1378,7 +1381,7 @@ class SQLiteBackend(DatabaseBackend):
         self,
         created_by: Optional[str] = None,
         include_inactive: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -1402,7 +1405,7 @@ class SQLiteBackend(DatabaseBackend):
 
             results = []
             for row in rows:
-                record = dict(zip(columns, row))
+                record = dict(zip(columns, row, strict=False))
                 if record.get("scopes_json"):
                     record["scopes"] = json.loads(record["scopes_json"])
                 if record.get("metadata_json"):
@@ -1417,7 +1420,7 @@ class SQLiteBackend(DatabaseBackend):
         key_id: int,
         name: Optional[str] = None,
         description: Optional[str] = None,
-        scopes: Optional[List[str]] = None,
+        scopes: Optional[list[str]] = None,
         rate_limit: Optional[int] = None,
         is_active: Optional[bool] = None,
         expires_at: Optional[str] = None,
@@ -1576,7 +1579,7 @@ class SQLiteBackend(DatabaseBackend):
         api_key_id: Optional[int] = None,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         conn = self._connect()
         try:
             where_parts = []
@@ -1717,7 +1720,7 @@ class SQLiteBackend(DatabaseBackend):
         end_date: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Query audit log entries with optional filters."""
         conn = self._connect()
         try:
@@ -1769,7 +1772,7 @@ class SQLiteBackend(DatabaseBackend):
 
             results = []
             for row in rows:
-                record = dict(zip(columns, row))
+                record = dict(zip(columns, row, strict=False))
                 # Parse JSON details
                 if record.get("details_json"):
                     try:
@@ -1794,7 +1797,7 @@ class SQLiteBackend(DatabaseBackend):
     def save_chat_session(
         self,
         user_id: str,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         session_id: Optional[str] = None,
     ) -> bool:
         """Save or update a user's chat session."""
@@ -1828,7 +1831,7 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
-    def get_chat_session(self, user_id: str) -> Optional[Dict[str, Any]]:
+    def get_chat_session(self, user_id: str) -> Optional[dict[str, Any]]:
         """Get a user's chat session."""
         conn = self._connect()
         try:
@@ -1920,7 +1923,7 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
-    def get_document(self, file_id: str) -> Optional[Dict[str, Any]]:
+    def get_document(self, file_id: str) -> Optional[dict[str, Any]]:
         """Get a document by file_id."""
         conn = self._connect()
         try:
@@ -1963,7 +1966,7 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
-    def get_document_by_hash(self, file_hash: str) -> Optional[Dict[str, Any]]:
+    def get_document_by_hash(self, file_hash: str) -> Optional[dict[str, Any]]:
         """Get a document by file hash (for deduplication)."""
         conn = self._connect()
         try:
@@ -2055,7 +2058,7 @@ class SQLiteBackend(DatabaseBackend):
         include_deleted: bool = False,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """List documents with optional filters."""
         conn = self._connect()
         try:
@@ -2128,7 +2131,7 @@ class SQLiteBackend(DatabaseBackend):
         self,
         older_than_days: int = 30,
         limit: int = 100,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Get soft-deleted documents older than specified days."""
         conn = self._connect()
         try:

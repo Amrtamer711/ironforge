@@ -22,12 +22,12 @@ Usage:
 """
 
 from db.migrations.runner import (
-    MigrationRunner,
     Migration,
+    MigrationRunner,
     get_migration_runner,
-    run_migrations,
-    rollback_migration,
     get_migration_status,
+    rollback_migration,
+    run_migrations,
 )
 
 __all__ = [

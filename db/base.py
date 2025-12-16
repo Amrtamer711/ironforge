@@ -5,7 +5,7 @@ Each backend implements their own storage-specific syntax.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 
 @dataclass
@@ -48,11 +48,11 @@ class BookingOrder:
     sales_person: Optional[str] = None
     commission_pct: Optional[float] = None
     notes: Optional[str] = None
-    locations: Optional[List[Dict]] = None
+    locations: Optional[list[dict]] = None
     extraction_method: Optional[str] = None
     extraction_confidence: Optional[str] = None
-    warnings: Optional[List[str]] = None
-    missing_required: Optional[List[str]] = None
+    warnings: Optional[list[str]] = None
+    missing_required: Optional[list[str]] = None
     vat_calc: Optional[float] = None
     gross_calc: Optional[float] = None
     sla_deduction: Optional[float] = None
@@ -68,12 +68,12 @@ class MockupFrame:
     """Mockup frame data."""
     location_key: str
     photo_filename: str
-    frames_data: List[Dict]
+    frames_data: list[dict]
     time_of_day: str = "day"
     finish: str = "gold"
     created_at: Optional[str] = None
     created_by: Optional[str] = None
-    config: Optional[Dict] = None
+    config: Optional[dict] = None
     id: Optional[int] = None
 
 
@@ -139,9 +139,9 @@ class DatabaseBackend(ABC):
         self,
         limit: int = 50,
         offset: int = 0,
-        user_ids: Optional[Union[str, List[str]]] = None,
+        user_ids: Optional[Union[str, list[str]]] = None,
         client_name: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Get proposals with optional filtering.
 
@@ -157,12 +157,12 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_proposal_by_id(self, proposal_id: int) -> Optional[Dict[str, Any]]:
+    def get_proposal_by_id(self, proposal_id: int) -> Optional[dict[str, Any]]:
         """Get a single proposal by ID."""
         pass
 
     @abstractmethod
-    def get_proposal_locations(self, proposal_id: int) -> List[Dict[str, Any]]:
+    def get_proposal_locations(self, proposal_id: int) -> list[dict[str, Any]]:
         """Get locations for a proposal."""
         pass
 
@@ -172,7 +172,7 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_proposals_summary(self) -> Dict[str, Any]:
+    def get_proposals_summary(self) -> dict[str, Any]:
         """Get summary statistics for proposals."""
         pass
 
@@ -191,17 +191,17 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def save_booking_order(self, data: Dict[str, Any]) -> str:
+    def save_booking_order(self, data: dict[str, Any]) -> str:
         """Save a booking order. Returns bo_ref."""
         pass
 
     @abstractmethod
-    def get_booking_order(self, bo_ref: str) -> Optional[Dict[str, Any]]:
+    def get_booking_order(self, bo_ref: str) -> Optional[dict[str, Any]]:
         """Get a booking order by backend reference."""
         pass
 
     @abstractmethod
-    def get_booking_order_by_number(self, bo_number: str) -> Optional[Dict[str, Any]]:
+    def get_booking_order_by_number(self, bo_number: str) -> Optional[dict[str, Any]]:
         """Get a booking order by user-facing BO number."""
         pass
 
@@ -217,8 +217,8 @@ class DatabaseBackend(ABC):
     @abstractmethod
     def get_locations_for_companies(
         self,
-        company_schemas: List[str],
-    ) -> List[Dict[str, Any]]:
+        company_schemas: list[str],
+    ) -> list[dict[str, Any]]:
         """
         Get all locations accessible to user from their company schemas.
 
@@ -234,8 +234,8 @@ class DatabaseBackend(ABC):
     def get_location_by_key(
         self,
         location_key: str,
-        company_schemas: List[str],
-    ) -> Optional[Dict[str, Any]]:
+        company_schemas: list[str],
+    ) -> Optional[dict[str, Any]]:
         """
         Get a specific location by key from the user's accessible company schemas.
 
@@ -257,12 +257,12 @@ class DatabaseBackend(ABC):
         self,
         location_key: str,
         photo_filename: str,
-        frames_data: List[Dict],
+        frames_data: list[dict],
         company_schema: str,
         created_by: Optional[str] = None,
         time_of_day: str = "day",
         finish: str = "gold",
-        config: Optional[Dict] = None,
+        config: Optional[dict] = None,
     ) -> str:
         """Save mockup frame data to company-specific schema. Returns the final filename."""
         pass
@@ -275,7 +275,7 @@ class DatabaseBackend(ABC):
         company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> Optional[List[Dict]]:
+    ) -> Optional[list[dict]]:
         """Get frame coordinates for a mockup photo from company-specific schema."""
         pass
 
@@ -287,7 +287,7 @@ class DatabaseBackend(ABC):
         company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> Optional[Dict]:
+    ) -> Optional[dict]:
         """Get config for a mockup photo from company-specific schema."""
         pass
 
@@ -295,10 +295,10 @@ class DatabaseBackend(ABC):
     def list_mockup_photos(
         self,
         location_key: str,
-        company_schemas: List[str],
+        company_schemas: list[str],
         time_of_day: str = "day",
         finish: str = "gold",
-    ) -> List[str]:
+    ) -> list[str]:
         """List all photos with frames for a location from user's accessible company schemas."""
         pass
 
@@ -306,8 +306,8 @@ class DatabaseBackend(ABC):
     def list_mockup_variations(
         self,
         location_key: str,
-        company_schemas: List[str],
-    ) -> Dict[str, List[str]]:
+        company_schemas: list[str],
+    ) -> dict[str, list[str]]:
         """List all time_of_day/finish combinations for a location from user's accessible company schemas."""
         pass
 
@@ -347,15 +347,15 @@ class DatabaseBackend(ABC):
     @abstractmethod
     def get_mockup_usage_stats(
         self,
-        company_schemas: List[str],
-    ) -> Dict[str, Any]:
+        company_schemas: list[str],
+    ) -> dict[str, Any]:
         """Get mockup usage statistics from user's accessible company schemas."""
         pass
 
     @abstractmethod
     def export_mockup_usage_to_excel(
         self,
-        company_schemas: List[str],
+        company_schemas: list[str],
     ) -> str:
         """Export mockup usage from user's accessible company schemas to Excel. Returns file path."""
         pass
@@ -380,7 +380,7 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_all_active_bo_workflows(self) -> List[tuple]:
+    def get_all_active_bo_workflows(self) -> list[tuple]:
         """Get all active BO workflows. Returns list of (workflow_id, workflow_data)."""
         pass
 
@@ -423,7 +423,7 @@ class DatabaseBackend(ABC):
         call_type: Optional[str] = None,
         workflow: Optional[str] = None,
         user_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get AI costs summary with optional filters."""
         pass
 
@@ -463,12 +463,12 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+    def get_user_by_id(self, user_id: str) -> Optional[dict[str, Any]]:
         """Get a user by ID."""
         pass
 
     @abstractmethod
-    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+    def get_user_by_email(self, email: str) -> Optional[dict[str, Any]]:
         """Get a user by email."""
         pass
 
@@ -477,7 +477,7 @@ class DatabaseBackend(ABC):
     # =========================================================================
 
     @abstractmethod
-    def list_permissions(self) -> List[Dict[str, Any]]:
+    def list_permissions(self) -> list[dict[str, Any]]:
         """List all permissions."""
         pass
 
@@ -508,12 +508,12 @@ class DatabaseBackend(ABC):
         key_hash: str,
         key_prefix: str,
         name: str,
-        scopes: List[str],
+        scopes: list[str],
         description: Optional[str] = None,
         rate_limit: Optional[int] = None,
         expires_at: Optional[str] = None,
         created_by: Optional[str] = None,
-        metadata: Optional[Dict] = None,
+        metadata: Optional[dict] = None,
     ) -> Optional[int]:
         """
         Create a new API key.
@@ -535,12 +535,12 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_api_key_by_hash(self, key_hash: str) -> Optional[Dict[str, Any]]:
+    def get_api_key_by_hash(self, key_hash: str) -> Optional[dict[str, Any]]:
         """Get API key info by hash."""
         pass
 
     @abstractmethod
-    def get_api_key_by_id(self, key_id: int) -> Optional[Dict[str, Any]]:
+    def get_api_key_by_id(self, key_id: int) -> Optional[dict[str, Any]]:
         """Get API key info by ID."""
         pass
 
@@ -549,7 +549,7 @@ class DatabaseBackend(ABC):
         self,
         created_by: Optional[str] = None,
         include_inactive: bool = False,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """List all API keys, optionally filtered."""
         pass
 
@@ -559,7 +559,7 @@ class DatabaseBackend(ABC):
         key_id: int,
         name: Optional[str] = None,
         description: Optional[str] = None,
-        scopes: Optional[List[str]] = None,
+        scopes: Optional[list[str]] = None,
         rate_limit: Optional[int] = None,
         is_active: Optional[bool] = None,
         expires_at: Optional[str] = None,
@@ -620,7 +620,7 @@ class DatabaseBackend(ABC):
         api_key_id: Optional[int] = None,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get API key usage statistics."""
         pass
 
@@ -666,7 +666,7 @@ class DatabaseBackend(ABC):
         end_date: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Query audit log entries.
 
@@ -693,7 +693,7 @@ class DatabaseBackend(ABC):
     def save_chat_session(
         self,
         user_id: str,
-        messages: List[Dict[str, Any]],
+        messages: list[dict[str, Any]],
         session_id: Optional[str] = None,
     ) -> bool:
         """
@@ -710,7 +710,7 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_chat_session(self, user_id: str) -> Optional[Dict[str, Any]]:
+    def get_chat_session(self, user_id: str) -> Optional[dict[str, Any]]:
         """
         Get a user's chat session.
 
@@ -755,7 +755,7 @@ class DatabaseBackend(ABC):
         document_type: Optional[str] = None,
         bo_id: Optional[int] = None,
         proposal_id: Optional[int] = None,
-        metadata_json: Optional[Dict[str, Any]] = None,
+        metadata_json: Optional[dict[str, Any]] = None,
     ) -> Optional[int]:
         """
         Create a new document record.
@@ -782,7 +782,7 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_document(self, file_id: str) -> Optional[Dict[str, Any]]:
+    def get_document(self, file_id: str) -> Optional[dict[str, Any]]:
         """
         Get a document by file_id.
 
@@ -795,7 +795,7 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_document_by_hash(self, file_hash: str) -> Optional[Dict[str, Any]]:
+    def get_document_by_hash(self, file_hash: str) -> Optional[dict[str, Any]]:
         """
         Get a document by file hash (for deduplication).
 
@@ -830,7 +830,7 @@ class DatabaseBackend(ABC):
         include_deleted: bool = False,
         limit: int = 100,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         List documents with optional filters.
 
@@ -853,7 +853,7 @@ class DatabaseBackend(ABC):
         self,
         older_than_days: int = 30,
         limit: int = 100,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Get soft-deleted documents older than specified days.
 

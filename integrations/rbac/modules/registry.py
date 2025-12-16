@@ -7,14 +7,14 @@ Provides a central registry for modules to register their permissions.
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Optional
 
 from integrations.rbac.base import Permission
 
 logger = logging.getLogger("proposal-bot")
 
 # Global module registry
-_registered_modules: Dict[str, "ModuleDefinition"] = {}
+_registered_modules: dict[str, "ModuleDefinition"] = {}
 
 
 @dataclass
@@ -44,7 +44,7 @@ class ModuleDefinition(ABC):
         return ""
 
     @abstractmethod
-    def get_permissions(self) -> List[Permission]:
+    def get_permissions(self) -> list[Permission]:
         """
         Return all permissions for this module.
 
@@ -93,7 +93,7 @@ def get_module(module_name: str) -> Optional[ModuleDefinition]:
     return _registered_modules.get(module_name)
 
 
-def get_all_modules() -> Dict[str, ModuleDefinition]:
+def get_all_modules() -> dict[str, ModuleDefinition]:
     """Get all registered modules."""
     return dict(_registered_modules)
 
@@ -103,7 +103,7 @@ def is_module_registered(module_name: str) -> bool:
     return module_name in _registered_modules
 
 
-def get_all_permissions() -> List[Permission]:
+def get_all_permissions() -> list[Permission]:
     """
     Get all permissions from all registered modules.
 
@@ -116,7 +116,7 @@ def get_all_permissions() -> List[Permission]:
     return permissions
 
 
-def get_permissions_for_module(module_name: str) -> List[Permission]:
+def get_permissions_for_module(module_name: str) -> list[Permission]:
     """
     Get permissions for a specific module.
 
@@ -132,7 +132,7 @@ def get_permissions_for_module(module_name: str) -> List[Permission]:
     return []
 
 
-def get_permissions_grouped_by_module() -> Dict[str, List[Permission]]:
+def get_permissions_grouped_by_module() -> dict[str, list[Permission]]:
     """
     Get all permissions grouped by module.
 

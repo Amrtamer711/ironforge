@@ -9,15 +9,16 @@ This module provides the main compositing pipeline that:
 5. Composites the final result
 """
 
+import logging
+from typing import Optional
+
 import cv2
 import numpy as np
-import logging
-from typing import Optional, Tuple, List
 
+from generators.effects.color import ColorAdjustment, ImageBlur, OverlayBlending, Sharpening
 from generators.effects.config import EffectConfig
+from generators.effects.depth import DepthEffect, ShadowEffect, VignetteEffect
 from generators.effects.edge import EdgeCompositor
-from generators.effects.depth import DepthEffect, VignetteEffect, ShadowEffect
-from generators.effects.color import ColorAdjustment, ImageBlur, Sharpening, OverlayBlending
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +161,7 @@ class BillboardCompositor:
     def warp_creative(
         self,
         creative: np.ndarray,
-        billboard_shape: Tuple[int, int, int],
+        billboard_shape: tuple[int, int, int],
         dst_pts: np.ndarray,
     ) -> np.ndarray:
         """
@@ -198,7 +199,7 @@ class BillboardCompositor:
         self,
         billboard_image: np.ndarray,
         creative_image: np.ndarray,
-        frame_points: List[List[float]],
+        frame_points: list[list[float]],
     ) -> np.ndarray:
         """
         Full compositing pipeline.
@@ -246,7 +247,7 @@ class BillboardCompositor:
         if contact_shadow is not None:
             shadow_3ch = np.stack([contact_shadow] * 3, axis=-1)
             warped_float = warped_float * (1 - shadow_3ch)
-            logger.debug(f"[COMPOSITOR] Applied contact shadow")
+            logger.debug("[COMPOSITOR] Applied contact shadow")
 
         # Step 9: Prepare billboard (prevent background bleed)
         billboard_prepared = self.edge_compositor.prevent_background_bleed(
@@ -275,7 +276,7 @@ class BillboardCompositor:
 def warp_creative_to_billboard(
     billboard_image: np.ndarray,
     creative_image: np.ndarray,
-    frame_points: List[List[float]],
+    frame_points: list[list[float]],
     config: Optional[dict] = None,
     time_of_day: str = "day"
 ) -> np.ndarray:

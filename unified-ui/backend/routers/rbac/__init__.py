@@ -13,10 +13,10 @@ RBAC router package for unified-ui.
 
 from fastapi import APIRouter
 
-from backend.routers.rbac.profiles import router as profiles_router
 from backend.routers.rbac.permission_sets import router as permission_sets_router
-from backend.routers.rbac.teams import router as teams_router
+from backend.routers.rbac.profiles import router as profiles_router
 from backend.routers.rbac.sharing import router as sharing_router
+from backend.routers.rbac.teams import router as teams_router
 from backend.routers.rbac.users import router as users_router
 
 # Main RBAC router that combines all sub-routers

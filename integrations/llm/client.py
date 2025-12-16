@@ -6,7 +6,7 @@ Handles cost tracking automatically.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from integrations.llm.base import (
     ContentPart,
@@ -23,8 +23,8 @@ from integrations.llm.base import (
     ToolCall,
     ToolDefinition,
 )
-from integrations.llm.providers.openai import OpenAIProvider
 from integrations.llm.providers.google import GoogleProvider
+from integrations.llm.providers.openai import OpenAIProvider
 
 logger = logging.getLogger("proposal-bot")
 
@@ -138,9 +138,9 @@ class LLMClient:
 
     async def complete(
         self,
-        messages: List[LLMMessage],
+        messages: list[LLMMessage],
         model: Optional[str] = None,
-        tools: Optional[List[ToolDefinition]] = None,
+        tools: Optional[list[ToolDefinition]] = None,
         tool_choice: Optional[str] = None,
         json_schema: Optional[JSONSchema] = None,
         reasoning: Optional[ReasoningEffort] = None,
@@ -156,7 +156,7 @@ class LLMClient:
         user_id: Optional[str] = None,
         workflow: Optional[str] = None,
         context: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> LLMResponse:
         """
         Generate a completion from the LLM.
@@ -221,7 +221,7 @@ class LLMClient:
         user_id: Optional[str] = None,
         workflow: Optional[str] = None,
         context: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> ImageResponse:
         """
         Generate an image from a text prompt.
@@ -300,7 +300,7 @@ class LLMClient:
         user_id: Optional[str],
         workflow: Optional[str],
         context: Optional[str],
-        metadata: Optional[Dict[str, Any]],
+        metadata: Optional[dict[str, Any]],
     ) -> None:
         """Track cost for a completion call."""
         try:
@@ -326,7 +326,7 @@ class LLMClient:
         user_id: Optional[str],
         workflow: Optional[str],
         context: Optional[str],
-        metadata: Optional[Dict[str, Any]],
+        metadata: Optional[dict[str, Any]],
     ) -> None:
         """Track cost for an image generation call."""
         try:

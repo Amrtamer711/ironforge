@@ -15,23 +15,23 @@ Trusted Headers (set by unified-ui proxy):
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from integrations.auth.base import (
     AuthProvider,
-    AuthUser,
     AuthResult,
     AuthStatus,
+    AuthUser,
     TokenPayload,
 )
 
 logger = logging.getLogger("proposal-bot")
 
 # Thread-local storage for current request headers
-_current_request_headers: Dict[str, str] = {}
+_current_request_headers: dict[str, str] = {}
 
 
-def set_request_headers(headers: Dict[str, str]) -> None:
+def set_request_headers(headers: dict[str, str]) -> None:
     """
     Set the current request headers for the auth provider.
 
@@ -167,7 +167,7 @@ class SupabaseAuthProvider(AuthProvider):
         self,
         email: str,
         name: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> Optional[AuthUser]:
         """
         Create user.
@@ -183,7 +183,7 @@ class SupabaseAuthProvider(AuthProvider):
         name: Optional[str] = None,
         avatar_url: Optional[str] = None,
         is_active: Optional[bool] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> Optional[AuthUser]:
         """
         Update user.
@@ -207,7 +207,7 @@ class SupabaseAuthProvider(AuthProvider):
         limit: int = 100,
         offset: int = 0,
         is_active: Optional[bool] = None,
-    ) -> List[AuthUser]:
+    ) -> list[AuthUser]:
         """
         List users.
 

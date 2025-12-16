@@ -8,14 +8,14 @@ Recommended for production deployments already using Supabase.
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, BinaryIO, Dict, List, Optional, Union
+from typing import Any, BinaryIO, Optional, Union
 
 from integrations.storage.base import (
-    StorageProvider,
-    StorageFile,
-    UploadResult,
     DownloadResult,
     ListResult,
+    StorageFile,
+    StorageProvider,
+    UploadResult,
 )
 
 logger = logging.getLogger("proposal-bot")
@@ -111,7 +111,7 @@ class SupabaseStorageProvider(StorageProvider):
         self,
         bucket: str,
         key: str,
-        data: Optional[Dict[str, Any]] = None,
+        data: Optional[dict[str, Any]] = None,
     ) -> StorageFile:
         """Create StorageFile from Supabase response."""
         name = Path(key).name
@@ -159,7 +159,7 @@ class SupabaseStorageProvider(StorageProvider):
         key: str,
         data: Union[bytes, BinaryIO],
         content_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> UploadResult:
         """Upload data to Supabase Storage."""
         try:
@@ -202,7 +202,7 @@ class SupabaseStorageProvider(StorageProvider):
         key: str,
         local_path: Union[str, Path],
         content_type: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> UploadResult:
         """Upload file from local path to Supabase Storage."""
         try:
@@ -526,7 +526,7 @@ class SupabaseStorageProvider(StorageProvider):
             logger.error(f"[STORAGE:SUPABASE] Ensure bucket failed {bucket}: {e}")
             return False
 
-    async def list_buckets(self) -> List[str]:
+    async def list_buckets(self) -> list[str]:
         """List all buckets in Supabase Storage."""
         try:
             client = self._get_client()

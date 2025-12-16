@@ -7,22 +7,22 @@ Provides:
 - /metrics: Detailed performance and resource metrics
 """
 
-import os
 import asyncio
-from typing import Dict, Any
+import os
+from typing import Any
 
 from fastapi import APIRouter, Depends
 
 from api.auth import require_auth
 from integrations.auth import AuthUser
-from utils.time import get_uae_time
 from utils.logging import get_logger
+from utils.time import get_uae_time
 
 router = APIRouter(tags=["health"])
 logger = get_logger("api.health")
 
 
-async def check_database() -> Dict[str, Any]:
+async def check_database() -> dict[str, Any]:
     """Check database connectivity."""
     try:
         from db.database import db
@@ -46,7 +46,7 @@ async def check_database() -> Dict[str, Any]:
         }
 
 
-async def check_slack() -> Dict[str, Any]:
+async def check_slack() -> dict[str, Any]:
     """Check Slack API connectivity."""
     try:
         import config
@@ -68,7 +68,7 @@ async def check_slack() -> Dict[str, Any]:
         }
 
 
-async def check_llm_providers() -> Dict[str, Any]:
+async def check_llm_providers() -> dict[str, Any]:
     """Check LLM provider configuration."""
     try:
         import config
@@ -182,6 +182,7 @@ async def health_auth():
     Does NOT require authentication (for debugging auth issues).
     """
     import os
+
     from integrations.auth import get_auth_client
 
     auth_provider = os.getenv("AUTH_PROVIDER", "local_dev")
@@ -227,8 +228,6 @@ async def health_auth_test():
     If this returns 401, auth is not working.
     If this returns 200, auth is working.
     """
-    from fastapi import Request, HTTPException
-    from api.auth import get_token_from_request, get_current_user
 
     # This endpoint intentionally doesn't use Depends(require_auth)
     # so we can return detailed error messages
@@ -264,8 +263,8 @@ async def metrics(user: AuthUser = Depends(require_auth)):
     import psutil
 
     import config
+    from db.cache import pending_location_additions, user_history
     from generators.pdf import _CONVERT_SEMAPHORE
-    from db.cache import user_history, pending_location_additions
 
     process = psutil.Process(os.getpid())
     memory_info = process.memory_info()

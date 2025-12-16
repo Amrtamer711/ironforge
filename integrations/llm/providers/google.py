@@ -16,7 +16,7 @@ gemini-3-pro-image-preview API (from nano_doc.txt):
 
 import base64
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 from integrations.llm.base import (
     CostInfo,
@@ -107,9 +107,9 @@ class GoogleProvider(LLMProvider):
 
     async def complete(
         self,
-        messages: List[LLMMessage],
+        messages: list[LLMMessage],
         model: Optional[str] = None,
-        tools: Optional[List[ToolDefinition]] = None,
+        tools: Optional[list[ToolDefinition]] = None,
         tool_choice: Optional[str] = None,
         json_schema: Optional[JSONSchema] = None,
         reasoning: Optional[ReasoningEffort] = None,
@@ -241,7 +241,7 @@ class GoogleProvider(LLMProvider):
             raw_responses.append(response)
 
             # TEMPORARY: Log full response for debugging
-            logger.info(f"[GOOGLE] === RAW IMAGE RESPONSE START ===")
+            logger.info("[GOOGLE] === RAW IMAGE RESPONSE START ===")
             logger.info(f"[GOOGLE] Response type: {type(response)}")
             logger.info(f"[GOOGLE] Response dir: {[attr for attr in dir(response) if not attr.startswith('_')]}")
             logger.info(f"[GOOGLE] Response repr: {repr(response)}")
@@ -251,7 +251,7 @@ class GoogleProvider(LLMProvider):
                 logger.info(f"[GOOGLE] model_version: {response.model_version}")
             if hasattr(response, 'candidates'):
                 logger.info(f"[GOOGLE] candidates: {response.candidates}")
-            logger.info(f"[GOOGLE] === RAW IMAGE RESPONSE END ===")
+            logger.info("[GOOGLE] === RAW IMAGE RESPONSE END ===")
 
             # Parse usage from this response and accumulate
             if hasattr(response, 'usage_metadata') and response.usage_metadata:
@@ -263,12 +263,12 @@ class GoogleProvider(LLMProvider):
                     image_output_tokens=total_usage.image_output_tokens + resp_usage.image_output_tokens,
                 )
                 # DEBUG: Log parsed usage
-                logger.info(f"[GOOGLE] === PARSED USAGE ===")
+                logger.info("[GOOGLE] === PARSED USAGE ===")
                 logger.info(f"[GOOGLE] input_tokens: {resp_usage.input_tokens}")
                 logger.info(f"[GOOGLE] output_tokens: {resp_usage.output_tokens}")
                 logger.info(f"[GOOGLE] reasoning_tokens: {resp_usage.reasoning_tokens}")
                 logger.info(f"[GOOGLE] image_output_tokens: {resp_usage.image_output_tokens}")
-                logger.info(f"[GOOGLE] === END PARSED USAGE ===")
+                logger.info("[GOOGLE] === END PARSED USAGE ===")
 
             # Extract images from response.parts
             # Skip thought=true images (interim reasoning, not charged)
@@ -289,12 +289,12 @@ class GoogleProvider(LLMProvider):
         cost = self._calculate_image_cost(model, total_usage, len(all_images))
 
         # DEBUG: Log calculated cost
-        logger.info(f"[GOOGLE] === CALCULATED COST ===")
+        logger.info("[GOOGLE] === CALCULATED COST ===")
         logger.info(f"[GOOGLE] total_cost: ${cost.total_cost:.6f}")
         logger.info(f"[GOOGLE] input_cost: ${cost.input_cost:.6f}")
         logger.info(f"[GOOGLE] output_cost: ${cost.output_cost:.6f}")
         logger.info(f"[GOOGLE] reasoning_cost: ${cost.reasoning_cost:.6f}")
-        logger.info(f"[GOOGLE] === END CALCULATED COST ===")
+        logger.info("[GOOGLE] === END CALCULATED COST ===")
 
         return ImageResponse(
             images=all_images,
@@ -337,7 +337,7 @@ class GoogleProvider(LLMProvider):
             logger.warning(f"[GOOGLE] Cannot delete file from provider: {file_ref.provider}")
             return False
 
-        logger.info(f"[GOOGLE] Cleared file reference")
+        logger.info("[GOOGLE] Cleared file reference")
         return True
 
     # ========================================================================
@@ -345,8 +345,8 @@ class GoogleProvider(LLMProvider):
     # ========================================================================
 
     def _convert_tools(
-        self, tools: List[Union[ToolDefinition, RawTool]]
-    ) -> List[Dict[str, Any]]:
+        self, tools: list[Union[ToolDefinition, RawTool]]
+    ) -> list[dict[str, Any]]:
         """Convert tool definitions to Gemini format."""
         result = []
         for tool in tools:

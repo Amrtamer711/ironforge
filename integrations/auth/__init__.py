@@ -39,24 +39,22 @@ Configuration:
 
 from integrations.auth.base import (
     AuthProvider,
-    AuthUser,
     AuthResult,
     AuthStatus,
+    AuthUser,
     TokenPayload,
 )
-
 from integrations.auth.client import (
     AuthClient,
     get_auth_client,
-    set_auth_client,
-    reset_auth_client,
-    verify_token,
     get_current_user,
+    reset_auth_client,
+    set_auth_client,
+    verify_token,
 )
-
 from integrations.auth.providers import (
-    SupabaseAuthProvider,
     LocalDevAuthProvider,
+    SupabaseAuthProvider,
 )
 
 __all__ = [

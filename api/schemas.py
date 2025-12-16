@@ -5,13 +5,11 @@ Centralized Pydantic models for API input validation.
 All POST/PUT endpoints should use these models for type-safe validation.
 """
 
-import re
-from datetime import date, datetime
+from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from typing import Any, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
-
+from pydantic import BaseModel, Field, field_validator
 
 # =============================================================================
 # ENUMS
@@ -65,7 +63,7 @@ class FramePoint(BaseModel):
     y: float = Field(..., ge=0, description="Y coordinate")
 
     @classmethod
-    def from_list(cls, coords: List[float]) -> "FramePoint":
+    def from_list(cls, coords: list[float]) -> "FramePoint":
         """Create from [x, y] list."""
         if len(coords) != 2:
             raise ValueError("Point must have exactly 2 coordinates [x, y]")
@@ -90,8 +88,8 @@ class FrameConfig(BaseModel):
 
 class FrameData(BaseModel):
     """A single frame with points and optional config."""
-    points: List[List[float]] = Field(..., min_length=4, max_length=4, description="4 corner points")
-    config: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Frame-specific config")
+    points: list[list[float]] = Field(..., min_length=4, max_length=4, description="4 corner points")
+    config: Optional[dict[str, Any]] = Field(default_factory=dict, description="Frame-specific config")
 
     @field_validator("points")
     @classmethod
@@ -114,7 +112,7 @@ class MockupGenerateRequest(BaseModel):
     finish: FinishType = Field(default=FinishType.ALL, description="Finish type variant")
     ai_prompt: Optional[str] = Field(None, max_length=2000, description="AI prompt for generation")
     specific_photo: Optional[str] = Field(None, max_length=255, description="Specific photo filename")
-    frame_config: Optional[Dict[str, Any]] = Field(None, description="Override frame config")
+    frame_config: Optional[dict[str, Any]] = Field(None, description="Override frame config")
 
     @field_validator("ai_prompt")
     @classmethod
@@ -131,8 +129,8 @@ class SaveFrameRequest(BaseModel):
     location_key: str = Field(..., min_length=1, max_length=100)
     time_of_day: TimeOfDay = Field(default=TimeOfDay.DAY)
     finish: FinishType = Field(default=FinishType.GOLD)
-    frames: List[FrameData] = Field(..., min_length=1, description="List of frames with points")
-    config: Optional[Dict[str, Any]] = Field(None, description="Global config for all frames")
+    frames: list[FrameData] = Field(..., min_length=1, description="List of frames with points")
+    config: Optional[dict[str, Any]] = Field(None, description="Global config for all frames")
 
 
 # =============================================================================
@@ -171,7 +169,7 @@ class SlackEventPayload(BaseModel):
     token: Optional[str] = None
     challenge: Optional[str] = None
     team_id: Optional[str] = None
-    event: Optional[Dict[str, Any]] = None
+    event: Optional[dict[str, Any]] = None
     event_id: Optional[str] = None
     event_time: Optional[int] = None
 
@@ -182,14 +180,14 @@ class SlackEventPayload(BaseModel):
 class SlackInteractivePayload(BaseModel):
     """Slack interactive component payload."""
     type: str
-    user: Dict[str, Any]
+    user: dict[str, Any]
     trigger_id: Optional[str] = None
     response_url: Optional[str] = None
-    actions: Optional[List[Dict[str, Any]]] = None
-    view: Optional[Dict[str, Any]] = None
-    container: Optional[Dict[str, Any]] = None
-    channel: Optional[Dict[str, Any]] = None
-    message: Optional[Dict[str, Any]] = None
+    actions: Optional[list[dict[str, Any]]] = None
+    view: Optional[dict[str, Any]] = None
+    container: Optional[dict[str, Any]] = None
+    channel: Optional[dict[str, Any]] = None
+    message: Optional[dict[str, Any]] = None
 
     class Config:
         extra = "allow"

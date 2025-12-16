@@ -9,9 +9,10 @@ Implements standard color adjustments:
 - Sharpening
 """
 
+import logging
+
 import cv2
 import numpy as np
-import logging
 
 from generators.effects.config import EffectConfig
 

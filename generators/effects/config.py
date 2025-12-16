@@ -8,7 +8,7 @@ This makes it easy to:
 3. Add new parameters without hunting through code
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 

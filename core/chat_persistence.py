@@ -9,12 +9,12 @@ user messages are paired with their assistant responses via parent_id.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger("proposal-bot")
 
 
-def _sort_messages_by_pairs(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _sort_messages_by_pairs(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Sort messages so each user message is followed by its assistant response(s).
 
@@ -45,8 +45,8 @@ def _sort_messages_by_pairs(messages: List[Dict[str, Any]]) -> List[Dict[str, An
     user_messages.sort(key=lambda m: m.get("timestamp", ""))
 
     # Build parent_id -> assistant messages mapping
-    responses_by_parent: Dict[str, List[Dict[str, Any]]] = {}
-    orphan_responses: List[Dict[str, Any]] = []
+    responses_by_parent: dict[str, list[dict[str, Any]]] = {}
+    orphan_responses: list[dict[str, Any]] = []
 
     for msg in assistant_messages:
         parent_id = msg.get("parent_id")
@@ -85,7 +85,7 @@ def _get_db():
 
 def save_chat_messages(
     user_id: str,
-    messages: List[Dict[str, Any]],
+    messages: list[dict[str, Any]],
     session_id: Optional[str] = None,
 ) -> bool:
     """
@@ -113,7 +113,7 @@ def save_chat_messages(
         return False
 
 
-def load_chat_messages(user_id: str) -> List[Dict[str, Any]]:
+def load_chat_messages(user_id: str) -> list[dict[str, Any]]:
     """
     Load chat messages for a user from the database.
 
@@ -153,7 +153,7 @@ def clear_chat_messages(user_id: str) -> bool:
         return False
 
 
-def get_chat_session_info(user_id: str) -> Optional[Dict[str, Any]]:
+def get_chat_session_info(user_id: str) -> Optional[dict[str, Any]]:
     """
     Get chat session metadata without full messages.
 

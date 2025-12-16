@@ -8,17 +8,16 @@ No external auth service required.
 import hashlib
 import logging
 import uuid
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from integrations.auth.base import (
     AuthProvider,
-    AuthUser,
     AuthResult,
     AuthStatus,
+    AuthUser,
     TokenPayload,
 )
-from utils.time import UAE_TZ, get_uae_time
+from utils.time import get_uae_time
 
 logger = logging.getLogger("proposal-bot")
 
@@ -70,7 +69,7 @@ class LocalDevAuthProvider(AuthProvider):
         result = await provider.verify_token(token)
     """
 
-    def __init__(self, custom_users: Optional[Dict[str, Dict]] = None):
+    def __init__(self, custom_users: Optional[dict[str, dict]] = None):
         """
         Initialize local dev provider.
 
@@ -82,7 +81,7 @@ class LocalDevAuthProvider(AuthProvider):
             self._users.update(custom_users)
 
         # In-memory user database (for create/update/delete)
-        self._db_users: Dict[str, AuthUser] = {}
+        self._db_users: dict[str, AuthUser] = {}
 
         # Initialize default users in memory DB
         for email, data in self._users.items():
@@ -225,7 +224,7 @@ class LocalDevAuthProvider(AuthProvider):
         self,
         email: str,
         name: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> Optional[AuthUser]:
         """Create a new user in memory."""
         try:
@@ -264,7 +263,7 @@ class LocalDevAuthProvider(AuthProvider):
         name: Optional[str] = None,
         avatar_url: Optional[str] = None,
         is_active: Optional[bool] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> Optional[AuthUser]:
         """Update user in memory."""
         try:
@@ -316,7 +315,7 @@ class LocalDevAuthProvider(AuthProvider):
         limit: int = 100,
         offset: int = 0,
         is_active: Optional[bool] = None,
-    ) -> List[AuthUser]:
+    ) -> list[AuthUser]:
         """List users from memory."""
         users = list(self._db_users.values())
 
@@ -342,6 +341,6 @@ class LocalDevAuthProvider(AuthProvider):
             metadata={"role": user_data.get("role")},
         )
 
-    def get_available_users(self) -> Dict[str, Dict]:
+    def get_available_users(self) -> dict[str, dict]:
         """Get all available dev users (for UI display)."""
         return dict(self._users)

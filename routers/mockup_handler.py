@@ -5,17 +5,17 @@ Extracted from tool_router.py for better decoupling and maintainability.
 """
 
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
 
 import config
-from db.database import db
 from db.cache import (
-    mockup_history,
-    get_mockup_history,
     get_location_frame_count,
+    get_mockup_history,
+    mockup_history,
     store_mockup_history,
 )
+from db.database import db
 from utils.memory import cleanup_memory
 
 logger = config.logger
@@ -25,11 +25,11 @@ async def handle_mockup_generation(
     location_name: str,
     time_of_day: str,
     finish: str,
-    ai_prompts: List[str],
+    ai_prompts: list[str],
     user_id: str,
     channel: str,
     status_ts: str,
-    user_companies: List[str],
+    user_companies: list[str],
     channel_event: dict = None,
     download_file_func: Callable = None,
     generate_mockup_queued_func: Callable = None,
@@ -62,7 +62,6 @@ async def handle_mockup_generation(
     Returns:
         True when handled (success or error)
     """
-    from generators import mockup as mockup_generator
 
     logger.info(f"[MOCKUP] User requested mockup generation for {location_name}")
 
@@ -79,7 +78,7 @@ async def handle_mockup_generation(
     if ai_prompts:
         logger.info(f"[MOCKUP] LLM extracted {num_ai_frames} AI prompt(s)")
     else:
-        logger.info(f"[MOCKUP] No AI prompts provided")
+        logger.info("[MOCKUP] No AI prompts provided")
 
     # Resolve location key
     location_key = config.get_location_key_from_display_name(location_name)
@@ -199,7 +198,7 @@ async def handle_mockup_generation(
 async def _extract_uploaded_images(
     channel_event: dict,
     download_file_func: Callable,
-) -> List[Path]:
+) -> list[Path]:
     """Extract uploaded image files from Slack event."""
     uploaded_creatives = []
 
@@ -248,7 +247,7 @@ async def _handle_followup_mode(
     user_id: str,
     channel: str,
     status_ts: str,
-    user_companies: List[str],
+    user_companies: list[str],
     generate_mockup_queued_func: Callable,
 ) -> bool:
     """Handle follow-up request to apply previous creatives to new location."""
@@ -267,8 +266,8 @@ async def _handle_followup_mode(
         await channel_adapter.send_message(
             channel_id=channel,
             content=(
-                f"❌ **Error:** Your previous creative files are no longer available.\n\n"
-                f"Please upload new images or use AI generation."
+                "❌ **Error:** Your previous creative files are no longer available.\n\n"
+                "Please upload new images or use AI generation."
             )
         )
         # Clean up corrupted history
@@ -373,7 +372,7 @@ async def _handle_followup_mode(
 
 
 async def _handle_upload_mode(
-    uploaded_creatives: List[Path],
+    uploaded_creatives: list[Path],
     location_key: str,
     location_name: str,
     time_of_day: str,
@@ -382,7 +381,7 @@ async def _handle_upload_mode(
     user_id: str,
     channel: str,
     status_ts: str,
-    user_companies: List[str],
+    user_companies: list[str],
     generate_mockup_queued_func: Callable,
 ) -> bool:
     """Handle mockup generation from uploaded images."""
@@ -492,7 +491,7 @@ async def _handle_upload_mode(
 
 
 async def _handle_ai_mode(
-    ai_prompts: List[str],
+    ai_prompts: list[str],
     num_ai_frames: int,
     location_key: str,
     location_name: str,
@@ -502,11 +501,10 @@ async def _handle_ai_mode(
     user_id: str,
     channel: str,
     status_ts: str,
-    user_companies: List[str],
+    user_companies: list[str],
     generate_ai_mockup_queued_func: Callable,
 ) -> bool:
     """Handle mockup generation with AI-generated creative."""
-    from generators import mockup as mockup_generator
 
     channel_adapter = config.get_channel_adapter()
 

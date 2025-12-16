@@ -8,7 +8,6 @@ These tests verify:
 - Input sanitization works
 """
 
-import pytest
 from fastapi.testclient import TestClient
 
 

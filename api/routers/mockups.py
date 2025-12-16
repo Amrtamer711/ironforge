@@ -5,21 +5,18 @@ Mockup generator endpoints.
 import json
 import os
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Optional
 
-from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Form, BackgroundTasks, Depends
-from fastapi.responses import HTMLResponse, FileResponse, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, Response
 
-from api.auth import require_auth, require_permission
-from integrations.auth import AuthUser
 import config
-from db.database import db
-from utils.time import get_uae_time
+from api.auth import require_permission
 from api.schemas import (
     validate_image_upload,
-    MAX_IMAGE_SIZE,
-    ALLOWED_IMAGE_TYPES,
 )
+from db.database import db
+from integrations.auth import AuthUser
 
 logger = config.logger
 
@@ -107,12 +104,12 @@ async def save_mockup_frame(
         raise HTTPException(status_code=400, detail=str(e))
 
     # Log EXACTLY what was received from the form
-    logger.info(f"[MOCKUP API] ====== SAVE FRAME REQUEST ======")
+    logger.info("[MOCKUP API] ====== SAVE FRAME REQUEST ======")
     logger.info(f"[MOCKUP API] RECEIVED location_key: '{location_key}'")
     logger.info(f"[MOCKUP API] RECEIVED time_of_day: '{time_of_day}'")
     logger.info(f"[MOCKUP API] RECEIVED finish: '{finish}'")
     logger.info(f"[MOCKUP API] RECEIVED photo filename: '{photo.filename}' ({len(photo_data)} bytes)")
-    logger.info(f"[MOCKUP API] ====================================")
+    logger.info("[MOCKUP API] ====================================")
 
     try:
         # Parse frames data (list of frames, each frame has points and config)
@@ -195,6 +192,7 @@ async def test_preview_mockup(
     """Generate a test preview of how the creative will look on the billboard with current config. Requires admin role."""
     import cv2
     import numpy as np
+
     from generators import mockup as mockup_generator
 
     try:
@@ -352,7 +350,7 @@ async def get_mockup_photo(location_key: str, photo_filename: str, time_of_day: 
 
     # If "all" is specified, find the photo in any variation
     if time_of_day == "all" or finish == "all":
-        logger.info(f"[PHOTO GET] Searching across variations (all mode)")
+        logger.info("[PHOTO GET] Searching across variations (all mode)")
         variations = db.list_mockup_variations(location_key, user.companies)
         logger.info(f"[PHOTO GET] Available variations: {variations}")
 
@@ -457,6 +455,7 @@ async def generate_mockup_api(
 ):
     """Generate a mockup by warping creative onto billboard (upload or AI-generated). Requires sales:mockups:generate permission."""
     import tempfile
+
     from generators import mockup as mockup_generator
 
     creative_path = None
@@ -475,7 +474,7 @@ async def generate_mockup_api(
                 config_dict = json.loads(frame_config)
                 logger.info(f"[MOCKUP API] Using custom frame config: {config_dict}")
             except json.JSONDecodeError:
-                logger.warning(f"[MOCKUP API] Invalid frame config JSON, ignoring")
+                logger.warning("[MOCKUP API] Invalid frame config JSON, ignoring")
 
         # Validate location and get company schema
         if location_key not in config.LOCATION_METADATA:

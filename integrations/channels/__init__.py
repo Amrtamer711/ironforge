@@ -31,24 +31,24 @@ Usage:
     )
 """
 
+from .adapters import SlackAdapter, WebAdapter
 from .base import (
-    ChannelAdapter,
-    ChannelType,
-    Message,
-    User,
-    FileUpload,
+    ActionResult,
+    Attachment,
     Button,
     ButtonStyle,
-    ActionResult,
+    ChannelAdapter,
+    ChannelType,
+    FieldType,
+    FileUpload,
+    Message,
+    MessageFormat,
     Modal,
     ModalField,
-    FieldType,
-    Attachment,
-    MessageFormat,
+    User,
 )
-from .router import ChannelRouter, get_channel, set_channel, register_channel, get_router
-from .formatting import ChannelFormatter, to_slack, to_html, to_plain
-from .adapters import SlackAdapter, WebAdapter
+from .formatting import ChannelFormatter, to_html, to_plain, to_slack
+from .router import ChannelRouter, get_channel, get_router, register_channel, set_channel
 
 __all__ = [
     # Base types

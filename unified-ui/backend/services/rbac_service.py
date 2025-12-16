@@ -17,7 +17,7 @@ RBAC (Role-Based Access Control) service for unified-ui.
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from backend.config import get_settings
 from backend.services.supabase_client import get_supabase
@@ -29,7 +29,7 @@ logger = logging.getLogger("unified-ui")
 # =============================================================================
 
 # RBAC cache: {user_id: {"data": RBACContext, "ts": timestamp}}
-_rbac_cache: Dict[str, Dict[str, Any]] = {}
+_rbac_cache: dict[str, dict[str, Any]] = {}
 
 
 def invalidate_rbac_cache(user_id: str) -> None:
@@ -42,7 +42,7 @@ def invalidate_rbac_cache(user_id: str) -> None:
         logger.info(f"[RBAC CACHE] Invalidated cache for user {user_id}")
 
 
-def invalidate_rbac_cache_for_users(user_ids: List[str]) -> None:
+def invalidate_rbac_cache_for_users(user_ids: list[str]) -> None:
     """
     Invalidate RBAC cache for multiple users.
     Mirrors server.js:531-539 (invalidateRBACCacheForUsers)
@@ -115,22 +115,22 @@ class RBACContext:
     # Level 1: Profile
     profile: str
     # Level 1 + 2: Combined permissions
-    permissions: List[str]
+    permissions: list[str]
     # Level 2: Permission sets
-    permission_sets: List[PermissionSetInfo] = field(default_factory=list)
+    permission_sets: list[PermissionSetInfo] = field(default_factory=list)
     # Level 3: Teams
-    teams: List[TeamInfo] = field(default_factory=list)
+    teams: list[TeamInfo] = field(default_factory=list)
     # Level 3: Hierarchy
     manager_id: Optional[str] = None
-    subordinate_ids: List[str] = field(default_factory=list)
+    subordinate_ids: list[str] = field(default_factory=list)
     # Level 4: Sharing
-    sharing_rules: List[SharingRuleInfo] = field(default_factory=list)
-    shared_records: Dict[str, List[SharedRecordInfo]] = field(default_factory=dict)
-    shared_from_user_ids: List[str] = field(default_factory=list)
+    sharing_rules: list[SharingRuleInfo] = field(default_factory=list)
+    shared_records: dict[str, list[SharedRecordInfo]] = field(default_factory=dict)
+    shared_from_user_ids: list[str] = field(default_factory=list)
     # Level 5: Company access
-    companies: List[str] = field(default_factory=list)
+    companies: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary (for JSON serialization and headers)."""
         return {
             "profile": self.profile,
@@ -184,8 +184,8 @@ class RBACContext:
 # =============================================================================
 
 async def get_user_record_shares(
-    user_id: str, team_ids: List[int]
-) -> List[Dict[str, Any]]:
+    user_id: str, team_ids: list[int]
+) -> list[dict[str, Any]]:
     """
     Get record shares for a user (records shared with them or their teams).
 
@@ -297,7 +297,7 @@ async def get_user_rbac_data(user_id: str, use_cache: bool = True) -> Optional[R
         profile_name = profile.get("name") or "sales_user"
 
         # Get permissions from profile - server.js:224-235
-        permissions: List[str] = []
+        permissions: list[str] = []
         profile_id = profile.get("id")
         if profile_id:
             perms_response = (
@@ -320,7 +320,7 @@ async def get_user_rbac_data(user_id: str, use_cache: bool = True) -> Optional[R
             .execute()
         )
 
-        active_permission_sets: List[PermissionSetInfo] = []
+        active_permission_sets: list[PermissionSetInfo] = []
         if perm_sets_response.data:
             for ups in perm_sets_response.data:
                 perm_set = ups.get("permission_sets") or {}
@@ -365,7 +365,7 @@ async def get_user_rbac_data(user_id: str, use_cache: bool = True) -> Optional[R
             .execute()
         )
 
-        teams: List[TeamInfo] = []
+        teams: list[TeamInfo] = []
         if teams_response.data:
             for tm in teams_response.data:
                 team = tm.get("teams") or {}
@@ -392,7 +392,7 @@ async def get_user_rbac_data(user_id: str, use_cache: bool = True) -> Optional[R
 
         # Get team members for teams where user is leader - server.js:310-324
         led_team_ids = [t.id for t in teams if t.role == "leader"]
-        team_member_ids: List[str] = []
+        team_member_ids: list[str] = []
 
         if led_team_ids:
             team_members_response = (
@@ -416,7 +416,7 @@ async def get_user_rbac_data(user_id: str, use_cache: bool = True) -> Optional[R
 
         # Get record shares - server.js:336-353
         record_shares = await get_user_record_shares(user_id, user_team_ids)
-        shared_records: Dict[str, List[SharedRecordInfo]] = {}
+        shared_records: dict[str, list[SharedRecordInfo]] = {}
         for share in record_shares:
             obj_type = share.get("object_type")
             if obj_type not in shared_records:
@@ -438,7 +438,7 @@ async def get_user_rbac_data(user_id: str, use_cache: bool = True) -> Optional[R
             .execute()
         )
 
-        applicable_rules: List[SharingRuleInfo] = []
+        applicable_rules: list[SharingRuleInfo] = []
         if rules_response.data:
             for rule in rules_response.data:
                 applies = False
@@ -480,7 +480,7 @@ async def get_user_rbac_data(user_id: str, use_cache: bool = True) -> Optional[R
             .execute()
         )
 
-        companies: List[str] = []
+        companies: list[str] = []
         if companies_response.data:
             assigned_company_ids = [
                 uc.get("company_id")
@@ -503,7 +503,7 @@ async def get_user_rbac_data(user_id: str, use_cache: bool = True) -> Optional[R
                     ]
 
         # Get user IDs accessible via sharing rules - server.js:415-442
-        shared_from_user_ids: List[str] = []
+        shared_from_user_ids: list[str] = []
         for rule in applicable_rules:
             if rule.share_from_type == "profile":
                 # Get all users with this profile - server.js:420-429

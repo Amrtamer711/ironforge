@@ -1,13 +1,12 @@
+import asyncio
 import os
-import tempfile
-import subprocess
 import platform
 import shutil
-from pathlib import Path
-import asyncio
+import subprocess
+import tempfile
 
-from pypdf import PdfWriter, PdfReader
 from pptx import Presentation
+from pypdf import PdfReader, PdfWriter
 
 import config
 
@@ -26,7 +25,7 @@ async def convert_pptx_to_pdf_async(pptx_path: str) -> str:
 def convert_pptx_to_pdf(pptx_path: str) -> str:
     logger = config.logger
     logger.info(f"[PDF_CONVERT] Starting conversion of '{pptx_path}'")
-    
+
     pdf_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
     pdf_file.close()
     logger.info(f"[PDF_CONVERT] Target PDF path: '{pdf_file.name}'")
@@ -109,9 +108,9 @@ def convert_pptx_to_pdf(pptx_path: str) -> str:
             config.logger.debug(f"Keynote conversion failed: {e}")
 
     # Fallback: text-only extraction
+    from reportlab.lib import colors
     from reportlab.lib.pagesizes import landscape, letter
     from reportlab.pdfgen import canvas
-    from reportlab.lib import colors
 
     try:
         pres = Presentation(pptx_path)
@@ -167,11 +166,11 @@ def merge_pdfs(pdf_files: list) -> str:
     logger.info(f"[PDF_MERGE] Merging {len(pdf_files)} PDF files")
     for idx, pdf in enumerate(pdf_files):
         logger.info(f"[PDF_MERGE]   File {idx + 1}: '{pdf}'")
-    
+
     output_file = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
     output_file.close()
     logger.info(f"[PDF_MERGE] Output file: '{output_file.name}'")
-    
+
     pdf_writer = PdfWriter()
     for pdf_path in pdf_files:
         pdf_reader = PdfReader(pdf_path)
@@ -179,10 +178,10 @@ def merge_pdfs(pdf_files: list) -> str:
         logger.info(f"[PDF_MERGE] Adding {page_count} pages from '{pdf_path}'")
         for page in pdf_reader.pages:
             pdf_writer.add_page(page)
-    
+
     with open(output_file.name, 'wb') as output:
         pdf_writer.write(output)
-    
+
     logger.info(f"[PDF_MERGE] Successfully merged PDFs to '{output_file.name}'")
     return output_file.name
 
@@ -190,7 +189,7 @@ def merge_pdfs(pdf_files: list) -> str:
 async def remove_slides_and_convert_to_pdf(pptx_path: str, remove_first: bool = False, remove_last: bool = False) -> str:
     import shutil as _sh
     import tempfile as _tf
-    
+
     logger = config.logger
     logger.info(f"[REMOVE_SLIDES] Processing '{pptx_path}'")
     logger.info(f"[REMOVE_SLIDES] Remove first: {remove_first}, Remove last: {remove_last}")
@@ -220,4 +219,4 @@ async def remove_slides_and_convert_to_pdf(pptx_path: str, remove_first: bool = 
             os.unlink(temp_pptx.name)
         except OSError as cleanup_err:
             logger.debug(f"[REMOVE_SLIDES] Failed to cleanup temp file {temp_pptx.name}: {cleanup_err}")
-        return pdf_path 
+        return pdf_path

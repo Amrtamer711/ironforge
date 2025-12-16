@@ -5,13 +5,13 @@ All chat endpoints require authentication. User info is extracted from the
 authenticated user token rather than being passed in the request body.
 """
 
-from typing import List, Optional
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 
-from api.auth import require_auth, require_permission
+from api.auth import require_permission
 from integrations.auth import AuthUser
 from integrations.rbac import get_rbac_client
 from utils.logging import get_logger
@@ -28,7 +28,7 @@ class ChatMessageRequest(BaseModel):
     """Request model for chat messages."""
     message: str
     conversation_id: Optional[str] = None
-    file_ids: Optional[List[str]] = None  # IDs from /api/files/upload
+    file_ids: Optional[list[str]] = None  # IDs from /api/files/upload
 
     @field_validator("message")
     @classmethod
@@ -42,7 +42,7 @@ class ChatMessageRequest(BaseModel):
 
     @field_validator("file_ids")
     @classmethod
-    def validate_file_ids(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+    def validate_file_ids(cls, v: Optional[list[str]]) -> Optional[list[str]]:
         """Validate file_ids list."""
         if v is not None and len(v) > 10:
             raise ValueError("Maximum 10 files per message")
@@ -53,12 +53,12 @@ class ChatMessageResponse(BaseModel):
     """Response model for chat messages."""
     content: Optional[str] = None
     tool_call: Optional[dict] = None
-    files: Optional[List[dict]] = None
+    files: Optional[list[dict]] = None
     error: Optional[str] = None
     conversation_id: Optional[str] = None
 
 
-async def _get_user_profile(user: AuthUser) -> List[str]:
+async def _get_user_profile(user: AuthUser) -> list[str]:
     """Get profile name for a user from RBAC."""
     try:
         rbac = get_rbac_client()
@@ -85,7 +85,7 @@ async def chat_message(
     """
     logger.info(f"[CHAT] Message from {user.email}: {request.message[:50]}... (files: {len(request.file_ids or [])})")
 
-    from core.chat_api import process_chat_message, get_web_adapter
+    from core.chat_api import get_web_adapter, process_chat_message
 
     try:
         roles = await _get_user_profile(user)
@@ -151,7 +151,7 @@ async def chat_stream(
     """
     logger.info(f"[CHAT] Stream from {user.email}: {request.message[:50]}... (files: {len(request.file_ids or [])})")
 
-    from core.chat_api import stream_chat_message, get_web_adapter
+    from core.chat_api import get_web_adapter, stream_chat_message
 
     roles = await _get_user_profile(user)
 
@@ -252,7 +252,7 @@ async def get_chat_history(user: AuthUser = Depends(require_permission("sales:ch
         session_id: The conversation session ID
         message_count: Total number of messages
     """
-    from core.chat_persistence import load_chat_messages, get_chat_session_info
+    from core.chat_persistence import get_chat_session_info, load_chat_messages
 
     try:
         messages = load_chat_messages(user.id)

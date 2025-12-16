@@ -7,7 +7,6 @@ These tests verify:
 - Input validation works correctly
 """
 
-import pytest
 from fastapi.testclient import TestClient
 
 
