@@ -197,7 +197,7 @@ class _DatabaseNamespace:
         return self._backend.get_location_by_key(location_key, company_schemas)
 
     # =========================================================================
-    # MOCKUP FRAMES
+    # MOCKUP FRAMES (Company-scoped)
     # =========================================================================
 
     def save_mockup_frame(
@@ -205,13 +205,14 @@ class _DatabaseNamespace:
         location_key: str,
         photo_filename: str,
         frames_data: List[Dict],
+        company_schema: str,
         created_by: Optional[str] = None,
         time_of_day: str = "day",
         finish: str = "gold",
         config: Optional[Dict] = None,
     ) -> str:
         return self._backend.save_mockup_frame(
-            location_key, photo_filename, frames_data,
+            location_key, photo_filename, frames_data, company_schema,
             created_by, time_of_day, finish, config
         )
 
@@ -219,50 +220,58 @@ class _DatabaseNamespace:
         self,
         location_key: str,
         photo_filename: str,
+        company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
     ) -> Optional[List[Dict]]:
         return self._backend.get_mockup_frames(
-            location_key, photo_filename, time_of_day, finish
+            location_key, photo_filename, company_schema, time_of_day, finish
         )
 
     def get_mockup_config(
         self,
         location_key: str,
         photo_filename: str,
+        company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
     ) -> Optional[Dict]:
         return self._backend.get_mockup_config(
-            location_key, photo_filename, time_of_day, finish
+            location_key, photo_filename, company_schema, time_of_day, finish
         )
 
     def list_mockup_photos(
         self,
         location_key: str,
+        company_schemas: List[str],
         time_of_day: str = "day",
         finish: str = "gold",
     ) -> List[str]:
         return self._backend.list_mockup_photos(
-            location_key, time_of_day, finish
+            location_key, company_schemas, time_of_day, finish
         )
 
-    def list_mockup_variations(self, location_key: str) -> Dict[str, List[str]]:
-        return self._backend.list_mockup_variations(location_key)
+    def list_mockup_variations(
+        self,
+        location_key: str,
+        company_schemas: List[str],
+    ) -> Dict[str, List[str]]:
+        return self._backend.list_mockup_variations(location_key, company_schemas)
 
     def delete_mockup_frame(
         self,
         location_key: str,
         photo_filename: str,
+        company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
     ) -> None:
         return self._backend.delete_mockup_frame(
-            location_key, photo_filename, time_of_day, finish
+            location_key, photo_filename, company_schema, time_of_day, finish
         )
 
     # =========================================================================
-    # MOCKUP USAGE
+    # MOCKUP USAGE (Company-scoped)
     # =========================================================================
 
     def log_mockup_usage(
@@ -272,6 +281,7 @@ class _DatabaseNamespace:
         finish: str,
         photo_used: str,
         creative_type: str,
+        company_schema: str,
         ai_prompt: Optional[str] = None,
         template_selected: bool = False,
         success: bool = True,
@@ -279,14 +289,20 @@ class _DatabaseNamespace:
     ) -> None:
         return self._backend.log_mockup_usage(
             location_key, time_of_day, finish, photo_used,
-            creative_type, ai_prompt, template_selected, success, user_ip
+            creative_type, company_schema, ai_prompt, template_selected, success, user_ip
         )
 
-    def get_mockup_usage_stats(self) -> Dict[str, Any]:
-        return self._backend.get_mockup_usage_stats()
+    def get_mockup_usage_stats(
+        self,
+        company_schemas: List[str],
+    ) -> Dict[str, Any]:
+        return self._backend.get_mockup_usage_stats(company_schemas)
 
-    def export_mockup_usage_to_excel(self) -> str:
-        return self._backend.export_mockup_usage_to_excel()
+    def export_mockup_usage_to_excel(
+        self,
+        company_schemas: List[str],
+    ) -> str:
+        return self._backend.export_mockup_usage_to_excel(company_schemas)
 
     # =========================================================================
     # BO WORKFLOWS

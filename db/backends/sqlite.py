@@ -578,7 +578,7 @@ class SQLiteBackend(DatabaseBackend):
         return None
 
     # =========================================================================
-    # MOCKUP FRAMES
+    # MOCKUP FRAMES (Company-scoped - SQLite ignores schema)
     # =========================================================================
 
     def save_mockup_frame(
@@ -586,6 +586,7 @@ class SQLiteBackend(DatabaseBackend):
         location_key: str,
         photo_filename: str,
         frames_data: List[Dict],
+        company_schema: str,  # Ignored in SQLite - single database
         created_by: Optional[str] = None,
         time_of_day: str = "day",
         finish: str = "gold",
@@ -644,6 +645,7 @@ class SQLiteBackend(DatabaseBackend):
         self,
         location_key: str,
         photo_filename: str,
+        company_schema: str,  # Ignored in SQLite - single database
         time_of_day: str = "day",
         finish: str = "gold",
     ) -> Optional[List[Dict]]:
@@ -663,6 +665,7 @@ class SQLiteBackend(DatabaseBackend):
         self,
         location_key: str,
         photo_filename: str,
+        company_schema: str,  # Ignored in SQLite - single database
         time_of_day: str = "day",
         finish: str = "gold",
     ) -> Optional[Dict]:
@@ -681,6 +684,7 @@ class SQLiteBackend(DatabaseBackend):
     def list_mockup_photos(
         self,
         location_key: str,
+        company_schemas: List[str],  # Ignored in SQLite - single database
         time_of_day: str = "day",
         finish: str = "gold",
     ) -> List[str]:
@@ -695,7 +699,11 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
-    def list_mockup_variations(self, location_key: str) -> Dict[str, List[str]]:
+    def list_mockup_variations(
+        self,
+        location_key: str,
+        company_schemas: List[str],  # Ignored in SQLite - single database
+    ) -> Dict[str, List[str]]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -716,6 +724,7 @@ class SQLiteBackend(DatabaseBackend):
         self,
         location_key: str,
         photo_filename: str,
+        company_schema: str,  # Ignored in SQLite - single database
         time_of_day: str = "day",
         finish: str = "gold",
     ) -> None:
@@ -736,7 +745,7 @@ class SQLiteBackend(DatabaseBackend):
             conn.close()
 
     # =========================================================================
-    # MOCKUP USAGE
+    # MOCKUP USAGE (Company-scoped - SQLite ignores schema)
     # =========================================================================
 
     def log_mockup_usage(
@@ -746,6 +755,7 @@ class SQLiteBackend(DatabaseBackend):
         finish: str,
         photo_used: str,
         creative_type: str,
+        company_schema: str,  # Ignored in SQLite - single database
         ai_prompt: Optional[str] = None,
         template_selected: bool = False,
         success: bool = True,
@@ -770,7 +780,10 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
-    def get_mockup_usage_stats(self) -> Dict[str, Any]:
+    def get_mockup_usage_stats(
+        self,
+        company_schemas: List[str],  # Ignored in SQLite - single database
+    ) -> Dict[str, Any]:
         conn = self._connect()
         try:
             cursor = conn.cursor()
@@ -832,7 +845,10 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
-    def export_mockup_usage_to_excel(self) -> str:
+    def export_mockup_usage_to_excel(
+        self,
+        company_schemas: List[str],  # Ignored in SQLite - single database
+    ) -> str:
         import pandas as pd
         import tempfile
 

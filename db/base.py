@@ -249,7 +249,7 @@ class DatabaseBackend(ABC):
         pass
 
     # =========================================================================
-    # MOCKUP FRAMES
+    # MOCKUP FRAMES (Company-scoped)
     # =========================================================================
 
     @abstractmethod
@@ -258,12 +258,13 @@ class DatabaseBackend(ABC):
         location_key: str,
         photo_filename: str,
         frames_data: List[Dict],
+        company_schema: str,
         created_by: Optional[str] = None,
         time_of_day: str = "day",
         finish: str = "gold",
         config: Optional[Dict] = None,
     ) -> str:
-        """Save mockup frame data. Returns the final filename."""
+        """Save mockup frame data to company-specific schema. Returns the final filename."""
         pass
 
     @abstractmethod
@@ -271,10 +272,11 @@ class DatabaseBackend(ABC):
         self,
         location_key: str,
         photo_filename: str,
+        company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
     ) -> Optional[List[Dict]]:
-        """Get frame coordinates for a mockup photo."""
+        """Get frame coordinates for a mockup photo from company-specific schema."""
         pass
 
     @abstractmethod
@@ -282,25 +284,31 @@ class DatabaseBackend(ABC):
         self,
         location_key: str,
         photo_filename: str,
+        company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
     ) -> Optional[Dict]:
-        """Get config for a mockup photo."""
+        """Get config for a mockup photo from company-specific schema."""
         pass
 
     @abstractmethod
     def list_mockup_photos(
         self,
         location_key: str,
+        company_schemas: List[str],
         time_of_day: str = "day",
         finish: str = "gold",
     ) -> List[str]:
-        """List all photos with frames for a location."""
+        """List all photos with frames for a location from user's accessible company schemas."""
         pass
 
     @abstractmethod
-    def list_mockup_variations(self, location_key: str) -> Dict[str, List[str]]:
-        """List all time_of_day/finish combinations for a location."""
+    def list_mockup_variations(
+        self,
+        location_key: str,
+        company_schemas: List[str],
+    ) -> Dict[str, List[str]]:
+        """List all time_of_day/finish combinations for a location from user's accessible company schemas."""
         pass
 
     @abstractmethod
@@ -308,14 +316,15 @@ class DatabaseBackend(ABC):
         self,
         location_key: str,
         photo_filename: str,
+        company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
     ) -> None:
-        """Delete a mockup frame."""
+        """Delete a mockup frame from company-specific schema."""
         pass
 
     # =========================================================================
-    # MOCKUP USAGE ANALYTICS
+    # MOCKUP USAGE ANALYTICS (Company-scoped)
     # =========================================================================
 
     @abstractmethod
@@ -326,22 +335,29 @@ class DatabaseBackend(ABC):
         finish: str,
         photo_used: str,
         creative_type: str,
+        company_schema: str,
         ai_prompt: Optional[str] = None,
         template_selected: bool = False,
         success: bool = True,
         user_ip: Optional[str] = None,
     ) -> None:
-        """Log a mockup generation event."""
+        """Log a mockup generation event to company-specific schema."""
         pass
 
     @abstractmethod
-    def get_mockup_usage_stats(self) -> Dict[str, Any]:
-        """Get mockup usage statistics."""
+    def get_mockup_usage_stats(
+        self,
+        company_schemas: List[str],
+    ) -> Dict[str, Any]:
+        """Get mockup usage statistics from user's accessible company schemas."""
         pass
 
     @abstractmethod
-    def export_mockup_usage_to_excel(self) -> str:
-        """Export mockup usage to Excel. Returns file path."""
+    def export_mockup_usage_to_excel(
+        self,
+        company_schemas: List[str],
+    ) -> str:
+        """Export mockup usage from user's accessible company schemas to Excel. Returns file path."""
         pass
 
     # =========================================================================

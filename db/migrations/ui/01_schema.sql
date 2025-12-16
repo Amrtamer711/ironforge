@@ -566,9 +566,10 @@ BEGIN
         INNER JOIN company_tree parent ON child.parent_id = parent.id
         WHERE parent.is_group = true
     )
+    -- Only return non-group companies (those with actual data schemas)
     SELECT DISTINCT ct.code AS schema_name
     FROM company_tree ct
-    WHERE ct.code IS NOT NULL;
+    WHERE ct.code IS NOT NULL AND ct.is_group = false;
 END;
 $$ LANGUAGE plpgsql STABLE;
 

@@ -121,13 +121,22 @@ def list_location_photos(location_key: str, time_of_day: str = "day", finish: st
     return sorted(photos)
 
 
-def get_random_location_photo(location_key: str, time_of_day: str = "all", finish: str = "all") -> Optional[Tuple[str, str, str, Path]]:
+def get_random_location_photo(
+    location_key: str,
+    time_of_day: str = "all",
+    finish: str = "all",
+    company_schemas: Optional[List[str]] = None,
+) -> Optional[Tuple[str, str, str, Path]]:
     """Get a random photo for a location that has a frame configured. Returns (photo_filename, time_of_day, finish, photo_path)."""
+    from config import COMPANY_SCHEMAS
+
+    # Use provided schemas or default to all known schemas
+    schemas = company_schemas if company_schemas else COMPANY_SCHEMAS
 
     # Special handling for "all" - pick from filtered variations
     if time_of_day == "all" or finish == "all":
         # Get all variations available for this location
-        variations = db.list_mockup_variations(location_key)
+        variations = db.list_mockup_variations(location_key, schemas)
         if not variations:
             logger.warning(f"[MOCKUP] No variations found for location '{location_key}'")
             return None
@@ -144,7 +153,7 @@ def get_random_location_photo(location_key: str, time_of_day: str = "all", finis
                 if finish != "all" and fin != finish:
                     continue
 
-                photos = db.list_mockup_photos(location_key, tod, fin)
+                photos = db.list_mockup_photos(location_key, schemas, tod, fin)
                 for photo in photos:
                     all_photos.append((photo, tod, fin))
 
@@ -175,7 +184,7 @@ def get_random_location_photo(location_key: str, time_of_day: str = "all", finis
         return photo_filename, selected_tod, selected_finish, photo_path
 
     # Specific variation requested
-    photos_with_frames = db.list_mockup_photos(location_key, time_of_day, finish)
+    photos_with_frames = db.list_mockup_photos(location_key, schemas, time_of_day, finish)
 
     if not photos_with_frames:
         logger.warning(f"[MOCKUP] No photos with frames found for location '{location_key}/{time_of_day}/{finish}'")
@@ -193,17 +202,26 @@ def get_random_location_photo(location_key: str, time_of_day: str = "all", finis
     return photo_filename, time_of_day, finish, photo_path
 
 
-def is_portrait_location(location_key: str) -> bool:
+def is_portrait_location(
+    location_key: str,
+    company_schemas: Optional[List[str]] = None,
+) -> bool:
     """Check if a location has portrait orientation based on actual frame dimensions from database.
 
     Args:
         location_key: Location identifier
+        company_schemas: List of company schemas to search (defaults to all known schemas)
 
     Returns:
         True if height > width (portrait), False otherwise (landscape or unknown)
     """
+    from config import COMPANY_SCHEMAS
+
+    # Use provided schemas or default to all known schemas
+    schemas = company_schemas if company_schemas else COMPANY_SCHEMAS
+
     # Get any frame from this location to check dimensions
-    variations = db.list_mockup_variations(location_key)
+    variations = db.list_mockup_variations(location_key, schemas)
     if not variations:
         logger.warning(f"[ORIENTATION] No mockup frames found for '{location_key}'")
         return False  # Default to landscape if no frames
@@ -213,10 +231,14 @@ def is_portrait_location(location_key: str) -> bool:
         if finishes:
             finish = finishes[0]
             # Get any photo for this location
-            photos = db.list_mockup_photos(location_key, time_of_day, finish)
+            photos = db.list_mockup_photos(location_key, schemas, time_of_day, finish)
             if photos:
-                # Get frames from first photo
-                frames_data = db.get_mockup_frames(location_key, photos[0], time_of_day, finish)
+                # Get frames from first photo - search each schema to find which has frames
+                frames_data = None
+                for schema in schemas:
+                    frames_data = db.get_mockup_frames(location_key, photos[0], schema, time_of_day, finish)
+                    if frames_data:
+                        break
                 if frames_data and len(frames_data) > 0:
                     # Extract first frame points: [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
                     points = frames_data[0]["points"]
@@ -373,7 +395,8 @@ def generate_mockup(
     specific_photo: Optional[str] = None,
     time_of_day: str = "day",
     finish: str = "gold",
-    config_override: Optional[dict] = None
+    config_override: Optional[dict] = None,
+    company_schemas: Optional[List[str]] = None,
 ) -> Optional[Path]:
     """
     Generate a mockup by warping creatives onto a location billboard.
@@ -386,10 +409,16 @@ def generate_mockup(
         time_of_day: Time of day variation (default: "day")
         finish: Billboard finish (default: "gold")
         config_override: Optional config dict to override saved frame config
+        company_schemas: List of company schemas to search (defaults to all known schemas)
 
     Returns:
         Tuple of (Path to the generated mockup image, photo_filename used), or (None, None) if failed
     """
+    from config import COMPANY_SCHEMAS
+
+    # Use provided schemas or default to all known schemas
+    schemas = company_schemas if company_schemas else COMPANY_SCHEMAS
+
     logger.info(f"[MOCKUP] Generating mockup for location '{location_key}/{time_of_day}/{finish}' with {len(creative_images)} creative(s)")
 
     # Get billboard photo
@@ -400,19 +429,26 @@ def generate_mockup(
             logger.error(f"[MOCKUP] Specific photo not found: {photo_path}")
             return None, None
     else:
-        result = get_random_location_photo(location_key, time_of_day, finish)
+        result = get_random_location_photo(location_key, time_of_day, finish, schemas)
         if not result:
             return None, None
         photo_filename, time_of_day, finish, photo_path = result
 
-    # Get all frame coordinates (list of frames)
-    frames_data = db.get_mockup_frames(location_key, photo_filename, time_of_day, finish)
+    # Get all frame coordinates (list of frames) - search through schemas
+    frames_data = None
+    found_schema = None
+    for schema in schemas:
+        frames_data = db.get_mockup_frames(location_key, photo_filename, schema, time_of_day, finish)
+        if frames_data:
+            found_schema = schema
+            break
+
     if not frames_data:
         logger.error(f"[MOCKUP] No frame coordinates found for '{location_key}/{time_of_day}/{finish}/{photo_filename}'")
         return None, None
 
-    # Get config for this photo (if any)
-    photo_config = db.get_mockup_config(location_key, photo_filename, time_of_day, finish)
+    # Get config for this photo (if any) - use the same schema where frames were found
+    photo_config = db.get_mockup_config(location_key, photo_filename, found_schema, time_of_day, finish)
     if photo_config:
         logger.info(f"[MOCKUP] Using saved config: {photo_config}")
 
@@ -513,15 +549,28 @@ def generate_mockup(
         return None, None
 
 
-def delete_location_photo(location_key: str, photo_filename: str, time_of_day: str = "day", finish: str = "gold") -> bool:
+def delete_location_photo(
+    location_key: str,
+    photo_filename: str,
+    company_schema: str,
+    time_of_day: str = "day",
+    finish: str = "gold",
+) -> bool:
     """Delete a location photo and its frame data.
 
     Note: This performs a hard delete of the local file but the storage
     system maintains a soft-deleted record for audit purposes.
+
+    Args:
+        location_key: Location identifier
+        photo_filename: Name of the photo file
+        company_schema: Company schema to delete from (e.g., "backlite_dubai")
+        time_of_day: Time of day variation
+        finish: Finish type
     """
     try:
         # Delete from database (frame data)
-        db.delete_mockup_frame(location_key, photo_filename, time_of_day, finish)
+        db.delete_mockup_frame(location_key, photo_filename, company_schema, time_of_day, finish)
 
         # Delete local file
         photo_path = get_location_photos_dir(location_key, time_of_day, finish) / photo_filename

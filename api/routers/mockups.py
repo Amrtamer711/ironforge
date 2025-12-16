@@ -146,9 +146,17 @@ async def save_mockup_frame(
         photo_data = await photo.read()
         logger.info(f"[MOCKUP API] ✓ Read {len(photo_data)} bytes from upload")
 
+        # Determine which company schema to save to - based on which company owns the location
+        location_data = db.get_location_by_key(location_key, user.companies)
+        if not location_data:
+            raise HTTPException(status_code=403, detail=f"Location '{location_key}' not found in your accessible companies")
+        company_schema = location_data.get("company_schema")
+        if not company_schema:
+            raise HTTPException(status_code=500, detail=f"Location '{location_key}' has no company schema assigned")
+
         # Save all frames to database with per-frame configs - this returns the auto-numbered filename
-        logger.info(f"[MOCKUP API] Saving {len(frames)} frame(s) to database for {location_key}/{time_of_day}/{finish}")
-        final_filename = db.save_mockup_frame(location_key, photo.filename, frames, created_by=None, time_of_day=time_of_day, finish=finish, config=config_dict)
+        logger.info(f"[MOCKUP API] Saving {len(frames)} frame(s) to database for {company_schema}.{location_key}/{time_of_day}/{finish}")
+        final_filename = db.save_mockup_frame(location_key, photo.filename, frames, company_schema, created_by=user.email, time_of_day=time_of_day, finish=finish, config=config_dict)
         logger.info(f"[MOCKUP API] ✓ Database save complete, filename: {final_filename}")
 
         # Save photo to disk with the final auto-numbered filename
@@ -262,15 +270,15 @@ async def list_mockup_photos(location_key: str, time_of_day: str = "all", finish
     try:
         # If "all" is specified, we need to aggregate from all variations
         if time_of_day == "all" or finish == "all":
-            variations = db.list_mockup_variations(location_key)
+            variations = db.list_mockup_variations(location_key, user.companies)
             all_photos = set()
             for tod in variations:
                 for fin in variations[tod]:
-                    photos = db.list_mockup_photos(location_key, tod, fin)
+                    photos = db.list_mockup_photos(location_key, user.companies, tod, fin)
                     all_photos.update(photos)
             return {"photos": sorted(list(all_photos))}
         else:
-            photos = db.list_mockup_photos(location_key, time_of_day, finish)
+            photos = db.list_mockup_photos(location_key, user.companies, time_of_day, finish)
             return {"photos": photos}
     except Exception as e:
         logger.error(f"[MOCKUP API] Error listing photos: {e}")
@@ -285,13 +293,17 @@ async def list_mockup_templates(location_key: str, time_of_day: str = "all", fin
 
         # If "all" is specified, aggregate from all variations
         if time_of_day == "all" or finish == "all":
-            variations = db.list_mockup_variations(location_key)
+            variations = db.list_mockup_variations(location_key, user.companies)
             for tod in variations:
                 for fin in variations[tod]:
-                    photos = db.list_mockup_photos(location_key, tod, fin)
+                    photos = db.list_mockup_photos(location_key, user.companies, tod, fin)
                     for photo in photos:
-                        # Get frame count and config
-                        frames_data = db.get_mockup_frames(location_key, photo, tod, fin)
+                        # Get frame count and config - search through schemas
+                        frames_data = None
+                        for schema in user.companies:
+                            frames_data = db.get_mockup_frames(location_key, photo, schema, tod, fin)
+                            if frames_data:
+                                break
                         if frames_data:
                             # Get first frame's config (all frames typically share same config in UI)
                             frame_config = frames_data[0].get("config", {}) if frames_data else {}
@@ -303,10 +315,14 @@ async def list_mockup_templates(location_key: str, time_of_day: str = "all", fin
                                 "config": frame_config
                             })
         else:
-            photos = db.list_mockup_photos(location_key, time_of_day, finish)
+            photos = db.list_mockup_photos(location_key, user.companies, time_of_day, finish)
             for photo in photos:
-                # Get frame count and config
-                frames_data = db.get_mockup_frames(location_key, photo, time_of_day, finish)
+                # Get frame count and config - search through schemas
+                frames_data = None
+                for schema in user.companies:
+                    frames_data = db.get_mockup_frames(location_key, photo, schema, time_of_day, finish)
+                    if frames_data:
+                        break
                 if frames_data:
                     frame_config = frames_data[0].get("config", {}) if frames_data else {}
                     templates.append({
@@ -337,7 +353,7 @@ async def get_mockup_photo(location_key: str, photo_filename: str, time_of_day: 
     # If "all" is specified, find the photo in any variation
     if time_of_day == "all" or finish == "all":
         logger.info(f"[PHOTO GET] Searching across variations (all mode)")
-        variations = db.list_mockup_variations(location_key)
+        variations = db.list_mockup_variations(location_key, user.companies)
         logger.info(f"[PHOTO GET] Available variations: {variations}")
 
         all_checked_paths = []
@@ -397,21 +413,27 @@ async def delete_mockup_photo(location_key: str, photo_filename: str, time_of_da
     photo_filename = sanitize_path_component(photo_filename)
 
     try:
+        # Get the location to find which company schema owns it
+        location_data = db.get_location_by_key(location_key, user.companies)
+        if not location_data:
+            raise HTTPException(status_code=403, detail=f"Location '{location_key}' not found in your accessible companies")
+        company_schema = location_data.get("company_schema")
+
         # If "all" is specified, find and delete the photo from whichever variation it's in
         if time_of_day == "all" or finish == "all":
-            variations = db.list_mockup_variations(location_key)
+            variations = db.list_mockup_variations(location_key, user.companies)
             for tod in variations:
                 for fin in variations[tod]:
-                    photos = db.list_mockup_photos(location_key, tod, fin)
+                    photos = db.list_mockup_photos(location_key, user.companies, tod, fin)
                     if photo_filename in photos:
-                        success = mockup_generator.delete_location_photo(location_key, photo_filename, tod, fin)
+                        success = mockup_generator.delete_location_photo(location_key, photo_filename, company_schema, tod, fin)
                         if success:
                             return {"success": True}
                         else:
                             raise HTTPException(status_code=500, detail="Failed to delete photo")
             raise HTTPException(status_code=404, detail="Photo not found")
         else:
-            success = mockup_generator.delete_location_photo(location_key, photo_filename, time_of_day, finish)
+            success = mockup_generator.delete_location_photo(location_key, photo_filename, company_schema, time_of_day, finish)
             if success:
                 return {"success": True}
             else:
@@ -455,9 +477,14 @@ async def generate_mockup_api(
             except json.JSONDecodeError:
                 logger.warning(f"[MOCKUP API] Invalid frame config JSON, ignoring")
 
-        # Validate location
+        # Validate location and get company schema
         if location_key not in config.LOCATION_METADATA:
             raise HTTPException(status_code=400, detail=f"Invalid location: {location_key}")
+
+        location_data = db.get_location_by_key(location_key, user.companies)
+        if not location_data:
+            raise HTTPException(status_code=403, detail=f"Location '{location_key}' not found in your accessible companies")
+        company_schema = location_data.get("company_schema")
 
         # Determine mode: AI generation or upload
         if ai_prompt:
@@ -494,7 +521,8 @@ async def generate_mockup_api(
             time_of_day=time_of_day,
             finish=finish,
             specific_photo=specific_photo,
-            config_override=config_dict
+            config_override=config_dict,
+            company_schemas=user.companies,
         )
 
         if not result_path or not photo_used:
@@ -505,10 +533,11 @@ async def generate_mockup_api(
                 finish=finish,
                 photo_used=specific_photo or "random",
                 creative_type=creative_type or "unknown",
+                company_schema=company_schema,
                 ai_prompt=ai_prompt if ai_prompt else None,
                 template_selected=template_selected,
                 success=False,
-                user_ip=client_ip
+                user_ip=client_ip,
             )
             raise HTTPException(status_code=500, detail="Failed to generate mockup")
 
@@ -519,10 +548,11 @@ async def generate_mockup_api(
             finish=finish,
             photo_used=photo_used,
             creative_type=creative_type,
+            company_schema=company_schema,
             ai_prompt=ai_prompt if ai_prompt else None,
             template_selected=template_selected,
             success=True,
-            user_ip=client_ip
+            user_ip=client_ip,
         )
 
         # Return the image with background_tasks to delete after serving
@@ -597,10 +627,11 @@ async def generate_mockup_api(
                 finish=finish,
                 photo_used=specific_photo or "random",
                 creative_type=creative_type or "unknown",
+                company_schema=company_schema if 'company_schema' in locals() else user.companies[0] if user.companies else "unknown",
                 ai_prompt=ai_prompt if ai_prompt else None,
                 template_selected=template_selected,
                 success=False,
-                user_ip=client_ip
+                user_ip=client_ip,
             )
         except Exception as log_error:
             logger.error(f"[MOCKUP API] Error logging usage: {log_error}")

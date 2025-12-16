@@ -15,8 +15,9 @@ import os
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
+from config import COMPANY_SCHEMAS
 from db.base import DatabaseBackend
 from db.schema import get_postgres_schema, get_table_names
 from utils.time import get_uae_time
@@ -101,6 +102,109 @@ class SupabaseBackend(DatabaseBackend):
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to initialize: {e}")
             raise
+
+    # =========================================================================
+    # MULTI-SCHEMA HELPERS
+    # =========================================================================
+
+    def _find_in_schemas(
+        self,
+        table: str,
+        filters: Dict[str, Any],
+        user_companies: List[str],
+        select: str = "*",
+    ) -> Tuple[Optional[Dict], Optional[str], str]:
+        """
+        Search for a record across all company schemas with access control.
+
+        For lookups by key (location_key, bo_ref, etc.), this searches all
+        known schemas, checks if the record exists, and verifies user access.
+
+        Args:
+            table: Table name to query
+            filters: Dict of column->value filters (applied with .eq())
+            user_companies: List of schemas the user can access
+            select: Columns to select (default "*")
+
+        Returns:
+            Tuple of (data, found_schema, status) where:
+            - data: The record if found and accessible, None otherwise
+            - found_schema: Schema where record was found, None if not found
+            - status: "found", "not_found", or "access_denied"
+        """
+        client = self._get_client()
+
+        # Search all known company schemas
+        for schema in COMPANY_SCHEMAS:
+            try:
+                query = client.schema(schema).table(table).select(select)
+                for col, val in filters.items():
+                    query = query.eq(col, val)
+                response = query.execute()
+
+                if response.data:
+                    # Found the record - check access
+                    if schema in user_companies:
+                        # Add company_schema to the result
+                        result = response.data[0] if len(response.data) == 1 else response.data
+                        if isinstance(result, dict):
+                            result["company_schema"] = schema
+                        elif isinstance(result, list):
+                            for item in result:
+                                item["company_schema"] = schema
+                        return (result, schema, "found")
+                    else:
+                        # Found but user can't access
+                        return (None, schema, "access_denied")
+            except Exception as e:
+                # Log but continue searching other schemas
+                logger.debug(f"[SUPABASE] Error searching {schema}.{table}: {e}")
+                continue
+
+        # Not found in any schema
+        return (None, None, "not_found")
+
+    def _query_schemas(
+        self,
+        table: str,
+        company_schemas: List[str],
+        select: str = "*",
+        filters: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Query a table across multiple company schemas and aggregate results.
+
+        For list operations where we want data from all user's accessible companies.
+
+        Args:
+            table: Table name to query
+            company_schemas: List of schemas to query (usually user.companies)
+            select: Columns to select (default "*")
+            filters: Optional dict of column->value filters
+
+        Returns:
+            List of records from all schemas, each with 'company_schema' field added
+        """
+        client = self._get_client()
+        all_results = []
+
+        for schema in company_schemas:
+            try:
+                query = client.schema(schema).table(table).select(select)
+                if filters:
+                    for col, val in filters.items():
+                        query = query.eq(col, val)
+                response = query.execute()
+
+                if response.data:
+                    for record in response.data:
+                        record["company_schema"] = schema
+                    all_results.extend(response.data)
+            except Exception as e:
+                logger.warning(f"[SUPABASE] Error querying {schema}.{table}: {e}")
+                continue
+
+        return all_results
 
     # =========================================================================
     # PROPOSALS
@@ -421,7 +525,7 @@ class SupabaseBackend(DatabaseBackend):
             raise SupabaseOperationError(f"Failed to export booking orders: {e}") from e
 
     # =========================================================================
-    # MOCKUP FRAMES
+    # MOCKUP FRAMES (Company-scoped)
     # =========================================================================
 
     def save_mockup_frame(
@@ -429,11 +533,13 @@ class SupabaseBackend(DatabaseBackend):
         location_key: str,
         photo_filename: str,
         frames_data: List[Dict],
+        company_schema: str,
         created_by: Optional[str] = None,
         time_of_day: str = "day",
         finish: str = "gold",
         config: Optional[Dict] = None,
     ) -> str:
+        """Save mockup frame to company-specific schema."""
         import os
         try:
             client = self._get_client()
@@ -441,8 +547,8 @@ class SupabaseBackend(DatabaseBackend):
             _, ext = os.path.splitext(photo_filename)
             location_display_name = location_key.replace('_', ' ').title().replace(' ', '')
 
-            # Get existing photos for numbering
-            response = client.table("mockup_frames").select("photo_filename").eq("location_key", location_key).execute()
+            # Get existing photos for numbering from company schema
+            response = client.schema(company_schema).table("mockup_frames").select("photo_filename").eq("location_key", location_key).execute()
             existing_files = [r["photo_filename"] for r in (response.data or [])]
 
             existing_numbers = []
@@ -461,7 +567,7 @@ class SupabaseBackend(DatabaseBackend):
 
             final_filename = f"{location_display_name}_{next_num}{ext}"
 
-            client.table("mockup_frames").insert({
+            client.schema(company_schema).table("mockup_frames").insert({
                 "location_key": location_key,
                 "time_of_day": time_of_day,
                 "finish": finish,
@@ -472,7 +578,7 @@ class SupabaseBackend(DatabaseBackend):
                 "config_json": json.dumps(config) if config else None
             }).execute()
 
-            logger.info(f"[SUPABASE] Saved mockup frame: {location_key}/{final_filename}")
+            logger.info(f"[SUPABASE] Saved mockup frame: {company_schema}.{location_key}/{final_filename}")
             return final_filename
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to save mockup frame for {location_key}: {e}", exc_info=True)
@@ -482,12 +588,14 @@ class SupabaseBackend(DatabaseBackend):
         self,
         location_key: str,
         photo_filename: str,
+        company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
     ) -> Optional[List[Dict]]:
+        """Get mockup frames from company-specific schema."""
         try:
             client = self._get_client()
-            response = client.table("mockup_frames").select("frames_data").eq("location_key", location_key).eq("time_of_day", time_of_day).eq("finish", finish).eq("photo_filename", photo_filename).single().execute()
+            response = client.schema(company_schema).table("mockup_frames").select("frames_data").eq("location_key", location_key).eq("time_of_day", time_of_day).eq("finish", finish).eq("photo_filename", photo_filename).single().execute()
 
             if response.data:
                 return json.loads(response.data["frames_data"])
@@ -500,12 +608,14 @@ class SupabaseBackend(DatabaseBackend):
         self,
         location_key: str,
         photo_filename: str,
+        company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
     ) -> Optional[Dict]:
+        """Get mockup config from company-specific schema."""
         try:
             client = self._get_client()
-            response = client.table("mockup_frames").select("config_json").eq("location_key", location_key).eq("time_of_day", time_of_day).eq("finish", finish).eq("photo_filename", photo_filename).single().execute()
+            response = client.schema(company_schema).table("mockup_frames").select("config_json").eq("location_key", location_key).eq("time_of_day", time_of_day).eq("finish", finish).eq("photo_filename", photo_filename).single().execute()
 
             if response.data and response.data.get("config_json"):
                 return json.loads(response.data["config_json"])
@@ -517,31 +627,53 @@ class SupabaseBackend(DatabaseBackend):
     def list_mockup_photos(
         self,
         location_key: str,
+        company_schemas: List[str],
         time_of_day: str = "day",
         finish: str = "gold",
     ) -> List[str]:
+        """List mockup photos from user's accessible company schemas."""
         try:
             client = self._get_client()
-            response = client.table("mockup_frames").select("photo_filename").eq("location_key", location_key).eq("time_of_day", time_of_day).eq("finish", finish).execute()
+            all_photos = []
 
-            return [r["photo_filename"] for r in (response.data or [])]
+            for schema in company_schemas:
+                try:
+                    response = client.schema(schema).table("mockup_frames").select("photo_filename").eq("location_key", location_key).eq("time_of_day", time_of_day).eq("finish", finish).execute()
+                    if response.data:
+                        all_photos.extend([r["photo_filename"] for r in response.data])
+                except Exception as schema_err:
+                    logger.debug(f"[SUPABASE] Error querying {schema}.mockup_frames: {schema_err}")
+                    continue
+
+            return all_photos
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to list mockup photos for {location_key}: {e}", exc_info=True)
             return []
 
-    def list_mockup_variations(self, location_key: str) -> Dict[str, List[str]]:
+    def list_mockup_variations(
+        self,
+        location_key: str,
+        company_schemas: List[str],
+    ) -> Dict[str, List[str]]:
+        """List mockup variations from user's accessible company schemas."""
         try:
             client = self._get_client()
-            response = client.table("mockup_frames").select("time_of_day,finish").eq("location_key", location_key).execute()
-
             variations = {}
-            for r in (response.data or []):
-                tod = r["time_of_day"]
-                fin = r["finish"]
-                if tod not in variations:
-                    variations[tod] = []
-                if fin not in variations[tod]:
-                    variations[tod].append(fin)
+
+            for schema in company_schemas:
+                try:
+                    response = client.schema(schema).table("mockup_frames").select("time_of_day,finish").eq("location_key", location_key).execute()
+
+                    for r in (response.data or []):
+                        tod = r["time_of_day"]
+                        fin = r["finish"]
+                        if tod not in variations:
+                            variations[tod] = []
+                        if fin not in variations[tod]:
+                            variations[tod].append(fin)
+                except Exception as schema_err:
+                    logger.debug(f"[SUPABASE] Error querying {schema}.mockup_frames: {schema_err}")
+                    continue
 
             return variations
         except Exception as e:
@@ -552,19 +684,21 @@ class SupabaseBackend(DatabaseBackend):
         self,
         location_key: str,
         photo_filename: str,
+        company_schema: str,
         time_of_day: str = "day",
         finish: str = "gold",
     ) -> None:
+        """Delete mockup frame from company-specific schema."""
         try:
             client = self._get_client()
-            client.table("mockup_frames").delete().eq("location_key", location_key).eq("time_of_day", time_of_day).eq("finish", finish).eq("photo_filename", photo_filename).execute()
-            logger.info(f"[SUPABASE] Deleted mockup frame: {location_key}/{photo_filename}")
+            client.schema(company_schema).table("mockup_frames").delete().eq("location_key", location_key).eq("time_of_day", time_of_day).eq("finish", finish).eq("photo_filename", photo_filename).execute()
+            logger.info(f"[SUPABASE] Deleted mockup frame: {company_schema}.{location_key}/{photo_filename}")
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to delete mockup frame {location_key}/{photo_filename}: {e}", exc_info=True)
             raise SupabaseOperationError(f"Failed to delete mockup frame: {e}") from e
 
     # =========================================================================
-    # MOCKUP USAGE
+    # MOCKUP USAGE (Company-scoped)
     # =========================================================================
 
     def log_mockup_usage(
@@ -574,14 +708,16 @@ class SupabaseBackend(DatabaseBackend):
         finish: str,
         photo_used: str,
         creative_type: str,
+        company_schema: str,
         ai_prompt: Optional[str] = None,
         template_selected: bool = False,
         success: bool = True,
         user_ip: Optional[str] = None,
     ) -> None:
+        """Log mockup usage to company-specific schema."""
         try:
             client = self._get_client()
-            client.table("mockup_usage").insert({
+            client.schema(company_schema).table("mockup_usage").insert({
                 "generated_at": datetime.now().isoformat(),
                 "location_key": location_key,
                 "time_of_day": time_of_day,
@@ -593,17 +729,31 @@ class SupabaseBackend(DatabaseBackend):
                 "success": success,
                 "user_ip": user_ip
             }).execute()
-            logger.debug(f"[SUPABASE] Logged mockup usage: {location_key}/{photo_used}")
+            logger.debug(f"[SUPABASE] Logged mockup usage: {company_schema}.{location_key}/{photo_used}")
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to log mockup usage for {location_key}: {e}", exc_info=True)
             # Don't raise - usage logging is non-critical
 
-    def get_mockup_usage_stats(self) -> Dict[str, Any]:
+    def get_mockup_usage_stats(
+        self,
+        company_schemas: List[str],
+    ) -> Dict[str, Any]:
+        """Get mockup usage stats from user's accessible company schemas."""
         try:
             client = self._get_client()
+            all_usage = []
 
-            response = client.table("mockup_usage").select("*").execute()
-            all_usage = response.data or []
+            # Aggregate usage from all accessible schemas
+            for schema in company_schemas:
+                try:
+                    response = client.schema(schema).table("mockup_usage").select("*").execute()
+                    if response.data:
+                        for record in response.data:
+                            record["company_schema"] = schema
+                        all_usage.extend(response.data)
+                except Exception as schema_err:
+                    logger.debug(f"[SUPABASE] Error querying {schema}.mockup_usage: {schema_err}")
+                    continue
 
             total_count = len(all_usage)
             successful = sum(1 for u in all_usage if u.get("success"))
@@ -626,16 +776,17 @@ class SupabaseBackend(DatabaseBackend):
                 else:
                     without_template += 1
 
-            # Get recent
-            recent_response = client.table("mockup_usage").select("location_key,creative_type,generated_at,success").order("generated_at", desc=True).limit(10).execute()
+            # Get recent (sort all and take top 10)
+            all_usage_sorted = sorted(all_usage, key=lambda x: x.get("generated_at", ""), reverse=True)[:10]
             recent = [
                 {
                     "location": r["location_key"],
                     "creative_type": r["creative_type"],
                     "generated_at": r["generated_at"],
-                    "success": r["success"]
+                    "success": r["success"],
+                    "company_schema": r.get("company_schema")
                 }
-                for r in (recent_response.data or [])
+                for r in all_usage_sorted
             ]
 
             return {
@@ -662,15 +813,34 @@ class SupabaseBackend(DatabaseBackend):
                 "error": str(e)
             }
 
-    def export_mockup_usage_to_excel(self) -> str:
+    def export_mockup_usage_to_excel(
+        self,
+        company_schemas: List[str],
+    ) -> str:
+        """Export mockup usage from user's accessible company schemas to Excel."""
         import pandas as pd
         import tempfile
 
         try:
             client = self._get_client()
-            response = client.table("mockup_usage").select("*").order("generated_at", desc=True).execute()
+            all_usage = []
 
-            df = pd.DataFrame(response.data or [])
+            # Aggregate from all accessible schemas
+            for schema in company_schemas:
+                try:
+                    response = client.schema(schema).table("mockup_usage").select("*").execute()
+                    if response.data:
+                        for record in response.data:
+                            record["company_schema"] = schema
+                        all_usage.extend(response.data)
+                except Exception as schema_err:
+                    logger.debug(f"[SUPABASE] Error querying {schema}.mockup_usage: {schema_err}")
+                    continue
+
+            # Sort by generated_at descending
+            all_usage_sorted = sorted(all_usage, key=lambda x: x.get("generated_at", ""), reverse=True)
+
+            df = pd.DataFrame(all_usage_sorted)
             if not df.empty:
                 df['generated_at'] = pd.to_datetime(df['generated_at'])
                 df['template_selected'] = df['template_selected'].map({True: 'Yes', False: 'No'})

@@ -1,29 +1,33 @@
 -- =============================================================================
--- SALES BOT SUPABASE SCHEMA - MULTI-SCHEMA PER-COMPANY ISOLATION
+-- SALES BOT SUPABASE SCHEMA - HYBRID MULTI-SCHEMA ARCHITECTURE
 -- =============================================================================
 -- Run this in: Sales-Bot-Dev and Sales-Bot-Prod Supabase SQL Editor
 --
 -- ARCHITECTURE:
--- - public schema: Shared reference data (companies, functions)
--- - Per-company schemas: Isolated data (locations, proposals, etc.)
+-- - public schema: Cross-company data (proposals, BOs, AI costs, etc.)
+-- - Per-company schemas: Company-specific inventory (locations, mockup frames)
 --
--- Schemas:
---   public          - Shared reference tables and functions
---   backlite_dubai  - Backlite Dubai data
---   backlite_uk     - Backlite UK data
---   backlite_abudhabi - Backlite Abu Dhabi data
---   viola           - Viola data
+-- WHY THIS DESIGN:
+-- - Proposals can include locations from MULTIPLE companies
+-- - Booking orders can span MULTIPLE companies
+-- - AI costs are tracked by USER (users can belong to multiple companies)
+-- - But locations and mockup frames are owned by a SINGLE company
 --
--- Storage Paths (per company):
---   templates/{company_code}/{location_key}/
---   mockups/{company_code}/{location_key}/
---   uploads/{company_code}/{user_id}/
---   proposals/{company_code}/{user_id}/
+-- Company Schemas (isolated inventory):
+--   backlite_dubai  - Backlite Dubai locations & mockups
+--   backlite_uk     - Backlite UK locations & mockups
+--   backlite_abudhabi - Backlite Abu Dhabi locations & mockups
+--   viola           - Viola locations & mockups
+--
+-- Public Schema (cross-company):
+--   companies, chat_sessions, proposals_log, proposal_locations,
+--   booking_orders, bo_locations, bo_approval_workflows, ai_costs,
+--   documents, mockup_files, proposal_files
 --
 -- =============================================================================
 
 -- =============================================================================
--- PART 1: PUBLIC SCHEMA - SHARED REFERENCE DATA
+-- PART 1: PUBLIC SCHEMA - CROSS-COMPANY DATA
 -- =============================================================================
 
 -- Companies reference table (source of truth for company info)
@@ -46,7 +50,6 @@ CREATE INDEX IF NOT EXISTS idx_companies_code ON public.companies(code);
 CREATE INDEX IF NOT EXISTS idx_companies_parent ON public.companies(parent_id);
 
 -- Chat sessions (global per user, not company-specific)
--- Users have one chat session regardless of which companies they can access
 CREATE TABLE IF NOT EXISTS public.chat_sessions (
     id BIGSERIAL PRIMARY KEY,
     user_id TEXT NOT NULL UNIQUE,
@@ -74,6 +77,264 @@ ON CONFLICT (code) DO UPDATE SET
     is_group = EXCLUDED.is_group,
     config = EXCLUDED.config,
     updated_at = NOW();
+
+-- =============================================================================
+-- PROPOSALS LOG (Public - can include locations from multiple companies)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.proposals_log (
+    id BIGSERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    submitted_by TEXT NOT NULL,
+    client_name TEXT NOT NULL,
+    date_generated TIMESTAMPTZ DEFAULT NOW(),
+    package_type TEXT NOT NULL CHECK (package_type IN ('separate', 'combined')),
+    total_amount TEXT NOT NULL,
+    currency TEXT DEFAULT 'AED',
+    locations TEXT,                        -- Legacy: comma-separated location names
+    proposal_data JSONB,                   -- Full proposal details
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_proposals_user ON public.proposals_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_proposals_client ON public.proposals_log(client_name);
+CREATE INDEX IF NOT EXISTS idx_proposals_date ON public.proposals_log(date_generated);
+
+-- =============================================================================
+-- PROPOSAL LOCATIONS (Public - links proposals to locations across companies)
+-- =============================================================================
+-- NOTE: No unique constraint - same location can appear multiple times per proposal
+-- (e.g., same location with different options/finishes)
+-- location_company tracks which company schema the location belongs to
+CREATE TABLE IF NOT EXISTS public.proposal_locations (
+    id BIGSERIAL PRIMARY KEY,
+    proposal_id BIGINT NOT NULL REFERENCES public.proposals_log(id) ON DELETE CASCADE,
+    location_key TEXT NOT NULL,
+    location_company TEXT,                 -- Company schema that owns this location
+    location_display_name TEXT,
+    start_date DATE,
+    duration_weeks INTEGER,
+    net_rate DECIMAL(15,2),
+    upload_fee DECIMAL(10,2),
+    production_fee DECIMAL(10,2)
+);
+
+CREATE INDEX IF NOT EXISTS idx_proposal_locations_proposal ON public.proposal_locations(proposal_id);
+CREATE INDEX IF NOT EXISTS idx_proposal_locations_location ON public.proposal_locations(location_key);
+CREATE INDEX IF NOT EXISTS idx_proposal_locations_company ON public.proposal_locations(location_company);
+
+-- =============================================================================
+-- BOOKING ORDERS (Public - can span multiple companies)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.booking_orders (
+    id BIGSERIAL PRIMARY KEY,
+    bo_ref TEXT NOT NULL UNIQUE,
+    user_id TEXT,
+    company TEXT NOT NULL,                 -- Primary company (for BO numbering)
+    original_file_path TEXT NOT NULL,
+    original_file_type TEXT NOT NULL,
+    original_file_size BIGINT,
+    original_filename TEXT,
+    parsed_excel_path TEXT,
+    bo_number TEXT,
+    bo_date TEXT,
+    client TEXT,
+    agency TEXT,
+    brand_campaign TEXT,
+    category TEXT,
+    asset TEXT,
+    net_pre_vat DECIMAL(15,2),
+    vat_value DECIMAL(15,2),
+    gross_amount DECIMAL(15,2),
+    sla_pct DECIMAL(5,2),
+    payment_terms TEXT,
+    sales_person TEXT,
+    commission_pct DECIMAL(5,2),
+    notes TEXT,
+    locations_json JSONB,
+    extraction_method TEXT,
+    extraction_confidence TEXT,
+    warnings_json JSONB,
+    missing_fields_json JSONB,
+    vat_calc DECIMAL(15,2),
+    gross_calc DECIMAL(15,2),
+    sla_deduction DECIMAL(15,2),
+    net_excl_sla_calc DECIMAL(15,2),
+    parsed_at TIMESTAMPTZ DEFAULT NOW(),
+    parsed_by TEXT,
+    source_classification TEXT,
+    classification_confidence TEXT,
+    needs_review BOOLEAN DEFAULT false,
+    search_text TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_booking_orders_bo_ref ON public.booking_orders(bo_ref);
+CREATE INDEX IF NOT EXISTS idx_booking_orders_client ON public.booking_orders(client);
+CREATE INDEX IF NOT EXISTS idx_booking_orders_user ON public.booking_orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_booking_orders_parsed ON public.booking_orders(parsed_at);
+CREATE INDEX IF NOT EXISTS idx_booking_orders_company ON public.booking_orders(company);
+
+-- =============================================================================
+-- BO LOCATIONS (Public - links BOs to locations across companies)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.bo_locations (
+    id BIGSERIAL PRIMARY KEY,
+    bo_id BIGINT NOT NULL REFERENCES public.booking_orders(id) ON DELETE CASCADE,
+    location_key TEXT,
+    location_company TEXT,                 -- Company schema that owns this location
+    start_date DATE,
+    end_date DATE,
+    duration_weeks INTEGER,
+    net_rate DECIMAL(15,2),
+    raw_location_text TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_bo_locations_bo ON public.bo_locations(bo_id);
+CREATE INDEX IF NOT EXISTS idx_bo_locations_location ON public.bo_locations(location_key);
+CREATE INDEX IF NOT EXISTS idx_bo_locations_company ON public.bo_locations(location_company);
+
+-- =============================================================================
+-- BO APPROVAL WORKFLOWS (Public - workflows are cross-company)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.bo_approval_workflows (
+    workflow_id TEXT PRIMARY KEY,
+    bo_id BIGINT REFERENCES public.booking_orders(id) ON DELETE SET NULL,
+    workflow_data JSONB NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
+        'pending', 'coordinator_approved', 'coordinator_rejected',
+        'hos_approved', 'hos_rejected', 'cancelled', 'completed'
+    )),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_bo_workflows_status ON public.bo_approval_workflows(status);
+CREATE INDEX IF NOT EXISTS idx_bo_workflows_bo ON public.bo_approval_workflows(bo_id);
+
+-- =============================================================================
+-- AI COSTS (Public - tracked by user, users can belong to multiple companies)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.ai_costs (
+    id BIGSERIAL PRIMARY KEY,
+    timestamp TIMESTAMPTZ DEFAULT NOW(),
+    call_type TEXT NOT NULL CHECK (call_type IN (
+        'classification', 'parsing', 'coordinator_thread', 'main_llm',
+        'mockup_analysis', 'image_generation', 'bo_edit', 'other'
+    )),
+    workflow TEXT CHECK (workflow IN (
+        'mockup_upload', 'mockup_ai', 'bo_parsing', 'bo_editing',
+        'bo_revision', 'proposal_generation', 'general_chat', 'location_management'
+    ) OR workflow IS NULL),
+    model TEXT NOT NULL,
+    user_id TEXT,
+    context TEXT,
+    input_tokens INTEGER,
+    cached_input_tokens INTEGER DEFAULT 0,
+    output_tokens INTEGER,
+    reasoning_tokens INTEGER DEFAULT 0,
+    total_tokens INTEGER,
+    input_cost DECIMAL(10,6),
+    output_cost DECIMAL(10,6),
+    reasoning_cost DECIMAL(10,6) DEFAULT 0,
+    total_cost DECIMAL(10,6),
+    metadata_json JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_costs_timestamp ON public.ai_costs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_ai_costs_call_type ON public.ai_costs(call_type);
+CREATE INDEX IF NOT EXISTS idx_ai_costs_user ON public.ai_costs(user_id);
+
+-- =============================================================================
+-- DOCUMENTS (Public - documents can be shared across companies)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.documents (
+    id BIGSERIAL PRIMARY KEY,
+    file_id TEXT NOT NULL UNIQUE,
+    user_id TEXT NOT NULL,
+    original_filename TEXT NOT NULL,
+    file_type TEXT NOT NULL,
+    file_size BIGINT,
+    file_extension TEXT,
+    storage_provider TEXT NOT NULL DEFAULT 'supabase',
+    storage_bucket TEXT NOT NULL DEFAULT 'uploads',
+    storage_key TEXT NOT NULL,
+    document_type TEXT CHECK (document_type IN (
+        'bo_pdf', 'bo_image', 'bo_excel', 'creative', 'contract', 'invoice', 'other'
+    )),
+    bo_id BIGINT REFERENCES public.booking_orders(id) ON DELETE SET NULL,
+    proposal_id BIGINT REFERENCES public.proposals_log(id) ON DELETE SET NULL,
+    is_processed BOOLEAN DEFAULT false,
+    is_deleted BOOLEAN DEFAULT false,
+    deleted_at TIMESTAMPTZ,
+    file_hash TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    metadata_json JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_documents_file_id ON public.documents(file_id);
+CREATE INDEX IF NOT EXISTS idx_documents_user ON public.documents(user_id);
+CREATE INDEX IF NOT EXISTS idx_documents_type ON public.documents(document_type);
+
+-- =============================================================================
+-- MOCKUP FILES (Public - generated mockups, links to company-specific locations)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.mockup_files (
+    id BIGSERIAL PRIMARY KEY,
+    file_id TEXT NOT NULL UNIQUE,
+    user_id TEXT,
+    location_key TEXT NOT NULL,
+    location_company TEXT,                 -- Company schema that owns this location
+    original_filename TEXT,
+    file_size BIGINT,
+    storage_provider TEXT NOT NULL DEFAULT 'supabase',
+    storage_bucket TEXT NOT NULL DEFAULT 'mockups',
+    storage_key TEXT NOT NULL,
+    time_of_day TEXT NOT NULL DEFAULT 'day',
+    finish TEXT NOT NULL DEFAULT 'gold',
+    photo_filename TEXT,
+    creative_type TEXT CHECK (creative_type IN ('uploaded', 'ai_generated')),
+    creative_file_id TEXT,
+    ai_prompt TEXT,
+    output_format TEXT DEFAULT 'png',
+    width INTEGER,
+    height INTEGER,
+    is_deleted BOOLEAN DEFAULT false,
+    deleted_at TIMESTAMPTZ,
+    file_hash TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    metadata_json JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_mockup_files_file_id ON public.mockup_files(file_id);
+CREATE INDEX IF NOT EXISTS idx_mockup_files_location ON public.mockup_files(location_key);
+CREATE INDEX IF NOT EXISTS idx_mockup_files_company ON public.mockup_files(location_company);
+
+-- =============================================================================
+-- PROPOSAL FILES (Public - generated proposals)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS public.proposal_files (
+    id BIGSERIAL PRIMARY KEY,
+    file_id TEXT NOT NULL UNIQUE,
+    user_id TEXT NOT NULL,
+    proposal_id BIGINT REFERENCES public.proposals_log(id) ON DELETE CASCADE,
+    original_filename TEXT NOT NULL,
+    file_size BIGINT,
+    storage_provider TEXT NOT NULL DEFAULT 'supabase',
+    storage_bucket TEXT NOT NULL DEFAULT 'proposals',
+    storage_key TEXT NOT NULL,
+    client_name TEXT,
+    package_type TEXT,
+    location_count INTEGER,
+    version INTEGER DEFAULT 1,
+    is_latest BOOLEAN DEFAULT true,
+    is_deleted BOOLEAN DEFAULT false,
+    deleted_at TIMESTAMPTZ,
+    file_hash TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    metadata_json JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_proposal_files_file_id ON public.proposal_files(file_id);
+CREATE INDEX IF NOT EXISTS idx_proposal_files_proposal ON public.proposal_files(proposal_id);
 
 -- =============================================================================
 -- PART 2: HELPER FUNCTIONS (in public schema)
@@ -127,9 +388,9 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- =============================================================================
--- PART 3: COMPANY SCHEMA TEMPLATE
+-- PART 3: COMPANY SCHEMA TEMPLATE (Location-specific data only)
 -- =============================================================================
--- This function creates all tables for a company schema
+-- This function creates location and mockup tables for a company schema
 -- Call: SELECT public.create_company_schema('backlite_dubai');
 
 CREATE OR REPLACE FUNCTION public.create_company_schema(p_company_code TEXT)
@@ -141,7 +402,7 @@ BEGIN
     EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I', v_schema);
 
     -- =========================================================================
-    -- LOCATIONS INVENTORY
+    -- LOCATIONS INVENTORY (Company-specific)
     -- =========================================================================
     EXECUTE format('
         CREATE TABLE IF NOT EXISTS %I.locations (
@@ -175,7 +436,7 @@ BEGIN
     EXECUTE format('CREATE INDEX IF NOT EXISTS idx_locations_active ON %I.locations(is_active)', v_schema);
 
     -- =========================================================================
-    -- MOCKUP FRAMES
+    -- MOCKUP FRAMES (Company-specific - tied to company's locations)
     -- =========================================================================
     EXECUTE format('
         CREATE TABLE IF NOT EXISTS %I.mockup_frames (
@@ -196,7 +457,7 @@ BEGIN
     EXECUTE format('CREATE INDEX IF NOT EXISTS idx_mockup_frames_location_key ON %I.mockup_frames(location_key)', v_schema);
 
     -- =========================================================================
-    -- MOCKUP USAGE
+    -- MOCKUP USAGE (Company-specific - analytics per company)
     -- =========================================================================
     EXECUTE format('
         CREATE TABLE IF NOT EXISTS %I.mockup_usage (
@@ -221,323 +482,7 @@ BEGIN
     EXECUTE format('CREATE INDEX IF NOT EXISTS idx_mockup_usage_date ON %I.mockup_usage(generated_at)', v_schema);
 
     -- =========================================================================
-    -- PROPOSALS LOG
-    -- =========================================================================
-    EXECUTE format('
-        CREATE TABLE IF NOT EXISTS %I.proposals_log (
-            id BIGSERIAL PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            submitted_by TEXT NOT NULL,
-            client_name TEXT NOT NULL,
-            date_generated TIMESTAMPTZ DEFAULT NOW(),
-            package_type TEXT NOT NULL CHECK (package_type IN (''separate'', ''combined'')),
-            total_amount TEXT NOT NULL,
-            currency TEXT DEFAULT ''AED'',
-            proposal_data JSONB,
-            created_at TIMESTAMPTZ DEFAULT NOW()
-        )', v_schema);
-
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_proposals_user ON %I.proposals_log(user_id)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_proposals_client ON %I.proposals_log(client_name)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_proposals_date ON %I.proposals_log(date_generated)', v_schema);
-
-    -- =========================================================================
-    -- PROPOSAL LOCATIONS
-    -- =========================================================================
-    -- NOTE: No unique constraint - same location can appear multiple times per proposal
-    -- (e.g., same location with different options/finishes)
-    EXECUTE format('
-        CREATE TABLE IF NOT EXISTS %I.proposal_locations (
-            id BIGSERIAL PRIMARY KEY,
-            proposal_id BIGINT NOT NULL REFERENCES %I.proposals_log(id) ON DELETE CASCADE,
-            location_id BIGINT REFERENCES %I.locations(id) ON DELETE SET NULL,
-            location_key TEXT NOT NULL,
-            start_date DATE,
-            duration_weeks INTEGER,
-            net_rate DECIMAL(15,2),
-            upload_fee DECIMAL(10,2),
-            production_fee DECIMAL(10,2),
-            location_display_name TEXT
-        )', v_schema, v_schema, v_schema);
-
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_proposal_locations_proposal ON %I.proposal_locations(proposal_id)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_proposal_locations_location ON %I.proposal_locations(location_id)', v_schema);
-
-    -- =========================================================================
-    -- BOOKING ORDERS
-    -- =========================================================================
-    EXECUTE format('
-        CREATE TABLE IF NOT EXISTS %I.booking_orders (
-            id BIGSERIAL PRIMARY KEY,
-            bo_ref TEXT NOT NULL UNIQUE,
-            user_id TEXT,
-            company TEXT NOT NULL,
-            original_file_path TEXT NOT NULL,
-            original_file_type TEXT NOT NULL,
-            original_file_size BIGINT,
-            original_filename TEXT,
-            parsed_excel_path TEXT,
-            bo_number TEXT,
-            bo_date TEXT,
-            client TEXT,
-            agency TEXT,
-            brand_campaign TEXT,
-            category TEXT,
-            asset TEXT,
-            net_pre_vat DECIMAL(15,2),
-            vat_value DECIMAL(15,2),
-            gross_amount DECIMAL(15,2),
-            sla_pct DECIMAL(5,2),
-            payment_terms TEXT,
-            sales_person TEXT,
-            commission_pct DECIMAL(5,2),
-            notes TEXT,
-            locations_json JSONB,
-            extraction_method TEXT,
-            extraction_confidence TEXT,
-            warnings_json JSONB,
-            missing_fields_json JSONB,
-            vat_calc DECIMAL(15,2),
-            gross_calc DECIMAL(15,2),
-            sla_deduction DECIMAL(15,2),
-            net_excl_sla_calc DECIMAL(15,2),
-            parsed_at TIMESTAMPTZ DEFAULT NOW(),
-            parsed_by TEXT,
-            source_classification TEXT,
-            classification_confidence TEXT,
-            needs_review BOOLEAN DEFAULT false,
-            search_text TEXT
-        )', v_schema);
-
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_booking_orders_bo_ref ON %I.booking_orders(bo_ref)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_booking_orders_client ON %I.booking_orders(client)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_booking_orders_user ON %I.booking_orders(user_id)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_booking_orders_parsed ON %I.booking_orders(parsed_at)', v_schema);
-
-    -- =========================================================================
-    -- BO LOCATIONS
-    -- =========================================================================
-    EXECUTE format('
-        CREATE TABLE IF NOT EXISTS %I.bo_locations (
-            id BIGSERIAL PRIMARY KEY,
-            bo_id BIGINT NOT NULL REFERENCES %I.booking_orders(id) ON DELETE CASCADE,
-            location_id BIGINT REFERENCES %I.locations(id) ON DELETE SET NULL,
-            location_key TEXT,
-            start_date DATE,
-            end_date DATE,
-            duration_weeks INTEGER,
-            net_rate DECIMAL(15,2),
-            raw_location_text TEXT
-        )', v_schema, v_schema, v_schema);
-
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_bo_locations_bo ON %I.bo_locations(bo_id)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_bo_locations_location ON %I.bo_locations(location_id)', v_schema);
-
-    -- =========================================================================
-    -- BO APPROVAL WORKFLOWS
-    -- =========================================================================
-    EXECUTE format('
-        CREATE TABLE IF NOT EXISTS %I.bo_approval_workflows (
-            workflow_id TEXT PRIMARY KEY,
-            bo_id BIGINT REFERENCES %I.booking_orders(id) ON DELETE SET NULL,
-            workflow_data JSONB NOT NULL,
-            status TEXT NOT NULL DEFAULT ''pending'' CHECK (status IN (
-                ''pending'', ''coordinator_approved'', ''coordinator_rejected'',
-                ''hos_approved'', ''hos_rejected'', ''cancelled'', ''completed''
-            )),
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW()
-        )', v_schema, v_schema);
-
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_bo_workflows_status ON %I.bo_approval_workflows(status)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_bo_workflows_bo ON %I.bo_approval_workflows(bo_id)', v_schema);
-
-    -- NOTE: chat_sessions is in PUBLIC schema (global per user, not company-specific)
-
-    -- =========================================================================
-    -- AI COSTS
-    -- =========================================================================
-    EXECUTE format('
-        CREATE TABLE IF NOT EXISTS %I.ai_costs (
-            id BIGSERIAL PRIMARY KEY,
-            timestamp TIMESTAMPTZ DEFAULT NOW(),
-            call_type TEXT NOT NULL CHECK (call_type IN (
-                ''classification'', ''parsing'', ''coordinator_thread'', ''main_llm'',
-                ''mockup_analysis'', ''image_generation'', ''bo_edit'', ''other''
-            )),
-            workflow TEXT CHECK (workflow IN (
-                ''mockup_upload'', ''mockup_ai'', ''bo_parsing'', ''bo_editing'',
-                ''bo_revision'', ''proposal_generation'', ''general_chat'', ''location_management''
-            ) OR workflow IS NULL),
-            model TEXT NOT NULL,
-            user_id TEXT,
-            context TEXT,
-            input_tokens INTEGER,
-            cached_input_tokens INTEGER DEFAULT 0,
-            output_tokens INTEGER,
-            reasoning_tokens INTEGER DEFAULT 0,
-            total_tokens INTEGER,
-            input_cost DECIMAL(10,6),
-            output_cost DECIMAL(10,6),
-            reasoning_cost DECIMAL(10,6) DEFAULT 0,
-            total_cost DECIMAL(10,6),
-            metadata_json JSONB
-        )', v_schema);
-
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_ai_costs_timestamp ON %I.ai_costs(timestamp)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_ai_costs_call_type ON %I.ai_costs(call_type)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_ai_costs_user ON %I.ai_costs(user_id)', v_schema);
-
-    -- =========================================================================
-    -- LOCATION OCCUPATIONS
-    -- =========================================================================
-    EXECUTE format('
-        CREATE TABLE IF NOT EXISTS %I.location_occupations (
-            id BIGSERIAL PRIMARY KEY,
-            location_id BIGINT NOT NULL REFERENCES %I.locations(id) ON DELETE CASCADE,
-            bo_id BIGINT REFERENCES %I.booking_orders(id) ON DELETE SET NULL,
-            proposal_id BIGINT REFERENCES %I.proposals_log(id) ON DELETE SET NULL,
-            start_date DATE NOT NULL,
-            end_date DATE NOT NULL,
-            client_name TEXT,
-            campaign_name TEXT,
-            brand TEXT,
-            status TEXT NOT NULL DEFAULT ''tentative'' CHECK (status IN (
-                ''tentative'', ''pending'', ''confirmed'', ''live'', ''completed'', ''cancelled''
-            )),
-            net_rate DECIMAL(15,2),
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            updated_at TIMESTAMPTZ DEFAULT NOW(),
-            created_by TEXT,
-            notes TEXT
-        )', v_schema, v_schema, v_schema, v_schema);
-
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_occupations_location ON %I.location_occupations(location_id)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_occupations_dates ON %I.location_occupations(start_date, end_date)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_occupations_status ON %I.location_occupations(status)', v_schema);
-
-    -- =========================================================================
-    -- RATE CARDS
-    -- =========================================================================
-    EXECUTE format('
-        CREATE TABLE IF NOT EXISTS %I.rate_cards (
-            id BIGSERIAL PRIMARY KEY,
-            location_id BIGINT NOT NULL REFERENCES %I.locations(id) ON DELETE CASCADE,
-            valid_from DATE NOT NULL,
-            valid_to DATE,
-            weekly_rate DECIMAL(15,2) NOT NULL,
-            monthly_rate DECIMAL(15,2),
-            upload_fee DECIMAL(10,2),
-            production_fee_estimate DECIMAL(10,2),
-            currency TEXT DEFAULT ''AED'',
-            is_active BOOLEAN DEFAULT true,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            created_by TEXT,
-            notes TEXT,
-            CONSTRAINT rate_cards_unique_period UNIQUE (location_id, valid_from)
-        )', v_schema, v_schema);
-
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_rate_cards_location ON %I.rate_cards(location_id)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_rate_cards_valid ON %I.rate_cards(valid_from, valid_to)', v_schema);
-
-    -- =========================================================================
-    -- DOCUMENTS
-    -- =========================================================================
-    EXECUTE format('
-        CREATE TABLE IF NOT EXISTS %I.documents (
-            id BIGSERIAL PRIMARY KEY,
-            file_id TEXT NOT NULL UNIQUE,
-            user_id TEXT NOT NULL,
-            original_filename TEXT NOT NULL,
-            file_type TEXT NOT NULL,
-            file_size BIGINT,
-            file_extension TEXT,
-            storage_provider TEXT NOT NULL DEFAULT ''supabase'',
-            storage_bucket TEXT NOT NULL DEFAULT ''uploads'',
-            storage_key TEXT NOT NULL,
-            document_type TEXT CHECK (document_type IN (
-                ''bo_pdf'', ''bo_image'', ''bo_excel'', ''creative'', ''contract'', ''invoice'', ''other''
-            )),
-            bo_id BIGINT REFERENCES %I.booking_orders(id) ON DELETE SET NULL,
-            proposal_id BIGINT REFERENCES %I.proposals_log(id) ON DELETE SET NULL,
-            is_processed BOOLEAN DEFAULT false,
-            is_deleted BOOLEAN DEFAULT false,
-            deleted_at TIMESTAMPTZ,
-            file_hash TEXT,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            metadata_json JSONB
-        )', v_schema, v_schema, v_schema);
-
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_documents_file_id ON %I.documents(file_id)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_documents_user ON %I.documents(user_id)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_documents_type ON %I.documents(document_type)', v_schema);
-
-    -- =========================================================================
-    -- MOCKUP FILES
-    -- =========================================================================
-    EXECUTE format('
-        CREATE TABLE IF NOT EXISTS %I.mockup_files (
-            id BIGSERIAL PRIMARY KEY,
-            file_id TEXT NOT NULL UNIQUE,
-            user_id TEXT,
-            location_id BIGINT REFERENCES %I.locations(id) ON DELETE SET NULL,
-            location_key TEXT NOT NULL,
-            mockup_usage_id BIGINT REFERENCES %I.mockup_usage(id) ON DELETE SET NULL,
-            original_filename TEXT,
-            file_size BIGINT,
-            storage_provider TEXT NOT NULL DEFAULT ''supabase'',
-            storage_bucket TEXT NOT NULL DEFAULT ''mockups'',
-            storage_key TEXT NOT NULL,
-            time_of_day TEXT NOT NULL DEFAULT ''day'',
-            finish TEXT NOT NULL DEFAULT ''gold'',
-            photo_filename TEXT,
-            creative_type TEXT CHECK (creative_type IN (''uploaded'', ''ai_generated'')),
-            creative_file_id TEXT,
-            ai_prompt TEXT,
-            output_format TEXT DEFAULT ''png'',
-            width INTEGER,
-            height INTEGER,
-            is_deleted BOOLEAN DEFAULT false,
-            deleted_at TIMESTAMPTZ,
-            file_hash TEXT,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            metadata_json JSONB
-        )', v_schema, v_schema, v_schema);
-
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_mockup_files_file_id ON %I.mockup_files(file_id)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_mockup_files_location ON %I.mockup_files(location_id)', v_schema);
-
-    -- =========================================================================
-    -- PROPOSAL FILES
-    -- =========================================================================
-    EXECUTE format('
-        CREATE TABLE IF NOT EXISTS %I.proposal_files (
-            id BIGSERIAL PRIMARY KEY,
-            file_id TEXT NOT NULL UNIQUE,
-            user_id TEXT NOT NULL,
-            proposal_id BIGINT REFERENCES %I.proposals_log(id) ON DELETE CASCADE,
-            original_filename TEXT NOT NULL,
-            file_size BIGINT,
-            storage_provider TEXT NOT NULL DEFAULT ''supabase'',
-            storage_bucket TEXT NOT NULL DEFAULT ''proposals'',
-            storage_key TEXT NOT NULL,
-            client_name TEXT,
-            package_type TEXT,
-            location_count INTEGER,
-            version INTEGER DEFAULT 1,
-            is_latest BOOLEAN DEFAULT true,
-            is_deleted BOOLEAN DEFAULT false,
-            deleted_at TIMESTAMPTZ,
-            file_hash TEXT,
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            metadata_json JSONB
-        )', v_schema, v_schema);
-
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_proposal_files_file_id ON %I.proposal_files(file_id)', v_schema);
-    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_proposal_files_proposal ON %I.proposal_files(proposal_id)', v_schema);
-
-    -- =========================================================================
-    -- LOCATION PHOTOS
+    -- LOCATION PHOTOS (Company-specific - billboard photos)
     -- =========================================================================
     EXECUTE format('
         CREATE TABLE IF NOT EXISTS %I.location_photos (
@@ -563,6 +508,58 @@ BEGIN
     EXECUTE format('CREATE INDEX IF NOT EXISTS idx_location_photos_key ON %I.location_photos(location_key)', v_schema);
 
     -- =========================================================================
+    -- RATE CARDS (Company-specific - pricing per company)
+    -- =========================================================================
+    EXECUTE format('
+        CREATE TABLE IF NOT EXISTS %I.rate_cards (
+            id BIGSERIAL PRIMARY KEY,
+            location_id BIGINT NOT NULL REFERENCES %I.locations(id) ON DELETE CASCADE,
+            valid_from DATE NOT NULL,
+            valid_to DATE,
+            weekly_rate DECIMAL(15,2) NOT NULL,
+            monthly_rate DECIMAL(15,2),
+            upload_fee DECIMAL(10,2),
+            production_fee_estimate DECIMAL(10,2),
+            currency TEXT DEFAULT ''AED'',
+            is_active BOOLEAN DEFAULT true,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            created_by TEXT,
+            notes TEXT,
+            CONSTRAINT rate_cards_unique_period UNIQUE (location_id, valid_from)
+        )', v_schema, v_schema);
+
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_rate_cards_location ON %I.rate_cards(location_id)', v_schema);
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_rate_cards_valid ON %I.rate_cards(valid_from, valid_to)', v_schema);
+
+    -- =========================================================================
+    -- LOCATION OCCUPATIONS (Company-specific - availability per company)
+    -- =========================================================================
+    EXECUTE format('
+        CREATE TABLE IF NOT EXISTS %I.location_occupations (
+            id BIGSERIAL PRIMARY KEY,
+            location_id BIGINT NOT NULL REFERENCES %I.locations(id) ON DELETE CASCADE,
+            bo_id BIGINT,                   -- References public.booking_orders
+            proposal_id BIGINT,             -- References public.proposals_log
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            client_name TEXT,
+            campaign_name TEXT,
+            brand TEXT,
+            status TEXT NOT NULL DEFAULT ''tentative'' CHECK (status IN (
+                ''tentative'', ''pending'', ''confirmed'', ''live'', ''completed'', ''cancelled''
+            )),
+            net_rate DECIMAL(15,2),
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+            created_by TEXT,
+            notes TEXT
+        )', v_schema, v_schema);
+
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_occupations_location ON %I.location_occupations(location_id)', v_schema);
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_occupations_dates ON %I.location_occupations(start_date, end_date)', v_schema);
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_occupations_status ON %I.location_occupations(status)', v_schema);
+
+    -- =========================================================================
     -- TRIGGERS
     -- =========================================================================
     EXECUTE format('
@@ -571,15 +568,6 @@ BEGIN
             BEFORE UPDATE ON %I.locations
             FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
     ', v_schema, v_schema);
-
-    EXECUTE format('
-        DROP TRIGGER IF EXISTS update_bo_workflows_updated_at ON %I.bo_approval_workflows;
-        CREATE TRIGGER update_bo_workflows_updated_at
-            BEFORE UPDATE ON %I.bo_approval_workflows
-            FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
-    ', v_schema, v_schema);
-
-    -- NOTE: chat_sessions trigger is in PUBLIC schema section
 
     EXECUTE format('
         DROP TRIGGER IF EXISTS update_occupations_updated_at ON %I.location_occupations;
@@ -594,37 +582,24 @@ BEGIN
     EXECUTE format('ALTER TABLE %I.locations ENABLE ROW LEVEL SECURITY', v_schema);
     EXECUTE format('ALTER TABLE %I.mockup_frames ENABLE ROW LEVEL SECURITY', v_schema);
     EXECUTE format('ALTER TABLE %I.mockup_usage ENABLE ROW LEVEL SECURITY', v_schema);
-    EXECUTE format('ALTER TABLE %I.proposals_log ENABLE ROW LEVEL SECURITY', v_schema);
-    EXECUTE format('ALTER TABLE %I.proposal_locations ENABLE ROW LEVEL SECURITY', v_schema);
-    EXECUTE format('ALTER TABLE %I.booking_orders ENABLE ROW LEVEL SECURITY', v_schema);
-    EXECUTE format('ALTER TABLE %I.bo_locations ENABLE ROW LEVEL SECURITY', v_schema);
-    EXECUTE format('ALTER TABLE %I.bo_approval_workflows ENABLE ROW LEVEL SECURITY', v_schema);
-    -- NOTE: chat_sessions RLS is in PUBLIC schema section
-    EXECUTE format('ALTER TABLE %I.ai_costs ENABLE ROW LEVEL SECURITY', v_schema);
-    EXECUTE format('ALTER TABLE %I.location_occupations ENABLE ROW LEVEL SECURITY', v_schema);
-    EXECUTE format('ALTER TABLE %I.rate_cards ENABLE ROW LEVEL SECURITY', v_schema);
-    EXECUTE format('ALTER TABLE %I.documents ENABLE ROW LEVEL SECURITY', v_schema);
-    EXECUTE format('ALTER TABLE %I.mockup_files ENABLE ROW LEVEL SECURITY', v_schema);
-    EXECUTE format('ALTER TABLE %I.proposal_files ENABLE ROW LEVEL SECURITY', v_schema);
     EXECUTE format('ALTER TABLE %I.location_photos ENABLE ROW LEVEL SECURITY', v_schema);
+    EXECUTE format('ALTER TABLE %I.rate_cards ENABLE ROW LEVEL SECURITY', v_schema);
+    EXECUTE format('ALTER TABLE %I.location_occupations ENABLE ROW LEVEL SECURITY', v_schema);
 
-    -- Service role full access policies
+    -- Service role full access policies (drop first to avoid "already exists" error)
+    EXECUTE format('DROP POLICY IF EXISTS "Service role full access" ON %I.locations', v_schema);
+    EXECUTE format('DROP POLICY IF EXISTS "Service role full access" ON %I.mockup_frames', v_schema);
+    EXECUTE format('DROP POLICY IF EXISTS "Service role full access" ON %I.mockup_usage', v_schema);
+    EXECUTE format('DROP POLICY IF EXISTS "Service role full access" ON %I.location_photos', v_schema);
+    EXECUTE format('DROP POLICY IF EXISTS "Service role full access" ON %I.rate_cards', v_schema);
+    EXECUTE format('DROP POLICY IF EXISTS "Service role full access" ON %I.location_occupations', v_schema);
+
     EXECUTE format('CREATE POLICY "Service role full access" ON %I.locations FOR ALL USING (true)', v_schema);
     EXECUTE format('CREATE POLICY "Service role full access" ON %I.mockup_frames FOR ALL USING (true)', v_schema);
     EXECUTE format('CREATE POLICY "Service role full access" ON %I.mockup_usage FOR ALL USING (true)', v_schema);
-    EXECUTE format('CREATE POLICY "Service role full access" ON %I.proposals_log FOR ALL USING (true)', v_schema);
-    EXECUTE format('CREATE POLICY "Service role full access" ON %I.proposal_locations FOR ALL USING (true)', v_schema);
-    EXECUTE format('CREATE POLICY "Service role full access" ON %I.booking_orders FOR ALL USING (true)', v_schema);
-    EXECUTE format('CREATE POLICY "Service role full access" ON %I.bo_locations FOR ALL USING (true)', v_schema);
-    EXECUTE format('CREATE POLICY "Service role full access" ON %I.bo_approval_workflows FOR ALL USING (true)', v_schema);
-    -- NOTE: chat_sessions policy is in PUBLIC schema section
-    EXECUTE format('CREATE POLICY "Service role full access" ON %I.ai_costs FOR ALL USING (true)', v_schema);
-    EXECUTE format('CREATE POLICY "Service role full access" ON %I.location_occupations FOR ALL USING (true)', v_schema);
-    EXECUTE format('CREATE POLICY "Service role full access" ON %I.rate_cards FOR ALL USING (true)', v_schema);
-    EXECUTE format('CREATE POLICY "Service role full access" ON %I.documents FOR ALL USING (true)', v_schema);
-    EXECUTE format('CREATE POLICY "Service role full access" ON %I.mockup_files FOR ALL USING (true)', v_schema);
-    EXECUTE format('CREATE POLICY "Service role full access" ON %I.proposal_files FOR ALL USING (true)', v_schema);
     EXECUTE format('CREATE POLICY "Service role full access" ON %I.location_photos FOR ALL USING (true)', v_schema);
+    EXECUTE format('CREATE POLICY "Service role full access" ON %I.rate_cards FOR ALL USING (true)', v_schema);
+    EXECUTE format('CREATE POLICY "Service role full access" ON %I.location_occupations FOR ALL USING (true)', v_schema);
 
     -- =========================================================================
     -- GRANTS
@@ -633,7 +608,7 @@ BEGIN
     EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA %I TO service_role', v_schema);
     EXECUTE format('GRANT USAGE ON SCHEMA %I TO service_role', v_schema);
 
-    RAISE NOTICE 'Created schema % with all tables', v_schema;
+    RAISE NOTICE 'Created schema % with location and mockup tables', v_schema;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -648,10 +623,68 @@ SELECT public.create_company_schema('backlite_abudhabi');
 SELECT public.create_company_schema('viola');
 
 -- =============================================================================
--- PART 5: CROSS-SCHEMA VIEWS (for MMG/group access)
+-- PART 5: PUBLIC SCHEMA TRIGGERS & RLS
 -- =============================================================================
 
--- All locations across all companies (for MMG users)
+-- Trigger for chat_sessions updated_at
+DROP TRIGGER IF EXISTS update_chat_sessions_updated_at ON public.chat_sessions;
+CREATE TRIGGER update_chat_sessions_updated_at
+    BEFORE UPDATE ON public.chat_sessions
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- Trigger for bo_approval_workflows updated_at
+DROP TRIGGER IF EXISTS update_bo_workflows_updated_at ON public.bo_approval_workflows;
+CREATE TRIGGER update_bo_workflows_updated_at
+    BEFORE UPDATE ON public.bo_approval_workflows
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+
+-- Enable RLS on public tables
+ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.chat_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.proposals_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.proposal_locations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.booking_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bo_locations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.bo_approval_workflows ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_costs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mockup_files ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.proposal_files ENABLE ROW LEVEL SECURITY;
+
+-- Service role full access policies for public tables (drop first to avoid "already exists" error)
+DROP POLICY IF EXISTS "Service role full access" ON public.companies;
+DROP POLICY IF EXISTS "Service role full access" ON public.chat_sessions;
+DROP POLICY IF EXISTS "Service role full access" ON public.proposals_log;
+DROP POLICY IF EXISTS "Service role full access" ON public.proposal_locations;
+DROP POLICY IF EXISTS "Service role full access" ON public.booking_orders;
+DROP POLICY IF EXISTS "Service role full access" ON public.bo_locations;
+DROP POLICY IF EXISTS "Service role full access" ON public.bo_approval_workflows;
+DROP POLICY IF EXISTS "Service role full access" ON public.ai_costs;
+DROP POLICY IF EXISTS "Service role full access" ON public.documents;
+DROP POLICY IF EXISTS "Service role full access" ON public.mockup_files;
+DROP POLICY IF EXISTS "Service role full access" ON public.proposal_files;
+
+CREATE POLICY "Service role full access" ON public.companies FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON public.chat_sessions FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON public.proposals_log FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON public.proposal_locations FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON public.booking_orders FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON public.bo_locations FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON public.bo_approval_workflows FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON public.ai_costs FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON public.documents FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON public.mockup_files FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON public.proposal_files FOR ALL USING (true);
+
+-- Grants for public schema
+GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO service_role;
+
+-- =============================================================================
+-- PART 6: CROSS-SCHEMA VIEWS (for unified access)
+-- =============================================================================
+
+-- All locations across all companies (for MMG users or aggregated views)
 CREATE OR REPLACE VIEW public.all_locations AS
 SELECT 'backlite_dubai' as company_code, l.* FROM backlite_dubai.locations l
 UNION ALL
@@ -661,78 +694,59 @@ SELECT 'backlite_abudhabi' as company_code, l.* FROM backlite_abudhabi.locations
 UNION ALL
 SELECT 'viola' as company_code, l.* FROM viola.locations l;
 
--- All proposals across all companies
-CREATE OR REPLACE VIEW public.all_proposals AS
-SELECT 'backlite_dubai' as company_code, p.* FROM backlite_dubai.proposals_log p
+-- All mockup frames across all companies
+CREATE OR REPLACE VIEW public.all_mockup_frames AS
+SELECT 'backlite_dubai' as company_code, m.* FROM backlite_dubai.mockup_frames m
 UNION ALL
-SELECT 'backlite_uk' as company_code, p.* FROM backlite_uk.proposals_log p
+SELECT 'backlite_uk' as company_code, m.* FROM backlite_uk.mockup_frames m
 UNION ALL
-SELECT 'backlite_abudhabi' as company_code, p.* FROM backlite_abudhabi.proposals_log p
+SELECT 'backlite_abudhabi' as company_code, m.* FROM backlite_abudhabi.mockup_frames m
 UNION ALL
-SELECT 'viola' as company_code, p.* FROM viola.proposals_log p;
+SELECT 'viola' as company_code, m.* FROM viola.mockup_frames m;
 
--- All booking orders across all companies
-CREATE OR REPLACE VIEW public.all_booking_orders AS
-SELECT 'backlite_dubai' as company_code, bo.* FROM backlite_dubai.booking_orders bo
+-- All mockup usage across all companies
+CREATE OR REPLACE VIEW public.all_mockup_usage AS
+SELECT 'backlite_dubai' as company_code, u.* FROM backlite_dubai.mockup_usage u
 UNION ALL
-SELECT 'backlite_uk' as company_code, bo.* FROM backlite_uk.booking_orders bo
+SELECT 'backlite_uk' as company_code, u.* FROM backlite_uk.mockup_usage u
 UNION ALL
-SELECT 'backlite_abudhabi' as company_code, bo.* FROM backlite_abudhabi.booking_orders bo
+SELECT 'backlite_abudhabi' as company_code, u.* FROM backlite_abudhabi.mockup_usage u
 UNION ALL
-SELECT 'viola' as company_code, bo.* FROM viola.booking_orders bo;
-
--- All AI costs across all companies
-CREATE OR REPLACE VIEW public.all_ai_costs AS
-SELECT 'backlite_dubai' as company_code, c.* FROM backlite_dubai.ai_costs c
-UNION ALL
-SELECT 'backlite_uk' as company_code, c.* FROM backlite_uk.ai_costs c
-UNION ALL
-SELECT 'backlite_abudhabi' as company_code, c.* FROM backlite_abudhabi.ai_costs c
-UNION ALL
-SELECT 'viola' as company_code, c.* FROM viola.ai_costs c;
+SELECT 'viola' as company_code, u.* FROM viola.mockup_usage u;
 
 -- =============================================================================
--- PART 6: PUBLIC SCHEMA RLS & GRANTS
+-- DONE! Hybrid multi-schema architecture is ready.
 -- =============================================================================
-
--- Companies table
-ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Service role full access" ON public.companies FOR ALL USING (true);
-
--- Chat sessions table (global per user)
-ALTER TABLE public.chat_sessions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Service role full access" ON public.chat_sessions FOR ALL USING (true);
-
--- Trigger for chat_sessions updated_at
-DROP TRIGGER IF EXISTS update_chat_sessions_updated_at ON public.chat_sessions;
-CREATE TRIGGER update_chat_sessions_updated_at
-    BEFORE UPDATE ON public.chat_sessions
-    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
-
-GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
-GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO service_role;
-
--- =============================================================================
--- DONE! Multi-schema per-company isolation is ready.
--- =============================================================================
+--
+-- SUMMARY:
+-- --------
+-- PUBLIC SCHEMA (cross-company data):
+--   - proposals_log, proposal_locations
+--   - booking_orders, bo_locations, bo_approval_workflows
+--   - ai_costs
+--   - documents, mockup_files, proposal_files
+--   - chat_sessions, companies
+--
+-- COMPANY SCHEMAS (company-specific inventory):
+--   - locations
+--   - mockup_frames
+--   - mockup_usage
+--   - location_photos
+--   - rate_cards
+--   - location_occupations
 --
 -- USAGE:
 -- ------
--- 1. Query specific company:
+-- 1. Query specific company's locations:
 --    SELECT * FROM backlite_dubai.locations;
 --
--- 2. Query all companies (MMG access):
+-- 2. Query all locations (MMG access):
 --    SELECT * FROM public.all_locations;
 --
--- 3. Get user's accessible schemas:
---    SELECT * FROM public.get_accessible_schemas(ARRAY[3, 6]); -- backlite_dubai + viola
---
--- STORAGE PATHS:
--- --------------
--- templates/backlite_dubai/dubai_gateway/dubai_gateway.pptx
--- templates/backlite_uk/london_bridge/london_bridge.pptx
--- mockups/backlite_dubai/dubai_gateway/day/gold/photo1.jpg
--- uploads/backlite_dubai/{user_id}/bo_2024_001.pdf
--- proposals/backlite_dubai/{user_id}/proposal_client_2024.pptx
+-- 3. Create a proposal with locations from multiple companies:
+--    INSERT INTO public.proposals_log (...) VALUES (...);
+--    INSERT INTO public.proposal_locations (proposal_id, location_key, location_company, ...)
+--    VALUES (1, 'dubai_gateway', 'backlite_dubai', ...),
+--           (1, 'london_bridge', 'backlite_uk', ...);
 --
 -- =============================================================================

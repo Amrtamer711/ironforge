@@ -29,6 +29,7 @@ async def handle_mockup_generation(
     user_id: str,
     channel: str,
     status_ts: str,
+    user_companies: List[str],
     channel_event: dict = None,
     download_file_func: Callable = None,
     generate_mockup_queued_func: Callable = None,
@@ -52,6 +53,7 @@ async def handle_mockup_generation(
         user_id: User identifier
         channel: Channel/conversation ID
         status_ts: ID of status message to update
+        user_companies: List of company schemas user can access
         channel_event: Original channel event dict (for file access)
         download_file_func: Function to download files (channel-agnostic)
         generate_mockup_queued_func: Function for queued mockup generation
@@ -95,8 +97,8 @@ async def handle_mockup_generation(
         )
         return True
 
-    # Check if location has any mockup photos configured
-    variations = db.list_mockup_variations(location_key)
+    # Check if location has any mockup photos configured (search user's company schemas)
+    variations = db.list_mockup_variations(location_key, user_companies)
     if not variations:
         await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
         mockup_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:3000") + "/mockup"
@@ -109,8 +111,8 @@ async def handle_mockup_generation(
         )
         return True
 
-    # Get frame count for this location
-    new_location_frame_count = get_location_frame_count(location_key, time_of_day, finish)
+    # Get frame count for this location (from user's accessible company schemas)
+    new_location_frame_count = get_location_frame_count(location_key, user_companies, time_of_day, finish)
 
     # Get user's mockup history if exists
     mockup_user_hist = get_mockup_history(user_id)
@@ -151,6 +153,7 @@ async def handle_mockup_generation(
             user_id=user_id,
             channel=channel,
             status_ts=status_ts,
+            user_companies=user_companies,
             generate_mockup_queued_func=generate_mockup_queued_func,
         )
 
@@ -167,6 +170,7 @@ async def handle_mockup_generation(
             user_id=user_id,
             channel=channel,
             status_ts=status_ts,
+            user_companies=user_companies,
             generate_ai_mockup_queued_func=generate_ai_mockup_queued_func,
         )
 
@@ -303,7 +307,8 @@ async def _handle_followup_mode(
             location_key,
             stored_creative_paths,
             time_of_day=time_of_day,
-            finish=finish
+            finish=finish,
+            company_schemas=user_companies,
         )
 
         if not result_path:
@@ -375,6 +380,7 @@ async def _handle_upload_mode(
     user_id: str,
     channel: str,
     status_ts: str,
+    user_companies: List[str],
     generate_mockup_queued_func: Callable,
 ) -> bool:
     """Handle mockup generation from uploaded images."""
@@ -412,7 +418,8 @@ async def _handle_upload_mode(
             location_key,
             uploaded_creatives,
             time_of_day=time_of_day,
-            finish=finish
+            finish=finish,
+            company_schemas=user_companies,
         )
 
         if not result_path:
@@ -446,7 +453,7 @@ async def _handle_upload_mode(
             logger.debug(f"[MOCKUP] Failed to delete status message: {e}")
 
         # Store in history for follow-ups
-        location_frame_count = get_location_frame_count(location_key, time_of_day, finish)
+        location_frame_count = get_location_frame_count(location_key, user_companies, time_of_day, finish)
         store_mockup_history(user_id, uploaded_creatives, {
             "location_key": location_key,
             "location_name": location_name,
@@ -493,6 +500,7 @@ async def _handle_ai_mode(
     user_id: str,
     channel: str,
     status_ts: str,
+    user_companies: List[str],
     generate_ai_mockup_queued_func: Callable,
 ) -> bool:
     """Handle mockup generation with AI-generated creative."""
@@ -534,7 +542,8 @@ async def _handle_ai_mode(
             location_key=location_key,
             time_of_day=time_of_day,
             finish=finish,
-            user_id=user_id
+            user_id=user_id,
+            company_schemas=user_companies,
         )
 
         if not result_path:

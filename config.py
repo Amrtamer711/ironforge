@@ -151,6 +151,33 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 
 # ============================================================================
+# COMPANY SCHEMAS (Hybrid Multi-tenant Architecture)
+# ============================================================================
+
+# Company hierarchy (managed in database `companies` table):
+#   MMG (is_group=true)
+#   ├── Backlite (is_group=true)
+#   │   ├── backlite_dubai (is_group=false) → has schema
+#   │   ├── backlite_uk (is_group=false) → has schema
+#   │   └── backlite_abudhabi (is_group=false) → has schema
+#   └── viola (is_group=false) → has schema
+#
+# Groups (is_group=true) are organizational only - no data schema.
+# Leaf companies (is_group=false) have actual PostgreSQL schemas with data.
+# The `get_accessible_schemas` SQL function expands groups to leaf schemas.
+# User.companies already contains resolved leaf schemas from RBAC.
+#
+# HYBRID ARCHITECTURE:
+# - Company schemas contain: locations, mockup_frames, mockup_usage,
+#   location_photos, rate_cards, location_occupations
+# - Public schema contains: proposals_log, proposal_locations, booking_orders,
+#   bo_locations, bo_approval_workflows, ai_costs, documents, mockup_files
+#
+# WHY: Proposals/BOs can include locations from MULTIPLE companies.
+#      AI costs are tracked by user (users can belong to multiple companies).
+COMPANY_SCHEMAS = ['backlite_dubai', 'backlite_uk', 'backlite_abudhabi', 'viola']
+
+# ============================================================================
 # LOCATION DATA
 # ============================================================================
 

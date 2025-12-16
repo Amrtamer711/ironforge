@@ -37,7 +37,8 @@ async def _generate_mockup_queued(
     time_of_day: str,
     finish: str,
     specific_photo: str = None,
-    config_override: dict = None
+    config_override: dict = None,
+    company_schemas: list = None,
 ):
     """
     Wrapper function for mockup generation that runs through the task queue.
@@ -50,6 +51,7 @@ async def _generate_mockup_queued(
         finish: Finish type
         specific_photo: Optional specific photo to use
         config_override: Optional config override
+        company_schemas: List of company schemas to search for mockup data
 
     Returns:
         Tuple of (result_path, metadata)
@@ -70,7 +72,8 @@ async def _generate_mockup_queued(
                 time_of_day=time_of_day,
                 finish=finish,
                 specific_photo=specific_photo,
-                config_override=config_override
+                config_override=config_override,
+                company_schemas=company_schemas,
             )
             logger.info(f"[QUEUE] Mockup generation completed for {location_key}")
             cleanup_memory(context="mockup_queue", aggressive=False, log_stats=False)
@@ -88,7 +91,8 @@ async def _generate_ai_mockup_queued(
     location_key: str,
     time_of_day: str,
     finish: str,
-    user_id: Optional[str] = None
+    user_id: Optional[str] = None,
+    company_schemas: list = None,
 ):
     """
     Wrapper for AI mockup generation (AI creative generation + mockup) through the queue.
@@ -101,6 +105,7 @@ async def _generate_ai_mockup_queued(
         time_of_day: Time of day variation
         finish: Finish type
         user_id: Optional Slack user ID for cost tracking
+        company_schemas: List of company schemas to search for mockup data
 
     Returns:
         Tuple of (result_path, ai_creative_paths)
@@ -141,7 +146,8 @@ async def _generate_ai_mockup_queued(
                 location_key,
                 ai_creative_paths,
                 time_of_day=time_of_day,
-                finish=finish
+                finish=finish,
+                company_schemas=company_schemas,
             )
 
             if not result_path:

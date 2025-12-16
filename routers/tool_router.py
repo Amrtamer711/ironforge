@@ -860,6 +860,7 @@ async def handle_tool_call(
             user_id=user_id,
             channel=channel,
             status_ts=status_ts,
+            user_companies=user_companies,
             channel_event=channel_event,
             download_file_func=download_file_func,
             generate_mockup_queued_func=generate_mockup_queued_func,
