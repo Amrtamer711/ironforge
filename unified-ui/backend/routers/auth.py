@@ -589,7 +589,7 @@ async def get_session(request: Request) -> Dict[str, Any]:
 @router.get("/me")
 async def get_me(user: AuthUser = Depends(require_auth)) -> Dict[str, Any]:
     """
-    Get current user's profile.
+    Get current user's profile and permissions.
     Mirrors server.js:1396-1454
     """
     supabase = get_supabase()
@@ -600,7 +600,7 @@ async def get_me(user: AuthUser = Depends(require_auth)) -> Dict[str, Any]:
         # server.js:1400-1404
         response = (
             supabase.table("users")
-            .select("id, email, name, profile_id, is_active, profiles(name, display_name)")
+            .select("id, email, name, profile_id, is_active, profiles(id, name, display_name)")
             .eq("id", user.id)
             .single()
             .execute()
@@ -652,7 +652,20 @@ async def get_me(user: AuthUser = Depends(require_auth)) -> Dict[str, Any]:
         # server.js:1439-1440 - Clear RBAC cache
         invalidate_rbac_cache(user.id)
 
-        logger.info(f"[UI] User profile fetched: {user_data['email']} -> {user_data.get('profiles', {}).get('name')}")
+        # Fetch permissions from profile
+        permissions: List[str] = []
+        profile_id = user_data.get("profiles", {}).get("id")
+        if profile_id:
+            perms_response = (
+                supabase.table("profile_permissions")
+                .select("permission")
+                .eq("profile_id", profile_id)
+                .execute()
+            )
+            if perms_response.data:
+                permissions = [p["permission"] for p in perms_response.data]
+
+        logger.info(f"[UI] User profile fetched: {user_data['email']} -> {user_data.get('profiles', {}).get('name')} with {len(permissions)} permissions")
 
         return {
             "id": user_data["id"],
@@ -660,6 +673,7 @@ async def get_me(user: AuthUser = Depends(require_auth)) -> Dict[str, Any]:
             "name": user_data.get("name"),
             "profile_name": user_data.get("profiles", {}).get("name"),
             "profile_display_name": user_data.get("profiles", {}).get("display_name"),
+            "permissions": permissions,
         }
 
     except HTTPException:
