@@ -72,10 +72,6 @@ def _format_amount(data: dict[str, Any], amount: float | None) -> str:
     return config.format_currency_value(amount, currency)
 
 
-def get_uae_time():
-    """Get current time in UAE timezone (GMT+4)"""
-    return datetime.now(UAE_TZ)
-
 # In-memory cache for active approval workflows
 approval_workflows: dict[str, dict[str, Any]] = {}
 
