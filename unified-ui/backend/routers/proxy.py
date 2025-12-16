@@ -208,9 +208,12 @@ async def _proxy_regular(
         logger.info(f"[PROXY] Response: {response.status_code}")
 
         # Forward response headers, filtering out hop-by-hop headers
+        # Also skip content-encoding since httpx auto-decompresses
         response_headers = {}
         skip_headers = {
             "transfer-encoding",
+            "content-encoding",  # httpx already decompresses, don't confuse browser
+            "content-length",    # length changed after decompression
             "connection",
             "keep-alive",
             "proxy-authenticate",
