@@ -1,13 +1,8 @@
 """
 Proxy router for unified-ui.
 
-[VERIFIED] Mirrors server.js lines 624-717:
-- Auth middleware for proxy (proxyAuthMiddleware - lines 548-621)
-- Proxy middleware (lines 630-717)
-- Trusted header injection (lines 649-696)
-
-This router proxies authenticated requests to proposal-bot with trusted
-user headers, enabling proposal-bot to trust the user context without
+This router proxies authenticated requests to the backend API service with
+trusted user headers, enabling the backend to trust the user context without
 re-validating tokens.
 
 5-Level RBAC context is injected as headers:
@@ -16,6 +11,8 @@ re-validating tokens.
 3. Teams and hierarchy
 4. Sharing rules & record shares
 5. Company access
+
+See backend/contracts/trusted_headers.py for the header contract.
 """
 
 import json
@@ -26,6 +23,23 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response, StreamingResponse
 
 from backend.config import get_settings
+from backend.contracts.trusted_headers import (
+    HEADER_PROXY_SECRET,
+    HEADER_USER_COMPANIES,
+    HEADER_USER_EMAIL,
+    HEADER_USER_ID,
+    HEADER_USER_MANAGER_ID,
+    HEADER_USER_NAME,
+    HEADER_USER_PERMISSION_SETS,
+    HEADER_USER_PERMISSIONS,
+    HEADER_USER_PROFILE,
+    HEADER_USER_SHARED_FROM_USER_IDS,
+    HEADER_USER_SHARED_RECORDS,
+    HEADER_USER_SHARING_RULES,
+    HEADER_USER_SUBORDINATE_IDS,
+    HEADER_USER_TEAM_IDS,
+    HEADER_USER_TEAMS,
+)
 from backend.middleware.auth import TrustedUser, get_trusted_user
 
 logger = logging.getLogger("unified-ui")
@@ -37,49 +51,46 @@ def _build_trusted_headers(user: TrustedUser, proxy_secret: str | None) -> dict[
     """
     Build trusted headers to inject into proxy request.
 
-    Mirrors server.js:649-696 (proxyReq handler)
+    Uses header names from backend/contracts/trusted_headers.py to ensure
+    consistency with downstream consumers.
 
     Args:
         user: TrustedUser with full RBAC context
-        proxy_secret: Shared secret to prove request is from unified-ui
+        proxy_secret: Shared secret to prove request origin
 
     Returns:
         Dictionary of headers to inject
     """
     headers: dict[str, str] = {}
 
-    # server.js:652-655 - Send proxy secret
+    # Proxy secret for authentication
     if proxy_secret:
-        headers["X-Proxy-Secret"] = proxy_secret
+        headers[HEADER_PROXY_SECRET] = proxy_secret
 
-    # Level 1: User identity & profile - server.js:657-661
-    headers["X-Trusted-User-Id"] = user.id
-    headers["X-Trusted-User-Email"] = user.email
-    headers["X-Trusted-User-Name"] = user.name
-    headers["X-Trusted-User-Profile"] = user.profile
+    # Level 1: User identity & profile
+    headers[HEADER_USER_ID] = user.id
+    headers[HEADER_USER_EMAIL] = user.email
+    headers[HEADER_USER_NAME] = user.name
+    headers[HEADER_USER_PROFILE] = user.profile
 
-    # Level 1 + 2: Combined permissions - server.js:663-664
-    headers["X-Trusted-User-Permissions"] = json.dumps(user.permissions)
+    # Level 2: Combined permissions (profile + permission sets)
+    headers[HEADER_USER_PERMISSIONS] = json.dumps(user.permissions)
+    headers[HEADER_USER_PERMISSION_SETS] = json.dumps(user.permission_sets)
 
-    # Level 2: Active permission sets - server.js:666-667
-    headers["X-Trusted-User-Permission-Sets"] = json.dumps(user.permission_sets)
-
-    # Level 3: Teams - server.js:669-671
-    headers["X-Trusted-User-Teams"] = json.dumps(user.teams)
-    headers["X-Trusted-User-Team-Ids"] = json.dumps(user.team_ids)
-
-    # Level 3: Hierarchy - server.js:673-677
+    # Level 3: Teams & hierarchy
+    headers[HEADER_USER_TEAMS] = json.dumps(user.teams)
+    headers[HEADER_USER_TEAM_IDS] = json.dumps(user.team_ids)
     if user.manager_id:
-        headers["X-Trusted-User-Manager-Id"] = user.manager_id
-    headers["X-Trusted-User-Subordinate-Ids"] = json.dumps(user.subordinate_ids)
+        headers[HEADER_USER_MANAGER_ID] = user.manager_id
+    headers[HEADER_USER_SUBORDINATE_IDS] = json.dumps(user.subordinate_ids)
 
-    # Level 4: Sharing Rules & Record Shares - server.js:679-682
-    headers["X-Trusted-User-Sharing-Rules"] = json.dumps(user.sharing_rules)
-    headers["X-Trusted-User-Shared-Records"] = json.dumps(user.shared_records)
-    headers["X-Trusted-User-Shared-From-User-Ids"] = json.dumps(user.shared_from_user_ids)
+    # Level 4: Sharing rules & record shares
+    headers[HEADER_USER_SHARING_RULES] = json.dumps(user.sharing_rules)
+    headers[HEADER_USER_SHARED_RECORDS] = json.dumps(user.shared_records)
+    headers[HEADER_USER_SHARED_FROM_USER_IDS] = json.dumps(user.shared_from_user_ids)
 
-    # Level 5: Company access - server.js:684-685
-    headers["X-Trusted-User-Companies"] = json.dumps(user.companies)
+    # Level 5: Company access
+    headers[HEADER_USER_COMPANIES] = json.dumps(user.companies)
 
     return headers
 
@@ -94,18 +105,16 @@ async def proxy_to_sales_bot(
     user: TrustedUser = Depends(get_trusted_user),
 ) -> Response:
     """
-    Proxy requests to proposal-bot (sales module) with trusted headers.
+    Proxy requests to the backend API service with trusted headers.
 
-    Mirrors server.js:630-717
-
-    Path transformation (server.js:633-639):
-    /api/sales/chat/history -> /api/chat/history on proposal-bot
+    Path transformation:
+    /api/sales/chat/history -> /api/chat/history on backend
     """
     settings = get_settings()
 
-    # Build target URL - server.js:633-639
-    # When mounted at /api/sales, path comes in ALREADY STRIPPED
-    # We want to forward to /api/{path} on the target
+    # Build target URL
+    # When mounted at /api/sales, path comes in already stripped
+    # Forward to /api/{path} on the backend
     target_url = f"{settings.SALES_BOT_URL}/api/{path}"
     if request.query_params:
         target_url += f"?{request.query_params}"
@@ -113,15 +122,15 @@ async def proxy_to_sales_bot(
     logger.info(f"[PROXY] {request.method} /api/sales/{path} -> {target_url}")
     logger.info(f"[PROXY] User: {user.email} | Profile: {user.profile}")
 
-    # Build trusted headers - server.js:649-696
+    # Build trusted headers using contract
     trusted_headers = _build_trusted_headers(user, settings.PROXY_SECRET)
 
-    # Forward original authorization header (backward compat) - server.js:688-691
+    # Forward original authorization header (backward compat)
     auth_header = request.headers.get("authorization")
     if auth_header:
         trusted_headers["Authorization"] = auth_header
 
-    # Forward IP - server.js:693-695
+    # Forward client IP
     ip = request.headers.get("x-forwarded-for") or (
         request.client.host if request.client else None
     )
@@ -133,7 +142,7 @@ async def proxy_to_sales_bot(
     if content_type:
         trusted_headers["Content-Type"] = content_type
 
-    # Check if this is a streaming request - server.js:700-704
+    # Check if this is a streaming request (SSE)
     is_streaming = (
         "stream" in path or
         request.headers.get("accept") == "text/event-stream"
@@ -238,11 +247,7 @@ async def _proxy_streaming(
     headers: dict[str, str],
     body: bytes,
 ) -> StreamingResponse:
-    """
-    Proxy a streaming (SSE) request.
-
-    Mirrors server.js:700-704 SSE handling.
-    """
+    """Proxy a streaming (SSE) request."""
 
     async def stream_generator():
         async with httpx.AsyncClient(timeout=300.0) as client, client.stream(
@@ -255,7 +260,7 @@ async def _proxy_streaming(
             async for chunk in response.aiter_bytes():
                 yield chunk
 
-    # server.js:700-704 - SSE headers
+    # SSE headers
     return StreamingResponse(
         stream_generator(),
         media_type="text/event-stream",

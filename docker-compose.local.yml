@@ -92,8 +92,8 @@ services:
       # Proxy secret for trusted headers
       PROXY_SECRET: ${PROXY_SECRET:-local-dev-proxy-secret-change-me}
 
-      # CORS for local development
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3005,http://localhost:8000,http://localhost:3001}
+      # CORS - set via env var or defaults to allow all in development
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
 
       # Dev auth for testing API via /docs
       DEV_AUTH_ENABLED: ${DEV_AUTH_ENABLED:-false}
@@ -148,8 +148,8 @@ services:
       # Must match proposal-bot
       PROXY_SECRET: ${PROXY_SECRET:-local-dev-proxy-secret-change-me}
 
-      # CORS for local development
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3005,http://localhost:8000,http://localhost:3001}
+      # CORS - set via env var or defaults to allow all in development
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
 
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}

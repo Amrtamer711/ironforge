@@ -268,19 +268,20 @@ def _is_proxy_secret_exempt(path: str) -> bool:
     return False
 
 
-# Add trusted user context middleware (set RBAC context from unified-ui headers)
+# Add trusted user context middleware (set RBAC context from proxy headers)
 @app.middleware("http")
 async def trusted_user_middleware(request: Request, call_next):
     """
     Extract trusted user context from proxy headers.
 
     Security: Only trusts X-Trusted-User-* headers if accompanied by valid X-Proxy-Secret.
-    This prevents header spoofing attacks when proposal-bot is publicly accessible.
+    This prevents header spoofing attacks when this service is publicly accessible.
 
     Exempt paths (Slack webhooks, health checks) have their own authentication.
 
-    unified-ui validates JWT and injects these headers:
-    - X-Proxy-Secret: Shared secret to verify request is from unified-ui
+    See contracts/trusted_headers.py for the header contract.
+    Expected headers from authenticated proxy:
+    - X-Proxy-Secret: Shared secret to verify request is from trusted proxy
     - X-Trusted-User-Id
     - X-Trusted-User-Email
     - X-Trusted-User-Name

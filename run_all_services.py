@@ -66,6 +66,8 @@ COLORS = {
 }
 
 # Service configurations
+# Note: Services are independent and can run standalone.
+# When running together, unified-ui can proxy to proposal-bot.
 SERVICES = {
     "proposal-bot": {
         "name": "proposal-bot",
@@ -74,7 +76,7 @@ SERVICES = {
         "default_port": 8000,
         "color": "cyan",
         "health_endpoint": "/health",
-        "depends_on": [],
+        "depends_on": [],  # No dependencies - can run standalone
     },
     "unified-ui": {
         "name": "unified-ui",
@@ -83,7 +85,7 @@ SERVICES = {
         "default_port": 3005,
         "color": "magenta",
         "health_endpoint": "/health",
-        "depends_on": ["proposal-bot"],
+        "depends_on": [],  # No hard dependencies - can run standalone
     },
 }
 
@@ -296,7 +298,8 @@ class ServiceManager:
 
             # Prepare extra environment
             extra_env = {}
-            if service_name == "unified-ui":
+            if service_name == "unified-ui" and "proposal-bot" in services_to_start:
+                # Only set SALES_BOT_URL if running both services together
                 extra_env["SALES_BOT_URL"] = f"http://localhost:{self.args.sales_port}"
 
             # Prepare log file for background mode

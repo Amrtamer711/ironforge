@@ -54,9 +54,9 @@ class Settings(BaseSettings):
 
     # ==========================================================================
     # SERVICE REGISTRY - server.js:49-55
-    # Sales module routes go to proposal-bot
+    # URL for the backend API service (proxied requests)
     # ==========================================================================
-    SALES_BOT_URL: str = "http://localhost:8000"
+    SALES_BOT_URL: str | None = None  # Required: set via environment variable
 
     # ==========================================================================
     # PROXY SECRET - server.js:57-62
@@ -201,7 +201,7 @@ class Settings(BaseSettings):
             )
             logger.warning(
                 "[UI] Set PROXY_SECRET environment variable "
-                "(same value in both unified-ui and proposal-bot)"
+                "(must match the backend API service)"
             )
 
         if not self.is_local and not self.allowed_origins:
@@ -216,7 +216,7 @@ class Settings(BaseSettings):
             else "(all - development mode)"
         )
         logger.info(f"[UI] CORS allowed origins: {origins_str}")
-        logger.info(f"[UI] Sales Bot URL: {self.SALES_BOT_URL}")
+        logger.info(f"[UI] Backend API URL: {self.SALES_BOT_URL or '(not configured)'}")
 
 
 @lru_cache

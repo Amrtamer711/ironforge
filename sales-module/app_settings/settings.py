@@ -123,13 +123,12 @@ class Settings(BaseSettings):
 
     # =========================================================================
     # UI JWT SECRET (for validating tokens from UI Supabase)
-    # NOTE: proposal-bot only needs the JWT secret to validate tokens.
-    # UI Supabase URL/keys are managed by unified-ui (Node.js service).
+    # Used to validate JWTs from the authentication gateway service.
     # =========================================================================
 
     ui_jwt_secret: str | None = Field(
         default=None,
-        description="JWT secret from UI's Supabase project (for cross-service auth)",
+        description="JWT secret from UI Supabase project (for cross-service auth)",
     )
 
     # =========================================================================
@@ -294,7 +293,7 @@ class Settings(BaseSettings):
 
     proxy_secret: str | None = Field(
         default=None,
-        description="Shared secret for trusted proxy communication (unified-ui -> proposal-bot)",
+        description="Shared secret for trusted proxy communication (must match proxy service)",
     )
 
     # =========================================================================
@@ -347,8 +346,8 @@ class Settings(BaseSettings):
         description="API server port",
     )
     cors_origins: str = Field(
-        default="http://localhost:3005,http://localhost:3000",
-        description="Comma-separated list of allowed CORS origins",
+        default="",
+        description="Comma-separated list of allowed CORS origins (set via env var)",
     )
 
     # =========================================================================
@@ -513,7 +512,7 @@ class Settings(BaseSettings):
         if not self.effective_jwt_secret:
             missing.append("UI_JWT_SECRET or JWT_SECRET")
 
-        # Proxy secret for secure communication with unified-ui
+        # Proxy secret for secure communication with proxy service
         if not self.proxy_secret:
             missing.append("PROXY_SECRET")
 
