@@ -32,12 +32,12 @@ docker-compose down
 ### Environment Configuration
 
 Create `.env` files for each service:
-- `sales-module/.env`
-- `unified-ui/.env`
+- `src/sales-module/.env`
+- `src/unified-ui/.env`
 
 Or use root-level configuration with docker-compose.
 
-### Production docker-compose.yml
+### Production docker/docker-compose.yml
 
 The production compose file:
 - Uses per-service `.env` files
@@ -143,7 +143,7 @@ User=www-data
 WorkingDirectory=/opt/CRM/sales-module
 Environment="ENVIRONMENT=production"
 Environment="PORT=8000"
-ExecStart=/opt/CRM/sales-module/venv/bin/uvicorn api.server:app --host 0.0.0.0 --port 8000
+ExecStart=/opt/CRM/src/sales-module/venv/bin/uvicorn api.server:app --host 0.0.0.0 --port 8000
 Restart=always
 
 [Install]
@@ -162,7 +162,7 @@ WorkingDirectory=/opt/CRM/unified-ui
 Environment="ENVIRONMENT=production"
 Environment="PORT=3005"
 Environment="SALES_BOT_URL=http://localhost:8000"
-ExecStart=/opt/CRM/unified-ui/venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 3005
+ExecStart=/opt/CRM/src/unified-ui/venv/bin/uvicorn backend.main:app --host 0.0.0.0 --port 3005
 Restart=always
 
 [Install]
@@ -330,5 +330,5 @@ curl https://your-domain.com/health
 |----------|-------------|
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Full system architecture |
 | [DEVELOPMENT.md](./DEVELOPMENT.md) | Development setup guide |
-| [sales-module/README.md](./sales-module/README.md) | Sales module docs |
-| [unified-ui/README.md](./unified-ui/README.md) | Unified UI docs |
+| [src/sales-module/README.md](./src/sales-module/README.md) | Sales module docs |
+| [src/unified-ui/README.md](./src/unified-ui/README.md) | Unified UI docs |

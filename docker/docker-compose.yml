@@ -3,9 +3,9 @@
 # =============================================================================
 # Deploy all services together with full flexibility.
 #
-# QUICK START:
-#   docker-compose up -d                           # Start all (default)
-#   docker-compose up -d --build                   # Build and start
+# QUICK START (run from repo root):
+#   docker-compose -f docker/docker-compose.yml up -d          # Start all (default)
+#   docker-compose -f docker/docker-compose.yml up -d --build  # Build and start
 #
 # SELECTIVE SERVICES (using profiles):
 #   docker-compose --profile sales up -d           # Only sales module
@@ -67,7 +67,7 @@ services:
   # ===========================================================================
   proposal-bot:
     build:
-      context: ./sales-module
+      context: ../src/sales-module
       dockerfile: Dockerfile
       args:
         - ENVIRONMENT=${ENVIRONMENT:-production}
@@ -80,7 +80,7 @@ services:
     ports:
       - "${SALES_PORT:-8000}:${SALES_INTERNAL_PORT:-8000}"
     env_file:
-      - ${SALES_ENV_FILE:-./sales-module/.env}
+      - ${SALES_ENV_FILE:-../src/sales-module/.env}
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-production}
       PORT: ${SALES_INTERNAL_PORT:-8000}
@@ -91,7 +91,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       - ${SALES_DATA_VOLUME:-sales-data}:/data
-      - ${SALES_UPLOADS_PATH:-./sales-module/uploads}:/app/uploads
+      - ${SALES_UPLOADS_PATH:-../src/sales-module/uploads}:/app/uploads
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${SALES_INTERNAL_PORT:-8000}/health')"]
       interval: ${HEALTHCHECK_INTERVAL:-30s}
@@ -114,7 +114,7 @@ services:
   # ===========================================================================
   unified-ui:
     build:
-      context: ./unified-ui
+      context: ../src/unified-ui
       dockerfile: Dockerfile
       args:
         - ENVIRONMENT=${ENVIRONMENT:-production}
@@ -131,7 +131,7 @@ services:
         condition: service_healthy
         required: false  # Allow running UI standalone with external sales
     env_file:
-      - ${UI_ENV_FILE:-./unified-ui/.env}
+      - ${UI_ENV_FILE:-../src/unified-ui/.env}
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-production}
       PORT: ${UI_INTERNAL_PORT:-3005}
@@ -139,7 +139,7 @@ services:
       PROXY_SECRET: ${PROXY_SECRET}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
-      - ${UI_UPLOADS_PATH:-./unified-ui/uploads}:/app/uploads
+      - ${UI_UPLOADS_PATH:-../src/unified-ui/uploads}:/app/uploads
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:${UI_INTERNAL_PORT:-3005}/health"]
       interval: ${HEALTHCHECK_INTERVAL:-30s}

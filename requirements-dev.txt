@@ -11,8 +11,8 @@
 # =============================================================================
 
 # Include both services' dependencies
--r sales-module/requirements.txt
--r unified-ui/requirements.txt
+-r src/sales-module/requirements.txt
+-r src/unified-ui/requirements.txt
 
 # =============================================================================
 # SHARED DEV TOOLS

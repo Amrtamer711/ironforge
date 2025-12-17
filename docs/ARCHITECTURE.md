@@ -2,7 +2,7 @@
 
 A comprehensive technical architecture document for the CRM Platform. This document covers the entire system architecture including both unified-ui (authentication gateway) and sales-module (proposal bot) services, detailing system design, component interactions, data flows, and implementation patterns.
 
-> **Scope**: This is the global architecture document. For service-specific details, see [unified-ui/README.md](./unified-ui/README.md) and [sales-module/README.md](./sales-module/README.md).
+> **Scope**: This is the global architecture document. For service-specific details, see [src/unified-ui/README.md](./src/unified-ui/README.md) and [src/sales-module/README.md](./src/sales-module/README.md).
 
 ## Table of Contents
 
@@ -146,7 +146,7 @@ A comprehensive technical architecture document for the CRM Platform. This docum
 
 | Component | Location | Responsibility |
 |-----------|----------|----------------|
-| **unified-ui** | `unified-ui/server.js` | Auth gateway, RBAC resolution, SPA serving, request proxying |
+| **unified-ui** | `src/unified-ui/server.js` | Auth gateway, RBAC resolution, SPA serving, request proxying |
 | **proposal-bot** | `api/server.py` | Business logic, AI orchestration, document generation |
 | **API Routers** | `api/routers/*.py` | HTTP endpoint handling, request validation |
 | **Core Layer** | `core/*.py` | Business logic, LLM orchestration, tool execution |
@@ -160,7 +160,7 @@ A comprehensive technical architecture document for the CRM Platform. This docum
 
 ### unified-ui Service
 
-**File:** `unified-ui/server.js`
+**File:** `src/unified-ui/server.js`
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -440,7 +440,7 @@ A comprehensive technical architecture document for the CRM Platform. This docum
 
 ### Token Validation
 
-**File:** `unified-ui/server.js`
+**File:** `src/unified-ui/server.js`
 
 ```javascript
 // Token validation flow
@@ -487,7 +487,7 @@ The proposal-bot doesn't validate JWT tokens directly. Instead, it trusts header
 **Header Injection:**
 
 ```javascript
-// unified-ui/server.js
+// src/unified-ui/server.js
 function injectTrustedHeaders(req, user, rbac) {
   return {
     'X-Trusted-User-Id': user.id,
@@ -1645,7 +1645,7 @@ def format_proposal_message(proposal: Proposal, channel: str) -> str:
 │  └─────────────────────────────────────────────────────────────────┘│
 │                                                                      │
 │  ┌─────────────────────────────────────────────────────────────────┐│
-│  │ RATE LIMITING (unified-ui/server.js)                             ││
+│  │ RATE LIMITING (src/unified-ui/server.js)                             ││
 │  ├─────────────────────────────────────────────────────────────────┤│
 │  │                                                                  ││
 │  │  Auth endpoints: 10 requests/minute per IP                       ││
@@ -2132,11 +2132,11 @@ logger.info("Proposal generated",
 | `integrations/auth/client.py` | Auth provider client |
 | `integrations/storage/client.py` | Storage provider client |
 | `integrations/channels/adapters/*.py` | Channel adapters (Slack, Web) |
-| `unified-ui/backend/main.py` | FastAPI gateway, auth, proxy |
-| `unified-ui/public/js/*.js` | Frontend modules |
+| `src/unified-ui/backend/main.py` | FastAPI gateway, auth, proxy |
+| `src/unified-ui/public/js/*.js` | Frontend modules |
 | `config.py` | Application configuration |
 | `render.yaml` | Deployment configuration |
 
 ---
 
-*This architecture document provides a comprehensive technical reference for the CRM Platform. For setup instructions, see [DEVELOPMENT.md](./DEVELOPMENT.md). For deployment options, see [DEPLOYMENT.md](./DEPLOYMENT.md). For API details, see [sales-module/FRONTEND_API.md](./sales-module/FRONTEND_API.md).*
+*This architecture document provides a comprehensive technical reference for the CRM Platform. For setup instructions, see [DEVELOPMENT.md](./DEVELOPMENT.md). For deployment options, see [DEPLOYMENT.md](./DEPLOYMENT.md). For API details, see [src/sales-module/FRONTEND_API.md](./src/sales-module/FRONTEND_API.md).*

@@ -25,8 +25,10 @@ NC := \033[0m # No Color
 
 # Directories
 ROOT_DIR := $(shell pwd)
-SALES_DIR := $(ROOT_DIR)/sales-module
-UI_DIR := $(ROOT_DIR)/unified-ui
+SALES_DIR := $(ROOT_DIR)/src/sales-module
+UI_DIR := $(ROOT_DIR)/src/unified-ui
+DOCKER_DIR := $(ROOT_DIR)/docker
+DOCS_DIR := $(ROOT_DIR)/docs
 
 # Default ports (can be overridden: make dev SALES_PORT=9000)
 SALES_PORT ?= 8000
@@ -36,7 +38,7 @@ UI_PORT ?= 3005
 ENV ?= development
 
 # Docker compose file
-COMPOSE_FILE ?= docker-compose.local.yml
+COMPOSE_FILE ?= docker/docker-compose.local.yml
 ENV_FILE ?= .env.secrets
 
 # Python interpreter
@@ -99,7 +101,7 @@ venv: ## Create virtual environments
 	@cd $(SALES_DIR) && $(PYTHON) -m venv venv
 	@cd $(UI_DIR) && $(PYTHON) -m venv venv
 	@echo "$(GREEN)Virtual environments created$(NC)"
-	@echo "Activate with: source sales-module/venv/bin/activate"
+	@echo "Activate with: source src/sales-module/venv/bin/activate"
 
 # =============================================================================
 # DEVELOPMENT - LOCAL PYTHON
@@ -183,7 +185,7 @@ docker-build-ui: ## Build only unified-ui image
 	@docker build -t unified-ui $(UI_DIR)
 
 docker-prod: ## Start production Docker compose
-	@docker-compose -f docker-compose.yml --env-file $(ENV_FILE) up -d
+	@docker-compose -f docker/docker-compose.yml --env-file $(ENV_FILE) up -d
 
 # =============================================================================
 # TESTING
@@ -201,7 +203,7 @@ test-ui: ## Run unified-ui tests
 
 test-cov: ## Run tests with coverage report
 	@make test-sales COV=1
-	@echo "$(GREEN)Coverage report: sales-module/htmlcov/index.html$(NC)"
+	@echo "$(GREEN)Coverage report: src/sales-module/htmlcov/index.html$(NC)"
 
 test-watch: ## Run tests in watch mode
 	@cd $(SALES_DIR) && $(PYTHON) -m pytest --watch
@@ -241,9 +243,9 @@ pre-commit: ## Run pre-commit hooks
 
 db-migrate: ## Run database migrations (placeholder)
 	@echo "$(BLUE)Database migrations...$(NC)"
-	@echo "Run SQL files in sales-module/db/migrations/ in Supabase SQL Editor"
-	@echo "  - ui/01_schema.sql for UI Supabase"
-	@echo "  - salesbot/01_schema.sql for SalesBot Supabase"
+	@echo "Run SQL files in Supabase SQL Editor:"
+	@echo "  - src/unified-ui/db/migrations/*.sql for UI Supabase"
+	@echo "  - src/sales-module/db/migrations/salesbot/*.sql for SalesBot Supabase"
 
 db-seed: ## Seed database (placeholder)
 	@echo "$(BLUE)Seeding database...$(NC)"
@@ -347,14 +349,14 @@ logs-ui: docker-logs-ui ## Shortcut for docker-logs-ui
 
 prod-up: ## Start production services
 	@echo "$(YELLOW)Starting PRODUCTION services...$(NC)"
-	@docker-compose -f docker-compose.yml up -d
-	@make docker-status COMPOSE_FILE=docker-compose.yml
+	@docker-compose -f docker/docker-compose.yml up -d
+	@make docker-status COMPOSE_FILE=docker/docker-compose.yml
 
 prod-down: ## Stop production services
-	@docker-compose -f docker-compose.yml down
+	@docker-compose -f docker/docker-compose.yml down
 
 prod-logs: ## View production logs
-	@docker-compose -f docker-compose.yml logs -f
+	@docker-compose -f docker/docker-compose.yml logs -f
 
 # =============================================================================
 # RENDER DEPLOYMENT

@@ -168,7 +168,7 @@ make docker-shell-sales       # Shell into sales container
 make docker-shell-ui          # Shell into UI container
 
 # Custom compose file
-make docker-up COMPOSE_FILE=docker-compose.yml
+make docker-up COMPOSE_FILE=docker/docker-compose.yml
 ```
 
 ### Testing & Code Quality
@@ -221,14 +221,14 @@ Override any variable at runtime:
 | `SALES_PORT` | 8000 | Sales module external port |
 | `UI_PORT` | 3005 | Unified UI external port |
 | `ENV` | development | Environment mode |
-| `COMPOSE_FILE` | docker-compose.local.yml | Docker compose file |
+| `COMPOSE_FILE` | docker/docker-compose.local.yml | Docker compose file |
 | `ENV_FILE` | .env.secrets | Environment file |
 | `PYTHON` | python3 | Python interpreter |
 
 **Examples:**
 ```bash
 make dev SALES_PORT=9000 UI_PORT=4000
-make docker-up COMPOSE_FILE=docker-compose.yml ENV_FILE=.env.production
+make docker-up COMPOSE_FILE=docker/docker-compose.yml ENV_FILE=.env.production
 make test-sales VERBOSE=1 COV=1
 ```
 
@@ -328,7 +328,7 @@ python run_all_services.py
 **Workspace Settings** (`.vscode/settings.json`):
 ```json
 {
-  "python.defaultInterpreterPath": "./sales-module/venv/bin/python",
+  "python.defaultInterpreterPath": "./src/sales-module/venv/bin/python",
   "python.analysis.extraPaths": [
     "./sales-module",
     "./unified-ui"
@@ -384,11 +384,11 @@ python run_all_services.py
 
 1. Open CRM folder as project
 2. Add two Python interpreters:
-   - `sales-module/venv/bin/python`
-   - `unified-ui/venv/bin/python`
+   - `src/sales-module/venv/bin/python`
+   - `src/unified-ui/venv/bin/python`
 3. Mark as Sources Root:
-   - `sales-module/`
-   - `unified-ui/`
+   - `src/sales-module/`
+   - `src/unified-ui/`
 4. Run configurations:
    - Script: `uvicorn`
    - Parameters: `api.server:app --reload --port 8000`
@@ -483,25 +483,25 @@ make docker-up                # Start all services
 make docker-down              # Stop all services
 
 # Or using docker-compose directly
-docker-compose -f docker-compose.local.yml --env-file .env.secrets up -d
+docker-compose -f docker/docker-compose.local.yml --env-file .env.secrets up -d
 ```
 
 **Selective services with profiles:**
 ```bash
 # Run only sales module
-docker-compose -f docker-compose.local.yml --profile sales up -d
+docker-compose -f docker/docker-compose.local.yml --profile sales up -d
 
 # Run only unified UI
-docker-compose -f docker-compose.local.yml --profile ui up -d
+docker-compose -f docker/docker-compose.local.yml --profile ui up -d
 
 # Run both (default)
-docker-compose -f docker-compose.local.yml --profile all up -d
+docker-compose -f docker/docker-compose.local.yml --profile all up -d
 ```
 
 **Custom ports:**
 ```bash
 # Via environment variables
-SALES_PORT=9000 UI_PORT=4000 docker-compose -f docker-compose.local.yml up -d
+SALES_PORT=9000 UI_PORT=4000 docker-compose -f docker/docker-compose.local.yml up -d
 
 # Or in .env.secrets
 echo "SALES_PORT=9000" >> .env.secrets
@@ -511,18 +511,18 @@ echo "UI_PORT=4000" >> .env.secrets
 **Common operations:**
 ```bash
 # View logs
-docker-compose -f docker-compose.local.yml logs -f              # All
-docker-compose -f docker-compose.local.yml logs -f proposal-bot # Sales only
-docker-compose -f docker-compose.local.yml logs -f unified-ui   # UI only
+docker-compose -f docker/docker-compose.local.yml logs -f              # All
+docker-compose -f docker/docker-compose.local.yml logs -f proposal-bot # Sales only
+docker-compose -f docker/docker-compose.local.yml logs -f unified-ui   # UI only
 
 # Rebuild after code changes
-docker-compose -f docker-compose.local.yml up -d --build
+docker-compose -f docker/docker-compose.local.yml up -d --build
 
 # Force rebuild everything
-docker-compose -f docker-compose.local.yml up -d --build --force-recreate
+docker-compose -f docker/docker-compose.local.yml up -d --build --force-recreate
 
 # Stop and remove volumes
-docker-compose -f docker-compose.local.yml down -v
+docker-compose -f docker/docker-compose.local.yml down -v
 ```
 
 ### Docker Compose Environment Variables
@@ -611,7 +611,7 @@ DEV_AUTH_USER_COMPANIES=["backlite_dubai"]
 ```bash
 make docker-restart
 # or
-docker-compose -f docker-compose.local.yml up -d
+docker-compose -f docker/docker-compose.local.yml up -d
 ```
 
 3. **Access** http://localhost:8000/docs
@@ -634,13 +634,13 @@ The platform uses two Supabase projects:
 1. **UI Supabase** (for authentication):
    ```bash
    # Run in Supabase SQL Editor
-   # Located at: sales-module/db/migrations/ui/01_schema.sql
+   # Located at: src/sales-module/db/migrations/ui/01_schema.sql
    ```
 
 2. **SalesBot Supabase** (for business data):
    ```bash
    # Run in Supabase SQL Editor
-   # Located at: sales-module/db/migrations/salesbot/01_schema.sql
+   # Located at: src/sales-module/db/migrations/salesbot/01_schema.sql
    ```
 
 ### Multi-Schema Architecture
@@ -663,7 +663,7 @@ backlite_uk schema
 └── ... (same structure)
 ```
 
-See [db/migrations/MIGRATION_GUIDE.md](./sales-module/db/migrations/MIGRATION_GUIDE.md) for detailed setup.
+See [db/migrations/MIGRATION_GUIDE.md](./src/sales-module/db/migrations/MIGRATION_GUIDE.md) for detailed setup.
 
 ### Local SQLite (Alternative)
 
@@ -675,7 +675,7 @@ DB_BACKEND=sqlite
 STORAGE_PROVIDER=local
 ```
 
-Data stored in `sales-module/data/proposals.db`.
+Data stored in `src/sales-module/data/proposals.db`.
 
 ---
 
@@ -769,7 +769,7 @@ Content-Type: application/json
 
 1. **Create router** (if new domain):
 ```python
-# sales-module/api/routers/my_feature.py
+# src/sales-module/api/routers/my_feature.py
 from fastapi import APIRouter, Depends
 from api.auth import get_current_user
 
@@ -782,14 +782,14 @@ async def list_items(user = Depends(get_current_user)):
 
 2. **Register router**:
 ```python
-# sales-module/api/server.py
+# src/sales-module/api/server.py
 from api.routers import my_feature
 app.include_router(my_feature.router, prefix="/api")
 ```
 
 3. **Add schemas**:
 ```python
-# sales-module/api/schemas.py
+# src/sales-module/api/schemas.py
 class MyFeatureRequest(BaseModel):
     name: str
     value: int
@@ -836,7 +836,7 @@ async def handle_tool_call(tool_name, args, context):
 
 ### Modifying the SPA
 
-Frontend is vanilla JavaScript in `unified-ui/public/`:
+Frontend is vanilla JavaScript in `src/unified-ui/public/`:
 
 ```
 public/
@@ -1092,7 +1092,7 @@ async def process_chat(
 
 ```
 CRM/
-├── unified-ui/                 # Auth gateway + frontend (port 3005)
+├── src/unified-ui/                 # Auth gateway + frontend (port 3005)
 │   ├── backend/                # FastAPI backend
 │   │   ├── main.py             # Application entry
 │   │   ├── config.py           # Settings
@@ -1104,7 +1104,7 @@ CRM/
 │   ├── render.yaml             # Render.com config
 │   └── Dockerfile
 │
-├── sales-module/               # Proposal bot backend (port 8000)
+├── src/sales-module/               # Proposal bot backend (port 8000)
 │   ├── api/                    # FastAPI routes
 │   │   ├── server.py           # Application entry
 │   │   ├── routers/            # Route modules
@@ -1131,8 +1131,8 @@ CRM/
 │   └── Dockerfile
 │
 ├── run_all_services.py         # Combined runner
-├── docker-compose.yml          # Production compose
-├── docker-compose.local.yml    # Dev compose
+├── docker/docker-compose.yml          # Production compose
+├── docker/docker-compose.local.yml    # Dev compose
 ├── .env.example                # Environment template
 ├── ARCHITECTURE.md             # System architecture
 ├── DEVELOPMENT.md              # This file
@@ -1204,8 +1204,8 @@ if tool_name == "do_something":
 |----------|-------------|
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Full system architecture |
 | [DEPLOYMENT.md](./DEPLOYMENT.md) | Production deployment options |
-| [sales-module/README.md](./sales-module/README.md) | Sales module documentation |
-| [sales-module/FRONTEND_API.md](./sales-module/FRONTEND_API.md) | Backend API reference |
-| [unified-ui/README.md](./unified-ui/README.md) | Unified UI documentation |
-| [unified-ui/FRONTEND_API.md](./unified-ui/FRONTEND_API.md) | Frontend API reference |
-| [db/migrations/MIGRATION_GUIDE.md](./sales-module/db/migrations/MIGRATION_GUIDE.md) | Database setup |
+| [src/sales-module/README.md](./src/sales-module/README.md) | Sales module documentation |
+| [src/sales-module/FRONTEND_API.md](./src/sales-module/FRONTEND_API.md) | Backend API reference |
+| [src/unified-ui/README.md](./src/unified-ui/README.md) | Unified UI documentation |
+| [src/unified-ui/FRONTEND_API.md](./src/unified-ui/FRONTEND_API.md) | Frontend API reference |
+| [db/migrations/MIGRATION_GUIDE.md](./src/sales-module/db/migrations/MIGRATION_GUIDE.md) | Database setup |

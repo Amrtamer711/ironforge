@@ -4,7 +4,7 @@
 # Flexible Docker Compose for local development with cloud Dev Supabase.
 #
 # QUICK START:
-#   docker-compose -f docker-compose.local.yml --env-file .env.secrets up -d
+#   docker-compose -f docker/docker-compose.local.yml --env-file .env.secrets up -d
 #
 # SELECTIVE SERVICES (using profiles):
 #   docker-compose -f docker-compose.local.yml --profile sales up -d     # Only sales
@@ -68,7 +68,7 @@ services:
   # ===========================================================================
   proposal-bot:
     build:
-      context: ./sales-module
+      context: ../src/sales-module
       dockerfile: Dockerfile
     container_name: ${SALES_CONTAINER_NAME:-proposal-bot}
     restart: unless-stopped
@@ -78,7 +78,7 @@ services:
     ports:
       - "${SALES_PORT:-8000}:8000"
     env_file:
-      - .env.secrets
+      - ../.env.secrets
     environment:
       # Core settings
       ENVIRONMENT: ${ENVIRONMENT:-development}
@@ -106,8 +106,8 @@ services:
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
-      - ./sales-module/data:/app/data
-      - ./sales-module/uploads:/app/uploads
+      - ../src/sales-module/data:/app/data
+      - ../src/sales-module/uploads:/app/uploads
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: ${HEALTHCHECK_INTERVAL:-30s}
@@ -122,7 +122,7 @@ services:
   # ===========================================================================
   unified-ui:
     build:
-      context: ./unified-ui
+      context: ../src/unified-ui
       dockerfile: Dockerfile
     container_name: ${UI_CONTAINER_NAME:-unified-ui}
     restart: unless-stopped
@@ -136,7 +136,7 @@ services:
         condition: service_healthy
         required: false  # Allow running UI standalone
     env_file:
-      - .env.secrets
+      - ../.env.secrets
     environment:
       # Core settings
       ENVIRONMENT: ${ENVIRONMENT:-development}
@@ -154,7 +154,7 @@ services:
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
-      - ./unified-ui/uploads:/app/uploads
+      - ../src/unified-ui/uploads:/app/uploads
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
       interval: ${HEALTHCHECK_INTERVAL:-30s}

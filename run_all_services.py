@@ -72,7 +72,7 @@ SERVICES = {
     "proposal-bot": {
         "name": "proposal-bot",
         "display_name": "Sales Module (proposal-bot)",
-        "directory": "sales-module",
+        "directory": "src/sales-module",
         "default_port": 8000,
         "color": "cyan",
         "health_endpoint": "/health",
@@ -81,7 +81,7 @@ SERVICES = {
     "unified-ui": {
         "name": "unified-ui",
         "display_name": "Unified UI",
-        "directory": "unified-ui",
+        "directory": "src/unified-ui",
         "default_port": 3005,
         "color": "magenta",
         "health_endpoint": "/health",
