@@ -1,5 +1,11 @@
 # SalesBot Database Migrations
 
+Part of the [Sales Module](../../README.md). For full system architecture, see [/ARCHITECTURE.md](../../../ARCHITECTURE.md).
+
+For detailed multi-schema setup and company isolation, see [MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md).
+
+---
+
 ## Schema Overview
 
 The SalesBot database uses a **location-centric design** where the `locations` table is the foundation that all other entities link to.

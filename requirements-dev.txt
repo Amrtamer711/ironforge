@@ -1,0 +1,47 @@
+# =============================================================================
+# CRM Platform - Development Dependencies
+# =============================================================================
+# Install ALL dependencies for local development across both services.
+#
+# Usage:
+#   pip install -r requirements-dev.txt
+#
+# This file is for LOCAL DEVELOPMENT ONLY. Docker builds use per-service
+# requirements.txt files to keep images lean.
+# =============================================================================
+
+# Include both services' dependencies
+-r sales-module/requirements.txt
+-r unified-ui/requirements.txt
+
+# =============================================================================
+# SHARED DEV TOOLS
+# =============================================================================
+# These may already be in sales-module/requirements.txt, but listed explicitly
+# for clarity and in case unified-ui is developed standalone.
+
+# Linting & Formatting
+ruff>=0.1.9
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.3
+pytest-cov>=4.1.0
+
+# Pre-commit hooks
+pre-commit>=3.6.0
+
+# Security scanning
+bandit>=1.7.7
+
+# HTTP client (for run_all_services.py health checks)
+httpx>=0.26.0
+
+# Type checking (optional)
+mypy>=1.8.0
+
+# =============================================================================
+# DOCUMENTATION (optional)
+# =============================================================================
+# mkdocs>=1.5.0
+# mkdocs-material>=9.5.0

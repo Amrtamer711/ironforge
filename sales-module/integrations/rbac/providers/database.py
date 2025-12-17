@@ -53,6 +53,7 @@ def set_user_context(
     sharing_rules: list[dict[str, Any]] | None = None,
     shared_records: dict[str, list[dict[str, Any]]] | None = None,
     shared_from_user_ids: list[str] | None = None,
+    companies: list[str] | None = None,
 ) -> None:
     """
     Set the current user context for RBAC checks.
@@ -72,6 +73,7 @@ def set_user_context(
         sharing_rules: Level 4 - Applicable sharing rules
         shared_records: Level 4 - Records directly shared with user {objectType: [{recordId, accessLevel}]}
         shared_from_user_ids: Level 4 - User IDs whose records are accessible via sharing rules
+        companies: Level 5 - Company schemas user can access (e.g., ['backlite_dubai', 'viola'])
     """
     _current_user_context.set({
         "user_id": user_id,
@@ -88,6 +90,8 @@ def set_user_context(
         "sharing_rules": sharing_rules or [],
         "shared_records": shared_records or {},
         "shared_from_user_ids": shared_from_user_ids or [],
+        # Level 5: Company Access
+        "companies": companies or [],
     })
 
 

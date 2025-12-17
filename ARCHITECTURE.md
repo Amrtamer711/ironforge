@@ -1,6 +1,8 @@
-# System Architecture
+# CRM Platform Architecture
 
-A comprehensive technical architecture document for the Sales Proposals Platform. This document details the system design, component interactions, data flows, and implementation patterns.
+A comprehensive technical architecture document for the CRM Platform. This document covers the entire system architecture including both unified-ui (authentication gateway) and sales-module (proposal bot) services, detailing system design, component interactions, data flows, and implementation patterns.
+
+> **Scope**: This is the global architecture document. For service-specific details, see [unified-ui/README.md](./unified-ui/README.md) and [sales-module/README.md](./sales-module/README.md).
 
 ## Table of Contents
 
@@ -41,7 +43,7 @@ A comprehensive technical architecture document for the Sales Proposals Platform
 │  ┌─────────────────────────┐    │    ┌─────────────────────────┐            │
 │  │    unified-ui:3005      │    │    │  Slack Events API       │            │
 │  │    ─────────────────    │    │    │  (Webhook endpoint)     │            │
-│  │  • Express.js Gateway   │    │    └───────────┬─────────────┘            │
+│  │  • FastAPI Gateway      │    │    └───────────┬─────────────┘            │
 │  │  • JWT Validation       │    │                │                          │
 │  │  • RBAC Resolution      │    │                │                          │
 │  │  • SPA Static Serving   │    │                │                          │
@@ -2130,11 +2132,11 @@ logger.info("Proposal generated",
 | `integrations/auth/client.py` | Auth provider client |
 | `integrations/storage/client.py` | Storage provider client |
 | `integrations/channels/adapters/*.py` | Channel adapters (Slack, Web) |
-| `unified-ui/server.js` | Express gateway, auth, proxy |
+| `unified-ui/backend/main.py` | FastAPI gateway, auth, proxy |
 | `unified-ui/public/js/*.js` | Frontend modules |
 | `config.py` | Application configuration |
 | `render.yaml` | Deployment configuration |
 
 ---
 
-*This architecture document provides a comprehensive technical reference for the Sales Proposals Platform. For setup instructions, see README.md. For API details, see FRONTEND_API.md.*
+*This architecture document provides a comprehensive technical reference for the CRM Platform. For setup instructions, see [DEVELOPMENT.md](./DEVELOPMENT.md). For deployment options, see [DEPLOYMENT.md](./DEPLOYMENT.md). For API details, see [sales-module/FRONTEND_API.md](./sales-module/FRONTEND_API.md).*

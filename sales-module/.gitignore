@@ -1,0 +1,48 @@
+# Environment variables
+.env
+.env.secrets
+.env.local
+.env.*.local
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+~$*
+*.tmp
+*.temp
+
+# Data folder (templates, config, etc.)
+data/
+render_data/
+render_main_data/
+test_data/
+
+# Generated proposals
+*.pdf
+generated_proposals/
+
+# Logs
+*.log
+
+# Database files (should not be in version control)
+*.db
+*.db-shm
+*.db-wal
+proposals.db
+proposals_test.db

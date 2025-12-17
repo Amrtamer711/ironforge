@@ -1,0 +1,66 @@
+# =============================================================================
+# Render Blueprint - Sales Module (Proposal Bot)
+# =============================================================================
+# Deploy with: render blueprint apply
+#
+# This deploys the proposal-bot FastAPI backend as a standalone service.
+#
+# Environment Strategy:
+# - DEV branch → uses *_DEV_* env vars → connects to Dev Supabase projects
+# - MAIN branch → uses *_PROD_* env vars → connects to Prod Supabase projects
+# =============================================================================
+
+services:
+  - type: web
+    name: proposal-bot
+    runtime: docker
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      # Python settings
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: LOG_LEVEL
+        value: "INFO"
+      # Environment (development or production)
+      - key: ENVIRONMENT
+        value: "production"
+      # Auth provider (supabase to validate UI-issued JWTs)
+      - key: AUTH_PROVIDER
+        value: "supabase"
+      # Database backend
+      - key: DB_BACKEND
+        value: "supabase"
+      # Sales Bot Supabase (DEV) - for data storage
+      - key: SALESBOT_DEV_SUPABASE_URL
+        sync: false
+      - key: SALESBOT_DEV_SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Sales Bot Supabase (PROD) - for data storage
+      - key: SALESBOT_PROD_SUPABASE_URL
+        sync: false
+      - key: SALESBOT_PROD_SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # UI JWT Secret (for validating tokens issued by UI Supabase)
+      - key: UI_JWT_SECRET
+        sync: false
+      # Proxy secret (shared with unified-ui to prevent header spoofing)
+      - key: PROXY_SECRET
+        sync: false
+      # API Keys
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      # Slack (optional)
+      - key: SLACK_BOT_TOKEN
+        sync: false
+      - key: SLACK_SIGNING_SECRET
+        sync: false
+    disk:
+      name: proposal-bot-data
+      mountPath: /data
+      sizeGB: 5

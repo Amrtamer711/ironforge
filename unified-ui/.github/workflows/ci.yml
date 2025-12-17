@@ -1,0 +1,137 @@
+# Continuous Integration workflow for Unified UI
+#
+# Runs on:
+# - All pushes to main/dev branches
+# - All pull requests to main/dev branches
+#
+# Jobs:
+# - lint: Code quality checks (ruff, bandit)
+# - test: Run pytest with coverage
+# - build: Verify Docker build works
+
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - 'unified-ui/**'
+      - '.github/workflows/ci-unified-ui.yml'
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - 'unified-ui/**'
+
+env:
+  PYTHON_VERSION: "3.11"
+  WORKING_DIRECTORY: unified-ui
+
+defaults:
+  run:
+    working-directory: unified-ui
+
+jobs:
+  # ==========================================================================
+  # LINT JOB - Code quality checks
+  # ==========================================================================
+  lint:
+    name: Lint & Security Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff bandit
+
+      - name: Run Ruff linter
+        run: ruff check . --output-format=github
+
+      - name: Run Ruff formatter check
+        run: ruff format --check .
+
+      - name: Run Bandit security check
+        run: bandit -c pyproject.toml -r backend/ -f txt
+        continue-on-error: true  # Don't fail CI on security warnings, just report
+
+  # ==========================================================================
+  # TEST JOB - Run pytest
+  # ==========================================================================
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: lint
+
+    env:
+      ENVIRONMENT: test
+      SALES_BOT_URL: http://localhost:8000
+      PROXY_SECRET: test-secret
+      UI_DEV_SUPABASE_URL: https://test.supabase.co
+      UI_DEV_SUPABASE_ANON_KEY: test-anon-key
+      UI_DEV_SUPABASE_SERVICE_ROLE_KEY: test-service-key
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: unified-ui/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov httpx
+
+      - name: Run tests
+        run: |
+          pytest tests/ \
+            --cov=backend \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            -v
+        continue-on-error: true  # Tests may not exist yet
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        if: always()
+        with:
+          files: ./unified-ui/coverage.xml
+          flags: unified-ui
+          fail_ci_if_error: false
+
+  # ==========================================================================
+  # BUILD JOB - Verify Docker build
+  # ==========================================================================
+  build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: lint  # Don't require tests (may not exist)
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./unified-ui
+          push: false
+          tags: unified-ui:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

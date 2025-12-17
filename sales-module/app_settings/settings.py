@@ -298,6 +298,43 @@ class Settings(BaseSettings):
     )
 
     # =========================================================================
+    # DEV AUTH (for API testing via /docs)
+    # =========================================================================
+
+    dev_auth_enabled: bool = Field(
+        default=False,
+        description="Enable dev auth for testing API via /docs (only works in development)",
+    )
+    dev_auth_token: str = Field(
+        default="dev-test-token-change-me",
+        description="Static token for dev auth (X-Dev-Token header)",
+    )
+    dev_auth_user_id: str = Field(
+        default="dev-user-00000000-0000-0000-0000-000000000000",
+        description="User ID for dev auth test user",
+    )
+    dev_auth_user_email: str = Field(
+        default="dev@test.local",
+        description="Email for dev auth test user",
+    )
+    dev_auth_user_name: str = Field(
+        default="Dev Tester",
+        description="Display name for dev auth test user",
+    )
+    dev_auth_user_profile: str = Field(
+        default="system_admin",
+        description="RBAC profile for dev auth test user",
+    )
+    dev_auth_user_permissions: str = Field(
+        default='["*:*:*"]',
+        description="JSON array of permissions for dev auth test user",
+    )
+    dev_auth_user_companies: str = Field(
+        default='["backlite_dubai"]',
+        description="JSON array of company schemas for dev auth test user",
+    )
+
+    # =========================================================================
     # API SETTINGS
     # =========================================================================
 

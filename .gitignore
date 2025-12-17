@@ -1,48 +1,79 @@
-# Environment variables
+# =============================================================================
+# CRM Platform - Git Ignore
+# =============================================================================
+
+# Environment files (contain secrets)
 .env
-.env.secrets
 .env.local
+.env.secrets
 .env.*.local
 
-# Python cache
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Virtual environments
+*.so
+.Python
 venv/
-env/
+.venv/
 ENV/
+env/
+.eggs/
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
 
-# IDE
-.vscode/
-.idea/
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# OS files
-.DS_Store
-Thumbs.db
-
-# Temporary files
-~$*
-*.tmp
-*.temp
-
-# Data folder (templates, config, etc.)
-data/
-render_data/
-render_main_data/
-test_data/
-
-# Generated proposals
-*.pdf
-generated_proposals/
-
-# Logs
-*.log
-
-# Database files (should not be in version control)
+# Database files (local development)
 *.db
 *.db-shm
 *.db-wal
-proposals.db
-proposals_test.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Uploads (user data)
+uploads/
+!uploads/.gitkeep
+
+# Data (runtime data)
+data/
+!data/.gitkeep
+
+# Build artifacts
+*.pyc
+*.pyo
+
+# Test artifacts
+.coverage
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

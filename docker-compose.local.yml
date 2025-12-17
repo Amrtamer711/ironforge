@@ -1,105 +1,173 @@
 # =============================================================================
-# LOCAL DEVELOPMENT STACK
+# CRM Platform - Local Development Stack
 # =============================================================================
-# Uses your .env.secrets with cloud Dev Supabase (no local DB setup needed)
+# Flexible Docker Compose for local development with cloud Dev Supabase.
 #
-# Usage:
+# QUICK START:
 #   docker-compose -f docker-compose.local.yml --env-file .env.secrets up -d
-#   docker-compose -f docker-compose.local.yml --env-file .env.secrets logs -f
-#   docker-compose -f docker-compose.local.yml down
 #
-# Access:
-#   - Unified UI:    http://localhost:3005
-#   - Proposal Bot:  http://localhost:8000
+# SELECTIVE SERVICES (using profiles):
+#   docker-compose -f docker-compose.local.yml --profile sales up -d     # Only sales
+#   docker-compose -f docker-compose.local.yml --profile ui up -d        # Only UI
+#   docker-compose -f docker-compose.local.yml --profile all up -d       # Both (default)
+#
+# CUSTOM PORTS (via environment or .env.secrets):
+#   SALES_PORT=9000 UI_PORT=4000 docker-compose -f docker-compose.local.yml up -d
+#
+# LOGS & MANAGEMENT:
+#   docker-compose -f docker-compose.local.yml logs -f                   # All logs
+#   docker-compose -f docker-compose.local.yml logs -f proposal-bot      # Sales only
+#   docker-compose -f docker-compose.local.yml logs -f unified-ui        # UI only
+#   docker-compose -f docker-compose.local.yml down                      # Stop all
+#   docker-compose -f docker-compose.local.yml down -v                   # Stop + remove volumes
+#
+# ACCESS POINTS (default ports):
+#   - Unified UI:    http://localhost:3005 (or $UI_PORT)
+#   - Proposal Bot:  http://localhost:8000 (or $SALES_PORT)
+#   - API Docs:      http://localhost:8000/docs (with dev auth)
 #
 # =============================================================================
-
-# version removed - obsolete in modern Docker Compose
+# ENVIRONMENT VARIABLES (set in .env.secrets or shell)
+# =============================================================================
+#
+# Port Configuration:
+#   SALES_PORT          External port for sales module (default: 8000)
+#   UI_PORT             External port for unified-ui (default: 3005)
+#
+# Environment:
+#   ENVIRONMENT         development | production | local (default: development)
+#
+# Dev Auth (for testing API via Swagger /docs):
+#   DEV_AUTH_ENABLED    true | false (default: false)
+#   DEV_AUTH_TOKEN      Token to use in Swagger "Authorize" (default: dev-test-token)
+#   DEV_AUTH_USER_EMAIL Test user email (default: dev@test.local)
+#   DEV_AUTH_USER_PROFILE Test user profile (default: system_admin)
+#   DEV_AUTH_USER_PERMISSIONS Test user permissions (default: ["*:*:*"])
+#   DEV_AUTH_USER_COMPANIES Test user companies (default: ["backlite_dubai"])
+#
+# Proxy (must match between services):
+#   PROXY_SECRET        Shared secret for trusted headers
+#
+# =============================================================================
+# DEV AUTH SETUP - Testing API directly via Swagger UI (/docs)
+# =============================================================================
+# 1. Set these in your .env.secrets:
+#      DEV_AUTH_ENABLED=true
+#      DEV_AUTH_TOKEN=your-secret-token
+#
+# 2. Go to http://localhost:8000/docs
+# 3. Click the "Authorize" button (lock icon, top right)
+# 4. Enter your token in the "DevToken" field
+# 5. Click Authorize -> Close
+# 6. All requests will now include the auth header automatically
+# =============================================================================
 
 services:
   # ===========================================================================
-  # Proposal Bot Backend (FastAPI)
+  # Proposal Bot Backend (FastAPI) - Sales Module
   # ===========================================================================
   proposal-bot:
     build:
-      context: .
+      context: ./sales-module
       dockerfile: Dockerfile
-    container_name: proposal-bot
+    container_name: ${SALES_CONTAINER_NAME:-proposal-bot}
     restart: unless-stopped
+    profiles:
+      - all
+      - sales
     ports:
-      - "8000:8000"
+      - "${SALES_PORT:-8000}:8000"
     env_file:
       - .env.secrets
     environment:
-      # Force development mode (uses DEV Supabase from .env.secrets)
-      ENVIRONMENT: development
+      # Core settings
+      ENVIRONMENT: ${ENVIRONMENT:-development}
       PORT: 8000
 
-      # Use cloud Supabase instead of local SQLite
+      # Database & storage (use cloud Supabase)
       DB_BACKEND: supabase
       STORAGE_PROVIDER: supabase
       AUTH_PROVIDER: supabase
 
-      # Proxy secret for trusted headers (generate your own for production)
+      # Proxy secret for trusted headers
       PROXY_SECRET: ${PROXY_SECRET:-local-dev-proxy-secret-change-me}
 
       # CORS for local development
-      CORS_ORIGINS: http://localhost:3005,http://localhost:8000
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3005,http://localhost:8000,http://localhost:3001}
+
+      # Dev auth for testing API via /docs
+      DEV_AUTH_ENABLED: ${DEV_AUTH_ENABLED:-false}
+      DEV_AUTH_TOKEN: ${DEV_AUTH_TOKEN:-dev-test-token}
+      DEV_AUTH_USER_EMAIL: ${DEV_AUTH_USER_EMAIL:-dev@test.local}
+      DEV_AUTH_USER_PROFILE: ${DEV_AUTH_USER_PROFILE:-system_admin}
+      DEV_AUTH_USER_PERMISSIONS: ${DEV_AUTH_USER_PERMISSIONS:-["*:*:*"]}
+      DEV_AUTH_USER_COMPANIES: ${DEV_AUTH_USER_COMPANIES:-["backlite_dubai"]}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
-      - ./data:/app/data
-      - ./uploads:/app/uploads
+      - ./sales-module/data:/app/data
+      - ./sales-module/uploads:/app/uploads
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+      interval: ${HEALTHCHECK_INTERVAL:-30s}
+      timeout: ${HEALTHCHECK_TIMEOUT:-10s}
+      retries: ${HEALTHCHECK_RETRIES:-3}
+      start_period: ${HEALTHCHECK_START_PERIOD:-30s}
     networks:
-      - app-network
+      - crm-network
 
   # ===========================================================================
-  # Unified UI Frontend (Node.js)
+  # Unified UI Frontend (FastAPI) - Auth Gateway + SPA
   # ===========================================================================
   unified-ui:
     build:
       context: ./unified-ui
       dockerfile: Dockerfile
-    container_name: unified-ui
+    container_name: ${UI_CONTAINER_NAME:-unified-ui}
     restart: unless-stopped
+    profiles:
+      - all
+      - ui
     ports:
-      - "3005:3005"
+      - "${UI_PORT:-3005}:3005"
     depends_on:
       proposal-bot:
         condition: service_healthy
+        required: false  # Allow running UI standalone
     env_file:
       - .env.secrets
     environment:
-      # Force development mode (uses DEV Supabase from .env.secrets)
-      ENVIRONMENT: development
+      # Core settings
+      ENVIRONMENT: ${ENVIRONMENT:-development}
       PORT: 3005
 
-      # Proxy to proposal-bot container (Docker internal DNS)
-      SALES_BOT_URL: http://proposal-bot:8000
+      # Proxy to proposal-bot (use Docker DNS or external URL)
+      SALES_BOT_URL: ${SALES_BOT_URL:-http://proposal-bot:8000}
 
       # Must match proposal-bot
       PROXY_SECRET: ${PROXY_SECRET:-local-dev-proxy-secret-change-me}
 
       # CORS for local development
-      CORS_ORIGINS: http://localhost:3005,http://localhost:8000
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3005,http://localhost:8000,http://localhost:3001}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       - ./unified-ui/uploads:/app/uploads
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3005/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
+      test: ["CMD", "curl", "-f", "http://localhost:3005/health"]
+      interval: ${HEALTHCHECK_INTERVAL:-30s}
+      timeout: ${HEALTHCHECK_TIMEOUT:-10s}
+      retries: ${HEALTHCHECK_RETRIES:-3}
+      start_period: ${HEALTHCHECK_START_PERIOD:-15s}
     networks:
-      - app-network
+      - crm-network
 
 # =============================================================================
 # NETWORKS
 # =============================================================================
 networks:
-  app-network:
+  crm-network:
     driver: bridge
+    name: ${NETWORK_NAME:-crm-network-local}

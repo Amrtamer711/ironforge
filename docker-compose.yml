@@ -1,0 +1,176 @@
+# =============================================================================
+# CRM Platform - Production Docker Compose
+# =============================================================================
+# Deploy all services together with full flexibility.
+#
+# QUICK START:
+#   docker-compose up -d                           # Start all (default)
+#   docker-compose up -d --build                   # Build and start
+#
+# SELECTIVE SERVICES (using profiles):
+#   docker-compose --profile sales up -d           # Only sales module
+#   docker-compose --profile ui up -d              # Only unified-ui
+#   docker-compose --profile all up -d             # Both (default)
+#
+# CUSTOM PORTS:
+#   SALES_PORT=9000 UI_PORT=4000 docker-compose up -d
+#
+# WITH ENV FILE:
+#   docker-compose --env-file .env.production up -d
+#
+# MANAGEMENT:
+#   docker-compose logs -f                         # View all logs
+#   docker-compose ps                              # Status
+#   docker-compose down                            # Stop
+#   docker-compose down -v                         # Stop + remove volumes
+#   docker-compose restart proposal-bot            # Restart one service
+#
+# ACCESS POINTS:
+#   - Unified UI:    http://localhost:3005 (or $UI_PORT)
+#   - Proposal Bot:  http://localhost:8000 (or $SALES_PORT)
+#   - API Docs:      http://localhost:8000/docs
+#
+# =============================================================================
+# ENVIRONMENT VARIABLES
+# =============================================================================
+#
+# Port Configuration:
+#   SALES_PORT              External port for sales module (default: 8000)
+#   UI_PORT                 External port for unified-ui (default: 3005)
+#   SALES_INTERNAL_PORT     Internal container port (default: 8000)
+#   UI_INTERNAL_PORT        Internal container port (default: 3005)
+#
+# Environment:
+#   ENVIRONMENT             development | production (default: production)
+#
+# Container Names:
+#   SALES_CONTAINER_NAME    Container name (default: proposal-bot)
+#   UI_CONTAINER_NAME       Container name (default: unified-ui)
+#
+# Networking:
+#   NETWORK_NAME            Docker network name (default: crm-network)
+#   SALES_BOT_URL           URL for UI to reach sales (default: http://proposal-bot:8000)
+#
+# Health Checks:
+#   HEALTHCHECK_INTERVAL    Check interval (default: 30s)
+#   HEALTHCHECK_TIMEOUT     Timeout (default: 10s)
+#   HEALTHCHECK_RETRIES     Retry count (default: 3)
+#
+# Restart Policy:
+#   RESTART_POLICY          Restart policy (default: unless-stopped)
+#
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # Sales Module / Proposal Bot (FastAPI)
+  # ===========================================================================
+  proposal-bot:
+    build:
+      context: ./sales-module
+      dockerfile: Dockerfile
+      args:
+        - ENVIRONMENT=${ENVIRONMENT:-production}
+    image: ${SALES_IMAGE:-crm-proposal-bot:latest}
+    container_name: ${SALES_CONTAINER_NAME:-proposal-bot}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    profiles:
+      - all
+      - sales
+    ports:
+      - "${SALES_PORT:-8000}:${SALES_INTERNAL_PORT:-8000}"
+    env_file:
+      - ${SALES_ENV_FILE:-./sales-module/.env}
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      PORT: ${SALES_INTERNAL_PORT:-8000}
+      DB_BACKEND: supabase
+      STORAGE_PROVIDER: supabase
+      AUTH_PROVIDER: supabase
+      PROXY_SECRET: ${PROXY_SECRET}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ${SALES_DATA_VOLUME:-sales-data}:/data
+      - ${SALES_UPLOADS_PATH:-./sales-module/uploads}:/app/uploads
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:${SALES_INTERNAL_PORT:-8000}/health')"]
+      interval: ${HEALTHCHECK_INTERVAL:-30s}
+      timeout: ${HEALTHCHECK_TIMEOUT:-10s}
+      retries: ${HEALTHCHECK_RETRIES:-3}
+      start_period: ${HEALTHCHECK_START_PERIOD:-30s}
+    networks:
+      - crm-network
+    deploy:
+      resources:
+        limits:
+          cpus: "${SALES_CPU_LIMIT:-2}"
+          memory: ${SALES_MEMORY_LIMIT:-2G}
+        reservations:
+          cpus: "${SALES_CPU_RESERVE:-0.5}"
+          memory: ${SALES_MEMORY_RESERVE:-512M}
+
+  # ===========================================================================
+  # Unified UI (FastAPI Gateway + Static Frontend)
+  # ===========================================================================
+  unified-ui:
+    build:
+      context: ./unified-ui
+      dockerfile: Dockerfile
+      args:
+        - ENVIRONMENT=${ENVIRONMENT:-production}
+    image: ${UI_IMAGE:-crm-unified-ui:latest}
+    container_name: ${UI_CONTAINER_NAME:-unified-ui}
+    restart: ${RESTART_POLICY:-unless-stopped}
+    profiles:
+      - all
+      - ui
+    ports:
+      - "${UI_PORT:-3005}:${UI_INTERNAL_PORT:-3005}"
+    depends_on:
+      proposal-bot:
+        condition: service_healthy
+        required: false  # Allow running UI standalone with external sales
+    env_file:
+      - ${UI_ENV_FILE:-./unified-ui/.env}
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      PORT: ${UI_INTERNAL_PORT:-3005}
+      SALES_BOT_URL: ${SALES_BOT_URL:-http://proposal-bot:8000}
+      PROXY_SECRET: ${PROXY_SECRET}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ${UI_UPLOADS_PATH:-./unified-ui/uploads}:/app/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${UI_INTERNAL_PORT:-3005}/health"]
+      interval: ${HEALTHCHECK_INTERVAL:-30s}
+      timeout: ${HEALTHCHECK_TIMEOUT:-10s}
+      retries: ${HEALTHCHECK_RETRIES:-3}
+      start_period: ${HEALTHCHECK_START_PERIOD:-15s}
+    networks:
+      - crm-network
+    deploy:
+      resources:
+        limits:
+          cpus: "${UI_CPU_LIMIT:-1}"
+          memory: ${UI_MEMORY_LIMIT:-1G}
+        reservations:
+          cpus: "${UI_CPU_RESERVE:-0.25}"
+          memory: ${UI_MEMORY_RESERVE:-256M}
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  sales-data:
+    name: ${SALES_DATA_VOLUME_NAME:-crm-sales-data}
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  crm-network:
+    driver: bridge
+    name: ${NETWORK_NAME:-crm-network}
+    ipam:
+      config:
+        - subnet: ${NETWORK_SUBNET:-172.28.0.0/16}

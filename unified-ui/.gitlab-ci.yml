@@ -1,0 +1,121 @@
+# GitLab CI/CD configuration for Unified UI
+#
+# This file is ready for when you migrate to GitLab.
+# Currently using GitHub Actions (.github/workflows/ci.yml)
+#
+# Runs on:
+# - All pushes to main/dev branches
+# - All merge requests to main/dev branches
+#
+# Stages:
+# - lint: Code quality checks (ruff, bandit)
+# - test: Run pytest with coverage
+# - build: Verify Docker build works
+
+stages:
+  - lint
+  - test
+  - build
+
+variables:
+  PYTHON_VERSION: "3.11"
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+# Cache pip packages between jobs
+.python-cache: &python-cache
+  cache:
+    key: python-unified-ui-${CI_COMMIT_REF_SLUG}
+    paths:
+      - .cache/pip
+      - unified-ui/venv/
+
+# Only run on unified-ui changes
+.unified-ui-rules: &unified-ui-rules
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - unified-ui/**/*
+    - if: $CI_COMMIT_BRANCH == "main" || $CI_COMMIT_BRANCH == "dev"
+      changes:
+        - unified-ui/**/*
+
+# ==============================================================================
+# LINT STAGE - Code quality checks
+# ==============================================================================
+lint:python:
+  stage: lint
+  image: python:${PYTHON_VERSION}
+  <<: *python-cache
+  before_script:
+    - cd unified-ui
+  script:
+    - python -m pip install --upgrade pip
+    - pip install ruff bandit
+    - ruff check . --output-format=text
+    - ruff format --check .
+  <<: *unified-ui-rules
+
+security:bandit:
+  stage: lint
+  image: python:${PYTHON_VERSION}
+  <<: *python-cache
+  before_script:
+    - cd unified-ui
+  script:
+    - python -m pip install --upgrade pip
+    - pip install bandit[toml]
+    - bandit -c pyproject.toml -r backend/ -f txt
+  allow_failure: true  # Don't fail pipeline on security warnings, just report
+  <<: *unified-ui-rules
+
+# ==============================================================================
+# TEST STAGE - Run pytest
+# ==============================================================================
+test:python:
+  stage: test
+  image: python:${PYTHON_VERSION}
+  <<: *python-cache
+  variables:
+    ENVIRONMENT: test
+    SALES_BOT_URL: http://localhost:8000
+    PROXY_SECRET: test-secret
+    UI_DEV_SUPABASE_URL: https://test.supabase.co
+    UI_DEV_SUPABASE_ANON_KEY: test-anon-key
+    UI_DEV_SUPABASE_SERVICE_ROLE_KEY: test-service-key
+  before_script:
+    - cd unified-ui
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+    - pip install pytest pytest-asyncio pytest-cov httpx
+  script:
+    - pytest tests/
+        --cov=backend
+        --cov-report=xml
+        --cov-report=term-missing
+        -v
+  allow_failure: true  # Tests may not exist yet
+  coverage: '/TOTAL.*\s+(\d+%)/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: unified-ui/coverage.xml
+    expire_in: 1 week
+  <<: *unified-ui-rules
+
+# ==============================================================================
+# BUILD STAGE - Verify Docker build
+# ==============================================================================
+build:docker:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - docker info
+  script:
+    - cd unified-ui
+    - docker build -t unified-ui:test .
+  <<: *unified-ui-rules

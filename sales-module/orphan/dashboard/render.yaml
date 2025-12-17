@@ -1,0 +1,28 @@
+# =============================================================================
+# Render Blueprint - AI Costs Dashboard
+# =============================================================================
+# Deploy with: render blueprint apply
+#
+# This deploys the AI costs dashboard as a standalone service.
+# Connects to proposal-bot to fetch AI usage costs.
+# =============================================================================
+
+services:
+  - type: web
+    name: ai-costs-dashboard
+    runtime: docker
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: "production"
+      # Backend URL (update with your actual proposal-bot URL)
+      - key: BACKEND_URL
+        value: "https://proposal-bot.onrender.com"
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DASHBOARD_USERNAME
+        sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false
