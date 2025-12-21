@@ -201,7 +201,7 @@ data/
 To sync the latest data from Dev Supabase to local SQLite:
 
 ```bash
-# Sync all tables
+# Sync all database tables
 python src/shared/local_dev/sync_from_supabase.py
 
 # Preview without changes
@@ -215,6 +215,54 @@ python src/shared/local_dev/sync_from_supabase.py --tables users,profiles
 
 # Sync specific company schema
 python src/shared/local_dev/sync_from_supabase.py --schema backlite_dubai
+```
+
+---
+
+## Syncing File Storage
+
+To sync files from Supabase Storage buckets to local filesystem:
+
+```bash
+# Sync databases AND file storage
+python src/shared/local_dev/sync_from_supabase.py --storage
+
+# Sync ONLY file storage (skip databases)
+python src/shared/local_dev/sync_from_supabase.py --storage-only
+
+# Sync specific buckets only
+python src/shared/local_dev/sync_from_supabase.py --storage --buckets proposals,mockups
+
+# Sync from specific projects (sales, assets, ui, security)
+python src/shared/local_dev/sync_from_supabase.py --storage --projects sales,assets
+
+# Preview storage sync (dry run)
+python src/shared/local_dev/sync_from_supabase.py --storage-only --dry-run
+
+# Clear and re-sync storage
+python src/shared/local_dev/sync_from_supabase.py --storage-only --clear
+```
+
+### Storage Buckets by Project
+
+| Project | Buckets | Local Folder |
+|---------|---------|--------------|
+| **Sales** | proposals, mockups, documents, templates, uploads | data/storage/{bucket}/ |
+| **Assets** | location-images, network-assets | data/storage/{bucket}/ |
+| **UI** | avatars | data/storage/avatars/ |
+| **Security** | audit-exports | data/storage/audit-exports/ |
+
+### Using Setup Script
+
+```bash
+# Setup with database sync only
+python src/shared/local_dev/setup_local_env.py --sync
+
+# Setup with database AND storage sync
+python src/shared/local_dev/setup_local_env.py --sync-all
+
+# Setup with storage sync only
+python src/shared/local_dev/setup_local_env.py --sync-storage
 ```
 
 ---

@@ -155,7 +155,7 @@ def check_supabase_env():
     return has_ui or has_sales
 
 
-def sync_from_supabase():
+def sync_from_supabase(include_storage: bool = False):
     """Run the Supabase sync script."""
     print_header("Syncing from Dev Supabase")
 
@@ -165,8 +165,13 @@ def sync_from_supabase():
         return False
 
     import subprocess
+
+    cmd = [sys.executable, str(sync_script)]
+    if include_storage:
+        cmd.append("--storage")
+
     result = subprocess.run(
-        [sys.executable, str(sync_script)],
+        cmd,
         cwd=str(REPO_ROOT),
         capture_output=False,
     )
@@ -477,7 +482,8 @@ def main():
         epilog="""
 Examples:
     python setup_local_env.py                # Set up local environment
-    python setup_local_env.py --sync         # Set up with Supabase sync
+    python setup_local_env.py --sync         # Set up with Supabase sync (databases only)
+    python setup_local_env.py --sync-all     # Sync databases AND file storage
     python setup_local_env.py --check        # Validate existing setup
     python setup_local_env.py --usage        # Show storage usage
     python setup_local_env.py --clean        # Clean all local data
@@ -488,7 +494,17 @@ Examples:
     parser.add_argument(
         "--sync",
         action="store_true",
-        help="Sync data from Dev Supabase to local SQLite",
+        help="Sync databases from Dev Supabase to local SQLite",
+    )
+    parser.add_argument(
+        "--sync-all",
+        action="store_true",
+        help="Sync databases AND file storage from Dev Supabase",
+    )
+    parser.add_argument(
+        "--sync-storage",
+        action="store_true",
+        help="Only sync file storage (skip databases)",
     )
     parser.add_argument(
         "--check",
@@ -550,13 +566,27 @@ Examples:
     if not args.skip_personas:
         validate_personas()
 
-    if args.sync:
+    # Handle sync options
+    if args.sync or args.sync_all or args.sync_storage:
         if check_supabase_env():
-            sync_from_supabase()
+            if args.sync_storage:
+                # Only sync storage
+                sync_script = SHARED_DIR / "local_dev" / "sync_from_supabase.py"
+                import subprocess
+                subprocess.run(
+                    [sys.executable, str(sync_script), "--storage-only"],
+                    cwd=str(REPO_ROOT),
+                )
+            elif args.sync_all:
+                # Sync both databases and storage
+                sync_from_supabase(include_storage=True)
+            else:
+                # Just databases
+                sync_from_supabase(include_storage=False)
         else:
             print_warning("Skipping sync: Supabase credentials not configured")
     else:
-        print_info("Use --sync to sync data from Dev Supabase")
+        print_info("Use --sync to sync databases, --sync-all to include file storage")
 
     create_env_local()
     check_local_setup()
