@@ -15,29 +15,32 @@ Supported Providers:
 - Database (DatabaseRBACProvider): Database-backed RBAC using unified schema
 - Static (StaticRBACProvider): In-memory configuration (for development/testing)
 
+IMPORTANT: Two has_permission Functions
+=========================================
+
+1. integrations.rbac.has_permission(user_id, permission) [ASYNC]
+   - Fetches user permissions from database, then checks
+   - Use for admin operations when you only have user_id
+   - Use when permissions aren't pre-populated in context
+
+2. security.has_permission(permissions, permission) [SYNC]
+   - Takes already-fetched permissions list, checks locally
+   - Use in request handlers where AuthUser.permissions is available
+   - PREFERRED for performance (no DB round-trip)
+
 Usage:
-    from integrations.rbac import get_rbac_client, has_permission
+    # For management/admin operations (fetches from DB):
+    from integrations.rbac import get_rbac_client
 
-    # Get the configured RBAC client
     rbac = get_rbac_client()
-
-    # Check permissions (format: module:resource:action)
-    if await rbac.has_permission(user_id, "sales:proposals:create"):
-        # User can create proposals
-        pass
-
-    # Or use convenience functions
-    if await has_permission(user_id, "core:users:read"):
-        pass
-
-    # Require permission (raises PermissionError if lacking)
-    await require_permission(user_id, "sales:proposals:delete")
-
-    # Get user profile
+    permissions = await rbac.get_user_permissions(user_id)
     profile = await rbac.get_user_profile(user_id)
 
-    # Assign permission set
-    await rbac.assign_permission_set(user_id, "api_access")
+    # For request handlers (use pre-fetched permissions from AuthUser):
+    from crm_security import has_permission
+
+    if has_permission(user.permissions, "sales:proposals:create"):
+        pass
 
 Configuration:
     Set RBAC_PROVIDER environment variable:

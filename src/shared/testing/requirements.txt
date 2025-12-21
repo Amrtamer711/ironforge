@@ -1,0 +1,2 @@
+# Testing framework dependencies
+PyYAML>=6.0

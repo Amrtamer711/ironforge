@@ -10,12 +10,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
 import config
-from api.auth import require_permission
+from crm_security import require_permission_user as require_permission, AuthUser
 from api.schemas import (
     validate_image_upload,
 )
 from db.database import db
-from integrations.auth import AuthUser
 
 logger = config.logger
 

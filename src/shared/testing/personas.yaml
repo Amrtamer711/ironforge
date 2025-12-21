@@ -1,0 +1,415 @@
+# =============================================================================
+# MMG TEST PERSONAS - Real business context testing
+# =============================================================================
+# Pre-defined test users matching MMG's actual org structure
+# Use with dev Supabase for comprehensive RBAC testing
+#
+# Company Structure:
+#   MMG (Parent)
+#   ├── Backlite Dubai (backlite_dubai) - AED
+#   ├── Backlite UK (backlite_uk) - GBP
+#   ├── Backlite Abu Dhabi (backlite_abudhabi) - AED
+#   └── Viola (viola) - AED
+# =============================================================================
+
+default_password: "TestUser123!"
+
+# =============================================================================
+# COMPANIES (Matches real MMG structure)
+# =============================================================================
+companies:
+  - id: 1
+    name: MMG
+    schema: null  # Parent company, no data schema
+    currency: AED
+
+  - id: 3
+    name: Backlite Dubai
+    schema: backlite_dubai
+    currency: AED
+    parent_id: 2
+
+  - id: 4
+    name: Backlite UK
+    schema: backlite_uk
+    currency: GBP
+    parent_id: 2
+
+  - id: 5
+    name: Backlite Abu Dhabi
+    schema: backlite_abudhabi
+    currency: AED
+    parent_id: 2
+
+  - id: 6
+    name: Viola
+    schema: viola
+    currency: AED
+    parent_id: 1
+
+# =============================================================================
+# PROFILES (Real MMG profiles)
+# =============================================================================
+profiles:
+  system_admin:
+    name: System Admin
+    permissions: ["*:*:*"]
+
+  sales_manager:
+    name: Sales Manager
+    permissions:
+      - "sales:*:*"
+      - "assets:*:read"
+      - "core:teams:read"
+
+  sales_rep:
+    name: Sales Representative
+    permissions:
+      - "sales:proposals:*"
+      - "sales:mockups:generate"
+      - "sales:booking_orders:read"
+      - "sales:booking_orders:create"
+      - "sales:chat:use"
+      - "assets:locations:read"
+      - "assets:networks:read"
+      - "assets:packages:read"
+
+  coordinator:
+    name: Sales Coordinator
+    permissions:
+      - "sales:booking_orders:*"
+      - "sales:proposals:read"
+      - "assets:locations:read"
+
+  finance:
+    name: Finance
+    permissions:
+      - "sales:booking_orders:read"
+      - "sales:booking_orders:update"
+      - "core:ai_costs:read"
+      - "sales:reports:read"
+      - "sales:reports:export"
+
+  viewer:
+    name: View Only
+    permissions:
+      - "sales:proposals:read"
+      - "sales:booking_orders:read"
+      - "assets:locations:read"
+
+# =============================================================================
+# TEAMS (Real MMG team structure)
+# =============================================================================
+teams:
+  - id: 1
+    name: Backlite Sales - Dubai
+    company: backlite_dubai
+
+  - id: 2
+    name: Backlite Sales - UK
+    company: backlite_uk
+
+  - id: 3
+    name: Backlite Sales - Abu Dhabi
+    company: backlite_abudhabi
+
+  - id: 4
+    name: Viola Sales
+    company: viola
+
+  - id: 5
+    name: Coordinators
+    company: null  # Cross-company
+
+  - id: 6
+    name: Finance Team
+    company: null  # Cross-company
+
+# =============================================================================
+# TEST PERSONAS (Based on real MMG roles)
+# =============================================================================
+personas:
+
+  # ---------------------------------------------------------------------------
+  # SYSTEM ADMINS - Full access
+  # ---------------------------------------------------------------------------
+  - id: test_admin
+    email: test.admin@mmg.ae
+    name: Test Admin
+    description: Full system admin - can do everything
+    profile: system_admin
+    companies: [backlite_dubai, backlite_uk, backlite_abudhabi, viola]
+    teams: []
+    use_for:
+      - Testing admin-only features
+      - Verifying full access works
+      - Setting up test data
+
+  # ---------------------------------------------------------------------------
+  # HEAD OF SALES (Managers)
+  # ---------------------------------------------------------------------------
+  - id: hos_backlite
+    email: hos.backlite@mmg.ae
+    name: Ahmed Test (HoS Backlite)
+    description: Head of Sales for all Backlite companies
+    profile: sales_manager
+    companies: [backlite_dubai, backlite_uk, backlite_abudhabi]
+    teams:
+      - team_id: 1
+        role: leader
+      - team_id: 2
+        role: leader
+      - team_id: 3
+        role: leader
+    subordinates: [rep_dubai_1, rep_dubai_2, rep_uk_1, rep_abudhabi_1]
+    use_for:
+      - BO approval workflow (HoS stage)
+      - Viewing team proposals
+      - Manager hierarchy testing
+
+  - id: hos_viola
+    email: hos.viola@mmg.ae
+    name: Manel Test (HoS Viola)
+    description: Head of Sales for Viola
+    profile: sales_manager
+    companies: [viola]
+    teams:
+      - team_id: 4
+        role: leader
+    subordinates: [rep_viola_1]
+    use_for:
+      - Viola-specific BO approvals
+      - Single-company manager testing
+
+  # ---------------------------------------------------------------------------
+  # SALES REPS - Various company combinations
+  # ---------------------------------------------------------------------------
+  - id: rep_dubai_1
+    email: rep.dubai1@mmg.ae
+    name: Sales Rep Dubai 1
+    description: Standard Dubai sales rep
+    profile: sales_rep
+    companies: [backlite_dubai]
+    teams:
+      - team_id: 1
+        role: member
+    manager: hos_backlite
+    use_for:
+      - Creating proposals for Dubai locations
+      - Generating mockups
+      - Standard sales workflow
+
+  - id: rep_dubai_2
+    email: rep.dubai2@mmg.ae
+    name: Sales Rep Dubai 2
+    description: Second Dubai rep (for sharing tests)
+    profile: sales_rep
+    companies: [backlite_dubai]
+    teams:
+      - team_id: 1
+        role: member
+    manager: hos_backlite
+    use_for:
+      - Record sharing between reps
+      - Team visibility testing
+
+  - id: rep_uk_1
+    email: rep.uk1@mmg.ae
+    name: Sales Rep UK
+    description: UK sales rep (GBP currency)
+    profile: sales_rep
+    companies: [backlite_uk]
+    teams:
+      - team_id: 2
+        role: member
+    manager: hos_backlite
+    use_for:
+      - GBP currency proposals
+      - UK-specific inventory
+      - Cross-region testing
+
+  - id: rep_abudhabi_1
+    email: rep.abudhabi1@mmg.ae
+    name: Sales Rep Abu Dhabi
+    description: Abu Dhabi sales rep
+    profile: sales_rep
+    companies: [backlite_abudhabi]
+    teams:
+      - team_id: 3
+        role: member
+    manager: hos_backlite
+    use_for:
+      - Abu Dhabi locations
+      - Testing company isolation
+
+  - id: rep_viola_1
+    email: rep.viola1@mmg.ae
+    name: Sales Rep Viola
+    description: Viola-only sales rep
+    profile: sales_rep
+    companies: [viola]
+    teams:
+      - team_id: 4
+        role: member
+    manager: hos_viola
+    use_for:
+      - Viola inventory only
+      - Separate approval chain
+
+  - id: rep_multi_company
+    email: rep.multi@mmg.ae
+    name: Multi-Company Rep
+    description: Rep with access to multiple companies
+    profile: sales_rep
+    companies: [backlite_dubai, viola]
+    teams:
+      - team_id: 1
+        role: member
+      - team_id: 4
+        role: member
+    use_for:
+      - Cross-company proposals
+      - Multi-tenant data isolation
+      - Company selector testing
+
+  # ---------------------------------------------------------------------------
+  # COORDINATORS
+  # ---------------------------------------------------------------------------
+  - id: coordinator_1
+    email: coordinator1@mmg.ae
+    name: Richelle Test (Coordinator)
+    description: Coordinator for Backlite + Viola
+    profile: coordinator
+    companies: [backlite_dubai, backlite_uk, backlite_abudhabi, viola]
+    teams:
+      - team_id: 5
+        role: member
+    use_for:
+      - BO review and editing
+      - Coordinator approval stage
+      - Cross-company BO processing
+
+  # ---------------------------------------------------------------------------
+  # FINANCE
+  # ---------------------------------------------------------------------------
+  - id: finance_1
+    email: finance1@mmg.ae
+    name: Finance User 1
+    description: Finance team member
+    profile: finance
+    companies: [backlite_dubai, backlite_uk, backlite_abudhabi, viola]
+    teams:
+      - team_id: 6
+        role: member
+    use_for:
+      - Final BO approval
+      - AI cost review
+      - Financial reports
+
+  # ---------------------------------------------------------------------------
+  # EDGE CASES / RESTRICTED ACCESS
+  # ---------------------------------------------------------------------------
+  - id: viewer_only
+    email: viewer@mmg.ae
+    name: View Only User
+    description: Can view but not create/edit
+    profile: viewer
+    companies: [backlite_dubai]
+    teams:
+      - team_id: 1
+        role: member
+    use_for:
+      - Read-only permission testing
+      - Verify create/update blocked
+
+  - id: no_permissions
+    email: noperms@mmg.ae
+    name: No Permissions
+    description: Authenticated but no profile assigned
+    profile: null
+    companies: [backlite_dubai]
+    teams: []
+    use_for:
+      - Auth != Authorization testing
+      - Should be blocked everywhere
+
+  - id: no_company
+    email: nocompany@mmg.ae
+    name: No Company Access
+    description: Has profile but no company access
+    profile: sales_rep
+    companies: []
+    teams: []
+    use_for:
+      - Empty data scenarios
+      - Company filter edge case
+
+  - id: wrong_company
+    email: wrongcompany@mmg.ae
+    name: Wrong Company User
+    description: Has Viola access, tries Dubai
+    profile: sales_rep
+    companies: [viola]
+    teams:
+      - team_id: 4
+        role: member
+    use_for:
+      - Cross-company access denial
+      - Data isolation verification
+
+# =============================================================================
+# TEST SCENARIOS (Quick setup configurations)
+# =============================================================================
+scenarios:
+
+  basic_sales_flow:
+    description: Simple proposal → BO → approval flow
+    personas: [rep_dubai_1, coordinator_1, hos_backlite, finance_1]
+    test_cases:
+      - Rep creates proposal
+      - Rep submits BO
+      - Coordinator reviews
+      - HoS approves
+      - Finance confirms
+
+  multi_company:
+    description: Cross-company data isolation
+    personas: [rep_dubai_1, rep_viola_1, rep_multi_company]
+    test_cases:
+      - Dubai rep sees only Dubai locations
+      - Viola rep sees only Viola locations
+      - Multi rep sees both, isolated
+
+  manager_hierarchy:
+    description: Manager sees subordinate data
+    personas: [hos_backlite, rep_dubai_1, rep_dubai_2, rep_uk_1]
+    test_cases:
+      - Manager sees all subordinate proposals
+      - Rep 1 cannot see Rep 2 proposals
+      - Manager can access UK rep data
+
+  permission_enforcement:
+    description: RBAC blocks unauthorized actions
+    personas: [viewer_only, no_permissions, no_company, wrong_company]
+    test_cases:
+      - Viewer cannot create proposals
+      - No permissions blocked everywhere
+      - No company sees empty data
+      - Wrong company access denied
+
+  full_workflow:
+    description: Complete BO approval chain
+    personas:
+      - rep_dubai_1
+      - coordinator_1
+      - hos_backlite
+      - finance_1
+      - test_admin
+    test_cases:
+      - Create proposal with mockups
+      - Generate BO from proposal
+      - Coordinator thread opens
+      - Coordinator approves → HoS
+      - HoS approves → Finance
+      - Finance confirms
+      - Rejection flow (back to coordinator)

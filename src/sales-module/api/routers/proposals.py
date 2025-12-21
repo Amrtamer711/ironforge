@@ -9,16 +9,18 @@ Access Control (Team-based):
 - Regular users see only their own proposals
 """
 
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 import config
-from api.auth import require_auth
 from db.database import db
-from integrations.auth import AuthUser
-from integrations.rbac import has_permission
-from integrations.rbac.providers.database import can_access_user_data, get_accessible_user_ids
+from crm_security import (
+    AuthUser,
+    require_auth_user as require_auth,
+    has_permission,
+    can_access_user_data,
+    get_accessible_user_ids,
+)
 
 logger = config.logger
 
@@ -85,7 +87,7 @@ async def list_proposals(
     """
     try:
         # Check if user can view all proposals (has manage permission)
-        can_view_all = await has_permission(user.id, "sales:proposals:manage")
+        can_view_all = has_permission(user.permissions, "sales:proposals:manage")
 
         if can_view_all:
             # Admin/manager with full access - no filtering
@@ -128,7 +130,7 @@ async def get_proposals_history(user: AuthUser = Depends(require_auth)):
     DEPRECATED: Use GET /api/proposals instead.
     """
     try:
-        can_view_all = await has_permission(user.id, "sales:proposals:manage")
+        can_view_all = has_permission(user.permissions, "sales:proposals:manage")
 
         if can_view_all:
             user_ids = None
@@ -165,7 +167,7 @@ async def get_proposal(
         proposal_owner = proposal.get("user_id") or proposal.get("submitted_by")
 
         # Check access: manage permission OR can access this user's data (self/subordinate)
-        can_view_all = await has_permission(user.id, "sales:proposals:manage")
+        can_view_all = has_permission(user.permissions, "sales:proposals:manage")
         can_access = can_view_all or can_access_user_data(proposal_owner)
 
         if not can_access:
@@ -204,7 +206,7 @@ async def delete_proposal(
         proposal_owner = proposal.get("user_id") or proposal.get("submitted_by")
 
         # Check access: delete permission OR can access this user's data (self/subordinate)
-        can_delete_all = await has_permission(user.id, "sales:proposals:delete")
+        can_delete_all = has_permission(user.permissions, "sales:proposals:delete")
         can_access = can_delete_all or can_access_user_data(proposal_owner)
 
         if not can_access:
@@ -242,7 +244,7 @@ async def get_proposal_locations(
         proposal_owner = proposal.get("user_id") or proposal.get("submitted_by")
 
         # Check access: manage permission OR can access this user's data (self/subordinate)
-        can_view_all = await has_permission(user.id, "sales:proposals:manage")
+        can_view_all = has_permission(user.permissions, "sales:proposals:manage")
         can_access = can_view_all or can_access_user_data(proposal_owner)
 
         if not can_access:

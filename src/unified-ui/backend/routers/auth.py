@@ -33,9 +33,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 
 from backend.middleware.auth import AuthUser, require_auth, require_profile
-from backend.middleware.rate_limit import rate_limiter
 from backend.services.rbac_service import invalidate_rbac_cache
 from backend.services.supabase_client import get_supabase
+from crm_security import rate_limit
 
 logger = logging.getLogger("unified-ui")
 
@@ -95,7 +95,7 @@ class ResendConfirmationRequest(BaseModel):
 # INVITE TOKEN ENDPOINTS - server.js:872-1351
 # =============================================================================
 
-@router.post("/invites", dependencies=[Depends(rate_limiter(20))])
+@router.post("/invites", dependencies=[Depends(rate_limit(20))])
 async def create_invite(
     request: CreateInviteRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
@@ -195,7 +195,7 @@ async def create_invite(
         raise HTTPException(status_code=500, detail="Failed to create invite")
 
 
-@router.get("/invites", dependencies=[Depends(rate_limiter(30))])
+@router.get("/invites", dependencies=[Depends(rate_limit(30))])
 async def list_invites(
     include_used: bool = False,
     user: AuthUser = Depends(require_profile("system_admin")),
@@ -243,7 +243,7 @@ async def list_invites(
         raise HTTPException(status_code=500, detail="Failed to list invites")
 
 
-@router.delete("/invites/{token_id}", dependencies=[Depends(rate_limiter(20))])
+@router.delete("/invites/{token_id}", dependencies=[Depends(rate_limit(20))])
 async def revoke_invite(
     token_id: int,
     user: AuthUser = Depends(require_profile("system_admin")),
@@ -278,7 +278,7 @@ async def revoke_invite(
         raise HTTPException(status_code=500, detail="Failed to revoke invite")
 
 
-@router.delete("/users/{user_id}", dependencies=[Depends(rate_limiter(10))])
+@router.delete("/users/{user_id}", dependencies=[Depends(rate_limit(10))])
 async def delete_auth_user(
     user_id: str,
     user: AuthUser = Depends(require_profile("system_admin")),
@@ -312,7 +312,7 @@ async def delete_auth_user(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.delete("/users-by-email/{email}", dependencies=[Depends(rate_limiter(10))])
+@router.delete("/users-by-email/{email}", dependencies=[Depends(rate_limit(10))])
 async def delete_auth_user_by_email(
     email: str,
     user: AuthUser = Depends(require_profile("system_admin")),
@@ -365,7 +365,7 @@ async def delete_auth_user_by_email(
         raise HTTPException(status_code=500, detail="Failed to delete user")
 
 
-@router.post("/resend-confirmation", dependencies=[Depends(rate_limiter(5))])
+@router.post("/resend-confirmation", dependencies=[Depends(rate_limit(5))])
 async def resend_confirmation(
     request: ResendConfirmationRequest,
     user: AuthUser = Depends(require_profile("system_admin")),
@@ -404,7 +404,7 @@ async def resend_confirmation(
 # PUBLIC INVITE ENDPOINTS - server.js:1181-1351
 # =============================================================================
 
-@router.post("/validate-invite", dependencies=[Depends(rate_limiter(5))])
+@router.post("/validate-invite", dependencies=[Depends(rate_limit(5))])
 async def validate_invite(request: ValidateInviteRequest) -> dict[str, Any]:
     """
     Validate invite token (PUBLIC).
@@ -462,7 +462,7 @@ async def validate_invite(request: ValidateInviteRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail="Invalid or expired invite token")
 
 
-@router.post("/consume-invite", dependencies=[Depends(rate_limiter(5))])
+@router.post("/consume-invite", dependencies=[Depends(rate_limit(5))])
 async def consume_invite(request: ConsumeInviteRequest) -> dict[str, Any]:
     """
     Consume invite token after successful signup.

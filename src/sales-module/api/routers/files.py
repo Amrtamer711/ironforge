@@ -14,9 +14,11 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
-from api.auth import require_auth
-from integrations.auth import AuthUser
-from integrations.rbac import has_permission
+from crm_security import (
+    AuthUser,
+    require_auth_user as require_auth,
+    has_permission,
+)
 from utils.logging import get_logger
 
 router = APIRouter(prefix="/api/files", tags=["files"])
@@ -247,7 +249,7 @@ async def serve_uploaded_file(
         file_owner = getattr(stored_info, 'user_id', None) or getattr(stored_info, 'owner_id', None)
         if file_owner and file_owner != user.id:
             # User doesn't own this file - check if they have admin permission
-            can_access_all = await has_permission(user.id, "core:files:read")
+            can_access_all = has_permission(user.permissions, "core:files:read")
             if not can_access_all:
                 logger.warning(f"[FILES] Access denied: {user.email} tried to access file owned by {file_owner}")
                 raise HTTPException(status_code=403, detail="Not authorized to access this file")
@@ -330,7 +332,7 @@ async def get_file_download_url(
     if stored_info:
         file_owner = getattr(stored_info, 'user_id', None) or getattr(stored_info, 'owner_id', None)
         if file_owner and file_owner != user.id:
-            can_access_all = await has_permission(user.id, "core:files:read")
+            can_access_all = has_permission(user.permissions, "core:files:read")
             if not can_access_all:
                 logger.warning(f"[FILES] Access denied: {user.email} tried to get URL for file owned by {file_owner}")
                 raise HTTPException(status_code=403, detail="Not authorized to access this file")

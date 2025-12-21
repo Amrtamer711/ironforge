@@ -270,3 +270,192 @@ async def _proxy_streaming(
             "Connection": "keep-alive",
         },
     )
+
+
+# =============================================================================
+# ASSET MANAGEMENT PROXY
+# =============================================================================
+
+
+@router.api_route(
+    "/api/assets/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+)
+async def proxy_to_asset_management(
+    path: str,
+    request: Request,
+    user: TrustedUser = Depends(get_trusted_user),
+) -> Response:
+    """
+    Proxy requests to the asset-management service with trusted headers.
+
+    Path transformation:
+    /api/assets/networks -> /api/networks on asset-management
+    /api/assets/locations -> /api/locations on asset-management
+    """
+    settings = get_settings()
+
+    if not settings.ASSET_MGMT_URL:
+        raise HTTPException(
+            status_code=503,
+            detail="Asset management service not configured",
+        )
+
+    # Build target URL (same pattern as sales proxy)
+    target_url = f"{settings.ASSET_MGMT_URL}/api/{path}"
+    if request.query_params:
+        target_url += f"?{request.query_params}"
+
+    logger.info(f"[PROXY] {request.method} /api/assets/{path} -> {target_url}")
+    logger.info(f"[PROXY] User: {user.email} | Profile: {user.profile}")
+
+    # Build trusted headers using contract
+    trusted_headers = _build_trusted_headers(user, settings.PROXY_SECRET)
+
+    # Forward original authorization header (backward compat)
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        trusted_headers["Authorization"] = auth_header
+
+    # Forward client IP
+    ip = request.headers.get("x-forwarded-for") or (
+        request.client.host if request.client else None
+    )
+    if ip:
+        trusted_headers["X-Forwarded-For"] = ip
+
+    # Forward content type if present
+    content_type = request.headers.get("content-type")
+    if content_type:
+        trusted_headers["Content-Type"] = content_type
+
+    try:
+        body = await request.body()
+
+        # Asset management doesn't use streaming, always regular response
+        return await _proxy_regular(
+            method=request.method,
+            url=target_url,
+            headers=trusted_headers,
+            body=body,
+        )
+
+    except httpx.TimeoutException:
+        logger.error(f"[PROXY] Timeout for {request.method} {target_url}")
+        raise HTTPException(
+            status_code=504,
+            detail="Request timed out",
+        )
+    except httpx.ConnectError as e:
+        logger.error(f"[PROXY] Connection error for {request.method} {target_url}: {e}")
+        if settings.is_production:
+            raise HTTPException(
+                status_code=502,
+                detail="Asset management service temporarily unavailable",
+            )
+        else:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "error": "Asset management service unavailable",
+                    "details": str(e),
+                    "target": settings.ASSET_MGMT_URL,
+                },
+            )
+    except Exception as e:
+        logger.error(f"[PROXY] Error: {e}")
+        raise HTTPException(status_code=502, detail="Proxy error")
+
+
+# =============================================================================
+# SECURITY SERVICE PROXY
+# =============================================================================
+
+
+@router.api_route(
+    "/api/security/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+)
+async def proxy_to_security_service(
+    path: str,
+    request: Request,
+    user: TrustedUser = Depends(get_trusted_user),
+) -> Response:
+    """
+    Proxy requests to the security service with trusted headers.
+
+    Path transformation:
+    /api/security/audit/logs -> /api/audit/logs on security-service
+    /api/security/api-keys -> /api/api-keys on security-service
+    """
+    settings = get_settings()
+
+    if not settings.SECURITY_SERVICE_URL:
+        raise HTTPException(
+            status_code=503,
+            detail="Security service not configured",
+        )
+
+    # Build target URL
+    target_url = f"{settings.SECURITY_SERVICE_URL}/api/{path}"
+    if request.query_params:
+        target_url += f"?{request.query_params}"
+
+    logger.info(f"[PROXY] {request.method} /api/security/{path} -> {target_url}")
+    logger.info(f"[PROXY] User: {user.email} | Profile: {user.profile}")
+
+    # Build trusted headers using contract
+    trusted_headers = _build_trusted_headers(user, settings.PROXY_SECRET)
+
+    # Forward original authorization header (backward compat)
+    auth_header = request.headers.get("authorization")
+    if auth_header:
+        trusted_headers["Authorization"] = auth_header
+
+    # Forward client IP
+    ip = request.headers.get("x-forwarded-for") or (
+        request.client.host if request.client else None
+    )
+    if ip:
+        trusted_headers["X-Forwarded-For"] = ip
+
+    # Forward content type if present
+    content_type = request.headers.get("content-type")
+    if content_type:
+        trusted_headers["Content-Type"] = content_type
+
+    try:
+        body = await request.body()
+
+        return await _proxy_regular(
+            method=request.method,
+            url=target_url,
+            headers=trusted_headers,
+            body=body,
+        )
+
+    except httpx.TimeoutException:
+        logger.error(f"[PROXY] Timeout for {request.method} {target_url}")
+        raise HTTPException(
+            status_code=504,
+            detail="Request timed out",
+        )
+    except httpx.ConnectError as e:
+        logger.error(f"[PROXY] Connection error for {request.method} {target_url}: {e}")
+        if settings.is_production:
+            raise HTTPException(
+                status_code=502,
+                detail="Security service temporarily unavailable",
+            )
+        else:
+            raise HTTPException(
+                status_code=502,
+                detail={
+                    "error": "Security service unavailable",
+                    "details": str(e),
+                    "target": settings.SECURITY_SERVICE_URL,
+                },
+            )
+    except Exception as e:
+        logger.error(f"[PROXY] Error: {e}")
+        raise HTTPException(status_code=502, detail="Proxy error")

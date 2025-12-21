@@ -14,8 +14,8 @@ All endpoints require system_admin profile or appropriate permissions.
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from api.auth import require_permission
-from integrations.auth import AuthUser, get_auth_client
+from crm_security import AuthUser, require_permission_user as require_permission
+from integrations.auth import get_auth_client
 from integrations.rbac import (
     AccessLevel,
     TeamRole,
@@ -357,7 +357,7 @@ async def create_api_key(
     IMPORTANT: The raw API key is only returned ONCE in this response.
     Store it securely - it cannot be retrieved again.
     """
-    from api.middleware import generate_api_key
+    from crm_security import generate_api_key
     from db.database import db
 
 
@@ -488,7 +488,7 @@ async def rotate_api_key(
     IMPORTANT: The new raw key is only returned ONCE.
     Store it securely - it cannot be retrieved again.
     """
-    from api.middleware import generate_api_key
+    from crm_security import generate_api_key
     from db.database import db
     from utils.time import get_uae_time
 

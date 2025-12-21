@@ -1,0 +1,876 @@
+{
+  "info": {
+    "_postman_id": "mmg-crm-testing",
+    "name": "MMG CRM API Testing",
+    "description": "Comprehensive API testing collection for MMG CRM.\n\n## Setup\n\n1. Import this collection into Postman\n2. Import the environment file (mmg_environments.json)\n3. Select the 'Local' environment\n4. Use the pre-request scripts to automatically inject auth headers\n\n## Personas\n\nSwitch between test users by changing the `persona` variable in the environment.\n\nAvailable personas:\n- test_admin (full access)\n- hos_backlite (manager)\n- rep_dubai_1 (sales rep)\n- coordinator_1 (BO processor)\n- finance_1 (final approval)\n- viewer_only (read-only)\n- no_permissions (should fail)\n- wrong_company (should fail cross-company)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Pre-request script to set up auth headers",
+          "// Based on selected persona in environment",
+          "",
+          "const personas = {",
+          "    'test_admin': {",
+          "        id: 'test-test_admin',",
+          "        email: 'test.admin@mmg.ae',",
+          "        name: 'Test Admin',",
+          "        profile: 'system_admin',",
+          "        permissions: ['*:*:*'],",
+          "        companies: ['backlite_dubai', 'backlite_uk', 'backlite_abudhabi', 'viola']",
+          "    },",
+          "    'hos_backlite': {",
+          "        id: 'test-hos_backlite',",
+          "        email: 'hos.backlite@mmg.ae',",
+          "        name: 'Ahmed Test (HoS Backlite)',",
+          "        profile: 'sales_manager',",
+          "        permissions: ['sales:*:*', 'assets:*:read', 'core:teams:read'],",
+          "        companies: ['backlite_dubai', 'backlite_uk', 'backlite_abudhabi']",
+          "    },",
+          "    'rep_dubai_1': {",
+          "        id: 'test-rep_dubai_1',",
+          "        email: 'rep.dubai1@mmg.ae',",
+          "        name: 'Sales Rep Dubai 1',",
+          "        profile: 'sales_rep',",
+          "        permissions: ['sales:proposals:*', 'sales:mockups:generate', 'sales:booking_orders:read', 'sales:booking_orders:create', 'assets:locations:read', 'assets:networks:read'],",
+          "        companies: ['backlite_dubai']",
+          "    },",
+          "    'rep_dubai_2': {",
+          "        id: 'test-rep_dubai_2',",
+          "        email: 'rep.dubai2@mmg.ae',",
+          "        name: 'Sales Rep Dubai 2',",
+          "        profile: 'sales_rep',",
+          "        permissions: ['sales:proposals:*', 'sales:mockups:generate', 'sales:booking_orders:read', 'sales:booking_orders:create', 'assets:locations:read'],",
+          "        companies: ['backlite_dubai']",
+          "    },",
+          "    'coordinator_1': {",
+          "        id: 'test-coordinator_1',",
+          "        email: 'coordinator1@mmg.ae',",
+          "        name: 'Richelle Test (Coordinator)',",
+          "        profile: 'coordinator',",
+          "        permissions: ['sales:booking_orders:*', 'sales:proposals:read', 'assets:locations:read'],",
+          "        companies: ['backlite_dubai', 'backlite_uk', 'backlite_abudhabi', 'viola']",
+          "    },",
+          "    'finance_1': {",
+          "        id: 'test-finance_1',",
+          "        email: 'finance1@mmg.ae',",
+          "        name: 'Finance User 1',",
+          "        profile: 'finance',",
+          "        permissions: ['sales:booking_orders:read', 'sales:booking_orders:update', 'core:ai_costs:read'],",
+          "        companies: ['backlite_dubai', 'backlite_uk', 'backlite_abudhabi', 'viola']",
+          "    },",
+          "    'viewer_only': {",
+          "        id: 'test-viewer_only',",
+          "        email: 'viewer@mmg.ae',",
+          "        name: 'View Only User',",
+          "        profile: 'viewer',",
+          "        permissions: ['sales:proposals:read', 'sales:booking_orders:read', 'assets:locations:read'],",
+          "        companies: ['backlite_dubai']",
+          "    },",
+          "    'no_permissions': {",
+          "        id: 'test-no_permissions',",
+          "        email: 'noperms@mmg.ae',",
+          "        name: 'No Permissions',",
+          "        profile: null,",
+          "        permissions: [],",
+          "        companies: ['backlite_dubai']",
+          "    },",
+          "    'wrong_company': {",
+          "        id: 'test-wrong_company',",
+          "        email: 'wrongcompany@mmg.ae',",
+          "        name: 'Wrong Company User',",
+          "        profile: 'sales_rep',",
+          "        permissions: ['sales:proposals:*'],",
+          "        companies: ['viola']",
+          "    }",
+          "};",
+          "",
+          "const personaId = pm.environment.get('persona') || 'rep_dubai_1';",
+          "const persona = personas[personaId];",
+          "",
+          "if (!persona) {",
+          "    console.error('Unknown persona: ' + personaId);",
+          "} else {",
+          "    pm.request.headers.add({key: 'X-Trusted-User-Id', value: persona.id});",
+          "    pm.request.headers.add({key: 'X-Trusted-User-Email', value: persona.email});",
+          "    pm.request.headers.add({key: 'X-Trusted-User-Name', value: persona.name});",
+          "    pm.request.headers.add({key: 'X-Trusted-User-Profile', value: persona.profile || ''});",
+          "    pm.request.headers.add({key: 'X-Trusted-User-Permissions', value: JSON.stringify(persona.permissions)});",
+          "    pm.request.headers.add({key: 'X-Trusted-User-Companies', value: JSON.stringify(persona.companies)});",
+          "    pm.request.headers.add({key: 'X-Trusted-User-Teams', value: '[]'});",
+          "    pm.request.headers.add({key: 'X-Trusted-User-Team-Ids', value: '[]'});",
+          "    ",
+          "    console.log('Using persona: ' + personaId);",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Health & Status",
+      "item": [
+        {
+          "name": "Sales Module Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/health",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "health"]
+            }
+          }
+        },
+        {
+          "name": "Dev Panel Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/dev/status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dev", "status"]
+            }
+          }
+        },
+        {
+          "name": "Get Current RBAC Context",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/dev/context",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dev", "context"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dev Panel",
+      "item": [
+        {
+          "name": "List All Personas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/dev/personas",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dev", "personas"]
+            }
+          }
+        },
+        {
+          "name": "Get Persona Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/dev/personas/rep_dubai_1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dev", "personas", "rep_dubai_1"]
+            }
+          }
+        },
+        {
+          "name": "Impersonate User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"persona_id\": \"rep_dubai_1\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/dev/impersonate",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dev", "impersonate"]
+            }
+          }
+        },
+        {
+          "name": "Stop Impersonation",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/dev/stop-impersonation",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dev", "stop-impersonation"]
+            }
+          }
+        },
+        {
+          "name": "List All Permissions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/dev/permissions",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dev", "permissions"]
+            }
+          }
+        },
+        {
+          "name": "Quick Switch Options",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/dev/quick-switch",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dev", "quick-switch"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Proposals",
+      "item": [
+        {
+          "name": "List Proposals",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/proposals",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "proposals"]
+            }
+          }
+        },
+        {
+          "name": "List Proposals (with filters)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/proposals?status=draft&company=backlite_dubai",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "proposals"],
+              "query": [
+                {"key": "status", "value": "draft"},
+                {"key": "company", "value": "backlite_dubai"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Proposal by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/proposals/{{proposal_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "proposals", "{{proposal_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Create Proposal",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.environment.set('proposal_id', jsonData.id);",
+                  "    console.log('Created proposal: ' + jsonData.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"client_name\": \"Test Client - Postman\",\n    \"brand\": \"Test Brand\",\n    \"company\": \"backlite_dubai\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sales/proposals",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "proposals"]
+            }
+          }
+        },
+        {
+          "name": "Update Proposal",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"client_name\": \"Updated Client Name\",\n    \"status\": \"submitted\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sales/proposals/{{proposal_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "proposals", "{{proposal_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Delete Proposal",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/proposals/{{proposal_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "proposals", "{{proposal_id}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Booking Orders",
+      "item": [
+        {
+          "name": "List Booking Orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/booking-orders",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "booking-orders"]
+            }
+          }
+        },
+        {
+          "name": "List BOs (pending approval)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/booking-orders?status=pending",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "booking-orders"],
+              "query": [
+                {"key": "status", "value": "pending"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get BO by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/booking-orders/{{bo_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "booking-orders", "{{bo_id}}"]
+            }
+          }
+        },
+        {
+          "name": "Get BO Workflow",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/booking-orders/{{bo_id}}/workflow",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "booking-orders", "{{bo_id}}", "workflow"]
+            }
+          }
+        },
+        {
+          "name": "Submit BO for Approval",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"comment\": \"Ready for review\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sales/booking-orders/{{bo_id}}/submit",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "booking-orders", "{{bo_id}}", "submit"]
+            }
+          }
+        },
+        {
+          "name": "Approve BO",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"comment\": \"Approved\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sales/booking-orders/{{bo_id}}/approve",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "booking-orders", "{{bo_id}}", "approve"]
+            }
+          }
+        },
+        {
+          "name": "Reject BO",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"comment\": \"Needs revision\",\n    \"reason\": \"pricing_issue\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sales/booking-orders/{{bo_id}}/reject",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "booking-orders", "{{bo_id}}", "reject"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Locations & Assets",
+      "item": [
+        {
+          "name": "List Locations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/locations?company=backlite_dubai",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "locations"],
+              "query": [
+                {"key": "company", "value": "backlite_dubai"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Location by Key",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/locations/SZR-001",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "locations", "SZR-001"]
+            }
+          }
+        },
+        {
+          "name": "List Networks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/networks?company=backlite_dubai",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "networks"],
+              "query": [
+                {"key": "company", "value": "backlite_dubai"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RBAC Testing",
+      "description": "Test permission enforcement scenarios",
+      "item": [
+        {
+          "name": "Viewer Cannot Create (expect 403)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('persona', 'viewer_only');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Should return 403 Forbidden', function() {",
+                  "    pm.expect(pm.response.code).to.equal(403);",
+                  "});",
+                  "",
+                  "pm.test('Should have detailed error', function() {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail.code).to.equal('PERMISSION_DENIED');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"client_name\": \"Should Fail\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sales/proposals",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "proposals"]
+            }
+          }
+        },
+        {
+          "name": "No Permissions Blocked (expect 403)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('persona', 'no_permissions');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Should return 403 Forbidden', function() {",
+                  "    pm.expect(pm.response.code).to.equal(403);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/proposals",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "proposals"]
+            }
+          }
+        },
+        {
+          "name": "Wrong Company Denied (expect 403)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('persona', 'wrong_company');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Should return 403 Forbidden', function() {",
+                  "    pm.expect(pm.response.code).to.equal(403);",
+                  "});",
+                  "",
+                  "pm.test('Should have company access error', function() {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.detail.code).to.equal('COMPANY_ACCESS_DENIED');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/proposals?company=backlite_dubai",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "proposals"],
+              "query": [
+                {"key": "company", "value": "backlite_dubai"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Admin Can Access All (expect 200)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('persona', 'test_admin');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Should return 200 OK', function() {",
+                  "    pm.expect(pm.response.code).to.equal(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/proposals",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "proposals"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Workflow Scenarios",
+      "description": "Complete workflow testing",
+      "item": [
+        {
+          "name": "1. Rep Creates Proposal",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('persona', 'rep_dubai_1');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.environment.set('workflow_proposal_id', jsonData.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"client_name\": \"Workflow Test Client\",\n    \"brand\": \"Test Brand\",\n    \"company\": \"backlite_dubai\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sales/proposals",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "proposals"]
+            }
+          }
+        },
+        {
+          "name": "2. Rep Submits as BO",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('persona', 'rep_dubai_1');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.environment.set('workflow_bo_id', jsonData.bo_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/sales/proposals/{{workflow_proposal_id}}/submit-bo",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "proposals", "{{workflow_proposal_id}}", "submit-bo"]
+            }
+          }
+        },
+        {
+          "name": "3. Coordinator Approves",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('persona', 'coordinator_1');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"comment\": \"Looks good, forwarding to HoS\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sales/booking-orders/{{workflow_bo_id}}/approve",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "booking-orders", "{{workflow_bo_id}}", "approve"]
+            }
+          }
+        },
+        {
+          "name": "4. HoS Approves",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('persona', 'hos_backlite');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"comment\": \"Approved by HoS\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sales/booking-orders/{{workflow_bo_id}}/approve",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "booking-orders", "{{workflow_bo_id}}", "approve"]
+            }
+          }
+        },
+        {
+          "name": "5. Finance Confirms",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('persona', 'finance_1');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"comment\": \"Confirmed\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/sales/booking-orders/{{workflow_bo_id}}/confirm",
+              "host": ["{{base_url}}"],
+              "path": ["api", "sales", "booking-orders", "{{workflow_bo_id}}", "confirm"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3005"
+    }
+  ]
+}

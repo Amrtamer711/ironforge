@@ -13,8 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
-from api.auth import require_auth
-from integrations.auth import AuthUser
+from crm_security import AuthUser, require_auth_user as require_auth
 from utils.logging import get_logger
 from utils.time import get_uae_time
 

@@ -8,12 +8,15 @@ sensitive operations like clearing costs.
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from api.auth import require_auth, require_permission
 from api.schemas import CallType, Workflow
 from app_settings import settings
 from db.database import db
-from integrations.auth import AuthUser
-from integrations.rbac import has_permission
+from crm_security import (
+    AuthUser,
+    require_auth_user as require_auth,
+    require_permission_user as require_permission,
+    has_permission,
+)
 from utils.logging import get_logger
 from utils.time import get_uae_time
 
@@ -46,7 +49,7 @@ async def get_costs(
     logger.info(f"[COSTS] Get costs request from {user.email}, filters: start={start_date}, end={end_date}, type={call_type}, workflow={workflow}")
 
     # Check if user can view all costs (has manage permission)
-    can_view_all = await has_permission(user.id, "core:ai_costs:manage")
+    can_view_all = has_permission(user.permissions, "core:ai_costs:manage")
     logger.debug(f"[COSTS] User {user.email} can_view_all: {can_view_all}")
 
     # If filter_user_id is provided but user can't view all, reject

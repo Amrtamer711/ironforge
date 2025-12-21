@@ -1,23 +1,21 @@
 """
 Database RBAC provider.
 
-Reads permissions from trusted proxy headers.
-unified-ui handles all RBAC queries and injects permissions into request headers.
-This provider reads from the current user context (set by middleware).
+Uses shared security module for context management.
+Provides sales-module specific RBAC helper functions.
 
-Enterprise RBAC - 4 Levels:
+Enterprise RBAC - 5 Levels:
 - Level 1: Profiles (base permissions for job function)
 - Level 2: Permission Sets (additive, can be temporary with expiration)
 - Level 3: Teams & Hierarchy (team-based access, manager sees subordinates)
 - Level 4: Record Sharing (share specific records with users/teams)
+- Level 5: Company Access (multi-tenant company schema access)
 
 NOTE: All RBAC management (profiles, teams, permission sets) is handled by unified-ui.
 This provider reads from trusted headers and performs permission checks.
 """
 
 import logging
-from contextvars import ContextVar
-from typing import Any
 
 from integrations.rbac.base import (
     AccessLevel,
@@ -34,75 +32,15 @@ from integrations.rbac.base import (
     get_default_permissions,
 )
 
+# Import from crm-security SDK
+from crm_security import (
+    set_user_context,
+    get_user_context,
+    clear_user_context,
+    has_permission as _has_permission,
+)
+
 logger = logging.getLogger("proposal-bot")
-
-# Context-local storage for current user context (async-safe)
-# Uses contextvars for proper isolation between concurrent async requests
-_current_user_context: ContextVar[dict] = ContextVar("user_context", default={})
-
-
-def set_user_context(
-    user_id: str,
-    profile: str,
-    permissions: list[str],
-    permission_sets: list[dict[str, Any]] | None = None,
-    teams: list[dict[str, Any]] | None = None,
-    team_ids: list[int] | None = None,
-    manager_id: str | None = None,
-    subordinate_ids: list[str] | None = None,
-    sharing_rules: list[dict[str, Any]] | None = None,
-    shared_records: dict[str, list[dict[str, Any]]] | None = None,
-    shared_from_user_ids: list[str] | None = None,
-    companies: list[str] | None = None,
-) -> None:
-    """
-    Set the current user context for RBAC checks.
-
-    Called by FastAPI middleware after reading trusted headers.
-    Uses contextvars for async-safe isolation between requests.
-
-    Args:
-        user_id: User's UUID from UI Supabase
-        profile: Profile name (e.g., 'system_admin', 'sales_user')
-        permissions: Combined permissions from profile + permission sets
-        permission_sets: Level 2 - Active permission sets [{id, name, expiresAt}]
-        teams: Level 3 - Teams user belongs to [{id, name, role, ...}]
-        team_ids: Level 3 - Just team IDs for quick lookups
-        manager_id: Level 3 - User's manager ID for hierarchy
-        subordinate_ids: Level 3 - IDs of user's direct reports + team members
-        sharing_rules: Level 4 - Applicable sharing rules
-        shared_records: Level 4 - Records directly shared with user {objectType: [{recordId, accessLevel}]}
-        shared_from_user_ids: Level 4 - User IDs whose records are accessible via sharing rules
-        companies: Level 5 - Company schemas user can access (e.g., ['backlite_dubai', 'viola'])
-    """
-    _current_user_context.set({
-        "user_id": user_id,
-        "profile": profile,
-        "permissions": set(permissions),
-        # Level 2: Permission Sets
-        "permission_sets": permission_sets or [],
-        # Level 3: Teams & Hierarchy
-        "teams": teams or [],
-        "team_ids": team_ids or [],
-        "manager_id": manager_id,
-        "subordinate_ids": subordinate_ids or [],
-        # Level 4: Sharing Rules & Record Shares
-        "sharing_rules": sharing_rules or [],
-        "shared_records": shared_records or {},
-        "shared_from_user_ids": shared_from_user_ids or [],
-        # Level 5: Company Access
-        "companies": companies or [],
-    })
-
-
-def clear_user_context() -> None:
-    """Clear user context after request completes."""
-    _current_user_context.set({})
-
-
-def get_user_context() -> dict:
-    """Get current user context."""
-    return _current_user_context.get()
 
 
 def can_access_user_data(target_user_id: str) -> bool:
@@ -122,7 +60,7 @@ def can_access_user_data(target_user_id: str) -> bool:
 
     current_user_id = ctx.get("user_id")
     profile = ctx.get("profile")
-    permissions = ctx.get("permissions", set())
+    permissions = ctx.get("permissions", [])
     subordinate_ids = ctx.get("subordinate_ids", [])
     shared_from_user_ids = ctx.get("shared_from_user_ids", [])
 
@@ -203,7 +141,7 @@ def get_accessible_user_ids() -> list[str]:
 
     current_user_id = ctx.get("user_id")
     profile = ctx.get("profile")
-    permissions = ctx.get("permissions", set())
+    permissions = ctx.get("permissions", [])
     subordinate_ids = ctx.get("subordinate_ids", [])
     shared_from_user_ids = ctx.get("shared_from_user_ids", [])
 
@@ -239,18 +177,18 @@ class DatabaseRBACProvider(RBACProvider):
     def name(self) -> str:
         return "database"
 
-    async def get_user_permissions(self, user_id: str) -> set[str]:
+    async def get_user_permissions(self, user_id: str) -> list[str]:
         """
         Get permissions for user from trusted context.
 
         Permissions are provided by unified-ui via headers.
         """
         ctx = get_user_context()
-        if ctx.get("user_id") == user_id:
-            return ctx.get("permissions", set())
+        if ctx and ctx.get("user_id") == user_id:
+            return ctx.get("permissions", [])
 
         logger.warning(f"[RBAC:DATABASE] No context for user {user_id}")
-        return set()
+        return []
 
     async def has_permission(
         self,
@@ -261,18 +199,13 @@ class DatabaseRBACProvider(RBACProvider):
         """
         Check if user has permission.
 
-        Permissions come from trusted headers set by unified-ui.
+        Uses shared security module for permission checking.
         """
         permissions = await self.get_user_permissions(user_id)
 
-        # Direct match
-        if permission in permissions:
+        # Use shared security module's permission checking
+        if _has_permission(permissions, permission):
             return True
-
-        # Check wildcard patterns
-        for perm in permissions:
-            if self._matches_wildcard(perm, permission):
-                return True
 
         # Check ownership if context provided
         if context and context.is_owner():
@@ -282,35 +215,16 @@ class DatabaseRBACProvider(RBACProvider):
 
         return False
 
-    def _matches_wildcard(self, pattern: str, permission: str) -> bool:
-        """Check if a wildcard pattern matches a permission."""
-        if pattern == "*:*:*":
-            return True
-
-        pattern_parts = pattern.split(":")
-        perm_parts = permission.split(":")
-
-        if len(pattern_parts) != 3 or len(perm_parts) != 3:
-            return False
-
-        for i, (p, t) in enumerate(zip(pattern_parts, perm_parts, strict=False)):
-            if p != "*" and p != t:
-                if i == 2 and p == "manage":
-                    return True
-                return False
-
-        return True
-
     async def get_user_profile(self, user_id: str) -> Profile | None:
         """
         Get user's profile from trusted context.
         """
         ctx = get_user_context()
-        if ctx.get("user_id") == user_id and ctx.get("profile"):
+        if ctx and ctx.get("user_id") == user_id and ctx.get("profile"):
             return Profile(
                 name=ctx["profile"],
                 display_name=ctx["profile"],
-                permissions=ctx.get("permissions", set()),
+                permissions=set(ctx.get("permissions", [])),
             )
         return None
 

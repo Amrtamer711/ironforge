@@ -44,6 +44,12 @@ services:
       # Proxy secret (must match proposal-bot's PROXY_SECRET)
       - key: PROXY_SECRET
         sync: false
+      # Security Service URL (for SDK calls)
+      - key: SECURITY_SERVICE_URL
+        value: "https://security-service.onrender.com"
+      # Inter-service auth secret
+      - key: INTER_SERVICE_SECRET
+        sync: false
       # CORS origins
       - key: CORS_ORIGINS
         sync: false

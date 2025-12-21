@@ -164,6 +164,95 @@ services:
     networks:
       - crm-network
 
+  # ===========================================================================
+  # Asset Management Backend (FastAPI) - Centralized Asset/Location Management
+  # ===========================================================================
+  asset-management:
+    build:
+      context: ../src/asset-management
+      dockerfile: Dockerfile
+    container_name: ${ASSETS_CONTAINER_NAME:-asset-management}
+    restart: unless-stopped
+    profiles:
+      - all
+      - assets
+    ports:
+      - "${ASSETS_PORT:-8001}:8001"
+    env_file:
+      - ../.env.secrets
+    environment:
+      # Core settings
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      PORT: 8001
+
+      # Database (Supabase)
+      DB_BACKEND: supabase
+
+      # CORS - set via env var or defaults to allow all in development
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: ${HEALTHCHECK_INTERVAL:-30s}
+      timeout: ${HEALTHCHECK_TIMEOUT:-10s}
+      retries: ${HEALTHCHECK_RETRIES:-3}
+      start_period: ${HEALTHCHECK_START_PERIOD:-30s}
+    networks:
+      - crm-network
+
+  # ===========================================================================
+  # Security Service (FastAPI) - Centralized Auth/RBAC/Audit
+  # ===========================================================================
+  security-service:
+    build:
+      context: ../src/security-service
+      dockerfile: Dockerfile
+    container_name: ${SECURITY_CONTAINER_NAME:-security-service}
+    restart: unless-stopped
+    profiles:
+      - all
+      - security
+    ports:
+      - "${SECURITY_PORT:-8002}:8002"
+    env_file:
+      - ../.env.secrets
+    environment:
+      # Core settings
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      PORT: 8002
+
+      # Service identification
+      SERVICE_NAME: security-service
+      SERVICE_API_SECRET: ${SERVICE_API_SECRET:-}
+
+      # Security Supabase (owns audit_logs, api_keys, etc.)
+      SECURITY_DEV_SUPABASE_URL: ${SECURITY_DEV_SUPABASE_URL:-}
+      SECURITY_DEV_SUPABASE_SERVICE_KEY: ${SECURITY_DEV_SUPABASE_SERVICE_KEY:-}
+      SECURITY_PROD_SUPABASE_URL: ${SECURITY_PROD_SUPABASE_URL:-}
+      SECURITY_PROD_SUPABASE_SERVICE_KEY: ${SECURITY_PROD_SUPABASE_SERVICE_KEY:-}
+
+      # UI Supabase (read-only for user/profile lookups)
+      UI_DEV_SUPABASE_URL: ${UI_DEV_SUPABASE_URL:-}
+      UI_DEV_SUPABASE_SERVICE_KEY: ${UI_DEV_SUPABASE_SERVICE_KEY:-}
+      UI_PROD_SUPABASE_URL: ${UI_PROD_SUPABASE_URL:-}
+      UI_PROD_SUPABASE_SERVICE_KEY: ${UI_PROD_SUPABASE_SERVICE_KEY:-}
+
+      # CORS
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: ${HEALTHCHECK_INTERVAL:-30s}
+      timeout: ${HEALTHCHECK_TIMEOUT:-10s}
+      retries: ${HEALTHCHECK_RETRIES:-3}
+      start_period: ${HEALTHCHECK_START_PERIOD:-30s}
+    networks:
+      - crm-network
+
 # =============================================================================
 # NETWORKS
 # =============================================================================

@@ -28,12 +28,19 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from backend.config import get_settings
-from backend.middleware.rate_limit import start_rate_limit_cleanup
 
 # Import routers
 from backend.routers import admin, auth, channel_identity, modules, proxy
 from backend.routers.rbac import router as rbac_router
 from backend.services.supabase_client import get_supabase
+
+# Dev panel (only loaded in development)
+import os
+if os.getenv("ENVIRONMENT", "local") in ("local", "development", "test"):
+    from backend.routers import dev_panel
+    DEV_PANEL_ENABLED = True
+else:
+    DEV_PANEL_ENABLED = False
 
 # Configure logging
 logging.basicConfig(
@@ -70,7 +77,7 @@ async def lifespan(app: FastAPI):
 
     # Startup
     settings.log_config()
-    start_rate_limit_cleanup()
+    # Rate limiting uses on-demand cleanup via shared security module
 
     # Check Supabase connection
     supabase = get_supabase()
@@ -198,6 +205,11 @@ app.include_router(rbac_router)
 
 # Channel Identity router - /api/channel-identity/*
 app.include_router(channel_identity.router)
+
+# Dev Panel router - /api/dev/* (only in development)
+if DEV_PANEL_ENABLED:
+    app.include_router(dev_panel.router)
+    logger.info("[UI] Dev Panel enabled at /api/dev/*")
 
 
 # =============================================================================

@@ -50,6 +50,12 @@ services:
       # Proxy secret (shared with unified-ui to prevent header spoofing)
       - key: PROXY_SECRET
         sync: false
+      # Security Service URL (for SDK calls)
+      - key: SECURITY_SERVICE_URL
+        value: "https://security-service.onrender.com"
+      # Inter-service auth secret
+      - key: INTER_SERVICE_SECRET
+        sync: false
       # API Keys
       - key: OPENAI_API_KEY
         sync: false

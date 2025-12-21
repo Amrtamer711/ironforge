@@ -48,6 +48,7 @@ async def process_chat_message(
     roles: list[str] | None = None,
     files: list[dict[str, Any]] | None = None,
     companies: list[str] | None = None,
+    permissions: list[str] | None = None,
 ) -> dict[str, Any]:
     """
     Process a chat message from the unified UI.
@@ -62,6 +63,7 @@ async def process_chat_message(
         roles: User's roles (for permission checks)
         files: Optional list of file info dicts (for uploads)
         companies: List of company schemas user can access (for data filtering)
+        permissions: User's RBAC permissions list
 
     Returns:
         Dict containing response data:
@@ -99,8 +101,8 @@ async def process_chat_message(
     session.messages.append(user_msg)
 
     # Check if user has admin permissions using RBAC
-    from integrations.rbac import has_permission
-    is_admin = await has_permission(user_id, "core:*:*")
+    from crm_security import has_permission
+    is_admin = has_permission(permissions or [], "core:*:*")
 
     # Build channel_event in the same format as Slack events
     # This allows main_llm_loop to process files, etc.
@@ -195,6 +197,7 @@ async def stream_chat_message(
     roles: list[str] | None = None,
     files: list[dict[str, Any]] | None = None,
     companies: list[str] | None = None,
+    permissions: list[str] | None = None,
 ) -> AsyncGenerator[str, None]:
     """
     Stream a chat response using Server-Sent Events format.
@@ -215,6 +218,7 @@ async def stream_chat_message(
         roles: User's roles (for permission checks)
         files: Optional list of file info dicts (for uploads)
         companies: List of company schemas user can access (for data filtering)
+        permissions: User's RBAC permissions list
     """
     import uuid as uuid_module
 
@@ -264,8 +268,8 @@ async def stream_chat_message(
     web_adapter.cleanup_old_events(user_id)
 
     # Check if user has admin permissions using RBAC
-    from integrations.rbac import has_permission
-    is_admin = await has_permission(user_id, "core:*:*")
+    from crm_security import has_permission
+    is_admin = has_permission(permissions or [], "core:*:*")
 
     # Build channel_event
     channel_event = {

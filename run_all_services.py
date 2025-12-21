@@ -87,6 +87,24 @@ SERVICES = {
         "health_endpoint": "/health",
         "depends_on": [],  # No hard dependencies - can run standalone
     },
+    "asset-management": {
+        "name": "asset-management",
+        "display_name": "Asset Management",
+        "directory": "src/asset-management",
+        "default_port": 8001,
+        "color": "green",
+        "health_endpoint": "/health",
+        "depends_on": [],  # No dependencies - can run standalone
+    },
+    "security-service": {
+        "name": "security-service",
+        "display_name": "Security Service",
+        "directory": "src/security-service",
+        "default_port": 8002,
+        "color": "yellow",
+        "health_endpoint": "/health",
+        "depends_on": [],  # No dependencies - can run standalone
+    },
 }
 
 
@@ -333,8 +351,12 @@ class ServiceManager:
             return ["proposal-bot"]
         elif self.args.ui_only:
             return ["unified-ui"]
+        elif self.args.assets_only:
+            return ["asset-management"]
+        elif self.args.security_only:
+            return ["security-service"]
         else:
-            return ["proposal-bot", "unified-ui"]
+            return ["proposal-bot", "unified-ui", "asset-management", "security-service"]
 
     def _get_port(self, service_name: str) -> int:
         """Get port for a service."""
@@ -342,6 +364,10 @@ class ServiceManager:
             return self.args.sales_port
         elif service_name == "unified-ui":
             return self.args.ui_port
+        elif service_name == "asset-management":
+            return self.args.assets_port
+        elif service_name == "security-service":
+            return self.args.security_port
         return SERVICES[service_name]["default_port"]
 
     def wait_for_healthy(self) -> bool:
@@ -440,6 +466,12 @@ def print_access_points(args: argparse.Namespace, services: list[str]):
     if "proposal-bot" in services:
         print(f"  • Proposal Bot:  {color(f'http://localhost:{args.sales_port}', 'cyan')}")
         print(f"  • API Docs:      {color(f'http://localhost:{args.sales_port}/docs', 'cyan')}")
+    if "asset-management" in services:
+        print(f"  • Asset Mgmt:    {color(f'http://localhost:{args.assets_port}', 'cyan')}")
+        print(f"  • Asset Docs:    {color(f'http://localhost:{args.assets_port}/docs', 'cyan')}")
+    if "security-service" in services:
+        print(f"  • Security:      {color(f'http://localhost:{args.security_port}', 'cyan')}")
+        print(f"  • Security Docs: {color(f'http://localhost:{args.security_port}/docs', 'cyan')}")
 
     print()
 
@@ -505,6 +537,16 @@ Environment Variables:
         action="store_true",
         help="Run only the unified UI",
     )
+    service_group.add_argument(
+        "--assets-only",
+        action="store_true",
+        help="Run only the asset management service",
+    )
+    service_group.add_argument(
+        "--security-only",
+        action="store_true",
+        help="Run only the security service",
+    )
 
     # Port configuration
     parser.add_argument(
@@ -518,6 +560,18 @@ Environment Variables:
         type=int,
         default=int(os.environ.get("UI_PORT", 3005)),
         help="Unified UI port (default: 3005)",
+    )
+    parser.add_argument(
+        "--assets-port",
+        type=int,
+        default=int(os.environ.get("ASSETS_PORT", 8001)),
+        help="Asset management port (default: 8001)",
+    )
+    parser.add_argument(
+        "--security-port",
+        type=int,
+        default=int(os.environ.get("SECURITY_PORT", 8002)),
+        help="Security service port (default: 8002)",
     )
 
     # Environment
@@ -580,7 +634,16 @@ def main():
     if args.status:
         print(color("Checking service status...", "blue"))
         for name, config in SERVICES.items():
-            port = args.sales_port if name == "proposal-bot" else args.ui_port
+            if name == "proposal-bot":
+                port = args.sales_port
+            elif name == "unified-ui":
+                port = args.ui_port
+            elif name == "asset-management":
+                port = args.assets_port
+            elif name == "security-service":
+                port = args.security_port
+            else:
+                port = config["default_port"]
             healthy = check_health(f"http://localhost:{port}/health")
             status = color("running ✓", "green") if healthy else color("not running", "red")
             print(f"  • {config['display_name']}: {status}")

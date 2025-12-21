@@ -24,7 +24,7 @@ from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
 from api.server import app
-from integrations.auth import AuthUser
+from crm_security import AuthUser
 
 # =============================================================================
 # TEST CLIENT FIXTURES
@@ -58,8 +58,11 @@ def mock_user() -> AuthUser:
         id="test-user-123",
         email="test@example.com",
         name="Test User",
-        provider="static",
-        metadata={"roles": ["user"]},
+        metadata={
+            "profile": "sales_user",
+            "permissions": ["sales:proposals:read", "sales:proposals:create"],
+            "companies": ["test_company"],
+        },
     )
 
 
@@ -70,8 +73,11 @@ def mock_admin_user() -> AuthUser:
         id="admin-user-456",
         email="admin@example.com",
         name="Admin User",
-        provider="static",
-        metadata={"roles": ["admin"]},
+        metadata={
+            "profile": "system_admin",
+            "permissions": ["*:*:*"],
+            "companies": ["test_company"],
+        },
     )
 
 
@@ -91,12 +97,12 @@ def admin_auth_headers(mock_admin_user: AuthUser) -> dict[str, str]:
 @pytest.fixture
 def mock_auth(mock_user: AuthUser):
     """Mock the authentication dependency to return a test user."""
-    from api import auth
+    import crm_security
 
     async def override_require_auth():
         return mock_user
 
-    app.dependency_overrides[auth.require_auth] = override_require_auth
+    app.dependency_overrides[crm_security.require_auth_user] = override_require_auth
     yield mock_user
     app.dependency_overrides.clear()
 
@@ -104,26 +110,17 @@ def mock_auth(mock_user: AuthUser):
 @pytest.fixture
 def mock_admin_auth(mock_admin_user: AuthUser):
     """Mock the authentication dependency to return an admin user."""
-    from api import auth
+    import crm_security
 
     async def override_require_auth():
         return mock_admin_user
 
-    # Also mock the profile check
-    original_require_any_profile = auth.require_any_profile
-
-    def mock_require_any_profile(*profiles):
-        async def dependency():
-            return mock_admin_user
-        return dependency
-
-    app.dependency_overrides[auth.require_auth] = lambda: mock_admin_user
-    auth.require_any_profile = mock_require_any_profile
+    # Mock require_auth_user to return admin user
+    app.dependency_overrides[crm_security.require_auth_user] = lambda: mock_admin_user
 
     yield mock_admin_user
 
     app.dependency_overrides.clear()
-    auth.require_any_profile = original_require_any_profile
 
 
 # =============================================================================

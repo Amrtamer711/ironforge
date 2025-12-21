@@ -1,0 +1,54 @@
+# =============================================================================
+# Render Blueprint - Asset Management
+# =============================================================================
+# Deploy with: render blueprint apply
+#
+# This deploys the asset-management service for networks, locations, packages.
+#
+# Environment Strategy:
+# - DEV branch → uses *_DEV_* env vars → connects to Dev Supabase projects
+# - MAIN branch → uses *_PROD_* env vars → connects to Prod Supabase projects
+# =============================================================================
+
+services:
+  - type: web
+    name: asset-management
+    runtime: docker
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      # Python settings
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: LOG_LEVEL
+        value: "INFO"
+      # Environment
+      - key: ENVIRONMENT
+        value: "production"
+      - key: PORT
+        value: "8001"
+      # Database backend
+      - key: DB_BACKEND
+        value: "supabase"
+      # Asset Management Supabase (DEV)
+      - key: ASSETMGMT_DEV_SUPABASE_URL
+        sync: false
+      - key: ASSETMGMT_DEV_SUPABASE_SERVICE_KEY
+        sync: false
+      # Asset Management Supabase (PROD)
+      - key: ASSETMGMT_PROD_SUPABASE_URL
+        sync: false
+      - key: ASSETMGMT_PROD_SUPABASE_SERVICE_KEY
+        sync: false
+      # Proxy secret (shared with unified-ui)
+      - key: PROXY_SECRET
+        sync: false
+      # Security Service URL (for SDK calls)
+      - key: SECURITY_SERVICE_URL
+        value: "https://security-service.onrender.com"
+      # Inter-service auth secret
+      - key: INTER_SERVICE_SECRET
+        sync: false

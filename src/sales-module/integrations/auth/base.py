@@ -3,6 +3,22 @@ Abstract base class for authentication providers.
 
 Each provider implements their own auth-specific syntax.
 Follows the same pattern as integrations/llm/base.py.
+
+ARCHITECTURE NOTE:
+==================
+This AuthUser is for the PROVIDER ABSTRACTION LAYER (user management operations).
+It is DIFFERENT from shared/security/models.py::AuthUser (request handling).
+
+Use cases for this AuthUser:
+- Creating users via auth provider (Supabase, Local Dev)
+- Token verification/refresh operations
+- User management (list, update, delete)
+
+For request handling with RBAC context, use:
+- from security import AuthUser  (shared security module)
+
+This AuthUser includes provider-specific fields (tokens, supabase_id) that
+are not relevant for request handlers.
 """
 
 from abc import ABC, abstractmethod

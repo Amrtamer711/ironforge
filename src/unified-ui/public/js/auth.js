@@ -10,6 +10,105 @@ const Auth = {
   isLocalDev: window.location.hostname === 'localhost' && !window.SUPABASE_URL,
   isAccessPending: false, // Flag to prevent further auth processing when showing pending screen
   isProcessingSession: false, // Flag to prevent multiple simultaneous session handling
+  isImpersonating: false, // Flag for dev impersonation mode
+  realUser: null, // Store real user when impersonating
+
+  /**
+   * Check if we're in dev mode (local, development, or test environment)
+   */
+  isDevMode() {
+    return window.location.hostname === 'localhost' ||
+           window.location.hostname === '127.0.0.1' ||
+           window.ENVIRONMENT === 'local' ||
+           window.ENVIRONMENT === 'development' ||
+           window.ENVIRONMENT === 'test';
+  },
+
+  /**
+   * Get dev_impersonate cookie if present
+   */
+  getImpersonationCookie() {
+    if (!this.isDevMode()) return null;
+
+    const cookies = document.cookie.split(';');
+    for (const cookie of cookies) {
+      const [name, value] = cookie.trim().split('=');
+      if (name === 'dev_impersonate' && value) {
+        try {
+          return JSON.parse(decodeURIComponent(value));
+        } catch (e) {
+          console.warn('[Auth] Failed to parse impersonation cookie');
+          return null;
+        }
+      }
+    }
+    return null;
+  },
+
+  /**
+   * Apply impersonation context - updates Auth.user with impersonated persona
+   */
+  async applyImpersonation(impersonateData) {
+    console.log('[Auth] Applying impersonation for:', impersonateData.persona_id);
+
+    // Store real user before overwriting
+    if (this.user && !this.isImpersonating) {
+      this.realUser = { ...this.user };
+    }
+
+    this.isImpersonating = true;
+
+    // Fetch full context from dev panel API
+    try {
+      const response = await fetch('/api/dev/context');
+      if (response.ok) {
+        const context = await response.json();
+        this.user = {
+          id: context.user_id || `test-${impersonateData.persona_id}`,
+          email: context.email || impersonateData.email,
+          name: context.name || impersonateData.name,
+          profile: context.profile || impersonateData.profile,
+          roles: this.profileToRoles(context.profile || impersonateData.profile),
+          permissions: context.permissions || [],
+          companies: context.companies || impersonateData.companies || [],
+          isImpersonated: true,
+          impersonatedPersona: impersonateData.persona_id
+        };
+        console.log('[Auth] Impersonation applied:', this.user.email, 'permissions:', this.user.permissions.length);
+      }
+    } catch (err) {
+      console.warn('[Auth] Could not fetch impersonation context, using cookie data:', err);
+      this.user = {
+        id: `test-${impersonateData.persona_id}`,
+        email: impersonateData.email,
+        name: impersonateData.name,
+        profile: impersonateData.profile,
+        roles: this.profileToRoles(impersonateData.profile),
+        permissions: [],
+        companies: impersonateData.companies || [],
+        isImpersonated: true,
+        impersonatedPersona: impersonateData.persona_id
+      };
+    }
+
+    return this.user;
+  },
+
+  /**
+   * Map profile to roles for backward compatibility
+   */
+  profileToRoles(profile) {
+    const profileToRoles = {
+      'system_admin': ['admin', 'hos', 'sales_person'],
+      'sales_manager': ['hos', 'sales_person'],
+      'sales_rep': ['sales_person'],
+      'sales_user': ['sales_person'],
+      'coordinator': ['coordinator'],
+      'finance': ['finance'],
+      'viewer': ['viewer']
+    };
+    return profileToRoles[profile] || ['sales_person'];
+  },
 
   // Dev users for local testing only (when Supabase is not configured)
   devUsers: {
@@ -40,9 +139,20 @@ const Auth = {
     console.log('[Auth] Initializing...');
     console.log('[Auth] SUPABASE_URL:', window.SUPABASE_URL ? 'configured' : 'not set');
     console.log('[Auth] SUPABASE_ANON_KEY:', window.SUPABASE_ANON_KEY ? 'configured' : 'not set');
+    console.log('[Auth] Dev mode:', this.isDevMode());
 
     // Check for auth errors in URL hash (e.g., from OAuth redirects)
     this.handleAuthHashError();
+
+    // DEV MODE: Check for impersonation cookie FIRST
+    // This allows testing different user contexts without logging out
+    const impersonateData = this.getImpersonationCookie();
+    if (impersonateData) {
+      console.log('[Auth] Found impersonation cookie for:', impersonateData.persona_id);
+      await this.applyImpersonation(impersonateData);
+      this.showApp();
+      return true;
+    }
 
     // Initialize Supabase client if configured
     if (window.SUPABASE_URL && window.SUPABASE_ANON_KEY && typeof supabase !== 'undefined') {
@@ -578,11 +688,18 @@ const Auth = {
   updateUserUI() {
     if (!this.user) return;
 
-    // Update user name
+    // Update user name (with impersonation indicator)
     const userNameEl = document.getElementById('userName');
     if (userNameEl) {
-      userNameEl.textContent = this.user.name || 'User';
+      if (this.isImpersonating) {
+        userNameEl.innerHTML = `<span style="color: var(--accent-amber);">👤</span> ${this.user.name || 'User'}`;
+      } else {
+        userNameEl.textContent = this.user.name || 'User';
+      }
     }
+
+    // Show impersonation banner if active
+    this.updateImpersonationBanner();
 
     // Update initials
     const initialsEl = document.getElementById('userInitials');
@@ -608,6 +725,84 @@ const Auth = {
                           role === 'sales_person' ? 'Sales' : role;
         return `<span class="role-badge ${roleClass}">${roleLabel}</span>`;
       }).join('');
+    }
+  },
+
+  /**
+   * Show/hide impersonation banner when testing as different users
+   */
+  updateImpersonationBanner() {
+    let banner = document.getElementById('impersonationBanner');
+
+    if (this.isImpersonating) {
+      if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'impersonationBanner';
+        banner.style.cssText = `
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          background: linear-gradient(90deg, #f59e0b, #d97706);
+          color: #000;
+          padding: 8px 16px;
+          text-align: center;
+          font-size: 13px;
+          font-weight: 600;
+          z-index: 10000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 12px;
+        `;
+        document.body.appendChild(banner);
+        // Adjust app padding
+        const app = document.getElementById('app');
+        if (app) app.style.paddingTop = '40px';
+      }
+
+      banner.innerHTML = `
+        <span>🎭 IMPERSONATING: ${this.user.name} (${this.user.profile || 'unknown profile'})</span>
+        <button onclick="Auth.stopImpersonation()" style="
+          background: rgba(0,0,0,0.2);
+          border: none;
+          color: #000;
+          padding: 4px 12px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-weight: 600;
+        ">Stop</button>
+        <a href="/dev-panel.html" target="_blank" style="
+          background: rgba(0,0,0,0.2);
+          color: #000;
+          padding: 4px 12px;
+          border-radius: 4px;
+          text-decoration: none;
+          font-weight: 600;
+        ">Dev Panel</a>
+      `;
+    } else if (banner) {
+      banner.remove();
+      const app = document.getElementById('app');
+      if (app) app.style.paddingTop = '';
+    }
+  },
+
+  /**
+   * Stop impersonation and return to real user
+   */
+  async stopImpersonation() {
+    try {
+      await fetch('/api/dev/stop-impersonation', { method: 'POST' });
+      this.isImpersonating = false;
+      if (this.realUser) {
+        this.user = this.realUser;
+        this.realUser = null;
+      }
+      // Reload to clear state
+      window.location.reload();
+    } catch (err) {
+      console.error('[Auth] Failed to stop impersonation:', err);
     }
   },
 

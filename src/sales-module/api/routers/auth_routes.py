@@ -9,8 +9,8 @@ Invite token management is handled by unified-ui (Node.js service).
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from api.auth import get_current_user
-from integrations.auth import AuthUser, get_auth_client
+from crm_security import AuthUser, get_current_auth_user as get_current_user
+from integrations.auth import get_auth_client
 from integrations.auth.providers.local_dev import LocalDevAuthProvider
 from utils.logging import get_logger
 

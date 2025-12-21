@@ -8,15 +8,18 @@ middleware, and background tasks.
 import asyncio
 import shutil
 import subprocess
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 import config
-from api.middleware.security_headers import SecurityHeadersMiddleware
+
+# Use crm-security SDK middleware
+from crm_security import SecurityHeadersMiddleware, TrustedUserMiddleware
 
 # Import routers
 from api.routers import (
@@ -210,6 +213,14 @@ logger.info(f"[CORS] Allowed origins: {settings.cors_origins_list}")
 app.add_middleware(SecurityHeadersMiddleware)
 logger.info("[SECURITY] Security headers middleware enabled")
 
+# Add trusted user context middleware (authentication + RBAC context)
+app.add_middleware(
+    TrustedUserMiddleware,
+    exempt_paths={"/health", "/slack/events", "/slack/interactions", "/slack/commands"},
+    exempt_prefixes=["/slack/"],
+)
+logger.info("[SECURITY] Trusted user middleware enabled")
+
 
 # Add dev auth security scheme to OpenAPI (for Swagger UI Authorize button)
 if settings.dev_auth_enabled and settings.environment == "development":
@@ -247,210 +258,6 @@ async def logging_middleware(request: Request, call_next):
     """Log all HTTP requests with request ID tracking."""
     return await logging_middleware_helper(request, call_next)
 
-
-# Paths that don't require proxy secret (have their own auth)
-PROXY_SECRET_EXEMPT_PATHS = {
-    "/health",
-    "/slack/events",
-    "/slack/interactions",
-    "/slack/commands",
-}
-
-
-def _is_proxy_secret_exempt(path: str) -> bool:
-    """Check if path is exempt from proxy secret validation."""
-    # Exact matches
-    if path in PROXY_SECRET_EXEMPT_PATHS:
-        return True
-    # Prefix matches for slack routes
-    if path.startswith("/slack/"):
-        return True
-    return False
-
-
-# Add trusted user context middleware (set RBAC context from proxy headers)
-@app.middleware("http")
-async def trusted_user_middleware(request: Request, call_next):
-    """
-    Extract trusted user context from proxy headers.
-
-    Security: Only trusts X-Trusted-User-* headers if accompanied by valid X-Proxy-Secret.
-    This prevents header spoofing attacks when this service is publicly accessible.
-
-    Exempt paths (Slack webhooks, health checks) have their own authentication.
-
-    See contracts/trusted_headers.py for the header contract.
-    Expected headers from authenticated proxy:
-    - X-Proxy-Secret: Shared secret to verify request is from trusted proxy
-    - X-Trusted-User-Id
-    - X-Trusted-User-Email
-    - X-Trusted-User-Name
-    - X-Trusted-User-Profile
-    - X-Trusted-User-Permissions (Level 1+2: combined profile + permission set permissions)
-    - X-Trusted-User-Permission-Sets (Level 2: active permission sets)
-    - X-Trusted-User-Teams (Level 3: user's teams)
-    - X-Trusted-User-Team-Ids (Level 3: team IDs)
-    - X-Trusted-User-Manager-Id (Level 3: user's manager)
-    - X-Trusted-User-Subordinate-Ids (Level 3: user's direct reports + team members)
-    """
-    import json
-
-    from integrations.rbac.providers.database import clear_user_context, set_user_context
-
-    path = request.url.path
-
-    # =========================================================================
-    # DEV AUTH: Allow testing via /docs with static token (development only)
-    # =========================================================================
-    dev_auth_active = False
-    if (
-        settings.dev_auth_enabled
-        and settings.environment == "development"
-        and not _is_proxy_secret_exempt(path)
-    ):
-        dev_token = request.headers.get("x-dev-token")
-        if dev_token == settings.dev_auth_token:
-            dev_auth_active = True
-            logger.debug(f"[DEV-AUTH] Dev auth active for {path}")
-
-    # Skip proxy secret validation for exempt paths OR if dev auth is active
-    if not _is_proxy_secret_exempt(path) and not dev_auth_active:
-        # Validate proxy secret if configured
-        expected_secret = settings.proxy_secret
-        if expected_secret:
-            provided_secret = request.headers.get("x-proxy-secret")
-            if provided_secret != expected_secret:
-                # If trusted user headers are present without valid secret, reject
-                if request.headers.get("x-trusted-user-id"):
-                    logger.warning(f"[SECURITY] Blocked spoofed trusted headers on {path}")
-                    return JSONResponse(
-                        status_code=403,
-                        content={"error": "Invalid proxy secret"}
-                    )
-
-    # Get user context from dev auth OR headers
-    if dev_auth_active:
-        user_id = settings.dev_auth_user_id
-    else:
-        user_id = request.headers.get("x-trusted-user-id")
-
-    if user_id:
-        # Only set context if:
-        # - Dev auth is active, OR
-        # - Proxy secret is valid (or not configured)
-        expected_secret = settings.proxy_secret
-        provided_secret = request.headers.get("x-proxy-secret")
-
-        if dev_auth_active or not expected_secret or provided_secret == expected_secret:
-            # Use dev auth values OR headers
-            if dev_auth_active:
-                # Dev auth: use configured test user values
-                profile = settings.dev_auth_user_profile
-                try:
-                    permissions = json.loads(settings.dev_auth_user_permissions)
-                except json.JSONDecodeError:
-                    permissions = ["*:*:*"]
-                try:
-                    companies = json.loads(settings.dev_auth_user_companies)
-                except json.JSONDecodeError:
-                    companies = ["backlite_dubai"]
-                # Simplified RBAC context for dev auth
-                permission_sets = []
-                teams = []
-                team_ids = []
-                manager_id = None
-                subordinate_ids = []
-                sharing_rules = []
-                shared_records = {}
-                shared_from_user_ids = []
-                logger.info(f"[DEV-AUTH] Setting context for dev user: {settings.dev_auth_user_email}")
-            else:
-                # Normal flow: read from headers
-                profile = request.headers.get("x-trusted-user-profile", "")
-
-                # Level 1+2: Combined permissions (profile + permission sets)
-                permissions_json = request.headers.get("x-trusted-user-permissions", "[]")
-                try:
-                    permissions = json.loads(permissions_json)
-                except json.JSONDecodeError:
-                    permissions = []
-
-                # Level 5: Companies
-                companies_json = request.headers.get("x-trusted-user-companies", "[]")
-                try:
-                    companies = json.loads(companies_json)
-                except json.JSONDecodeError:
-                    companies = []
-
-                # Level 2: Active permission sets
-                permission_sets_json = request.headers.get("x-trusted-user-permission-sets", "[]")
-                try:
-                    permission_sets = json.loads(permission_sets_json)
-                except json.JSONDecodeError:
-                    permission_sets = []
-
-                # Level 3: Teams
-                teams_json = request.headers.get("x-trusted-user-teams", "[]")
-                try:
-                    teams = json.loads(teams_json)
-                except json.JSONDecodeError:
-                    teams = []
-
-                team_ids_json = request.headers.get("x-trusted-user-team-ids", "[]")
-                try:
-                    team_ids = json.loads(team_ids_json)
-                except json.JSONDecodeError:
-                    team_ids = []
-
-                # Level 3: Hierarchy
-                manager_id = request.headers.get("x-trusted-user-manager-id")
-
-                subordinate_ids_json = request.headers.get("x-trusted-user-subordinate-ids", "[]")
-                try:
-                    subordinate_ids = json.loads(subordinate_ids_json)
-                except json.JSONDecodeError:
-                    subordinate_ids = []
-
-                # Level 4: Sharing Rules & Record Shares
-                sharing_rules_json = request.headers.get("x-trusted-user-sharing-rules", "[]")
-                try:
-                    sharing_rules = json.loads(sharing_rules_json)
-                except json.JSONDecodeError:
-                    sharing_rules = []
-
-                shared_records_json = request.headers.get("x-trusted-user-shared-records", "{}")
-                try:
-                    shared_records = json.loads(shared_records_json)
-                except json.JSONDecodeError:
-                    shared_records = {}
-
-                shared_from_user_ids_json = request.headers.get("x-trusted-user-shared-from-user-ids", "[]")
-                try:
-                    shared_from_user_ids = json.loads(shared_from_user_ids_json)
-                except json.JSONDecodeError:
-                    shared_from_user_ids = []
-
-            # Set full RBAC context (all 5 levels)
-            set_user_context(
-                user_id=user_id,
-                profile=profile,
-                permissions=permissions,
-                permission_sets=permission_sets,
-                teams=teams,
-                team_ids=team_ids,
-                manager_id=manager_id,
-                subordinate_ids=subordinate_ids,
-                sharing_rules=sharing_rules,
-                shared_records=shared_records,
-                shared_from_user_ids=shared_from_user_ids,
-                companies=companies,
-            )
-
-    try:
-        response = await call_next(request)
-        return response
-    finally:
-        clear_user_context()
 
 # Setup centralized exception handlers
 from api.exceptions import setup_exception_handlers

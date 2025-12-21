@@ -1,0 +1,26 @@
+# =============================================================================
+# Asset Management Service - Production Dependencies (Render)
+# =============================================================================
+# This file is used for Render deployments where editable installs don't work.
+# Configure Render build command: pip install -r requirements.render.txt
+
+# Web Framework
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+
+# Database
+supabase>=2.11.0
+
+# Data Validation
+pydantic==2.10.0
+pydantic-settings==2.11.0
+
+# HTTP Client
+httpx>=0.28.1,<1.0.0
+
+# Utils
+python-dotenv==1.0.0
+python-multipart==0.0.6
+
+# CRM Security SDK (git install for production)
+crm-security[fastapi] @ git+https://gitlab.com/mmg-global/ironforge.git@main#subdirectory=src/shared/crm-security

@@ -369,6 +369,27 @@ class Settings(BaseSettings):
     )
 
     # =========================================================================
+    # INTER-SERVICE COMMUNICATION
+    # =========================================================================
+
+    asset_mgmt_url: str | None = Field(
+        default=None,
+        description="Asset-management service URL for inter-service calls (default: http://localhost:8001)",
+    )
+    security_service_url: str | None = Field(
+        default=None,
+        description="Security service URL for audit logging and API key validation (default: http://localhost:8002)",
+    )
+    inter_service_secret: str | None = Field(
+        default=None,
+        description="Shared secret for inter-service JWT token signing",
+    )
+    service_name: str = Field(
+        default="sales-module",
+        description="This service's name for inter-service authentication",
+    )
+
+    # =========================================================================
     # LOGGING
     # =========================================================================
 

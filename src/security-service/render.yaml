@@ -1,0 +1,50 @@
+# =============================================================================
+# Render Blueprint - Security Service
+# =============================================================================
+# Deploy with: render blueprint apply
+#
+# This deploys the security-service as a standalone microservice.
+# Handles: API key management, rate limiting, audit logging, RBAC
+#
+# Environment Strategy:
+# - DEV branch → uses *_DEV_* env vars → connects to Dev Supabase projects
+# - MAIN branch → uses *_PROD_* env vars → connects to Prod Supabase projects
+# =============================================================================
+
+services:
+  - type: web
+    name: security-service
+    runtime: docker
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      # Python settings
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: LOG_LEVEL
+        value: "INFO"
+      # Environment
+      - key: ENVIRONMENT
+        value: "production"
+      - key: PORT
+        value: "8002"
+      # Security Supabase (DEV)
+      - key: SECURITY_DEV_SUPABASE_URL
+        sync: false
+      - key: SECURITY_DEV_SUPABASE_ANON_KEY
+        sync: false
+      - key: SECURITY_DEV_SUPABASE_SERVICE_KEY
+        sync: false
+      # Security Supabase (PROD)
+      - key: SECURITY_PROD_SUPABASE_URL
+        sync: false
+      - key: SECURITY_PROD_SUPABASE_ANON_KEY
+        sync: false
+      - key: SECURITY_PROD_SUPABASE_SERVICE_KEY
+        sync: false
+      # Inter-service auth
+      - key: INTER_SERVICE_SECRET
+        sync: false

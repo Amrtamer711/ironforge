@@ -1,5 +1,5 @@
 """
-Authentication middleware for unified-ui.
+Authentication middleware for unified-ui (API Gateway).
 
 [VERIFIED] Mirrors server.js lines 548-805:
 - proxyAuthMiddleware (lines 548-621) - for proxy routes, includes full RBAC
@@ -7,9 +7,33 @@ Authentication middleware for unified-ui.
 - requireProfile (lines 772-805) - profile check middleware
 
 These middlewares are implemented as FastAPI dependencies.
+
+ARCHITECTURE NOTE:
+==================
+This module contains gateway-specific AuthUser (raw Supabase response).
+This is DIFFERENT from shared/security/models.py::AuthUser.
+
+Flow:
+1. User request with JWT → unified-ui validates with Supabase → AuthUser (this file)
+2. unified-ui fetches full RBAC from database → TrustedUser
+3. Proxy injects TrustedUser as X-Trusted-User-* headers
+4. Backend services receive headers → TrustedUserMiddleware parses → shared AuthUser
+
+The separation is intentional:
+- Gateway AuthUser = minimal (raw JWT claims)
+- Shared AuthUser = full RBAC context (permissions, profile, companies)
+
+LOCAL AUTH MODE:
+================
+When ENVIRONMENT=local and AUTH_PROVIDER=local, this middleware uses
+the local_auth service for fully offline development. This allows:
+- Testing without network access
+- Using test personas from personas.yaml
+- SQLite-based user/RBAC lookup
 """
 
 import logging
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -18,6 +42,18 @@ from fastapi import Depends, HTTPException, Request
 
 from backend.services.rbac_service import get_user_rbac_data
 from backend.services.supabase_client import get_supabase
+from backend.services.local_auth import (
+    is_local_auth_enabled,
+    local_get_user,
+    local_get_rbac,
+    get_persona_by_token,
+    get_local_user_rbac,
+    LocalRBACData,
+)
+
+# Dev mode detection
+ENVIRONMENT = os.getenv("ENVIRONMENT", "local")
+IS_DEV = ENVIRONMENT in ("local", "development", "test")
 
 logger = logging.getLogger("unified-ui")
 
@@ -79,6 +115,192 @@ class TrustedUser:
 
 
 # =============================================================================
+# IMPERSONATION HELPER
+# =============================================================================
+
+def _get_impersonation_context(request: Request) -> dict | None:
+    """
+    Check if request has dev impersonation cookie.
+
+    Only works in dev mode - returns None in production.
+    """
+    if not IS_DEV:
+        return None
+
+    import json
+    impersonate_cookie = request.cookies.get("dev_impersonate")
+    if not impersonate_cookie:
+        return None
+
+    try:
+        return json.loads(impersonate_cookie)
+    except json.JSONDecodeError:
+        return None
+
+
+def _get_permission_overrides(request: Request) -> dict:
+    """
+    Get permission overrides from dev cookie.
+
+    Returns dict with:
+    - mode: "modify" (default) or "exact"
+    - added: list of permissions to add
+    - removed: list of permissions to remove
+    - exact_permissions: if mode is "exact", use only these permissions
+    """
+    if not IS_DEV:
+        return {"mode": "modify", "added": [], "removed": []}
+
+    import json
+    override_cookie = request.cookies.get("dev_permission_overrides")
+    if not override_cookie:
+        return {"mode": "modify", "added": [], "removed": []}
+
+    try:
+        return json.loads(override_cookie)
+    except json.JSONDecodeError:
+        return {"mode": "modify", "added": [], "removed": []}
+
+
+def _get_company_overrides(request: Request) -> dict:
+    """
+    Get company overrides from dev cookie.
+
+    Returns dict with:
+    - mode: "modify" (default) or "exact"
+    - added: list of companies to add
+    - removed: list of companies to remove
+    - exact_companies: if mode is "exact", use only these companies
+    """
+    if not IS_DEV:
+        return {"mode": "modify", "added": [], "removed": []}
+
+    import json
+    override_cookie = request.cookies.get("dev_company_overrides")
+    if not override_cookie:
+        return {"mode": "modify", "added": [], "removed": []}
+
+    try:
+        return json.loads(override_cookie)
+    except json.JSONDecodeError:
+        return {"mode": "modify", "added": [], "removed": []}
+
+
+def _apply_permission_overrides(
+    permissions: list[str],
+    overrides: dict,
+) -> list[str]:
+    """
+    Apply permission overrides to a permission list.
+
+    Handles two modes:
+    - "exact": Replace permissions entirely with exact_permissions list
+    - "modify" (default): Add/remove individual permissions
+    """
+    mode = overrides.get("mode", "modify")
+
+    if mode == "exact":
+        # Replace entirely with exact permissions
+        return overrides.get("exact_permissions", [])
+
+    # Modify mode: add/remove individual permissions
+    result = list(permissions)  # Copy the list
+
+    # Add new permissions
+    for perm in overrides.get("added", []):
+        if perm not in result:
+            result.append(perm)
+
+    # Remove permissions
+    for perm in overrides.get("removed", []):
+        if perm in result:
+            result.remove(perm)
+
+    return result
+
+
+def _apply_company_overrides(
+    companies: list[str],
+    overrides: dict,
+) -> list[str]:
+    """
+    Apply company overrides to a company list.
+
+    Handles two modes:
+    - "exact": Replace companies entirely with exact_companies list
+    - "modify" (default): Add/remove individual companies
+    """
+    mode = overrides.get("mode", "modify")
+
+    if mode == "exact":
+        # Replace entirely with exact companies
+        return overrides.get("exact_companies", [])
+
+    # Modify mode: add/remove individual companies
+    result = list(companies)  # Copy the list
+
+    # Add new companies
+    for company in overrides.get("added", []):
+        if company not in result:
+            result.append(company)
+
+    # Remove companies
+    for company in overrides.get("removed", []):
+        if company in result:
+            result.remove(company)
+
+    return result
+
+
+def _build_trusted_user_from_impersonation(impersonate_data: dict) -> TrustedUser:
+    """
+    Build TrustedUser from impersonation cookie data + full RBAC from persona.
+    """
+    persona_id = impersonate_data.get("persona_id")
+
+    # Load full RBAC from personas.yaml
+    user_id = f"test-{persona_id}"
+    local_rbac = get_local_user_rbac(user_id)
+
+    if local_rbac:
+        return TrustedUser(
+            id=user_id,
+            email=impersonate_data.get("email", ""),
+            name=impersonate_data.get("name", ""),
+            profile=local_rbac.profile,
+            permissions=local_rbac.permissions,
+            permission_sets=local_rbac.permission_sets,
+            teams=local_rbac.teams,
+            team_ids=local_rbac.team_ids,
+            manager_id=local_rbac.manager_id,
+            subordinate_ids=local_rbac.subordinate_ids,
+            sharing_rules=local_rbac.sharing_rules,
+            shared_records=local_rbac.shared_records,
+            shared_from_user_ids=local_rbac.shared_from_user_ids,
+            companies=local_rbac.companies,
+        )
+
+    # Fallback to cookie data only (limited RBAC)
+    logger.warning(f"[IMPERSONATE] No full RBAC for {persona_id}, using cookie data")
+    return TrustedUser(
+        id=user_id,
+        email=impersonate_data.get("email", ""),
+        name=impersonate_data.get("name", ""),
+        profile=impersonate_data.get("profile", ""),
+        permissions=[],
+        permission_sets=[],
+        teams=[],
+        team_ids=[],
+        manager_id=None,
+        subordinate_ids=[],
+        sharing_rules=[],
+        shared_records={},
+        shared_from_user_ids=[],
+        companies=impersonate_data.get("companies", []),
+    )
+
+
+# =============================================================================
 # REQUIRE AUTH MIDDLEWARE - server.js:742-767
 # =============================================================================
 
@@ -88,16 +310,33 @@ async def get_current_user(request: Request) -> AuthUser | None:
 
     This is the base dependency - returns None if not authenticated.
     Use require_auth() for endpoints that require authentication.
-    """
-    supabase = get_supabase()
-    if not supabase:
-        return None
 
+    Supports two modes:
+    - Supabase auth (default): Validates JWT against Supabase
+    - Local auth (ENVIRONMENT=local, AUTH_PROVIDER=local): Uses local SQLite/personas
+    """
     auth_header = request.headers.get("authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         return None
 
     token = auth_header[7:]  # Remove "Bearer " prefix
+
+    # LOCAL AUTH MODE
+    if is_local_auth_enabled():
+        local_user = local_get_user(token)
+        if local_user:
+            return AuthUser(
+                id=local_user.id,
+                email=local_user.email,
+                role="authenticated",
+                user_metadata={"name": local_user.name} if local_user.name else None,
+            )
+        return None
+
+    # SUPABASE AUTH MODE (default)
+    supabase = get_supabase()
+    if not supabase:
+        return None
 
     try:
         response = supabase.auth.get_user(token)
@@ -124,17 +363,15 @@ async def require_auth(request: Request) -> AuthUser:
 
     Mirrors server.js:742-767 (requireAuth)
 
+    Supports two modes:
+    - Supabase auth (default): Validates JWT against Supabase
+    - Local auth (ENVIRONMENT=local, AUTH_PROVIDER=local): Uses local SQLite/personas
+
     Usage:
         @router.get("/protected")
         async def protected_endpoint(user: AuthUser = Depends(require_auth)):
             return {"user_id": user.id}
     """
-    supabase = get_supabase()
-
-    # server.js:743-745
-    if not supabase:
-        raise HTTPException(status_code=500, detail="Supabase not configured")
-
     auth_header = request.headers.get("authorization")
 
     # server.js:747-750
@@ -145,6 +382,29 @@ async def require_auth(request: Request) -> AuthUser:
         )
 
     token = auth_header[7:]
+
+    # LOCAL AUTH MODE
+    if is_local_auth_enabled():
+        local_user = local_get_user(token)
+        if not local_user:
+            raise HTTPException(
+                status_code=401,
+                detail={"error": "Invalid token", "requiresAuth": True},
+            )
+        logger.debug(f"[UI Auth] Local auth: {local_user.email}")
+        return AuthUser(
+            id=local_user.id,
+            email=local_user.email,
+            role="authenticated",
+            user_metadata={"name": local_user.name} if local_user.name else None,
+        )
+
+    # SUPABASE AUTH MODE (default)
+    supabase = get_supabase()
+
+    # server.js:743-745
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
 
     try:
         # server.js:754-759
@@ -260,14 +520,136 @@ async def get_trusted_user(request: Request) -> TrustedUser:
     Mirrors server.js:548-621 (proxyAuthMiddleware)
 
     This includes full 5-level RBAC context that will be injected
-    as trusted headers when proxying to proposal-bot.
+    as trusted headers when proxying to backend services.
+
+    Supports three modes:
+    - Impersonation (dev only): Uses dev_impersonate cookie to switch context
+    - Supabase auth (default): Validates JWT and fetches RBAC from Supabase
+    - Local auth (ENVIRONMENT=local, AUTH_PROVIDER=local): Uses personas/SQLite
+
+    In dev mode, also applies permission and company overrides from cookies.
     """
-    supabase = get_supabase()
+    # Get overrides (dev mode only)
+    permission_overrides = _get_permission_overrides(request)
+    has_permission_overrides = (
+        permission_overrides.get("mode") == "exact"
+        or permission_overrides.get("added")
+        or permission_overrides.get("removed")
+    )
+
+    company_overrides = _get_company_overrides(request)
+    has_company_overrides = (
+        company_overrides.get("mode") == "exact"
+        or company_overrides.get("added")
+        or company_overrides.get("removed")
+    )
+
+    # DEV MODE: Check for impersonation cookie FIRST
+    # This allows testing different user contexts without logging out
+    impersonate_data = _get_impersonation_context(request)
+    if impersonate_data:
+        logger.info(f"[PROXY AUTH] Using impersonated user: {impersonate_data.get('persona_id')}")
+        trusted_user = _build_trusted_user_from_impersonation(impersonate_data)
+
+        # Apply permission overrides if any
+        if has_permission_overrides:
+            trusted_user.permissions = _apply_permission_overrides(
+                trusted_user.permissions, permission_overrides
+            )
+            logger.debug(f"[PROXY AUTH] Applied permission overrides: {permission_overrides}")
+
+        # Apply company overrides if any
+        if has_company_overrides:
+            trusted_user.companies = _apply_company_overrides(
+                trusted_user.companies, company_overrides
+            )
+            logger.debug(f"[PROXY AUTH] Applied company overrides: {company_overrides}")
+
+        return trusted_user
 
     # server.js:552-554
     auth_header = request.headers.get("authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Authentication required")
+
+    token = auth_header[7:]
+
+    # LOCAL AUTH MODE
+    if is_local_auth_enabled():
+        try:
+            local_user = local_get_user(token)
+            if not local_user:
+                logger.warning("[PROXY AUTH] Local auth: Invalid token")
+                raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+            # Get RBAC from local source (personas.yaml or SQLite)
+            local_rbac = local_get_rbac(local_user.id)
+            if not local_rbac:
+                logger.warning(
+                    f"[PROXY AUTH] Local auth: No RBAC for {local_user.id}"
+                )
+                # Return minimal context for local testing
+                return TrustedUser(
+                    id=local_user.id,
+                    email=local_user.email,
+                    name=local_user.name or "",
+                    profile=local_user.profile_name or "viewer",
+                    permissions=[],
+                    permission_sets=[],
+                    teams=[],
+                    team_ids=[],
+                    manager_id=None,
+                    subordinate_ids=[],
+                    sharing_rules=[],
+                    shared_records={},
+                    shared_from_user_ids=[],
+                    companies=[],
+                )
+
+            # Build TrustedUser from local RBAC
+            logger.debug(f"[PROXY AUTH] Local auth: {local_user.email} -> {local_rbac.profile}")
+
+            # Apply permission overrides if any
+            final_permissions = local_rbac.permissions
+            if has_permission_overrides:
+                final_permissions = _apply_permission_overrides(
+                    local_rbac.permissions, permission_overrides
+                )
+                logger.debug(f"[PROXY AUTH] Applied permission overrides: {permission_overrides}")
+
+            # Apply company overrides if any
+            final_companies = local_rbac.companies
+            if has_company_overrides:
+                final_companies = _apply_company_overrides(
+                    local_rbac.companies, company_overrides
+                )
+                logger.debug(f"[PROXY AUTH] Applied company overrides: {company_overrides}")
+
+            return TrustedUser(
+                id=local_user.id,
+                email=local_user.email,
+                name=local_user.name or "",
+                profile=local_rbac.profile,
+                permissions=final_permissions,
+                permission_sets=local_rbac.permission_sets,
+                teams=local_rbac.teams,
+                team_ids=local_rbac.team_ids,
+                manager_id=local_rbac.manager_id,
+                subordinate_ids=local_rbac.subordinate_ids,
+                sharing_rules=local_rbac.sharing_rules,
+                shared_records=local_rbac.shared_records,
+                shared_from_user_ids=local_rbac.shared_from_user_ids,
+                companies=final_companies,
+            )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"[PROXY AUTH] Local auth error: {e}")
+            raise HTTPException(status_code=401, detail="Authentication failed")
+
+    # SUPABASE AUTH MODE (default)
+    supabase = get_supabase()
 
     # server.js:556-558
     if not supabase:
@@ -275,7 +657,6 @@ async def get_trusted_user(request: Request) -> TrustedUser:
 
     try:
         # server.js:561-567
-        token = auth_header[7:]
         response = supabase.auth.get_user(token)
         user = response.user
 
@@ -304,14 +685,30 @@ async def get_trusted_user(request: Request) -> TrustedUser:
         # server.js:590-614 - Build trustedUser object
         rbac_dict = rbac.to_dict()
 
+        # Apply permission overrides if any (dev mode only)
+        final_permissions = rbac_dict["permissions"]
+        if has_permission_overrides:
+            final_permissions = _apply_permission_overrides(
+                rbac_dict["permissions"], permission_overrides
+            )
+            logger.debug(f"[PROXY AUTH] Applied permission overrides: {permission_overrides}")
+
+        # Apply company overrides if any (dev mode only)
+        final_companies = rbac_dict["companies"]
+        if has_company_overrides:
+            final_companies = _apply_company_overrides(
+                rbac_dict["companies"], company_overrides
+            )
+            logger.debug(f"[PROXY AUTH] Applied company overrides: {company_overrides}")
+
         return TrustedUser(
             id=user.id,
             email=user.email,
             name=user.user_metadata.get("name") or user.user_metadata.get("full_name") or "" if user.user_metadata else "",
             # Level 1: Profile
             profile=rbac_dict["profile"],
-            # Level 1 + 2: Combined permissions
-            permissions=rbac_dict["permissions"],
+            # Level 1 + 2: Combined permissions (with overrides applied)
+            permissions=final_permissions,
             # Level 2: Permission sets
             permission_sets=rbac_dict["permissionSets"],
             # Level 3: Teams
@@ -324,8 +721,8 @@ async def get_trusted_user(request: Request) -> TrustedUser:
             sharing_rules=rbac_dict["sharingRules"],
             shared_records=rbac_dict["sharedRecords"],
             shared_from_user_ids=rbac_dict["sharedFromUserIds"],
-            # Level 5: Company access
-            companies=rbac_dict["companies"],
+            # Level 5: Company access (with overrides applied)
+            companies=final_companies,
         )
 
     except HTTPException:

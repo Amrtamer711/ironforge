@@ -10,8 +10,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, field_validator
 
-from api.auth import require_permission
-from integrations.auth import AuthUser
+from crm_security import require_permission_user as require_permission, AuthUser
 from integrations.rbac import get_rbac_client
 from utils.logging import get_logger
 
@@ -116,6 +115,7 @@ async def chat_message(
             roles=roles,
             files=files,
             companies=user.companies,
+            permissions=user.permissions,
         )
 
         logger.info(f"[CHAT] Response generated for {user.email}")
@@ -181,6 +181,7 @@ async def chat_stream(
                 roles=roles,
                 files=files,
                 companies=user.companies,
+                permissions=user.permissions,
             ):
                 yield chunk
             logger.info(f"[CHAT] Stream completed for {user.email}")

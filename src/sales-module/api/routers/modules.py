@@ -11,9 +11,13 @@ This router handles:
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
-from api.auth import require_auth, require_permission
-from integrations.auth import AuthUser
-from integrations.rbac import get_rbac_client, has_permission
+from integrations.rbac import get_rbac_client
+from crm_security import (
+    AuthUser,
+    require_auth_user as require_auth,
+    require_permission_user as require_permission,
+    has_permission,
+)
 from utils.logging import get_logger
 from utils.time import get_uae_time
 
@@ -144,7 +148,7 @@ async def get_accessible_modules(user: AuthUser = Depends(require_auth)):
     logger.info(f"[MODULES] User {user.email} permissions={user_permissions}")
 
     # Check if user has full admin access (using permission-based check)
-    is_admin = await has_permission(user.id, "core:*:*")
+    is_admin = has_permission(list(user_permissions), "core:*:*")
     logger.info(f"[MODULES] is_admin={is_admin}")
 
     # Check each module
@@ -269,7 +273,7 @@ async def get_module_config(
     user_permissions = await rbac.get_user_permissions(user.id)
 
     # Check if user has admin access or module-specific permission
-    has_access = await has_permission(user.id, "core:*:*")
+    has_access = has_permission(list(user_permissions), "core:*:*")
     if not has_access and config.get("required_permission"):
         module_prefix = config["required_permission"].split(":")[0]
         for perm in user_permissions:

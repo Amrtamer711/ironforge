@@ -402,7 +402,47 @@ BEGIN
     EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I', v_schema);
 
     -- =========================================================================
-    -- LOCATIONS INVENTORY (Company-specific)
+    -- NETWORKS (Company-specific groupings - SELLABLE as a whole)
+    -- =========================================================================
+    EXECUTE format('
+        CREATE TABLE IF NOT EXISTS %I.networks (
+            id BIGSERIAL PRIMARY KEY,
+            network_key TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            description TEXT,
+            is_active BOOLEAN DEFAULT true,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+            created_by TEXT
+        )', v_schema);
+
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_networks_key ON %I.networks(network_key)', v_schema);
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_networks_active ON %I.networks(is_active)', v_schema);
+
+    -- =========================================================================
+    -- ASSET TYPES (Organizational categories within networks - NOT sellable)
+    -- =========================================================================
+    EXECUTE format('
+        CREATE TABLE IF NOT EXISTS %I.asset_types (
+            id BIGSERIAL PRIMARY KEY,
+            network_id BIGINT NOT NULL REFERENCES %I.networks(id) ON DELETE CASCADE,
+            type_key TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            specs JSONB DEFAULT ''{}'',
+            is_active BOOLEAN DEFAULT true,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+            created_by TEXT,
+            CONSTRAINT asset_types_unique UNIQUE (network_id, type_key)
+        )', v_schema, v_schema);
+
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_asset_types_network ON %I.asset_types(network_id)', v_schema);
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_asset_types_key ON %I.asset_types(type_key)', v_schema);
+
+    -- =========================================================================
+    -- LOCATIONS INVENTORY (Company-specific - SELLABLE individually)
+    -- Can be standalone (no network) or part of a network/type hierarchy
     -- =========================================================================
     EXECUTE format('
         CREATE TABLE IF NOT EXISTS %I.locations (
@@ -410,6 +450,8 @@ BEGIN
             location_key TEXT NOT NULL UNIQUE,
             display_name TEXT NOT NULL,
             display_type TEXT NOT NULL CHECK (display_type IN (''digital'', ''static'')),
+            network_id BIGINT REFERENCES %I.networks(id) ON DELETE SET NULL,
+            type_id BIGINT REFERENCES %I.asset_types(id) ON DELETE SET NULL,
             series TEXT,
             height TEXT,
             width TEXT,
@@ -428,12 +470,14 @@ BEGIN
             updated_at TIMESTAMPTZ DEFAULT NOW(),
             created_by TEXT,
             notes TEXT
-        )', v_schema);
+        )', v_schema, v_schema, v_schema);
 
     EXECUTE format('CREATE INDEX IF NOT EXISTS idx_locations_key ON %I.locations(location_key)', v_schema);
     EXECUTE format('CREATE INDEX IF NOT EXISTS idx_locations_type ON %I.locations(display_type)', v_schema);
     EXECUTE format('CREATE INDEX IF NOT EXISTS idx_locations_series ON %I.locations(series)', v_schema);
     EXECUTE format('CREATE INDEX IF NOT EXISTS idx_locations_active ON %I.locations(is_active)', v_schema);
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_locations_network ON %I.locations(network_id)', v_schema);
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_locations_asset_type ON %I.locations(type_id)', v_schema);
 
     -- =========================================================================
     -- MOCKUP FRAMES (Company-specific - tied to company's locations)
@@ -560,8 +604,60 @@ BEGIN
     EXECUTE format('CREATE INDEX IF NOT EXISTS idx_occupations_status ON %I.location_occupations(status)', v_schema);
 
     -- =========================================================================
+    -- PACKAGES (Company-specific bundles - SELLABLE)
+    -- =========================================================================
+    EXECUTE format('
+        CREATE TABLE IF NOT EXISTS %I.packages (
+            id BIGSERIAL PRIMARY KEY,
+            package_key TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            description TEXT,
+            is_active BOOLEAN DEFAULT true,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+            created_by TEXT
+        )', v_schema);
+
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_packages_key ON %I.packages(package_key)', v_schema);
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_packages_active ON %I.packages(is_active)', v_schema);
+
+    -- =========================================================================
+    -- PACKAGE ITEMS (Junction table - networks or individual assets)
+    -- =========================================================================
+    EXECUTE format('
+        CREATE TABLE IF NOT EXISTS %I.package_items (
+            id BIGSERIAL PRIMARY KEY,
+            package_id BIGINT NOT NULL REFERENCES %I.packages(id) ON DELETE CASCADE,
+            item_type TEXT NOT NULL CHECK (item_type IN (''network'', ''asset'')),
+            network_id BIGINT REFERENCES %I.networks(id) ON DELETE CASCADE,
+            location_id BIGINT REFERENCES %I.locations(id) ON DELETE CASCADE,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            CONSTRAINT package_items_type_check CHECK (
+                (item_type = ''network'' AND network_id IS NOT NULL AND location_id IS NULL) OR
+                (item_type = ''asset'' AND location_id IS NOT NULL AND network_id IS NULL)
+            )
+        )', v_schema, v_schema, v_schema, v_schema);
+
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_package_items_package ON %I.package_items(package_id)', v_schema);
+    EXECUTE format('CREATE INDEX IF NOT EXISTS idx_package_items_type ON %I.package_items(item_type)', v_schema);
+
+    -- =========================================================================
     -- TRIGGERS
     -- =========================================================================
+    EXECUTE format('
+        DROP TRIGGER IF EXISTS update_networks_updated_at ON %I.networks;
+        CREATE TRIGGER update_networks_updated_at
+            BEFORE UPDATE ON %I.networks
+            FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+    ', v_schema, v_schema);
+
+    EXECUTE format('
+        DROP TRIGGER IF EXISTS update_asset_types_updated_at ON %I.asset_types;
+        CREATE TRIGGER update_asset_types_updated_at
+            BEFORE UPDATE ON %I.asset_types
+            FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+    ', v_schema, v_schema);
+
     EXECUTE format('
         DROP TRIGGER IF EXISTS update_locations_updated_at ON %I.locations;
         CREATE TRIGGER update_locations_updated_at
@@ -576,30 +672,49 @@ BEGIN
             FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
     ', v_schema, v_schema);
 
+    EXECUTE format('
+        DROP TRIGGER IF EXISTS update_packages_updated_at ON %I.packages;
+        CREATE TRIGGER update_packages_updated_at
+            BEFORE UPDATE ON %I.packages
+            FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
+    ', v_schema, v_schema);
+
     -- =========================================================================
     -- ROW LEVEL SECURITY
     -- =========================================================================
+    EXECUTE format('ALTER TABLE %I.networks ENABLE ROW LEVEL SECURITY', v_schema);
+    EXECUTE format('ALTER TABLE %I.asset_types ENABLE ROW LEVEL SECURITY', v_schema);
     EXECUTE format('ALTER TABLE %I.locations ENABLE ROW LEVEL SECURITY', v_schema);
     EXECUTE format('ALTER TABLE %I.mockup_frames ENABLE ROW LEVEL SECURITY', v_schema);
     EXECUTE format('ALTER TABLE %I.mockup_usage ENABLE ROW LEVEL SECURITY', v_schema);
     EXECUTE format('ALTER TABLE %I.location_photos ENABLE ROW LEVEL SECURITY', v_schema);
     EXECUTE format('ALTER TABLE %I.rate_cards ENABLE ROW LEVEL SECURITY', v_schema);
     EXECUTE format('ALTER TABLE %I.location_occupations ENABLE ROW LEVEL SECURITY', v_schema);
+    EXECUTE format('ALTER TABLE %I.packages ENABLE ROW LEVEL SECURITY', v_schema);
+    EXECUTE format('ALTER TABLE %I.package_items ENABLE ROW LEVEL SECURITY', v_schema);
 
     -- Service role full access policies (drop first to avoid "already exists" error)
+    EXECUTE format('DROP POLICY IF EXISTS "Service role full access" ON %I.networks', v_schema);
+    EXECUTE format('DROP POLICY IF EXISTS "Service role full access" ON %I.asset_types', v_schema);
     EXECUTE format('DROP POLICY IF EXISTS "Service role full access" ON %I.locations', v_schema);
     EXECUTE format('DROP POLICY IF EXISTS "Service role full access" ON %I.mockup_frames', v_schema);
     EXECUTE format('DROP POLICY IF EXISTS "Service role full access" ON %I.mockup_usage', v_schema);
     EXECUTE format('DROP POLICY IF EXISTS "Service role full access" ON %I.location_photos', v_schema);
     EXECUTE format('DROP POLICY IF EXISTS "Service role full access" ON %I.rate_cards', v_schema);
     EXECUTE format('DROP POLICY IF EXISTS "Service role full access" ON %I.location_occupations', v_schema);
+    EXECUTE format('DROP POLICY IF EXISTS "Service role full access" ON %I.packages', v_schema);
+    EXECUTE format('DROP POLICY IF EXISTS "Service role full access" ON %I.package_items', v_schema);
 
+    EXECUTE format('CREATE POLICY "Service role full access" ON %I.networks FOR ALL USING (true)', v_schema);
+    EXECUTE format('CREATE POLICY "Service role full access" ON %I.asset_types FOR ALL USING (true)', v_schema);
     EXECUTE format('CREATE POLICY "Service role full access" ON %I.locations FOR ALL USING (true)', v_schema);
     EXECUTE format('CREATE POLICY "Service role full access" ON %I.mockup_frames FOR ALL USING (true)', v_schema);
     EXECUTE format('CREATE POLICY "Service role full access" ON %I.mockup_usage FOR ALL USING (true)', v_schema);
     EXECUTE format('CREATE POLICY "Service role full access" ON %I.location_photos FOR ALL USING (true)', v_schema);
     EXECUTE format('CREATE POLICY "Service role full access" ON %I.rate_cards FOR ALL USING (true)', v_schema);
     EXECUTE format('CREATE POLICY "Service role full access" ON %I.location_occupations FOR ALL USING (true)', v_schema);
+    EXECUTE format('CREATE POLICY "Service role full access" ON %I.packages FOR ALL USING (true)', v_schema);
+    EXECUTE format('CREATE POLICY "Service role full access" ON %I.package_items FOR ALL USING (true)', v_schema);
 
     -- =========================================================================
     -- GRANTS
@@ -608,7 +723,7 @@ BEGIN
     EXECUTE format('GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA %I TO service_role', v_schema);
     EXECUTE format('GRANT USAGE ON SCHEMA %I TO service_role', v_schema);
 
-    RAISE NOTICE 'Created schema % with location and mockup tables', v_schema;
+    RAISE NOTICE 'Created schema % with networks, asset_types, locations, packages, and mockup tables', v_schema;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -714,6 +829,36 @@ SELECT 'backlite_abudhabi' as company_code, u.* FROM backlite_abudhabi.mockup_us
 UNION ALL
 SELECT 'viola' as company_code, u.* FROM viola.mockup_usage u;
 
+-- All networks across all companies
+CREATE OR REPLACE VIEW public.all_networks AS
+SELECT 'backlite_dubai' as company_code, n.* FROM backlite_dubai.networks n
+UNION ALL
+SELECT 'backlite_uk' as company_code, n.* FROM backlite_uk.networks n
+UNION ALL
+SELECT 'backlite_abudhabi' as company_code, n.* FROM backlite_abudhabi.networks n
+UNION ALL
+SELECT 'viola' as company_code, n.* FROM viola.networks n;
+
+-- All asset types across all companies
+CREATE OR REPLACE VIEW public.all_asset_types AS
+SELECT 'backlite_dubai' as company_code, t.* FROM backlite_dubai.asset_types t
+UNION ALL
+SELECT 'backlite_uk' as company_code, t.* FROM backlite_uk.asset_types t
+UNION ALL
+SELECT 'backlite_abudhabi' as company_code, t.* FROM backlite_abudhabi.asset_types t
+UNION ALL
+SELECT 'viola' as company_code, t.* FROM viola.asset_types t;
+
+-- All packages across all companies
+CREATE OR REPLACE VIEW public.all_packages AS
+SELECT 'backlite_dubai' as company_code, p.* FROM backlite_dubai.packages p
+UNION ALL
+SELECT 'backlite_uk' as company_code, p.* FROM backlite_uk.packages p
+UNION ALL
+SELECT 'backlite_abudhabi' as company_code, p.* FROM backlite_abudhabi.packages p
+UNION ALL
+SELECT 'viola' as company_code, p.* FROM viola.packages p;
+
 -- =============================================================================
 -- DONE! Hybrid multi-schema architecture is ready.
 -- =============================================================================
@@ -728,12 +873,30 @@ SELECT 'viola' as company_code, u.* FROM viola.mockup_usage u;
 --   - chat_sessions, companies
 --
 -- COMPANY SCHEMAS (company-specific inventory):
---   - locations
+--   - networks (sellable as a whole)
+--   - asset_types (organizational, NOT sellable)
+--   - locations (sellable individually, can be standalone or part of network)
+--   - packages (sellable bundles of networks/assets)
+--   - package_items (junction table for package contents)
 --   - mockup_frames
 --   - mockup_usage
 --   - location_photos
 --   - rate_cards
 --   - location_occupations
+--
+-- CROSS-SCHEMA VIEWS:
+--   - public.all_locations
+--   - public.all_networks
+--   - public.all_asset_types
+--   - public.all_packages
+--   - public.all_mockup_frames
+--   - public.all_mockup_usage
+--
+-- HIERARCHY:
+-- ----------
+-- Network (sellable) -> Asset Type (organizational) -> Location (sellable)
+-- Locations can also be standalone (no network/type)
+-- Packages can include networks and/or individual assets
 --
 -- USAGE:
 -- ------
@@ -748,5 +911,15 @@ SELECT 'viola' as company_code, u.* FROM viola.mockup_usage u;
 --    INSERT INTO public.proposal_locations (proposal_id, location_key, location_company, ...)
 --    VALUES (1, 'dubai_gateway', 'backlite_dubai', ...),
 --           (1, 'london_bridge', 'backlite_uk', ...);
+--
+-- 4. Get all locations in a network:
+--    SELECT * FROM backlite_abudhabi.locations WHERE network_id = 1;
+--
+-- 5. Expand a package to all its locations:
+--    SELECT * FROM backlite_dubai.package_items pi
+--    JOIN backlite_dubai.locations l ON
+--      (pi.item_type = 'asset' AND l.id = pi.location_id) OR
+--      (pi.item_type = 'network' AND l.network_id = pi.network_id)
+--    WHERE pi.package_id = 1;
 --
 -- =============================================================================
