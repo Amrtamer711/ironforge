@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRM Services - Live Logs</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a2e;
+            --bg-secondary: #16213e;
+            --bg-tertiary: #0f0f1a;
+            --text-primary: #e4e4e7;
+            --text-secondary: #a1a1aa;
+            --text-muted: #71717a;
+            --border-color: #27273a;
+            --accent-blue: #3b82f6;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --accent-red: #ef4444;
+            --accent-cyan: #06b6d4;
+            --accent-magenta: #d946ef;
+            --accent-orange: #f97316;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'SF Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Header */
+        .header {
+            background-color: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .header h1 {
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header h1 .logo {
+            font-size: 20px;
+        }
+
+        .connection-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--accent-red);
+        }
+
+        .status-dot.connected {
+            background-color: var(--accent-green);
+        }
+
+        /* Tabs */
+        .tabs-container {
+            background-color: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            overflow-x: auto;
+            flex-shrink: 0;
+        }
+
+        .tab {
+            padding: 12px 16px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: var(--text-primary);
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab.active {
+            color: var(--text-primary);
+            border-bottom-color: var(--accent-blue);
+        }
+
+        .tab .status-indicator {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: var(--text-muted);
+        }
+
+        .tab .status-indicator.running {
+            background-color: var(--accent-green);
+        }
+
+        .tab .status-indicator.starting {
+            background-color: var(--accent-yellow);
+        }
+
+        .tab .status-indicator.stopped,
+        .tab .status-indicator.error {
+            background-color: var(--accent-red);
+        }
+
+        .tab .log-count {
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        /* Toolbar */
+        .toolbar {
+            background-color: var(--bg-tertiary);
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border-bottom: 1px solid var(--border-color);
+            flex-shrink: 0;
+        }
+
+        .search-box {
+            flex: 1;
+            max-width: 400px;
+            position: relative;
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 8px 12px 8px 36px;
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 13px;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+        }
+
+        .search-box input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .search-box .search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .toolbar-btn {
+            padding: 8px 12px;
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            font-family: inherit;
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s;
+        }
+
+        .toolbar-btn:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+        }
+
+        .toolbar-btn.active {
+            background-color: var(--accent-blue);
+            border-color: var(--accent-blue);
+            color: white;
+        }
+
+        .toolbar-divider {
+            width: 1px;
+            height: 24px;
+            background-color: var(--border-color);
+        }
+
+        /* Logs Container */
+        .logs-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0;
+            background-color: var(--bg-tertiary);
+        }
+
+        .log-line {
+            padding: 4px 16px;
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            font-size: 12px;
+            line-height: 1.6;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .log-line:hover {
+            background-color: rgba(255, 255, 255, 0.02);
+        }
+
+        .log-line.hidden {
+            display: none;
+        }
+
+        /* Error row highlighting */
+        .log-line.level-ERROR {
+            background-color: rgba(239, 68, 68, 0.1);
+            border-left: 3px solid var(--accent-red);
+        }
+
+        .log-line.level-ERROR:hover {
+            background-color: rgba(239, 68, 68, 0.15);
+        }
+
+        .log-line.level-WARN {
+            background-color: rgba(234, 179, 8, 0.05);
+            border-left: 3px solid var(--accent-yellow);
+        }
+
+        .log-timestamp {
+            color: var(--text-muted);
+            flex-shrink: 0;
+            font-size: 11px;
+            min-width: 85px;
+        }
+
+        .log-service {
+            flex-shrink: 0;
+            font-size: 11px;
+            font-weight: 600;
+            min-width: 100px;
+            text-transform: uppercase;
+        }
+
+        .log-service.proposal-bot { color: var(--accent-cyan); }
+        .log-service.unified-ui { color: var(--accent-magenta); }
+        .log-service.asset-management { color: var(--accent-green); }
+        .log-service.security-service { color: var(--accent-yellow); }
+
+        .log-level {
+            flex-shrink: 0;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 3px;
+            min-width: 50px;
+            text-align: center;
+        }
+
+        .log-level.DEBUG { background-color: rgba(113, 113, 122, 0.3); color: var(--text-muted); }
+        .log-level.INFO { background-color: rgba(59, 130, 246, 0.2); color: var(--accent-blue); }
+        .log-level.WARN { background-color: rgba(234, 179, 8, 0.2); color: var(--accent-yellow); }
+        .log-level.ERROR { background-color: rgba(239, 68, 68, 0.2); color: var(--accent-red); }
+
+        .log-message {
+            flex: 1;
+            word-break: break-word;
+            white-space: pre-wrap;
+        }
+
+        /* Empty State */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-muted);
+            gap: 12px;
+        }
+
+        .empty-state .icon {
+            font-size: 48px;
+            opacity: 0.5;
+        }
+
+        /* Footer */
+        .footer {
+            background-color: var(--bg-secondary);
+            border-top: 1px solid var(--border-color);
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 11px;
+            color: var(--text-muted);
+            flex-shrink: 0;
+        }
+
+        .footer-stats {
+            display: flex;
+            gap: 20px;
+        }
+
+        /* Scrollbar */
+        .logs-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .logs-container::-webkit-scrollbar-track {
+            background: var(--bg-tertiary);
+        }
+
+        .logs-container::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        .logs-container::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+
+        /* Auto-scroll indicator */
+        .scroll-indicator {
+            position: fixed;
+            bottom: 60px;
+            right: 20px;
+            background-color: var(--accent-blue);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 100;
+        }
+
+        .scroll-indicator.visible {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>
+            <span class="logo">&#128202;</span>
+            CRM Services - Live Logs
+        </h1>
+        <div class="connection-status">
+            <span class="status-dot" id="connectionStatus"></span>
+            <span id="connectionText">Connecting...</span>
+        </div>
+    </div>
+
+    <div class="tabs-container" id="tabsContainer">
+        <div class="tab active" data-service="all">
+            <span>ALL</span>
+            <span class="log-count" id="count-all">0</span>
+        </div>
+        <!-- Service tabs will be added dynamically -->
+    </div>
+
+    <div class="toolbar">
+        <div class="search-box">
+            <span class="search-icon">&#128269;</span>
+            <input type="text" id="searchInput" placeholder="Filter logs...">
+        </div>
+        <div class="toolbar-divider"></div>
+        <button class="toolbar-btn" id="btnDebug" data-level="DEBUG">DEBUG</button>
+        <button class="toolbar-btn active" id="btnInfo" data-level="INFO">INFO</button>
+        <button class="toolbar-btn active" id="btnWarn" data-level="WARN">WARN</button>
+        <button class="toolbar-btn active" id="btnError" data-level="ERROR">ERROR</button>
+        <div class="toolbar-divider"></div>
+        <button class="toolbar-btn" id="btnPause">
+            <span id="pauseIcon">&#9208;</span>
+            <span id="pauseText">Pause</span>
+        </button>
+        <button class="toolbar-btn" id="btnClear">
+            <span>&#128465;</span>
+            Clear
+        </button>
+    </div>
+
+    <div class="logs-container" id="logsContainer">
+        <div class="empty-state" id="emptyState">
+            <div class="icon">&#128203;</div>
+            <div>Waiting for logs...</div>
+            <div style="font-size: 11px;">Logs will appear here when services start</div>
+        </div>
+    </div>
+
+    <div class="scroll-indicator" id="scrollIndicator">
+        &#8595; New logs available
+    </div>
+
+    <div class="footer">
+        <div class="footer-stats">
+            <span>Total logs: <strong id="totalLogs">0</strong></span>
+            <span>Visible: <strong id="visibleLogs">0</strong></span>
+        </div>
+        <div>
+            WebSocket: ws://localhost:9000 | Press <kbd>Ctrl+K</kbd> to search
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const WS_URL = 'ws://localhost:9000';
+        const MAX_LOGS = 5000;  // Max logs to keep in memory
+        const RECONNECT_DELAY = 2000;
+
+        // State
+        let ws = null;
+        let logs = [];
+        let serviceStatus = {};
+        let currentService = 'all';
+        let isPaused = false;
+        let autoScroll = true;
+        let visibleLevels = new Set(['INFO', 'WARN', 'ERROR']);
+        let searchFilter = '';
+        let serviceCounts = { all: 0 };
+
+        // Service display names
+        const serviceNames = {
+            'proposal-bot': 'Sales',
+            'unified-ui': 'UI',
+            'asset-management': 'Assets',
+            'security-service': 'Security'
+        };
+
+        // DOM Elements
+        const logsContainer = document.getElementById('logsContainer');
+        const emptyState = document.getElementById('emptyState');
+        const searchInput = document.getElementById('searchInput');
+        const connectionStatus = document.getElementById('connectionStatus');
+        const connectionText = document.getElementById('connectionText');
+        const tabsContainer = document.getElementById('tabsContainer');
+        const scrollIndicator = document.getElementById('scrollIndicator');
+        const totalLogsEl = document.getElementById('totalLogs');
+        const visibleLogsEl = document.getElementById('visibleLogs');
+
+        // WebSocket Connection
+        function connect() {
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                connectionStatus.classList.add('connected');
+                connectionText.textContent = 'Connected';
+                console.log('WebSocket connected');
+            };
+
+            ws.onclose = () => {
+                connectionStatus.classList.remove('connected');
+                connectionText.textContent = 'Disconnected - Reconnecting...';
+                console.log('WebSocket disconnected, reconnecting...');
+                setTimeout(connect, RECONNECT_DELAY);
+            };
+
+            ws.onerror = (err) => {
+                console.error('WebSocket error:', err);
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleMessage(data);
+            };
+        }
+
+        function handleMessage(data) {
+            switch (data.type) {
+                case 'buffer':
+                    // Initial buffer of logs
+                    data.logs.forEach(log => addLog(log, false));
+                    updateUI();
+                    scrollToBottom();
+                    break;
+
+                case 'log':
+                    addLog(data, true);
+                    break;
+
+                case 'status':
+                    updateServiceStatus(data.services);
+                    break;
+
+                case 'pong':
+                    // Heartbeat response
+                    break;
+            }
+        }
+
+        function addLog(log, isNew) {
+            // Add to logs array
+            logs.push(log);
+
+            // Trim if too many
+            if (logs.length > MAX_LOGS) {
+                logs.shift();
+                // Remove first log line from DOM
+                const firstLog = logsContainer.querySelector('.log-line');
+                if (firstLog) firstLog.remove();
+            }
+
+            // Update counts
+            serviceCounts.all = logs.length;
+            serviceCounts[log.service] = (serviceCounts[log.service] || 0) + 1;
+
+            // Hide empty state
+            emptyState.style.display = 'none';
+
+            // Create log line element
+            if (!isPaused) {
+                const logEl = createLogElement(log);
+                logsContainer.appendChild(logEl);
+
+                // Apply current filters
+                applyFilters(logEl, log);
+
+                // Auto-scroll if enabled
+                if (isNew && autoScroll) {
+                    scrollToBottom();
+                } else if (isNew && !autoScroll) {
+                    scrollIndicator.classList.add('visible');
+                }
+            }
+
+            // Update stats
+            updateStats();
+            updateTabCounts();
+        }
+
+        function createLogElement(log) {
+            const el = document.createElement('div');
+            el.className = `log-line level-${log.level}`;
+            el.dataset.service = log.service;
+            el.dataset.level = log.level;
+
+            const time = new Date(log.timestamp);
+            const timeStr = time.toLocaleTimeString('en-US', { hour12: false });
+
+            el.innerHTML = `
+                <span class="log-timestamp">${timeStr}</span>
+                <span class="log-service ${log.service}">${serviceNames[log.service] || log.service}</span>
+                <span class="log-level ${log.level}">${log.level}</span>
+                <span class="log-message">${escapeHtml(log.message)}</span>
+            `;
+
+            return el;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function updateServiceStatus(status) {
+            serviceStatus = status;
+
+            // Ensure tabs exist for each service
+            Object.keys(status).forEach(service => {
+                if (!document.querySelector(`.tab[data-service="${service}"]`)) {
+                    addServiceTab(service);
+                }
+
+                // Update status indicator
+                const tab = document.querySelector(`.tab[data-service="${service}"]`);
+                if (tab) {
+                    const indicator = tab.querySelector('.status-indicator');
+                    if (indicator) {
+                        indicator.className = 'status-indicator ' + status[service];
+                    }
+                }
+            });
+        }
+
+        function addServiceTab(service) {
+            const tab = document.createElement('div');
+            tab.className = 'tab';
+            tab.dataset.service = service;
+            tab.innerHTML = `
+                <span class="status-indicator"></span>
+                <span>${serviceNames[service] || service}</span>
+                <span class="log-count" id="count-${service}">0</span>
+            `;
+            tab.onclick = () => selectTab(service);
+            tabsContainer.appendChild(tab);
+        }
+
+        function selectTab(service) {
+            currentService = service;
+
+            // Update tab styles
+            document.querySelectorAll('.tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.service === service);
+            });
+
+            // Apply filters and scroll to show latest logs
+            applyAllFilters();
+            scrollToBottom();
+        }
+
+        function applyFilters(logEl, log) {
+            let visible = true;
+
+            // Service filter
+            if (currentService !== 'all' && log.service !== currentService) {
+                visible = false;
+            }
+
+            // Level filter
+            if (!visibleLevels.has(log.level)) {
+                visible = false;
+            }
+
+            // Search filter
+            if (searchFilter && !log.message.toLowerCase().includes(searchFilter.toLowerCase())) {
+                visible = false;
+            }
+
+            logEl.classList.toggle('hidden', !visible);
+        }
+
+        function applyAllFilters() {
+            document.querySelectorAll('.log-line').forEach(el => {
+                const log = {
+                    service: el.dataset.service,
+                    level: el.dataset.level,
+                    message: el.querySelector('.log-message').textContent
+                };
+                applyFilters(el, log);
+            });
+            updateStats();
+        }
+
+        function updateStats() {
+            totalLogsEl.textContent = logs.length;
+            const visible = document.querySelectorAll('.log-line:not(.hidden)').length;
+            visibleLogsEl.textContent = visible;
+        }
+
+        function updateTabCounts() {
+            Object.keys(serviceCounts).forEach(service => {
+                const countEl = document.getElementById(`count-${service}`);
+                if (countEl) {
+                    countEl.textContent = serviceCounts[service] || 0;
+                }
+            });
+        }
+
+        function scrollToBottom() {
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+        }
+
+        function updateUI() {
+            updateStats();
+            updateTabCounts();
+        }
+
+        // Event Listeners
+        searchInput.addEventListener('input', (e) => {
+            searchFilter = e.target.value;
+            applyAllFilters();
+        });
+
+        // Level toggle buttons
+        ['DEBUG', 'INFO', 'WARN', 'ERROR'].forEach(level => {
+            const btn = document.getElementById('btn' + level.charAt(0) + level.slice(1).toLowerCase());
+            if (btn) {
+                btn.onclick = () => {
+                    btn.classList.toggle('active');
+                    if (btn.classList.contains('active')) {
+                        visibleLevels.add(level);
+                    } else {
+                        visibleLevels.delete(level);
+                    }
+                    applyAllFilters();
+                };
+            }
+        });
+
+        // Pause button
+        document.getElementById('btnPause').onclick = () => {
+            isPaused = !isPaused;
+            document.getElementById('pauseIcon').textContent = isPaused ? '&#9654;' : '&#9208;';
+            document.getElementById('pauseText').textContent = isPaused ? 'Resume' : 'Pause';
+
+            if (!isPaused) {
+                // Re-render missed logs
+                const existingLogs = Array.from(logsContainer.querySelectorAll('.log-line'));
+                const existingCount = existingLogs.length;
+                const missedLogs = logs.slice(existingCount);
+
+                missedLogs.forEach(log => {
+                    const logEl = createLogElement(log);
+                    logsContainer.appendChild(logEl);
+                    applyFilters(logEl, log);
+                });
+
+                if (autoScroll) scrollToBottom();
+            }
+        };
+
+        // Clear button
+        document.getElementById('btnClear').onclick = () => {
+            logsContainer.querySelectorAll('.log-line').forEach(el => el.remove());
+            logs = [];
+            serviceCounts = { all: 0 };
+            updateUI();
+            emptyState.style.display = 'flex';
+        };
+
+        // Scroll detection for auto-scroll
+        logsContainer.addEventListener('scroll', () => {
+            const { scrollTop, scrollHeight, clientHeight } = logsContainer;
+            autoScroll = scrollHeight - scrollTop - clientHeight < 50;
+
+            if (autoScroll) {
+                scrollIndicator.classList.remove('visible');
+            }
+        });
+
+        // Scroll indicator click
+        scrollIndicator.onclick = () => {
+            autoScroll = true;
+            scrollToBottom();
+            scrollIndicator.classList.remove('visible');
+        };
+
+        // Keyboard shortcut for search
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                searchInput.focus();
+            }
+        });
+
+        // Custom copy handler for formatted log output
+        document.addEventListener('copy', (e) => {
+            const selection = window.getSelection();
+            if (!selection.rangeCount) return;
+
+            // Check if selection is within logs container
+            const range = selection.getRangeAt(0);
+            if (!logsContainer.contains(range.commonAncestorContainer)) return;
+
+            // Get all selected log lines
+            const selectedLogs = [];
+            const logLines = logsContainer.querySelectorAll('.log-line');
+
+            logLines.forEach(logEl => {
+                if (selection.containsNode(logEl, true)) {
+                    const timestamp = logEl.querySelector('.log-timestamp')?.textContent || '';
+                    const service = logEl.querySelector('.log-service')?.textContent || '';
+                    const level = logEl.querySelector('.log-level')?.textContent || '';
+                    const message = logEl.querySelector('.log-message')?.textContent || '';
+
+                    // Format: [HH:MM:SS] [Service] LEVEL: message
+                    selectedLogs.push(`[${timestamp}] [${service}] ${level}: ${message}`);
+                }
+            });
+
+            if (selectedLogs.length > 0) {
+                e.preventDefault();
+                e.clipboardData.setData('text/plain', selectedLogs.join('\n'));
+            }
+        });
+
+        // Tab click handlers
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.onclick = () => selectTab(tab.dataset.service);
+        });
+
+        // Heartbeat to keep connection alive
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ action: 'ping' }));
+            }
+        }, 30000);
+
+        // Start connection
+        connect();
+    </script>
+</body>
+</html>

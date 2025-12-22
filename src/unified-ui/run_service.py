@@ -13,6 +13,13 @@ In development mode, auto-reload is enabled.
 """
 import os
 import sys
+from pathlib import Path
+
+# Add shared modules to path for local development
+# This allows importing crm_security without pip install
+_shared_path = Path(__file__).parent.parent / "shared" / "crm-security"
+if _shared_path.exists() and str(_shared_path) not in sys.path:
+    sys.path.insert(0, str(_shared_path))
 
 import uvicorn
 

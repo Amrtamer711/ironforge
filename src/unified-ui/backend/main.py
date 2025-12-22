@@ -293,6 +293,33 @@ else:
 
 
 # =============================================================================
+# DEV TOOLS - Explicit routes for development panels
+# =============================================================================
+
+@app.get("/logs-panel.html")
+async def serve_logs_panel():
+    """Serve the logs panel directly (bypasses SPA routing)."""
+    logger.info("[UI] Serving /logs-panel.html (explicit route)")
+    if FRONTEND_PATH.exists():
+        logs_panel = FRONTEND_PATH / "logs-panel.html"
+        logger.info(f"[UI] Looking for: {logs_panel}, exists: {logs_panel.exists()}")
+        if logs_panel.exists():
+            return FileResponse(logs_panel, media_type="text/html")
+    raise HTTPException(status_code=404, detail="Logs panel not found")
+
+
+@app.get("/dev-panel.html")
+async def serve_dev_panel():
+    """Serve the dev panel directly (bypasses SPA routing)."""
+    logger.info("[UI] Serving /dev-panel.html (explicit route)")
+    if FRONTEND_PATH.exists():
+        dev_panel = FRONTEND_PATH / "dev-panel.html"
+        if dev_panel.exists():
+            return FileResponse(dev_panel, media_type="text/html")
+    raise HTTPException(status_code=404, detail="Dev panel not found")
+
+
+# =============================================================================
 # SPA CATCH-ALL - server.js:4148-4159
 # =============================================================================
 
@@ -305,6 +332,8 @@ async def serve_frontend(full_path: str):
 
     This enables client-side routing and handles Supabase auth redirects.
     """
+    logger.info(f"[UI] SPA catch-all hit: /{full_path}")
+
     # Don't catch API routes
     if full_path.startswith("api/"):
         raise HTTPException(status_code=404, detail="Not found")
@@ -313,11 +342,13 @@ async def serve_frontend(full_path: str):
     if FRONTEND_PATH.exists():
         static_file = FRONTEND_PATH / full_path
         if static_file.exists() and static_file.is_file():
+            logger.info(f"[UI] Serving static file: {static_file}")
             return FileResponse(static_file)
 
         # Serve index.html for SPA routing
         index_path = FRONTEND_PATH / "index.html"
         if index_path.exists():
+            logger.info(f"[UI] Falling back to index.html for: /{full_path}")
             return FileResponse(index_path)
 
     raise HTTPException(status_code=404, detail="Frontend not found")
