@@ -88,7 +88,8 @@ CREATE TABLE IF NOT EXISTS public.proposals_log (
     client_name TEXT NOT NULL,
     date_generated TIMESTAMPTZ DEFAULT NOW(),
     package_type TEXT NOT NULL CHECK (package_type IN ('separate', 'combined')),
-    total_amount TEXT NOT NULL,
+    total_amount TEXT,                     -- Legacy: formatted display text "AED 446,796"
+    total_amount_value DECIMAL(15,2),      -- Normalized: numeric sum
     currency TEXT DEFAULT 'AED',
     locations TEXT,                        -- Legacy: comma-separated location names
     proposal_data JSONB,                   -- Full proposal details

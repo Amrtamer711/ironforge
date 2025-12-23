@@ -140,6 +140,34 @@ def parse_json_field(value: Any) -> Any:
     return value
 
 
+def parse_amount_text(amount_text: str) -> float | None:
+    """
+    Parse formatted amount text to numeric value.
+
+    Examples:
+        "AED 446,796" -> 446796.0
+        "AED 446,796, AED 200,000" -> 646796.0 (sum of all amounts)
+        "446796" -> 446796.0
+    """
+    if not amount_text:
+        return None
+
+    # Find all numeric values (with optional commas)
+    amounts = re.findall(r'[\d,]+(?:\.\d+)?', str(amount_text))
+    if not amounts:
+        return None
+
+    total = 0.0
+    for amt in amounts:
+        try:
+            # Remove commas and convert to float
+            total += float(amt.replace(',', ''))
+        except ValueError:
+            continue
+
+    return total if total > 0 else None
+
+
 def get_schema_table(supabase: Client, table: str):
     """Get a table reference with the correct schema."""
     return supabase.schema(COMPANY_SCHEMA).table(table)
@@ -643,13 +671,18 @@ def load_proposals_log(supabase: Client, conn: sqlite3.Connection,
         if package_type not in ('separate', 'combined'):
             package_type = 'separate'  # Default 'single' and others to 'separate'
 
+        # Parse total_amount text to numeric value
+        total_amount_text = row['total_amount'] or ''
+        total_amount_value = parse_amount_text(total_amount_text)
+
         record = {
             'user_id': row['submitted_by'],  # Slack ID initially
             'submitted_by': row['submitted_by'],
             'client_name': row['client_name'],
             'date_generated': row['date_generated'],
             'package_type': package_type,
-            'total_amount': row['total_amount'],
+            'total_amount': total_amount_text,      # Legacy formatted text
+            'total_amount_value': total_amount_value,  # Normalized numeric
             'currency': 'AED',
             # Store in proposal_data for reference
             'proposal_data': {

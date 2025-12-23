@@ -126,9 +126,20 @@ class Settings(BaseSettings):
     # Used to validate JWTs from the authentication gateway service.
     # =========================================================================
 
+    # Environment-specific JWT secrets (preferred)
+    ui_dev_jwt_secret: str | None = Field(
+        default=None,
+        description="JWT secret from UI DEV Supabase project",
+    )
+    ui_prod_jwt_secret: str | None = Field(
+        default=None,
+        description="JWT secret from UI PROD Supabase project",
+    )
+
+    # Legacy single JWT secret (backwards compatibility)
     ui_jwt_secret: str | None = Field(
         default=None,
-        description="JWT secret from UI Supabase project (for cross-service auth)",
+        description="JWT secret from UI Supabase project (legacy, use UI_DEV/PROD_JWT_SECRET)",
     )
 
     # =========================================================================
@@ -464,8 +475,15 @@ class Settings(BaseSettings):
 
     @property
     def effective_jwt_secret(self) -> str | None:
-        """Get the JWT secret for validating UI tokens."""
-        # Prefer UI JWT secret (for cross-service auth), fall back to legacy
+        """Get the JWT secret for validating UI tokens based on environment."""
+        # Environment-specific UI JWT secrets (preferred)
+        if self.environment == "production":
+            if self.ui_prod_jwt_secret:
+                return self.ui_prod_jwt_secret
+        else:
+            if self.ui_dev_jwt_secret:
+                return self.ui_dev_jwt_secret
+        # Fall back to legacy single secret
         return self.ui_jwt_secret or self.jwt_secret or self.supabase_jwt_secret
 
     @property

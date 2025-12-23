@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # Used for inter-service authentication and audit logging
     # ==========================================================================
     SERVICE_NAME: str = "security-service"
-    SERVICE_API_SECRET: str | None = None  # Shared secret for inter-service auth
+    INTER_SERVICE_SECRET: str | None = None  # Shared secret for inter-service auth
 
     # ==========================================================================
     # UI SUPABASE (Read-only)
@@ -40,11 +40,11 @@ class Settings(BaseSettings):
 
     # Production keys (used when ENVIRONMENT == 'production')
     UI_PROD_SUPABASE_URL: str | None = None
-    UI_PROD_SUPABASE_SERVICE_KEY: str | None = None
+    UI_PROD_SUPABASE_SERVICE_ROLE_KEY: str | None = None
 
     # Development keys (used when ENVIRONMENT != 'production')
     UI_DEV_SUPABASE_URL: str | None = None
-    UI_DEV_SUPABASE_SERVICE_KEY: str | None = None
+    UI_DEV_SUPABASE_SERVICE_ROLE_KEY: str | None = None
 
     # ==========================================================================
     # SECURITY SUPABASE (Read/Write)
@@ -53,11 +53,11 @@ class Settings(BaseSettings):
 
     # Production keys (used when ENVIRONMENT == 'production')
     SECURITY_PROD_SUPABASE_URL: str | None = None
-    SECURITY_PROD_SUPABASE_SERVICE_KEY: str | None = None
+    SECURITY_PROD_SUPABASE_SERVICE_ROLE_KEY: str | None = None
 
     # Development keys (used when ENVIRONMENT != 'production')
     SECURITY_DEV_SUPABASE_URL: str | None = None
-    SECURITY_DEV_SUPABASE_SERVICE_KEY: str | None = None
+    SECURITY_DEV_SUPABASE_SERVICE_ROLE_KEY: str | None = None
 
     # ==========================================================================
     # JWT CONFIGURATION
@@ -118,8 +118,8 @@ class Settings(BaseSettings):
     def ui_supabase_key(self) -> str | None:
         """Get the appropriate UI Supabase service key based on environment."""
         if self.is_production:
-            return self.UI_PROD_SUPABASE_SERVICE_KEY
-        return self.UI_DEV_SUPABASE_SERVICE_KEY
+            return self.UI_PROD_SUPABASE_SERVICE_ROLE_KEY
+        return self.UI_DEV_SUPABASE_SERVICE_ROLE_KEY
 
     @property
     def security_supabase_url(self) -> str | None:
@@ -132,13 +132,13 @@ class Settings(BaseSettings):
     def security_supabase_key(self) -> str | None:
         """Get the appropriate Security Supabase service key based on environment."""
         if self.is_production:
-            return self.SECURITY_PROD_SUPABASE_SERVICE_KEY
-        return self.SECURITY_DEV_SUPABASE_SERVICE_KEY
+            return self.SECURITY_PROD_SUPABASE_SERVICE_ROLE_KEY
+        return self.SECURITY_DEV_SUPABASE_SERVICE_ROLE_KEY
 
     @property
     def jwt_signing_secret(self) -> str | None:
-        """Get JWT signing secret, falling back to SERVICE_API_SECRET."""
-        return self.JWT_SECRET or self.SERVICE_API_SECRET
+        """Get JWT signing secret, falling back to INTER_SERVICE_SECRET."""
+        return self.JWT_SECRET or self.INTER_SERVICE_SECRET
 
     @property
     def allowed_origins(self) -> list[str]:
@@ -174,8 +174,8 @@ class Settings(BaseSettings):
             logger.warning("[SECURITY] Audit logs and API keys will use local-only mode.")
 
         # Check service secret
-        if not self.SERVICE_API_SECRET:
-            logger.warning("[SECURITY] WARNING: SERVICE_API_SECRET not set.")
+        if not self.INTER_SERVICE_SECRET:
+            logger.warning("[SECURITY] WARNING: INTER_SERVICE_SECRET not set.")
             logger.warning("[SECURITY] Inter-service authentication will be disabled.")
 
         # Log feature status

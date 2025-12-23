@@ -1111,6 +1111,12 @@ class SupabaseBackend(DatabaseBackend):
         location_id: int,
         company_schemas: list[str],
     ) -> dict[str, Any]:
+        """
+        Check basic location eligibility (local fields only).
+
+        Note: Proposal and mockup eligibility require data from Sales-Module
+        (rate_cards, mockup_frames). Use EligibilityService for full checks.
+        """
         location = self.get_location(location_id, company_schemas)
         if not location:
             return {
@@ -1128,39 +1134,35 @@ class SupabaseBackend(DatabaseBackend):
         company_schema = location.get("company_schema", "")
         details = []
 
-        # Proposal generator eligibility
+        # Proposal generator - basic field check only
+        # Full eligibility (template, rate_card) checked via Sales-Module
         proposal_missing = []
         if not location.get("display_name"):
             proposal_missing.append("display_name")
         if not location.get("display_type"):
             proposal_missing.append("display_type")
-        if not self.has_rate_card(location_id, company_schema):
-            proposal_missing.append("rate_card")
 
         details.append({
             "service": "proposal_generator",
             "eligible": len(proposal_missing) == 0,
             "missing_fields": proposal_missing,
-            "warnings": [],
+            "warnings": ["Full eligibility checked via Sales-Module"],
         })
 
-        # Mockup generator eligibility
+        # Mockup generator - basic field check only
+        # Full eligibility (mockup_frames) checked via Sales-Module
         mockup_missing = []
         if not location.get("display_name"):
             mockup_missing.append("display_name")
-        if not location.get("template_path"):
-            mockup_missing.append("template_path")
-        if not self.has_mockup_frame(location.get("location_key", ""), company_schema):
-            mockup_missing.append("mockup_frame")
 
         details.append({
             "service": "mockup_generator",
             "eligible": len(mockup_missing) == 0,
             "missing_fields": mockup_missing,
-            "warnings": [],
+            "warnings": ["Full eligibility checked via Sales-Module"],
         })
 
-        # Availability calendar eligibility
+        # Availability calendar eligibility (local check only)
         calendar_missing = []
         if not location.get("display_name"):
             calendar_missing.append("display_name")
@@ -1308,62 +1310,3 @@ class SupabaseBackend(DatabaseBackend):
                 eligible.append(net)
 
         return eligible[offset:offset + limit]
-
-    # =========================================================================
-    # CROSS-SERVICE LOOKUPS
-    # =========================================================================
-
-    def has_rate_card(
-        self,
-        location_id: int,
-        company_schema: str,
-    ) -> bool:
-        """
-        Check if location has an active rate card.
-        Queries the rate_cards table in the company schema.
-        """
-        client = self._get_client()
-        try:
-            # Query rate_cards table (from sales-module schema)
-            response = (
-                client.schema(company_schema)
-                .table("rate_cards")
-                .select("id")
-                .eq("location_id", location_id)
-                .eq("is_active", True)
-                .limit(1)
-                .execute()
-            )
-            return len(response.data) > 0 if response.data else False
-        except Exception as e:
-            # Table might not exist or be accessible
-            logger.debug(f"[SUPABASE] Could not check rate_card for location {location_id}: {e}")
-            # Default to True to allow eligibility for basic use
-            return True
-
-    def has_mockup_frame(
-        self,
-        location_key: str,
-        company_schema: str,
-    ) -> bool:
-        """
-        Check if location has a mockup frame.
-        Queries the mockup_frames table in the company schema.
-        """
-        client = self._get_client()
-        try:
-            # Query mockup_frames table (from sales-module schema)
-            response = (
-                client.schema(company_schema)
-                .table("mockup_frames")
-                .select("id")
-                .eq("location_key", location_key)
-                .limit(1)
-                .execute()
-            )
-            return len(response.data) > 0 if response.data else False
-        except Exception as e:
-            # Table might not exist or be accessible
-            logger.debug(f"[SUPABASE] Could not check mockup_frame for location {location_key}: {e}")
-            # Default to True to allow eligibility for basic use
-            return True

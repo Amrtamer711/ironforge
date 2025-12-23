@@ -47,7 +47,7 @@ def get_service_requirements(
 
 
 @router.get("/check/{company}/{location_id}")
-def check_location_eligibility(
+async def check_location_eligibility(
     company: str,
     location_id: int,
     service: str | None = Query(default=None, description="Check for specific service"),
@@ -64,7 +64,7 @@ def check_location_eligibility(
     if user_companies and company not in user_companies:
         raise HTTPException(status_code=403, detail=f"No access to company: {company}")
 
-    result = _service.check_location_eligibility(
+    result = await _service.check_location_eligibility(
         company=company,
         location_id=location_id,
         service=service,
@@ -75,7 +75,7 @@ def check_location_eligibility(
 
 
 @router.get("/check-network/{company}/{network_id}")
-def check_network_eligibility(
+async def check_network_eligibility(
     company: str,
     network_id: int,
     service: str | None = Query(default=None, description="Check for specific service"),
@@ -91,7 +91,7 @@ def check_network_eligibility(
     if user_companies and company not in user_companies:
         raise HTTPException(status_code=403, detail=f"No access to company: {company}")
 
-    result = _service.check_network_eligibility(
+    result = await _service.check_network_eligibility(
         company=company,
         network_id=network_id,
         service=service,
@@ -102,7 +102,7 @@ def check_network_eligibility(
 
 
 @router.post("/bulk-check")
-def bulk_check_eligibility(
+async def bulk_check_eligibility(
     items: list[dict],
     service: str = Query(..., description="Service to check eligibility for"),
     user: TrustedUserContext = Depends(require_permission("assets:locations:read")),
@@ -127,7 +127,7 @@ def bulk_check_eligibility(
         )
         for item in items
     ]
-    return _service.bulk_check_eligibility(items=bulk_items, service=service)
+    return await _service.bulk_check_eligibility(items=bulk_items, service=service)
 
 
 @router.get("/eligible-locations")

@@ -959,6 +959,12 @@ class SQLiteBackend(DatabaseBackend):
         location_id: int,
         company_schemas: list[str],
     ) -> dict[str, Any]:
+        """
+        Check basic location eligibility (local fields only).
+
+        Note: Proposal and mockup eligibility require data from Sales-Module.
+        Use EligibilityService for full checks.
+        """
         location = self.get_location(location_id, company_schemas)
         if not location:
             return {
@@ -976,41 +982,33 @@ class SQLiteBackend(DatabaseBackend):
         company_schema = location.get("company_schema", "")
         details = []
 
-        # Check proposal_generator eligibility
+        # Proposal generator - basic field check only
         proposal_missing = []
         if not location.get("display_name"):
             proposal_missing.append("display_name")
         if not location.get("display_type"):
             proposal_missing.append("display_type")
-        has_rate = self.has_rate_card(location_id, company_schema)
-        if not has_rate:
-            proposal_missing.append("rate_card")
 
         details.append({
             "service": "proposal_generator",
             "eligible": len(proposal_missing) == 0,
             "missing_fields": proposal_missing,
-            "warnings": [],
+            "warnings": ["Full eligibility checked via Sales-Module"],
         })
 
-        # Check mockup_generator eligibility
+        # Mockup generator - basic field check only
         mockup_missing = []
         if not location.get("display_name"):
             mockup_missing.append("display_name")
-        if not location.get("template_path"):
-            mockup_missing.append("template_path")
-        has_mockup = self.has_mockup_frame(location.get("location_key", ""), company_schema)
-        if not has_mockup:
-            mockup_missing.append("mockup_frame")
 
         details.append({
             "service": "mockup_generator",
             "eligible": len(mockup_missing) == 0,
             "missing_fields": mockup_missing,
-            "warnings": [],
+            "warnings": ["Full eligibility checked via Sales-Module"],
         })
 
-        # Check availability_calendar eligibility
+        # Availability calendar eligibility (local check only)
         calendar_missing = []
         if not location.get("display_name"):
             calendar_missing.append("display_name")
@@ -1158,33 +1156,3 @@ class SQLiteBackend(DatabaseBackend):
                 eligible.append(net)
 
         return eligible[offset:offset + limit]
-
-    # =========================================================================
-    # CROSS-SERVICE LOOKUPS
-    # =========================================================================
-
-    def has_rate_card(
-        self,
-        location_id: int,
-        company_schema: str,
-    ) -> bool:
-        """
-        Check if location has rate card.
-        In SQLite mode, always returns True (for local dev without sales-module).
-        """
-        # SQLite doesn't have cross-service rate_cards table
-        # Return True to allow local development
-        return True
-
-    def has_mockup_frame(
-        self,
-        location_key: str,
-        company_schema: str,
-    ) -> bool:
-        """
-        Check if location has mockup frame.
-        In SQLite mode, always returns True (for local dev without sales-module).
-        """
-        # SQLite doesn't have cross-service mockup_frames table
-        # Return True to allow local development
-        return True

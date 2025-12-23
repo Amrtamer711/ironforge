@@ -15,6 +15,7 @@ from pptx import Presentation
 from pypdf import PdfReader
 
 import config
+from core.services.template_service import TemplateService
 from db.database import db
 from generators.pdf import convert_pptx_to_pdf, merge_pdfs, remove_slides_and_convert_to_pdf
 
@@ -39,7 +40,8 @@ class ProposalProcessor:
         self,
         validator: ProposalValidator,
         renderer: ProposalRenderer,
-        intro_outro_handler: IntroOutroHandler
+        intro_outro_handler: IntroOutroHandler,
+        template_service: TemplateService | None = None
     ):
         """
         Initialize processor with dependencies.
@@ -48,10 +50,12 @@ class ProposalProcessor:
             validator: ProposalValidator instance
             renderer: ProposalRenderer instance
             intro_outro_handler: IntroOutroHandler instance
+            template_service: TemplateService instance (optional, created if not provided)
         """
         self.validator = validator
         self.renderer = renderer
         self.intro_outro_handler = intro_outro_handler
+        self.template_service = template_service or TemplateService()
         self.logger = config.logger
 
     @staticmethod
@@ -106,7 +110,7 @@ class ProposalProcessor:
         Create intro and outro slide PDFs.
 
         Strategy:
-        1. Try to use pre-made PDF from intro_outro directory
+        1. Try to use pre-made PDF from Supabase Storage
         2. Fall back to PowerPoint extraction if not found
 
         Args:
@@ -119,45 +123,57 @@ class ProposalProcessor:
         location_key = intro_outro_info.get('key', '')
         display_name = intro_outro_info.get('metadata', {}).get('display_name', location_key)
 
-        self.logger.info("[PROCESSOR] 🎬 Creating intro/outro slides")
-        self.logger.info(f"[PROCESSOR] 📍 Selected location: '{display_name}' (key: {location_key})")
-        self.logger.info(f"[PROCESSOR] 📂 Series: '{series}'")
+        self.logger.info("[PROCESSOR] Creating intro/outro slides")
+        self.logger.info(f"[PROCESSOR] Selected location: '{display_name}' (key: {location_key})")
+        self.logger.info(f"[PROCESSOR] Series: '{series}'")
 
-        # Check for pre-made PDFs
-        intro_outro_dir = config.TEMPLATES_DIR / "intro_outro"
-        pdf_path = None
-
+        # Determine which pre-made PDF to use
+        pdf_name = None
         is_landmark = intro_outro_info.get('is_landmark', False)
         is_non_landmark = intro_outro_info.get('is_non_landmark', False)
 
         if is_landmark or series == 'The Landmark Series':
-            pdf_path = intro_outro_dir / "landmark_series.pdf"
-            self.logger.info("[PROCESSOR] 🏆 LANDMARK SERIES! Looking for pre-made PDF...")
+            pdf_name = "landmark_series"
+            self.logger.info("[PROCESSOR] LANDMARK SERIES - looking for pre-made PDF...")
         elif is_non_landmark:
-            pdf_path = intro_outro_dir / "rest.pdf"
-            self.logger.info("[PROCESSOR] 🏢 NON-LANDMARK! Using rest.pdf...")
+            pdf_name = "rest"
+            self.logger.info("[PROCESSOR] NON-LANDMARK - using rest.pdf...")
         elif 'Digital Icons' in series:
-            pdf_path = intro_outro_dir / "digital_icons.pdf"
-            self.logger.info("[PROCESSOR] 💎 DIGITAL ICONS! Looking for pre-made PDF...")
+            pdf_name = "digital_icons"
+            self.logger.info("[PROCESSOR] DIGITAL ICONS - looking for pre-made PDF...")
         else:
-            self.logger.info(f"[PROCESSOR] ❓ No pre-made PDF mapping for series '{series}'")
+            self.logger.info(f"[PROCESSOR] No pre-made PDF mapping for series '{series}'")
 
-        # Try pre-made PDF first
-        if pdf_path and pdf_path.exists():
-            self.logger.info(f"[PROCESSOR] ✅ PRE-MADE PDF FOUND! Using: {pdf_path}")
-            intro_pdf = self._extract_pages_from_pdf(str(pdf_path), [0])
-            reader = PdfReader(str(pdf_path))
-            last_page = len(reader.pages) - 1
-            outro_pdf = self._extract_pages_from_pdf(str(pdf_path), [last_page])
-            return intro_pdf, outro_pdf
+        # Try to download pre-made PDF from storage
+        if pdf_name:
+            pdf_temp_path = await self.template_service.download_intro_outro_to_temp(pdf_name)
+            if pdf_temp_path:
+                self.logger.info(f"[PROCESSOR] PRE-MADE PDF FOUND: {pdf_name}")
+                intro_pdf = self._extract_pages_from_pdf(pdf_temp_path, [0])
+                reader = PdfReader(pdf_temp_path)
+                last_page = len(reader.pages) - 1
+                outro_pdf = self._extract_pages_from_pdf(pdf_temp_path, [last_page])
+                # Clean up the temp PDF
+                try:
+                    os.unlink(pdf_temp_path)
+                except OSError:
+                    pass
+                return intro_pdf, outro_pdf
+            else:
+                self.logger.info(f"[PROCESSOR] PRE-MADE PDF NOT FOUND: {pdf_name}")
 
         # Fall back to PowerPoint extraction
-        if pdf_path:
-            self.logger.info(f"[PROCESSOR] ❌ PRE-MADE PDF NOT FOUND at: {pdf_path}")
-        self.logger.info("[PROCESSOR] 🔄 FALLING BACK to PowerPoint extraction")
+        self.logger.info("[PROCESSOR] FALLING BACK to PowerPoint extraction")
 
-        template_path = intro_outro_info['template_path']
-        self.logger.info(f"[PROCESSOR] 📄 Using PowerPoint template: {template_path}")
+        # Download template from storage
+        template_path = await self.template_service.download_to_temp(location_key)
+        if not template_path:
+            # Last resort: try the path from intro_outro_info
+            template_path = intro_outro_info.get('template_path')
+            if not template_path or not os.path.exists(template_path):
+                raise FileNotFoundError(f"Template not found for {location_key}")
+
+        self.logger.info(f"[PROCESSOR] Using PowerPoint template: {template_path}")
 
         loop = asyncio.get_event_loop()
 
@@ -189,10 +205,13 @@ class ProposalProcessor:
 
         outro_pdf = await loop.run_in_executor(None, convert_pptx_to_pdf, outro_pptx.name)
 
-        # Clean up temp PPTX files
+        # Clean up temp files
         try:
             os.unlink(intro_pptx.name)
             os.unlink(outro_pptx.name)
+            # Clean up downloaded template if it was from storage
+            if template_path != intro_outro_info.get('template_path'):
+                os.unlink(template_path)
         except OSError as e:
             self.logger.warning(f"[PROCESSOR] Failed to cleanup temp files: {e}")
 
@@ -248,9 +267,11 @@ class ProposalProcessor:
 
         # Process each proposal
         async def process_single(idx: int, proposal: dict) -> dict:
-            template_path = config.TEMPLATES_DIR / proposal["filename"]
-            if not template_path.exists():
-                raise FileNotFoundError(f"{proposal['filename']} not found")
+            # Download template from storage
+            location_key = proposal.get("location", "").lower().strip()
+            template_path = await self.template_service.download_to_temp(location_key)
+            if not template_path:
+                raise FileNotFoundError(f"Template not found for {location_key}")
 
             # Build financial data
             financial_data = {
@@ -278,6 +299,12 @@ class ProposalProcessor:
                 financial_data,
                 currency
             )
+
+            # Clean up downloaded template
+            try:
+                os.unlink(template_path)
+            except OSError:
+                pass
 
             result = {
                 "path": pptx_path,
@@ -476,9 +503,11 @@ class ProposalProcessor:
 
         # Process each unique location
         for idx, proposal in enumerate(unique_proposals_for_deck):
-            template_path = config.TEMPLATES_DIR / proposal["filename"]
-            if not template_path.exists():
-                return {"success": False, "error": f"{proposal['filename']} not found"}
+            # Download template from storage
+            location_key = proposal.get("location", "").lower().strip()
+            template_path = await self.template_service.download_to_temp(location_key)
+            if not template_path:
+                return {"success": False, "error": f"Template not found for {location_key}"}
 
             # Last location gets the combined financial slide
             if idx == len(unique_proposals_for_deck) - 1:
@@ -492,9 +521,15 @@ class ProposalProcessor:
                     payment_terms,
                     currency,
                 )
+                # Clean up downloaded template
+                try:
+                    os.unlink(template_path)
+                except OSError:
+                    pass
             else:
                 pptx_path = str(template_path)
                 total_combined = None
+                # Note: template_path will be cleaned up after PDF conversion
 
             # Determine which slides to remove
             if intro_outro_info:
@@ -515,12 +550,11 @@ class ProposalProcessor:
             pdf_path = await remove_slides_and_convert_to_pdf(pptx_path, remove_first, remove_last)
             pdf_files.append(pdf_path)
 
-            # Clean up temp PPTX if we created one
-            if idx == len(unique_proposals_for_deck) - 1:
-                try:
-                    os.unlink(pptx_path)
-                except OSError as e:
-                    self.logger.warning(f"[PROCESSOR] Failed to cleanup temp PPTX: {e}")
+            # Clean up temp PPTX/template
+            try:
+                os.unlink(pptx_path)
+            except OSError as e:
+                self.logger.warning(f"[PROCESSOR] Failed to cleanup temp file: {e}")
 
         # Add intro/outro slides
         if intro_outro_info:

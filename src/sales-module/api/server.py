@@ -29,6 +29,8 @@ from api.routers import (
     costs_router,
     files_router,
     health_router,
+    internal_router,
+    locations_router,
     mockups_router,
     modules_router,
     proposals_router,
@@ -276,3 +278,4 @@ app.include_router(proposals_router)
 app.include_router(files_router)
 app.include_router(admin_router)
 app.include_router(modules_router)
+app.include_router(internal_router)

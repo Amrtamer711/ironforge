@@ -7,7 +7,7 @@ Handles selection and extraction of intro/outro slides for proposals.
 from typing import Any
 
 import config
-from core.utils import match_location_key, get_location_metadata
+from core.utils import get_location_metadata
 
 
 class IntroOutroHandler:
@@ -50,7 +50,6 @@ class IntroOutroHandler:
             {
                 'key': str,
                 'series': str,
-                'template_path': str,
                 'metadata': dict,
                 'is_landmark': bool,  # True if Landmark Series
                 'is_non_landmark': bool,  # True if fallback (for rest.pdf)
@@ -60,13 +59,12 @@ class IntroOutroHandler:
             >>> handler = IntroOutroHandler(available_locations)
             >>> info = handler.get_intro_outro_location(validated_proposals)
             >>> if info and info.get('is_landmark'):
-            ...     use_landmark_intro_outro(info['template_path'])
+            ...     # Use landmark series intro/outro
+            ...     pass
         """
         self.logger.info(
-            f"[INTRO_OUTRO] 🔍 Searching for suitable location from {len(validated_proposals)} proposals"
+            f"[INTRO_OUTRO] Searching for suitable location from {len(validated_proposals)} proposals"
         )
-
-        mapping = config.get_location_mapping()
 
         # First, look for locations with "The Landmark Series"
         for idx, proposal in enumerate(validated_proposals):
@@ -91,22 +89,21 @@ class IntroOutroHandler:
 
             if series == 'The Landmark Series':
                 self.logger.info(
-                    f"[INTRO_OUTRO] ✅ LANDMARK SERIES FOUND! Using '{display_name}' for intro/outro"
+                    f"[INTRO_OUTRO] LANDMARK SERIES FOUND! Using '{display_name}' for intro/outro"
                 )
                 return {
                     'key': location_key,
                     'series': series,
-                    'template_path': str(config.TEMPLATES_DIR / mapping.get(location_key, '')),
                     'metadata': location_meta,
                     'is_landmark': True
                 }
 
         # If no Landmark Series found, use the first location from proposals
-        self.logger.info("[INTRO_OUTRO] ❌ No Landmark Series location found in proposals")
+        self.logger.info("[INTRO_OUTRO] No Landmark Series location found in proposals")
 
         if validated_proposals:
             first_location_key = validated_proposals[0].get("location")
-            self.logger.info(f"[INTRO_OUTRO] 📍 Falling back to first location: '{first_location_key}'")
+            self.logger.info(f"[INTRO_OUTRO] Falling back to first location: '{first_location_key}'")
 
             if first_location_key:
                 location_meta = get_location_metadata(first_location_key, self.available_locations)
@@ -115,7 +112,7 @@ class IntroOutroHandler:
                     display_name = location_meta.get('display_name', first_location_key)
                     display_type = location_meta.get('display_type', 'Unknown')
 
-                    self.logger.info(f"[INTRO_OUTRO] 🎯 Using first location: '{display_name}' (key: {first_location_key})")
+                    self.logger.info(f"[INTRO_OUTRO] Using first location: '{display_name}' (key: {first_location_key})")
                     self.logger.info(f"[INTRO_OUTRO]   - Display Type: {display_type}")
                     self.logger.info(f"[INTRO_OUTRO]   - Series: {series}")
 
@@ -123,10 +120,9 @@ class IntroOutroHandler:
                     return {
                         'key': first_location_key,
                         'series': series,
-                        'template_path': str(config.TEMPLATES_DIR / mapping.get(first_location_key, '')),
                         'metadata': location_meta,
                         'is_non_landmark': True  # Flag to use rest.pdf
                     }
 
-        self.logger.info("[INTRO_OUTRO] ⚠️ No suitable location found for intro/outro")
+        self.logger.info("[INTRO_OUTRO] No suitable location found for intro/outro")
         return None
