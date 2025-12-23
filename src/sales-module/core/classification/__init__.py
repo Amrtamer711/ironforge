@@ -4,12 +4,17 @@ Request Classification Module.
 Provides modular, testable request classification for routing
 requests to appropriate workflows (proposals, mockups, BO parsing).
 
-Fast-path classification:
-- Image uploads → MOCKUP (deterministic, no LLM)
-- PDF/Excel → Uses LLM classification (reuses bo_parser.classify_document)
+All file uploads go through LLM classification because:
+- Images could be artwork OR screenshots of booking orders
+- PDFs/Excel could be booking orders OR artwork files
+
+Classification outputs:
+- BOOKING_ORDER → BO_PARSING workflow
+- ARTWORK → MOCKUP workflow
+- OTHER → Inform main LLM (neither BO nor artwork)
 
 Usage:
-    from core.classification import get_classifier, ClassificationContext
+    from core.classification import get_classifier, ClassificationContext, RequestType
 
     classifier = get_classifier()
     result = await classifier.classify(
@@ -21,15 +26,16 @@ Usage:
         download_file_func=download_file,
     )
 
-    if result.request_type == RequestType.MOCKUP and result.is_high_confidence:
-        # Fast-path to mockup generation
-        ...
-    elif result.request_type == RequestType.BO_PARSING and result.is_high_confidence:
-        # Fast-path to BO parsing
-        ...
-    else:
-        # Let LLM handle
-        ...
+    if result.is_high_confidence:
+        if result.request_type == RequestType.BO_PARSING:
+            # Route to BO parsing
+            ...
+        elif result.request_type == RequestType.MOCKUP:
+            # Route to mockup generation
+            ...
+        elif result.request_type == RequestType.OTHER:
+            # Inform main LLM about the classification
+            ...
 """
 
 from core.classification.classifier import RequestClassifier, get_classifier

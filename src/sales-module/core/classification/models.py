@@ -16,6 +16,7 @@ class RequestType(Enum):
     PROPOSAL = "proposal"
     MOCKUP = "mockup"
     BO_PARSING = "bo_parsing"
+    OTHER = "other"  # Confidently determined to be neither BO nor artwork
     CONVERSATION = "conversation"
     UNKNOWN = "unknown"
 

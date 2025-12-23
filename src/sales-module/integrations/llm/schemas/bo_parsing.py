@@ -7,8 +7,7 @@ def get_classification_schema() -> JSONSchema:
     """
     JSON schema for booking order classification response.
 
-    Used to classify uploaded documents as BOOKING_ORDER or ARTWORK
-    and identify the company (backlite/viola).
+    Used to classify uploaded documents as BOOKING_ORDER, ARTWORK, or OTHER.
     """
     return JSONSchema(
         name="classification_response",
@@ -17,7 +16,7 @@ def get_classification_schema() -> JSONSchema:
             "properties": {
                 "classification": {
                     "type": "string",
-                    "enum": ["BOOKING_ORDER", "ARTWORK"]
+                    "enum": ["BOOKING_ORDER", "ARTWORK", "OTHER"]
                 },
                 "confidence": {
                     "type": "string",

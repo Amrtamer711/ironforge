@@ -1137,6 +1137,24 @@ async def main_llm_loop(
                         image_files.append(f.filename)
                 # Fall through to LLM for mockup generation
 
+            elif classification_result.request_type == RequestType.OTHER:
+                logger.info(f"[CLASSIFIER] HIGH CONFIDENCE OTHER - informing LLM: {classification_result.reasoning}")
+                # The file is neither a BO nor artwork - inform the main LLM
+                # so it can respond appropriately to the user
+                filenames = ", ".join(f.filename for f in classification_result.files) if classification_result.files else "uploaded file"
+                user_message_content = (
+                    f"{user_input}\n\n"
+                    f"[SYSTEM: The uploaded file ({filenames}) was analyzed and determined to be "
+                    f"neither a booking order nor artwork for mockup generation. "
+                    f"Classification reasoning: {classification_result.reasoning}. "
+                    f"Please respond to the user appropriately - they may have uploaded the wrong file "
+                    f"or need help with something else.]"
+                )
+                # Clear file lists since we've already informed the LLM about the classification
+                image_files.clear()
+                document_files.clear()
+                # Fall through to LLM
+
         # Low/medium confidence or unknown - fall through to LLM
 
         # Inform LLM about uploaded files (only if pre-router didn't handle it)

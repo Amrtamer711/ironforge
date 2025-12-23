@@ -40,33 +40,17 @@ class FileDetector(Detector):
         """
         Analyze files in context.
 
+        All file types (images, PDFs, Excel) need LLM classification because:
+        - Images could be artwork for mockups OR screenshots of booking orders
+        - PDFs/Excel could be booking orders OR artwork files
+
         Returns:
-            ClassificationResult for images (deterministic MOCKUP)
-            None for documents (needs LLM classification)
-            None if no files
+            None - all files need LLM classification
         """
-        if not context.files:
-            return None
-
-        # Detect file types
-        detected_files = self._detect_file_types(context.files)
-
-        if not detected_files:
-            return None
-
-        # Check for images - deterministic MOCKUP
-        image_files = [f for f in detected_files if f.is_image]
-        if image_files and not any(f.is_pdf or f.is_excel for f in detected_files):
-            return ClassificationResult(
-                request_type=RequestType.MOCKUP,
-                confidence=Confidence.HIGH,
-                files=detected_files,
-                reasoning=f"Image file(s) detected: {', '.join(f.filename for f in image_files)}",
-                is_deterministic=True,
-            )
-
-        # Documents (PDF/Excel) need LLM classification
-        # Return None to let the classifier use bo_parser.classify_document()
+        # File detector no longer returns deterministic results
+        # All files go through LLM classification to handle edge cases like:
+        # - Booking orders sent as screenshots/images
+        # - Artwork sent as PDFs
         return None
 
     def _detect_file_types(self, files: list[dict]) -> list[DetectedFile]:

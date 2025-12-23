@@ -26,9 +26,13 @@ class RequestClassifier:
     Classifies incoming requests to determine the appropriate workflow.
 
     Classification strategy:
-    1. Fast file detection (deterministic for images)
-    2. LLM document classification for PDFs/Excel (uses existing bo_parser)
-    3. Falls through to LLM for complex/ambiguous cases
+    1. For single file uploads, use LLM classification (handles all file types)
+    2. Falls through to main LLM for multi-file or no-file cases
+
+    All file types go through LLM classification because:
+    - Images could be artwork OR screenshots of booking orders
+    - PDFs/Excel could be booking orders OR artwork files
+    - The LLM can classify as BOOKING_ORDER, ARTWORK, or OTHER
     """
 
     def __init__(self):
@@ -51,47 +55,43 @@ class RequestClassifier:
         """
         logger.info(f"[CLASSIFIER] Classifying request: text='{context.text[:50]}...', files={len(context.files)}")
 
-        # Step 1: Fast file detection
-        file_result = await self.file_detector.detect(context)
-
-        if file_result and file_result.is_deterministic:
-            logger.info(f"[CLASSIFIER] Fast-path: {file_result.request_type.value} ({file_result.reasoning})")
-            return file_result
-
-        # Step 2: For single documents, use LLM classification
+        # For single file uploads, use LLM classification
+        # This handles ALL file types (images, PDFs, Excel) since:
+        # - Images could be BO screenshots
+        # - PDFs could be artwork
         if len(context.files) == 1 and download_file_func:
             detected_files = self.file_detector.get_detected_files(context)
-            doc_files = [f for f in detected_files if f.is_pdf or f.is_excel]
 
-            if doc_files:
-                result = await self._classify_document(
+            if detected_files:
+                result = await self._classify_file(
                     context=context,
-                    detected_file=doc_files[0],
+                    detected_file=detected_files[0],
                     download_file_func=download_file_func,
                 )
                 if result:
                     return result
 
-        # Step 3: No deterministic classification - let LLM handle
+        # No classification possible - let main LLM handle
         detected_files = self.file_detector.get_detected_files(context)
         return ClassificationResult(
             request_type=RequestType.UNKNOWN,
             confidence=Confidence.LOW,
             files=detected_files,
-            reasoning="No deterministic classification - requires LLM",
+            reasoning="No classification - requires main LLM",
             is_deterministic=False,
         )
 
-    async def _classify_document(
+    async def _classify_file(
         self,
         context: ClassificationContext,
         detected_file,
         download_file_func,
     ) -> ClassificationResult | None:
         """
-        Classify a document using existing bo_parser.classify_document().
+        Classify a file using existing bo_parser.classify_document().
 
         This reuses the existing LLM-based classification logic.
+        Works with all file types (images, PDFs, Excel).
         """
         tmp_file = None
         try:
@@ -157,6 +157,8 @@ class RequestClassifier:
             request_type = RequestType.BO_PARSING
         elif classification == "ARTWORK":
             request_type = RequestType.MOCKUP
+        elif classification == "OTHER":
+            request_type = RequestType.OTHER
         else:
             request_type = RequestType.UNKNOWN
 

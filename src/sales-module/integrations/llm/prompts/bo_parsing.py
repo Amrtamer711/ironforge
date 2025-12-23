@@ -15,9 +15,7 @@ def get_classification_prompt(user_message: str = "") -> str:
     """
     user_context = f"\n\n**USER'S MESSAGE:** \"{user_message}\"\nUse this context to better understand the user's intent." if user_message else ""
 
-    return f"""You are classifying a document as either a BOOKING_ORDER or ARTWORK.
-
-**IMPORTANT BIAS:** Default to classifying as ARTWORK unless you see CLEAR booking order characteristics.
+    return f"""You are classifying a document as BOOKING_ORDER, ARTWORK, or OTHER.
 
 **BOOKING_ORDER characteristics (must have MULTIPLE of these):**
 - Explicit booking/order reference numbers (e.g., "BO #12345", "Order #", "Booking Ref")
@@ -25,22 +23,30 @@ def get_classification_prompt(user_message: str = "") -> str:
 - Financial terms: Net, VAT, Gross, SLA deduction, Payment terms
 - Client/Agency names with campaign details
 - Multiple locations listed with dates and pricing
+- Can be a PDF, Excel, or even a screenshot/image of a booking order
 
 **ARTWORK characteristics (if you see ANY of these, classify as ARTWORK):**
-- Visual designs, graphics, logos, imagery
-- Product photos or promotional content
+- Visual designs, graphics, logos, imagery meant for billboard display
+- Product photos or promotional content for advertising
 - Brand assets, mockups, creative designs
-- Marketing materials
+- Marketing materials intended for outdoor advertising
 - No tabular pricing/booking data
 {user_context}
 
+**OTHER characteristics (use when document is CLEARLY neither):**
+- Invoices, receipts, or payment documents
+- Contracts or legal documents (not booking orders)
+- Random documents, spreadsheets, or files unrelated to billboard advertising
+- Personal photos, screenshots of apps, or irrelevant content
+- Documents that don't fit billboard advertising context at all
+
 **Classification rules:**
-1. If you see ANY visual design elements → ARTWORK (high confidence)
-2. If you see a table with locations/dates/pricing → BOOKING_ORDER (high confidence)
-3. If unclear or minimal text → ARTWORK (medium confidence)
-4. If it's a mix → ARTWORK (low confidence)
-5. If user's message mentions "mockup", "billboard", "creative", "artwork" → ARTWORK (high confidence)
-6. If user's message mentions "booking order", "BO", "parse" → BOOKING_ORDER (higher confidence)
+1. If you see a table with locations/dates/pricing for billboard advertising → BOOKING_ORDER (high confidence)
+2. If you see visual design elements meant for billboard display → ARTWORK (high confidence)
+3. If user's message mentions "booking order", "BO", "parse" → BOOKING_ORDER (higher confidence)
+4. If user's message mentions "mockup", "billboard", "creative", "artwork" → ARTWORK (high confidence)
+5. If the document is CLEARLY unrelated to billboard advertising → OTHER (high confidence)
+6. If unclear whether it's a BO or artwork → prefer ARTWORK (medium/low confidence)
 
 **COMPANY DETECTION (for BOOKING_ORDER only):**
 If classified as BOOKING_ORDER, determine the company:
@@ -50,10 +56,10 @@ If classified as BOOKING_ORDER, determine the company:
 - If unclear, default to "backlite"
 
 Analyze the uploaded file and respond with:
-- classification: "BOOKING_ORDER" or "ARTWORK"
+- classification: "BOOKING_ORDER", "ARTWORK", or "OTHER"
 - confidence: "high", "medium", or "low"
 - company: "backlite" or "viola" (ONLY if classification is BOOKING_ORDER, otherwise null)
-- reasoning: Brief explanation (1 sentence)
+- reasoning: Brief explanation of what you see and why you classified it this way
 """
 
 
