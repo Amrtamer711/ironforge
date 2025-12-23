@@ -411,6 +411,10 @@
             <span id="pauseIcon">&#9208;</span>
             <span id="pauseText">Pause</span>
         </button>
+        <button class="toolbar-btn" id="btnCopy">
+            <span>&#128203;</span>
+            Copy
+        </button>
         <button class="toolbar-btn" id="btnClear">
             <span>&#128465;</span>
             Clear
@@ -744,6 +748,43 @@
             serviceCounts = { all: 0 };
             updateUI();
             emptyState.style.display = 'flex';
+        };
+
+        // Copy button - copies all visible logs
+        document.getElementById('btnCopy').onclick = async () => {
+            const visibleLogs = [];
+            logsContainer.querySelectorAll('.log-line:not(.hidden)').forEach(logEl => {
+                const timestamp = logEl.querySelector('.log-timestamp')?.textContent || '';
+                const service = logEl.querySelector('.log-service')?.textContent || '';
+                const level = logEl.querySelector('.log-level')?.textContent || '';
+                const message = logEl.querySelector('.log-message')?.textContent || '';
+                visibleLogs.push(`[${timestamp}] [${service}] ${level}: ${message}`);
+            });
+
+            if (visibleLogs.length === 0) {
+                alert('No logs to copy');
+                return;
+            }
+
+            try {
+                await navigator.clipboard.writeText(visibleLogs.join('\n'));
+                // Show feedback
+                const btn = document.getElementById('btnCopy');
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML = '<span>✓</span> Copied!';
+                btn.style.backgroundColor = 'var(--accent-green)';
+                btn.style.borderColor = 'var(--accent-green)';
+                btn.style.color = 'white';
+                setTimeout(() => {
+                    btn.innerHTML = originalHtml;
+                    btn.style.backgroundColor = '';
+                    btn.style.borderColor = '';
+                    btn.style.color = '';
+                }, 1500);
+            } catch (err) {
+                console.error('Failed to copy:', err);
+                alert('Failed to copy logs to clipboard');
+            }
         };
 
         // Scroll detection for auto-scroll
