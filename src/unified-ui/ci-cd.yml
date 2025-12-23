@@ -6,13 +6,12 @@ build_unifiedui:
     ECR_REPO: "unifiedui"
   rules:
   # Only run on main AND only if this service changed
-  - if: '$CI_COMMIT_BRANCH == "main"'
+  - if: '$CI_COMMIT_BRANCH == "demo"'
     changes:
       - src/unifiedui/**/*
     when: on_success
 
   # Optional: allow manual run on main
-  - if: '$CI_COMMIT_BRANCH == "main"'
+  - if: '$CI_COMMIT_BRANCH == "demo"'
     when: manual
     allow_failure: true
-    

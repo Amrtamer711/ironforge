@@ -2,7 +2,7 @@ stages:
   - build
 
 variables:
-  AWS_REGION: "us-east-1"
+  AWS_REGION: "eu-north-1"
   AWS_ACCOUNT_ID: "018881300778"
   ECR_REGISTRY: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
