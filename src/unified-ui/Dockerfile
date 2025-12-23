@@ -8,23 +8,20 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    git \
+RUN apt-get update && apt-get install -y --no-install-recommends curl git \
   && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
 # Use requirements.render.txt for production (git-based SDK install)
-COPY requirements.render.txt .
 
+COPY src/shared/crm-security /app/shared/crm-security
+COPY src/unified-ui/requirements.render.txt /app/requirements.render.txt
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.render.txt
+RUN pip install --no-cache-dir "/app/shared/crm-security[fastapi]" \
+ && pip install --no-cache-dir -r /app/requirements.render.txt
 
-# Copy backend code
-COPY backend/ ./backend/
+COPY src/unified-ui /app
 
-# Copy frontend static files
-COPY public/ ./public/
 
 # Create directories
 RUN mkdir -p uploads data
