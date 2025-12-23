@@ -51,7 +51,14 @@ def _get_storage_client():
     """Get Supabase storage client."""
     try:
         from supabase import create_client
-        supabase = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY)
+        from supabase.lib.client_options import ClientOptions
+
+        # Use longer timeouts (seconds) to handle slow network conditions
+        options = ClientOptions(
+            postgrest_client_timeout=30,
+            storage_client_timeout=60,  # Storage operations can be slower
+        )
+        supabase = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY, options=options)
         return supabase.storage
     except Exception as e:
         logger.error(f"[STORAGE] Failed to create storage client: {e}")
@@ -424,7 +431,8 @@ async def get_mockup_photo(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[STORAGE] Failed to get mockup photo: {e}")
+        # Log at debug level since 404s are expected during multi-company searches
+        logger.debug(f"[STORAGE] Mockup photo not found: {company}/{location_key}/{time_of_day}/{finish}/{photo_filename} - {e}")
         raise HTTPException(status_code=404, detail="Photo not found")
 
 

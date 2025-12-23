@@ -96,7 +96,14 @@ class SupabaseStorageProvider(StorageProvider):
         if self._client is None:
             try:
                 from supabase import create_client
-                self._client = create_client(self._url, self._key)
+                from supabase.lib.client_options import ClientOptions
+
+                # Use longer timeouts (seconds) to handle slow network conditions
+                options = ClientOptions(
+                    postgrest_client_timeout=30,
+                    storage_client_timeout=60,  # Storage operations can be slower
+                )
+                self._client = create_client(self._url, self._key, options=options)
             except ImportError:
                 raise ImportError(
                     "supabase package is required for SupabaseStorageProvider. "

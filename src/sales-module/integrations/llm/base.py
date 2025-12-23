@@ -4,6 +4,7 @@ Each provider implements their own API-specific syntax.
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional
@@ -253,6 +254,53 @@ class LLMProvider(ABC):
             True if deleted successfully
         """
         pass
+
+    # Optional streaming support - providers can implement if they support streaming
+    async def stream_complete(
+        self,
+        messages: list[LLMMessage],
+        model: str | None = None,
+        tools: list[ToolDefinition] | None = None,
+        tool_choice: str | None = None,
+        reasoning: ReasoningEffort | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        cache_key: str | None = None,
+        cache_retention: str | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """
+        Stream a completion from the LLM, yielding events as they arrive.
+
+        This is an optional method - not all providers support streaming.
+        LLMClient checks for this method's existence before calling.
+
+        Yields semantic events like:
+        - {"type": "response.created", ...}
+        - {"type": "response.output_text.delta", "delta": str, ...}
+        - {"type": "response.output_text.done", "text": str, ...}
+        - {"type": "response.function_call_arguments.delta", ...}
+        - {"type": "response.function_call_arguments.done", ...}
+        - {"type": "response.completed", "usage": TokenUsage, "cost": CostInfo}
+        - {"type": "error", "message": str}
+
+        Args:
+            messages: List of messages in the conversation
+            model: Model to use (provider-specific, uses default if not set)
+            tools: List of tool definitions for function calling
+            tool_choice: Tool choice mode
+            reasoning: Reasoning effort level
+            temperature: Sampling temperature
+            max_tokens: Maximum tokens to generate
+            cache_key: Prompt cache routing key
+            cache_retention: Cache retention policy
+
+        Yields:
+            Event dicts with semantic streaming information
+        """
+        # Default implementation raises NotImplementedError
+        raise NotImplementedError(f"Provider {self.name} does not support streaming")
+        # This yield is never reached but needed for type hints
+        yield {}  # type: ignore
 
 
 @dataclass

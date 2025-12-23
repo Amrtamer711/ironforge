@@ -50,7 +50,14 @@ def get_security_client() -> Any | None:
 
     try:
         from supabase import create_client
-        _security_client = create_client(url, key)
+        from supabase.lib.client_options import ClientOptions
+
+        # Use longer timeouts (seconds) to handle slow network conditions
+        options = ClientOptions(
+            postgrest_client_timeout=30,
+            storage_client_timeout=60,
+        )
+        _security_client = create_client(url, key, options=options)
         logger.info("[SUPABASE:SECURITY] Client initialized")
         return _security_client
     except ImportError:
@@ -92,7 +99,14 @@ def get_ui_client() -> Any | None:
 
     try:
         from supabase import create_client
-        _ui_client = create_client(url, key)
+        from supabase.lib.client_options import ClientOptions
+
+        # Use longer timeouts (seconds) to handle slow network conditions
+        options = ClientOptions(
+            postgrest_client_timeout=30,
+            storage_client_timeout=60,
+        )
+        _ui_client = create_client(url, key, options=options)
         logger.info("[SUPABASE:UI] Client initialized (read-only)")
         return _ui_client
     except ImportError:

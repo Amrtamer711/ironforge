@@ -6,6 +6,7 @@ Handles cost tracking automatically.
 """
 
 import logging
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from integrations.llm.base import (
@@ -209,6 +210,127 @@ class LLMClient:
             )
 
         return response
+
+    async def stream_complete(
+        self,
+        messages: list[LLMMessage],
+        model: str | None = None,
+        tools: list[ToolDefinition] | None = None,
+        tool_choice: str | None = None,
+        reasoning: ReasoningEffort | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        # Prompt caching parameters (OpenAI-specific)
+        cache_key: str | None = None,
+        cache_retention: str | None = None,
+        # Cost tracking parameters
+        track_cost: bool = True,
+        call_type: str = "llm_call",
+        user_id: str | None = None,
+        workflow: str | None = None,
+        context: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """
+        Stream a completion from the LLM, yielding events as they arrive.
+
+        Yields semantic events from the provider:
+        - {"type": "response.created", "response_id": str}
+        - {"type": "response.output_text.delta", "delta": str, ...}
+        - {"type": "response.output_text.done", "text": str, ...}
+        - {"type": "response.function_call_arguments.delta", ...}
+        - {"type": "response.function_call_arguments.done", ...}
+        - {"type": "response.completed", "usage": TokenUsage, "cost": CostInfo}
+        - {"type": "error", "message": str}
+
+        Args:
+            messages: List of messages in the conversation
+            model: Model to use (uses provider default if not set)
+            tools: List of ToolDefinition objects for function calling
+            tool_choice: Tool choice mode ("auto", "none", "required")
+            reasoning: Reasoning effort level (LOW, MEDIUM, HIGH)
+            temperature: Sampling temperature
+            max_tokens: Maximum tokens to generate
+            cache_key: Prompt cache routing key (OpenAI: e.g., "proposal-system")
+            cache_retention: Cache retention policy (OpenAI: "in_memory" or "24h")
+            track_cost: Whether to track API costs (default True)
+            call_type: Type of call for cost tracking
+            user_id: User ID/name for cost tracking
+            workflow: Workflow name for cost tracking
+            context: Additional context for cost tracking
+            metadata: Additional metadata for cost tracking
+
+        Yields:
+            Event dicts with semantic information about the streaming response
+        """
+        # Try to use streaming, fall back to non-streaming if not supported
+        try:
+            async for event in self._provider.stream_complete(
+                messages=messages,
+                model=model,
+                tools=tools,
+                tool_choice=tool_choice,
+                reasoning=reasoning,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                cache_key=cache_key,
+                cache_retention=cache_retention,
+            ):
+                # Track cost on completion event
+                if event.get("type") == "response.completed" and track_cost and event.get("usage"):
+                    try:
+                        from integrations.llm import cost_tracker
+
+                        if event.get("cost"):
+                            cost_tracker.track_cost(
+                                cost=event["cost"],
+                                call_type=call_type,
+                                user_id=user_id,
+                                workflow=workflow,
+                                context=context,
+                                metadata=metadata,
+                            )
+                    except Exception as e:
+                        logger.warning(f"[LLM] Failed to track streaming cost: {e}")
+
+                yield event
+
+        except NotImplementedError:
+            # Fall back to non-streaming for providers that don't support it
+            logger.warning(f"[LLM] Provider {self._provider.name} doesn't support streaming, falling back to complete()")
+            response = await self.complete(
+                messages=messages,
+                model=model,
+                tools=tools,
+                tool_choice=tool_choice,
+                reasoning=reasoning,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                cache_key=cache_key,
+                cache_retention=cache_retention,
+                track_cost=track_cost,
+                call_type=call_type,
+                user_id=user_id,
+                workflow=workflow,
+                context=context,
+                metadata=metadata,
+            )
+            # Emit completed response as events
+            if response.content:
+                yield {"type": "response.output_text.done", "text": response.content}
+            if response.tool_calls:
+                for tc in response.tool_calls:
+                    yield {
+                        "type": "response.function_call_arguments.done",
+                        "name": tc.name,
+                        "arguments": tc.arguments,
+                        "item_id": tc.id,
+                    }
+            yield {
+                "type": "response.completed",
+                "usage": response.usage,
+                "cost": response.cost,
+            }
 
     async def generate_image(
         self,

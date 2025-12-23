@@ -9,6 +9,11 @@ Text completions: responses.create() API
 - text.format: For structured outputs (json_schema)
 - Response: output[].content[].text or response.output_text
 
+Streaming: responses.create(stream=True)
+- Semantic events: response.created, response.output_text.delta, response.completed
+- Each event is typed with a predefined schema
+- Key event types: ResponseTextDeltaEvent, ResponseCompletedEvent, etc.
+
 Image generation: gpt-image-1 via images.generate()
 - prompt: max 32000 chars
 - quality: "low", "medium", "high" (passed directly, NOT hd/standard)
@@ -20,7 +25,10 @@ Image generation: gpt-image-1 via images.generate()
 """
 
 import base64
+import json
 import logging
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -206,6 +214,197 @@ class OpenAIProvider(LLMProvider):
 
         response = await self._client.responses.create(**kwargs)
         return self._parse_text_response(response, model)
+
+    # ========================================================================
+    # STREAMING TEXT COMPLETIONS
+    # ========================================================================
+
+    async def stream_complete(
+        self,
+        messages: list[LLMMessage],
+        model: str | None = None,
+        tools: list[ToolDefinition] | None = None,
+        tool_choice: str | None = None,
+        reasoning: ReasoningEffort | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        cache_key: str | None = None,
+        cache_retention: str | None = None,
+    ) -> AsyncGenerator[dict[str, Any], None]:
+        """
+        Stream completion using OpenAI's responses.create API with stream=True.
+
+        Yields semantic events as they arrive from the API:
+        - {"type": "response.created", "response_id": str}
+        - {"type": "response.output_text.delta", "delta": str, "item_id": str}
+        - {"type": "response.output_text.done", "text": str, "item_id": str}
+        - {"type": "response.function_call_arguments.delta", "delta": str, "item_id": str}
+        - {"type": "response.function_call_arguments.done", "name": str, "arguments": str, "item_id": str}
+        - {"type": "response.output_item.added", "item": dict}
+        - {"type": "response.completed", "usage": TokenUsage, "cost": CostInfo}
+        - {"type": "error", "message": str}
+        """
+        model = model or self.TEXT_MODEL
+
+        # Separate system message from conversation
+        instructions = None
+        input_messages = []
+
+        for msg in messages:
+            if msg.role == "system":
+                instructions = msg.content if isinstance(msg.content, str) else str(msg.content)
+            else:
+                input_messages.append({"role": msg.role, "content": msg.content})
+
+        # Build request
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "input": input_messages,
+            "stream": True,  # Enable streaming
+        }
+
+        if instructions:
+            kwargs["instructions"] = instructions
+
+        if tools:
+            kwargs["tools"] = self._convert_tools(tools)
+            if tool_choice:
+                kwargs["tool_choice"] = tool_choice
+
+        if reasoning:
+            kwargs["reasoning"] = {"effort": reasoning.value}
+
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+
+        if max_tokens is not None:
+            kwargs["max_output_tokens"] = max_tokens
+
+        if cache_key:
+            kwargs["prompt_cache_key"] = cache_key
+        if cache_retention:
+            kwargs["prompt_cache_retention"] = cache_retention
+
+        logger.info(f"[OPENAI] Starting streaming request with model={model}")
+
+        try:
+            stream = await self._client.responses.create(**kwargs)
+
+            async for event in stream:
+                event_type = getattr(event, "type", None)
+
+                if event_type == "response.created":
+                    response_obj = getattr(event, "response", None)
+                    yield {
+                        "type": "response.created",
+                        "response_id": getattr(response_obj, "id", None) if response_obj else None,
+                    }
+
+                elif event_type == "response.in_progress":
+                    yield {"type": "response.in_progress"}
+
+                elif event_type == "response.output_item.added":
+                    item = getattr(event, "item", None)
+                    output_index = getattr(event, "output_index", 0)
+                    yield {
+                        "type": "response.output_item.added",
+                        "output_index": output_index,
+                        "item": {
+                            "id": getattr(item, "id", None) if item else None,
+                            "type": getattr(item, "type", None) if item else None,
+                            "role": getattr(item, "role", None) if item else None,
+                            "name": getattr(item, "name", None) if item else None,
+                            "call_id": getattr(item, "call_id", None) if item else None,
+                        },
+                    }
+
+                elif event_type == "response.output_text.delta":
+                    yield {
+                        "type": "response.output_text.delta",
+                        "delta": getattr(event, "delta", ""),
+                        "item_id": getattr(event, "item_id", None),
+                        "output_index": getattr(event, "output_index", 0),
+                        "content_index": getattr(event, "content_index", 0),
+                    }
+
+                elif event_type == "response.output_text.done":
+                    yield {
+                        "type": "response.output_text.done",
+                        "text": getattr(event, "text", ""),
+                        "item_id": getattr(event, "item_id", None),
+                        "output_index": getattr(event, "output_index", 0),
+                        "content_index": getattr(event, "content_index", 0),
+                    }
+
+                elif event_type == "response.function_call_arguments.delta":
+                    yield {
+                        "type": "response.function_call_arguments.delta",
+                        "delta": getattr(event, "delta", ""),
+                        "item_id": getattr(event, "item_id", None),
+                        "output_index": getattr(event, "output_index", 0),
+                    }
+
+                elif event_type == "response.function_call_arguments.done":
+                    yield {
+                        "type": "response.function_call_arguments.done",
+                        "name": getattr(event, "name", ""),
+                        "arguments": getattr(event, "arguments", ""),
+                        "item_id": getattr(event, "item_id", None),
+                        "output_index": getattr(event, "output_index", 0),
+                    }
+
+                elif event_type == "response.output_item.done":
+                    item = getattr(event, "item", None)
+                    yield {
+                        "type": "response.output_item.done",
+                        "output_index": getattr(event, "output_index", 0),
+                        "item": {
+                            "id": getattr(item, "id", None) if item else None,
+                            "type": getattr(item, "type", None) if item else None,
+                            "status": getattr(item, "status", None) if item else None,
+                        },
+                    }
+
+                elif event_type == "response.completed":
+                    response_obj = getattr(event, "response", None)
+                    usage = None
+                    cost = None
+
+                    if response_obj and hasattr(response_obj, "usage") and response_obj.usage:
+                        usage = self._parse_text_usage(response_obj.usage)
+                        cost = self._calculate_text_cost(model, usage)
+
+                    yield {
+                        "type": "response.completed",
+                        "usage": usage,
+                        "cost": cost,
+                    }
+
+                elif event_type == "response.failed":
+                    response_obj = getattr(event, "response", None)
+                    error = getattr(response_obj, "error", None) if response_obj else None
+                    yield {
+                        "type": "response.failed",
+                        "error": {
+                            "code": getattr(error, "code", None) if error else None,
+                            "message": getattr(error, "message", "Unknown error") if error else "Unknown error",
+                        },
+                    }
+
+                elif event_type == "error":
+                    yield {
+                        "type": "error",
+                        "code": getattr(event, "code", None),
+                        "message": getattr(event, "message", str(event)),
+                    }
+
+                # Pass through other event types for flexibility
+                elif event_type:
+                    yield {"type": event_type, "raw": str(event)}
+
+        except Exception as e:
+            logger.error(f"[OPENAI] Stream exception: {e}", exc_info=True)
+            yield {"type": "error", "message": str(e)}
 
     # ========================================================================
     # IMAGE GENERATION (gpt-image-1)

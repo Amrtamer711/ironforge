@@ -66,7 +66,14 @@ class SupabaseBackend(DatabaseBackend):
 
         try:
             from supabase import create_client
-            self._security_client = create_client(url, key)
+            from supabase.lib.client_options import ClientOptions
+
+            # Use longer timeouts (seconds) to handle slow network conditions
+            options = ClientOptions(
+                postgrest_client_timeout=30,
+                storage_client_timeout=60,
+            )
+            self._security_client = create_client(url, key, options=options)
             logger.info("[SUPABASE:SECURITY] Client initialized successfully")
             return self._security_client
         except ImportError:
@@ -100,7 +107,14 @@ class SupabaseBackend(DatabaseBackend):
 
         try:
             from supabase import create_client
-            self._ui_client = create_client(url, key)
+            from supabase.lib.client_options import ClientOptions
+
+            # Use longer timeouts (seconds) to handle slow network conditions
+            options = ClientOptions(
+                postgrest_client_timeout=30,
+                storage_client_timeout=60,
+            )
+            self._ui_client = create_client(url, key, options=options)
             logger.info("[SUPABASE:UI] Client initialized successfully (read-only)")
             return self._ui_client
         except ImportError:

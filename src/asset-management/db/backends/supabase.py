@@ -58,7 +58,14 @@ class SupabaseBackend(DatabaseBackend):
 
         try:
             from supabase import create_client
-            self._client = create_client(self._url, self._key)
+            from supabase.lib.client_options import ClientOptions
+
+            # Use longer timeouts (seconds) to handle slow network conditions
+            options = ClientOptions(
+                postgrest_client_timeout=30,
+                storage_client_timeout=60,
+            )
+            self._client = create_client(self._url, self._key, options=options)
             logger.info("[SUPABASE] Client initialized successfully")
             return self._client
         except ImportError:
