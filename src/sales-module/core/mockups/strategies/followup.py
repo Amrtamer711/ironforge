@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 import config
 from db.cache import get_mockup_history, mockup_history
-from utils.memory import cleanup_memory
+from core.utils.memory import cleanup_memory
 
 from .base import MockupStrategy
 

@@ -18,7 +18,7 @@ from utils.files import (
     get_mime_type,
     validate_file_size,
 )
-from utils.memory import check_memory_threshold, cleanup_memory, get_memory_usage
+from core.utils.memory import check_memory_threshold, cleanup_memory, get_memory_usage
 from utils.task_queue import MockupTaskQueue, mockup_queue
 
 __all__ = [

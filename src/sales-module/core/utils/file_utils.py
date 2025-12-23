@@ -11,7 +11,7 @@ from typing import Any
 from pptx import Presentation
 
 import config
-from utils.memory import cleanup_memory
+from core.utils.memory import cleanup_memory
 
 logger = config.logger
 

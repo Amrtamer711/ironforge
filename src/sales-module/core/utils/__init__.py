@@ -43,6 +43,11 @@ from core.utils.file_utils import (
     _validate_powerpoint_file,
     _convert_pdf_to_pptx,
 )
+from core.utils.memory import (
+    cleanup_memory,
+    get_memory_usage,
+    check_memory_threshold,
+)
 
 __all__ = [
     # Location utilities
@@ -78,4 +83,8 @@ __all__ = [
     "_validate_pdf_file",
     "_validate_powerpoint_file",
     "_convert_pdf_to_pptx",
+    # Memory utilities
+    "cleanup_memory",
+    "get_memory_usage",
+    "check_memory_threshold",
 ]

@@ -224,7 +224,7 @@ async def test_preview_mockup(
         del billboard_data, billboard_array, billboard_img
         del creative_data, creative_array, creative_img
         del result
-        from utils.memory import cleanup_memory
+        from core.utils.memory import cleanup_memory
         cleanup_memory(context="mockup_preview", aggressive=False, log_stats=False)
 
         if not success:
@@ -242,7 +242,7 @@ async def test_preview_mockup(
             del billboard_data, billboard_array, billboard_img
             del creative_data, creative_array, creative_img
             del result
-            from utils.memory import cleanup_memory
+            from core.utils.memory import cleanup_memory
             cleanup_memory(context="mockup_preview_error", aggressive=False, log_stats=False)
         except NameError:
             pass  # Some variables may not have been assigned

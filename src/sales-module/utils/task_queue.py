@@ -216,7 +216,7 @@ class MockupTaskQueue:
             # Continue with cleanup using centralized memory utility
             # Force aggressive garbage collection before releasing slot
             # This ensures memory from numpy arrays is freed before next task starts
-            from utils.memory import cleanup_memory
+            from core.utils.memory import cleanup_memory
             cleanup_memory(context=f"queue_task_{task.task_id}", aggressive=True, log_stats=True)
 
             # Small delay to let OS reclaim memory (numpy arrays use malloc directly)

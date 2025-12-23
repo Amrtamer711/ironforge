@@ -10,7 +10,7 @@ from typing import Any, Callable
 
 import config
 from db.cache import get_location_frame_count, store_mockup_history
-from utils.memory import cleanup_memory
+from core.utils.memory import cleanup_memory
 
 from .base import MockupStrategy
 

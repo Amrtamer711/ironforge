@@ -8,7 +8,7 @@ from typing import Any
 
 import config
 from db.database import db
-from utils.memory import cleanup_memory
+from core.utils.memory import cleanup_memory
 
 # Global for user conversation history
 user_history: dict[str, list] = {}

@@ -10,7 +10,7 @@ from db.database import db
 
 # Import compositing from effects module
 from generators.effects import warp_creative_to_billboard
-from utils.memory import cleanup_memory
+from core.utils.memory import cleanup_memory
 
 logger = logging.getLogger("proposal-bot")
 

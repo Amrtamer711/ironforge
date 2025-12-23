@@ -49,7 +49,7 @@ async def _generate_mockup_queued(
         Tuple of (result_path, metadata)
     """
     from generators import mockup as mockup_generator
-    from utils.memory import cleanup_memory
+    from core.utils.memory import cleanup_memory
 
     logger = config.logger
     logger.info(f"[QUEUE] Mockup generation requested for {location_key}")
@@ -103,7 +103,7 @@ async def _generate_ai_mockup_queued(
         Tuple of (result_path, ai_creative_paths)
     """
     from generators import mockup as mockup_generator
-    from utils.memory import cleanup_memory
+    from core.utils.memory import cleanup_memory
 
     logger = config.logger
     num_prompts = len(ai_prompts)
