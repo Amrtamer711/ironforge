@@ -320,7 +320,7 @@ async def notify_finance(
 
     Returns: {"message_id": ts, "channel": channel}
     """
-    from workflows.bo_parser import sanitize_filename
+    from core.utils import sanitize_filename
 
     channel = config.get_channel_adapter()
     if not channel:

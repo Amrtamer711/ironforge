@@ -10,10 +10,11 @@ from core.proposals import process_proposals  # ✅ Using new modular API
 from db.cache import pending_location_additions
 from db.database import db
 from integrations.llm import ToolCall
-from workflows.bo_parser import BookingOrderParser, sanitize_filename
+from core.utils import sanitize_filename
+from workflows.bo_parser import BookingOrderParser
 
-# ✅ NEW: Using modular mockups (replaces routers.mockup_handler)
-# from routers.mockup_handler import handle_mockup_generation  # DEPRECATED
+# ✅ Mockup handler from core/mockups module
+from core.mockups import handle_mockup_generation
 
 logger = config.logger
 

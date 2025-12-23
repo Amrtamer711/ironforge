@@ -1,7 +1,8 @@
 """
-Mockup Handler - Handles mockup generation requests.
+Mockup Channel Handler.
 
-Extracted from tool_router.py for better decoupling and maintainability.
+Handles mockup generation requests from chat channels (Slack, Web, etc.).
+Bridges channel events to MockupCoordinator.
 """
 
 import os
@@ -9,17 +10,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 import config
-from core.services import AssetService
-from core.utils import match_location_key
-from core.mockups import MockupCoordinator  # ✅ NEW: Use modular mockup coordinator
-from db.cache import (
-    get_location_frame_count,
-    get_mockup_history,
-    mockup_history,
-    store_mockup_history,
-)
-from db.database import db
-from utils.memory import cleanup_memory
+
+from .coordinator import MockupCoordinator
 
 logger = config.logger
 
@@ -39,7 +31,7 @@ async def handle_mockup_generation(
     generate_ai_mockup_queued_func: Callable = None,
 ) -> bool:
     """
-    Handle mockup generation request.
+    Handle mockup generation request from chat channels.
 
     Channel-agnostic: Works with any channel adapter (Slack, Web, etc.)
 
@@ -80,7 +72,7 @@ async def handle_mockup_generation(
     # Extract uploaded images
     uploaded_creatives = await _extract_uploaded_images(channel_event, download_file_func)
 
-    # ✅ NEW: Use MockupCoordinator for business logic
+    # Use MockupCoordinator for business logic
     coordinator = MockupCoordinator(
         user_companies=user_companies,
         generate_mockup_func=generate_mockup_queued_func,
@@ -181,7 +173,7 @@ async def _extract_uploaded_images(
     channel_event: dict,
     download_file_func: Callable,
 ) -> list[Path]:
-    """Extract uploaded image files from Slack event."""
+    """Extract uploaded image files from channel event."""
     uploaded_creatives = []
 
     if not channel_event:

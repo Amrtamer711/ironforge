@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .coordinator import MockupCoordinator
+from .handler import handle_mockup_generation
 from .strategies import AIMockupStrategy, FollowupMockupStrategy, MockupStrategy, UploadMockupStrategy
 from .validator import MockupValidator
 
@@ -53,6 +54,7 @@ __all__ = [
     "AIMockupStrategy",
     "FollowupMockupStrategy",
     "MockupCoordinator",
+    "handle_mockup_generation",
     "generate_mockup",
 ]
 
