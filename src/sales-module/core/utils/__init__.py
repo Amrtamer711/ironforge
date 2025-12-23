@@ -37,6 +37,12 @@ from core.utils.currency_formatter import (
     SUPPORTED_CURRENCIES,
     DEFAULT_CURRENCY,
 )
+from core.utils.file_utils import (
+    download_file,
+    _validate_pdf_file,
+    _validate_powerpoint_file,
+    _convert_pdf_to_pptx,
+)
 
 __all__ = [
     # Location utilities
@@ -67,4 +73,9 @@ __all__ = [
     "convert_to_decimal",
     "SUPPORTED_CURRENCIES",
     "DEFAULT_CURRENCY",
+    # File utilities
+    "download_file",
+    "_validate_pdf_file",
+    "_validate_powerpoint_file",
+    "_convert_pdf_to_pptx",
 ]

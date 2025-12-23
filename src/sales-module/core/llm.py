@@ -7,7 +7,7 @@ from typing import Any
 
 import config
 from core import bo_messaging
-from core.file_utils import _convert_pdf_to_pptx, _validate_pdf_file, download_file
+from core.utils.file_utils import _convert_pdf_to_pptx, _validate_pdf_file, download_file
 from core.tools import get_admin_tools, get_base_tools
 from db.cache import (
     get_mockup_history,
