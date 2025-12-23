@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.render.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.render.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend code
 COPY backend/ ./backend/
