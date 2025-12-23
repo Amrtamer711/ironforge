@@ -21,9 +21,11 @@ from api.routers import (
     eligibility_router,
     health_router,
     locations_router,
+    mockup_frames_router,
     network_assets_router,
     networks_router,
     packages_router,
+    storage_router,
 )
 
 logger = config.get_logger("api.server")
@@ -78,3 +80,5 @@ app.include_router(network_assets_router)
 app.include_router(locations_router)
 app.include_router(packages_router)
 app.include_router(eligibility_router)
+app.include_router(storage_router)
+app.include_router(mockup_frames_router)

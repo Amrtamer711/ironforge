@@ -202,72 +202,6 @@ def get_random_location_photo(
     return photo_filename, time_of_day, finish, photo_path
 
 
-def is_portrait_location(
-    location_key: str,
-    company_schemas: list[str] | None = None,
-) -> bool:
-    """Check if a location has portrait orientation based on actual frame dimensions from database.
-
-    Args:
-        location_key: Location identifier
-        company_schemas: List of company schemas to search (defaults to all known schemas)
-
-    Returns:
-        True if height > width (portrait), False otherwise (landscape or unknown)
-    """
-    from config import COMPANY_SCHEMAS
-
-    # Use provided schemas or default to all known schemas
-    schemas = company_schemas if company_schemas else COMPANY_SCHEMAS
-
-    # Get any frame from this location to check dimensions
-    variations = db.list_mockup_variations(location_key, schemas)
-    if not variations:
-        logger.warning(f"[ORIENTATION] No mockup frames found for '{location_key}'")
-        return False  # Default to landscape if no frames
-
-    # Get first available variation
-    for time_of_day, finishes in variations.items():
-        if finishes:
-            finish = finishes[0]
-            # Get any photo for this location
-            photos = db.list_mockup_photos(location_key, schemas, time_of_day, finish)
-            if photos:
-                # Get frames from first photo - search each schema to find which has frames
-                frames_data = None
-                for schema in schemas:
-                    frames_data = db.get_mockup_frames(location_key, photos[0], schema, time_of_day, finish)
-                    if frames_data:
-                        break
-                if frames_data and len(frames_data) > 0:
-                    # Extract first frame points: [[x1, y1], [x2, y2], [x3, y3], [x4, y4]]
-                    points = frames_data[0]["points"]
-
-                    # Calculate width and height from the 4 corner points
-                    # Width = average of top edge and bottom edge
-                    # Height = average of left edge and right edge
-                    import math
-
-                    # Top edge length (point 0 to point 1)
-                    top_width = math.sqrt((points[1][0] - points[0][0])**2 + (points[1][1] - points[0][1])**2)
-                    # Bottom edge length (point 3 to point 2)
-                    bottom_width = math.sqrt((points[2][0] - points[3][0])**2 + (points[2][1] - points[3][1])**2)
-                    # Left edge length (point 0 to point 3)
-                    left_height = math.sqrt((points[3][0] - points[0][0])**2 + (points[3][1] - points[0][1])**2)
-                    # Right edge length (point 1 to point 2)
-                    right_height = math.sqrt((points[2][0] - points[1][0])**2 + (points[2][1] - points[1][1])**2)
-
-                    avg_width = (top_width + bottom_width) / 2
-                    avg_height = (left_height + right_height) / 2
-
-                    is_portrait = avg_height > avg_width
-                    logger.info(f"[ORIENTATION] Location '{location_key}': frame dimensions {avg_width:.0f}x{avg_height:.0f}px → {'PORTRAIT' if is_portrait else 'LANDSCAPE'}")
-                    return is_portrait
-
-    logger.warning(f"[ORIENTATION] Could not determine orientation for '{location_key}'")
-    return False  # Default to landscape if can't determine
-
-
 async def generate_ai_creative(
     prompt: str,
     size: str = "1536x1024",
@@ -306,8 +240,12 @@ async def generate_ai_creative(
     # Get the image provider client (uses config.IMAGE_PROVIDER or falls back to LLM_PROVIDER)
     client = LLMClient.for_images(provider_name=provider)
 
-    # Determine orientation from location
-    is_portrait = location_key and is_portrait_location(location_key)
+    # Determine orientation from location (use async service for Asset-Management)
+    is_portrait = False
+    if location_key:
+        from core.services.mockup_frame_service import MockupFrameService
+        service = MockupFrameService()
+        is_portrait = await service.is_portrait(location_key)
     orientation = "portrait" if is_portrait else "landscape"
 
     # Apply the mockup system prompt with user's creative brief
@@ -606,3 +544,228 @@ def delete_location_photo(
     except Exception as e:
         logger.error(f"[MOCKUP] Error deleting photo: {e}")
         return False
+
+
+# =============================================================================
+# ASYNC WRAPPER FOR ASSET-MANAGEMENT INTEGRATION
+# =============================================================================
+
+
+async def generate_mockup_async(
+    location_key: str,
+    creative_images: list[Path],
+    output_path: Path | None = None,
+    specific_photo: str | None = None,
+    time_of_day: str = "all",
+    finish: str = "all",
+    config_override: dict | None = None,
+    company_schemas: list[str] | None = None,
+) -> tuple[Path | None, str | None]:
+    """
+    Async mockup generator that fetches data from Asset-Management.
+
+    This wrapper:
+    1. Fetches mockup photo from Asset-Management storage
+    2. Gets frame data from Asset-Management API
+    3. Calls the sync generator with the fetched data
+
+    Args:
+        location_key: The location identifier
+        creative_images: List of creative/ad image paths
+        output_path: Optional output path
+        specific_photo: Optional specific photo filename
+        time_of_day: Time of day variation ("day", "night", "all")
+        finish: Billboard finish ("gold", "silver", "black", "all")
+        config_override: Optional config dict to override saved frame config
+        company_schemas: List of company schemas to search
+
+    Returns:
+        Tuple of (Path to generated mockup, photo_filename used), or (None, None)
+    """
+    from core.services.mockup_frame_service import MockupFrameService
+
+    # Use all company schemas
+    companies = company_schemas if company_schemas else ["backlite_dubai"]
+    service = MockupFrameService(companies=companies)
+
+    logger.info(f"[MOCKUP_ASYNC] Generating mockup for {location_key} via Asset-Management")
+
+    try:
+        # Get photo and frame data from Asset-Management
+        if specific_photo:
+            # Use specific photo
+            selected_tod = time_of_day if time_of_day != "all" else "day"
+            selected_finish = finish if finish != "all" else "gold"
+
+            photo_path = await service.download_photo(
+                location_key, selected_tod, selected_finish, specific_photo
+            )
+            if not photo_path:
+                logger.error(f"[MOCKUP_ASYNC] Failed to download specific photo: {specific_photo}")
+                return None, None
+
+            photo_filename = specific_photo
+        else:
+            # Get random photo
+            result = await service.get_random_photo(location_key, time_of_day, finish)
+            if not result:
+                logger.error(f"[MOCKUP_ASYNC] No photos available for {location_key}")
+                return None, None
+
+            photo_filename, selected_tod, selected_finish, photo_path = result
+
+        # Get frame data
+        frames_data = await service.get_frames(
+            location_key, selected_tod, selected_finish, photo_filename
+        )
+        if not frames_data:
+            logger.error(f"[MOCKUP_ASYNC] No frame data for {location_key}/{photo_filename}")
+            # Cleanup downloaded photo
+            if photo_path and photo_path.exists():
+                photo_path.unlink()
+            return None, None
+
+        # Get config if available
+        photo_config = await service.get_config(
+            location_key, selected_tod, selected_finish, photo_filename
+        )
+
+        logger.info(
+            f"[MOCKUP_ASYNC] Fetched photo and {len(frames_data)} frame(s) from Asset-Management"
+        )
+
+        # Now generate the mockup using the sync generator
+        result_path = _generate_mockup_with_data(
+            photo_path=photo_path,
+            frames_data=frames_data,
+            creative_images=creative_images,
+            output_path=output_path,
+            photo_config=photo_config,
+            config_override=config_override,
+            time_of_day=selected_tod,
+        )
+
+        # Cleanup downloaded photo temp file
+        if photo_path and photo_path.exists():
+            try:
+                photo_path.unlink()
+            except OSError:
+                pass
+
+        if result_path:
+            return result_path, photo_filename
+        return None, None
+
+    except Exception as e:
+        logger.error(f"[MOCKUP_ASYNC] Error generating mockup: {e}", exc_info=True)
+        return None, None
+
+
+def _generate_mockup_with_data(
+    photo_path: Path,
+    frames_data: list[dict],
+    creative_images: list[Path],
+    output_path: Path | None = None,
+    photo_config: dict | None = None,
+    config_override: dict | None = None,
+    time_of_day: str = "day",
+) -> Path | None:
+    """
+    Core mockup generation with pre-fetched photo and frame data.
+
+    Args:
+        photo_path: Path to the background photo
+        frames_data: List of frame dicts with "points" and optional "config"
+        creative_images: List of creative image paths
+        output_path: Optional output path
+        photo_config: Optional photo-level config
+        config_override: Optional config override
+        time_of_day: Time of day for effects
+
+    Returns:
+        Path to the generated mockup, or None
+    """
+    num_frames = len(frames_data)
+    num_creatives = len(creative_images)
+
+    logger.info(f"[MOCKUP] Using {num_frames} frame(s), {num_creatives} creative(s)")
+
+    # Validate creative count
+    if num_creatives != 1 and num_creatives != num_frames:
+        logger.error(
+            f"[MOCKUP] Invalid creative count: need 1 or {num_frames}, got {num_creatives}"
+        )
+        return None
+
+    # Load billboard
+    try:
+        billboard = cv2.imread(str(photo_path))
+        if billboard is None:
+            logger.error(f"[MOCKUP] Failed to load billboard image: {photo_path}")
+            return None
+    except Exception as e:
+        logger.error(f"[MOCKUP] Error loading billboard: {e}")
+        return None
+
+    # Start with the billboard as the result
+    result = billboard.copy()
+
+    # Apply each creative to each frame
+    for i, frame_data in enumerate(frames_data):
+        frame_points = frame_data["points"]
+        frame_config = frame_data.get("config", {})
+
+        # Merge configs: photo_config < frame_config < config_override
+        merged_config = photo_config.copy() if photo_config else {}
+        merged_config.update(frame_config)
+        if config_override:
+            merged_config.update(config_override)
+
+        # Determine which creative to use
+        creative_path = creative_images[0] if num_creatives == 1 else creative_images[i]
+
+        # Load creative
+        try:
+            creative = cv2.imread(str(creative_path))
+            if creative is None:
+                logger.error(f"[MOCKUP] Failed to load creative: {creative_path}")
+                return None
+        except Exception as e:
+            logger.error(f"[MOCKUP] Error loading creative {i}: {e}")
+            return None
+
+        # Warp creative onto this frame
+        try:
+            result = warp_creative_to_billboard(
+                result, creative, frame_points, config=merged_config, time_of_day=time_of_day
+            )
+            logger.info(f"[MOCKUP] Applied creative {i+1}/{num_frames}")
+        except Exception as e:
+            logger.error(f"[MOCKUP] Error warping creative {i}: {e}")
+            del billboard, result, creative
+            cleanup_memory(context="mockup_warp_error", aggressive=False, log_stats=False)
+            return None
+
+        del creative
+
+    # Save result
+    if not output_path:
+        import tempfile
+        output_path = Path(tempfile.mktemp(suffix=".jpg"))
+
+    try:
+        cv2.imwrite(str(output_path), result)
+        logger.info(f"[MOCKUP] Generated mockup saved to: {output_path}")
+
+        del billboard, result
+        cleanup_memory(context="mockup_save", aggressive=False, log_stats=False)
+
+        return output_path
+    except Exception as e:
+        logger.error(f"[MOCKUP] Error saving mockup: {e}")
+        try:
+            del billboard, result
+        except NameError:
+            pass
+        cleanup_memory(context="mockup_save_error", aggressive=False, log_stats=False)
+        return None

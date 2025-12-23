@@ -92,7 +92,7 @@ class UploadMockupStrategy(MockupStrategy):
         self.logger.info(f"[UPLOAD_STRATEGY] Processing {len(uploaded_creatives)} uploaded image(s)")
 
         # Validate creative count
-        is_valid, frame_count, error_msg = self.validator.validate_creative_count(
+        is_valid, frame_count, error_msg = await self.validator.validate_creative_count(
             location_key,
             len(uploaded_creatives),
             time_of_day,

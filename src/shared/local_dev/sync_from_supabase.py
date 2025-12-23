@@ -23,9 +23,9 @@ Environment Variables Required:
 
 Optional (for asset/security storage):
     ASSETMGMT_DEV_SUPABASE_URL
-    ASSETMGMT_DEV_SUPABASE_SERVICE_KEY
+    ASSETMGMT_DEV_SUPABASE_SERVICE_ROLE_KEY
     SECURITY_DEV_SUPABASE_URL
-    SECURITY_DEV_SUPABASE_SERVICE_KEY
+    SECURITY_DEV_SUPABASE_SERVICE_ROLE_KEY
 """
 
 import argparse
@@ -187,7 +187,7 @@ def get_sales_supabase() -> tuple[Client | None, str | None, str | None]:
 def get_assets_supabase() -> tuple[Client | None, str | None, str | None]:
     """Get Asset Management Supabase client and credentials."""
     url = os.getenv("ASSETMGMT_DEV_SUPABASE_URL")
-    key = os.getenv("ASSETMGMT_DEV_SUPABASE_SERVICE_KEY")
+    key = os.getenv("ASSETMGMT_DEV_SUPABASE_SERVICE_ROLE_KEY")
     if not url or not key:
         return None, None, None
     return create_client(url, key), url, key
@@ -196,7 +196,7 @@ def get_assets_supabase() -> tuple[Client | None, str | None, str | None]:
 def get_security_supabase() -> tuple[Client | None, str | None, str | None]:
     """Get Security Supabase client and credentials."""
     url = os.getenv("SECURITY_DEV_SUPABASE_URL")
-    key = os.getenv("SECURITY_DEV_SUPABASE_SERVICE_KEY")
+    key = os.getenv("SECURITY_DEV_SUPABASE_SERVICE_ROLE_KEY")
     if not url or not key:
         return None, None, None
     return create_client(url, key), url, key

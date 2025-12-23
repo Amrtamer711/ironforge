@@ -1,36 +1,32 @@
 #!/usr/bin/env python3
 """
-Asset Management Migration Script: SQLite + Files → Supabase (Multi-Schema).
+Asset Management Migration Script: Seed asset inventory to Supabase (Multi-Schema).
 
-This script migrates asset/location inventory data to Asset-Management Supabase:
+This script migrates asset/location inventory METADATA to Asset-Management Supabase:
 1. Seeds locations from template metadata.txt files → {company}.standalone_assets
-2. Uploads template files to Supabase Storage (including intro_outro slides)
-3. Creates initial network/package structures (if defined)
+2. Creates initial network/package structures (if defined)
 
-NOTE: Mockup photos and mockup_frames stay in Sales-Module.
-      This migration ONLY handles asset inventory metadata.
+STORAGE ARCHITECTURE:
+- Templates (.pptx) → Sales-Module Supabase Storage (used for proposal generation)
+- Mockups/Frames → Sales-Module Supabase Storage (used for mockup generation)
+- Asset Photos → Asset-Management Supabase Storage (real billboard photos)
+
+This script does NOT upload templates - they belong in Sales-Module.
 
 MULTI-SCHEMA ARCHITECTURE:
 - Each company has its own schema (backlite_dubai, backlite_uk, etc.)
 - Assets are migrated to the appropriate company schema based on company parameter
 
 Usage:
-    # Full migration (database + storage)
+    # Seed asset inventory (default - database only)
     python db/scripts/migrate_to_supabase.py --company backlite_dubai
-
-    # Database only (no file uploads)
-    python db/scripts/migrate_to_supabase.py --company backlite_dubai --skip-storage
-
-    # Storage only (no database)
-    python db/scripts/migrate_to_supabase.py --company backlite_dubai --storage-only
 
     # Dry run (preview)
     python db/scripts/migrate_to_supabase.py --company backlite_dubai --dry-run
 
 Prerequisites:
     - Schema must be applied: asset-management/db/migrations/01_schema.sql
-    - Storage buckets must exist: templates (if using storage)
-    - Environment variables: ASSETMGMT_DEV_SUPABASE_URL, ASSETMGMT_DEV_SUPABASE_SERVICE_KEY
+    - Environment variables: ASSETMGMT_DEV_SUPABASE_URL, ASSETMGMT_DEV_SUPABASE_SERVICE_ROLE_KEY
 
 Valid company codes: backlite_dubai, backlite_uk, backlite_abudhabi, viola
 """
@@ -62,11 +58,15 @@ from supabase import Client, create_client
 # =============================================================================
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-BACKUP_DIR = PROJECT_ROOT / "data_backup_prod" / "data"
+REPO_ROOT = PROJECT_ROOT.parent.parent  # CRM root
+
+# Template data lives in sales-module (source of truth for templates)
+SALES_MODULE_DIR = REPO_ROOT / "src" / "sales-module"
+BACKUP_DIR = SALES_MODULE_DIR / "data_backup_prod" / "data"
 TEMPLATES_DIR = BACKUP_DIR / "templates"
 
 # Also check render_main_data for files (production location)
-RENDER_DATA_DIR = PROJECT_ROOT / "render_main_data"
+RENDER_DATA_DIR = SALES_MODULE_DIR / "render_main_data"
 RENDER_TEMPLATES_DIR = RENDER_DATA_DIR / "templates"
 
 # Valid company schemas (must match schema.sql)
@@ -78,8 +78,8 @@ SUPABASE_URL = (
     os.getenv("ASSETMGMT_PROD_SUPABASE_URL")
 )
 SUPABASE_KEY = (
-    os.getenv("ASSETMGMT_DEV_SUPABASE_SERVICE_KEY") or
-    os.getenv("ASSETMGMT_PROD_SUPABASE_SERVICE_KEY")
+    os.getenv("ASSETMGMT_DEV_SUPABASE_SERVICE_ROLE_KEY") or
+    os.getenv("ASSETMGMT_PROD_SUPABASE_SERVICE_ROLE_KEY")
 )
 
 # Global company schema (set by --company argument)
@@ -91,7 +91,7 @@ def get_supabase() -> Client:
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise ValueError(
             "Missing environment variables.\n"
-            "Set ASSETMGMT_DEV_SUPABASE_URL and ASSETMGMT_DEV_SUPABASE_SERVICE_KEY\n"
+            "Set ASSETMGMT_DEV_SUPABASE_URL and ASSETMGMT_DEV_SUPABASE_SERVICE_ROLE_KEY\n"
             "(or ASSETMGMT_PROD_* for production)"
         )
     return create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -446,37 +446,18 @@ def run_migration(args: argparse.Namespace) -> None:
     print("=" * 60)
     print(f"Company: {COMPANY_SCHEMA}")
     print(f"Mode: {'DRY RUN' if args.dry_run else 'LIVE'}")
-    print(f"Database: {not args.storage_only}")
-    print(f"Storage: {not args.skip_storage}")
     print("=" * 60)
 
     supabase = get_supabase()
 
-    # Counters
-    stats = {
-        'assets': 0,
-        'templates': 0,
-    }
-
-    # STEP 1: Database migration
-    if not args.storage_only:
-        assets_count, asset_map = seed_standalone_assets(supabase, dry_run=args.dry_run)
-        stats['assets'] = assets_count
-
-    # STEP 2: Storage migration
-    if not args.skip_storage and not args.storage_only:
-        templates_count = upload_templates(supabase, dry_run=args.dry_run)
-        stats['templates'] = templates_count
-    elif args.storage_only:
-        templates_count = upload_templates(supabase, dry_run=args.dry_run)
-        stats['templates'] = templates_count
+    # Seed standalone assets from template metadata
+    assets_count, asset_map = seed_standalone_assets(supabase, dry_run=args.dry_run)
 
     # Summary
     print("\n" + "=" * 60)
     print("MIGRATION SUMMARY")
     print("=" * 60)
-    print(f"  Standalone assets: {stats['assets']}")
-    print(f"  Template files: {stats['templates']}")
+    print(f"  Standalone assets: {assets_count}")
     print("=" * 60)
 
     if args.dry_run:
@@ -487,7 +468,7 @@ def run_migration(args: argparse.Namespace) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Migrate asset inventory to Asset-Management Supabase (Multi-Schema)'
+        description='Seed asset inventory metadata to Asset-Management Supabase (Multi-Schema)'
     )
     parser.add_argument(
         '--company',
@@ -500,22 +481,8 @@ def main():
         action='store_true',
         help='Preview migration without making changes'
     )
-    parser.add_argument(
-        '--skip-storage',
-        action='store_true',
-        help='Skip file uploads to Storage (database only)'
-    )
-    parser.add_argument(
-        '--storage-only',
-        action='store_true',
-        help='Only upload files to Storage (skip database)'
-    )
 
     args = parser.parse_args()
-
-    if args.skip_storage and args.storage_only:
-        print("ERROR: Cannot use both --skip-storage and --storage-only")
-        sys.exit(1)
 
     try:
         run_migration(args)

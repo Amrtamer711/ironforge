@@ -1310,3 +1310,72 @@ class SupabaseBackend(DatabaseBackend):
                 eligible.append(net)
 
         return eligible[offset:offset + limit]
+
+    # =========================================================================
+    # CROSS-SERVICE LOOKUPS
+    # =========================================================================
+
+    def has_mockup_frame(
+        self,
+        location_key: str,
+        company_schema: str,
+    ) -> bool:
+        """Check if a location has a mockup frame."""
+        frames = self.list_mockup_frames(location_key, company_schema)
+        return len(frames) > 0
+
+    # =========================================================================
+    # MOCKUP FRAMES
+    # =========================================================================
+
+    def list_mockup_frames(
+        self,
+        location_key: str,
+        company_schema: str,
+    ) -> list[dict[str, Any]]:
+        """List all mockup frames for a location."""
+        client = self._get_client()
+        try:
+            response = (
+                client.schema(company_schema)
+                .table("mockup_frames")
+                .select("*")
+                .eq("location_key", location_key)
+                .execute()
+            )
+            return response.data or []
+        except Exception as e:
+            logger.debug(f"[SUPABASE] Failed to list mockup frames: {e}")
+            return []
+
+    def get_mockup_frame(
+        self,
+        location_key: str,
+        company: str,
+        time_of_day: str = "day",
+        finish: str = "gold",
+        photo_filename: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Get specific mockup frame data."""
+        client = self._get_client()
+        try:
+            query = (
+                client.schema(company)
+                .table("mockup_frames")
+                .select("*")
+                .eq("location_key", location_key)
+                .eq("time_of_day", time_of_day)
+                .eq("finish", finish)
+            )
+
+            if photo_filename:
+                query = query.eq("photo_filename", photo_filename)
+
+            response = query.limit(1).execute()
+
+            if response.data:
+                return response.data[0]
+            return None
+        except Exception as e:
+            logger.debug(f"[SUPABASE] Failed to get mockup frame: {e}")
+            return None

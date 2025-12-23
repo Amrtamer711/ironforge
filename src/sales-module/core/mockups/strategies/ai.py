@@ -99,7 +99,7 @@ class AIMockupStrategy(MockupStrategy):
         self.logger.info(f"[AI_STRATEGY] Processing {num_prompts} AI prompt(s)")
 
         # Validate prompt count
-        is_valid, frame_count, error_msg = self.validator.validate_creative_count(
+        is_valid, frame_count, error_msg = await self.validator.validate_creative_count(
             location_key,
             num_prompts,
             time_of_day,

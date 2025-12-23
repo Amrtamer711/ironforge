@@ -418,6 +418,230 @@ class AssetManagementClient:
 
         return await self._request("GET", "/api/v1/asset-types", params=params) or []
 
+    # =========================================================================
+    # STORAGE - Templates & Mockups from Asset-Management
+    # =========================================================================
+
+    async def get_template(
+        self,
+        company: str,
+        location_key: str,
+    ) -> bytes | None:
+        """
+        Download template file from Asset-Management storage.
+
+        Args:
+            company: Company schema (e.g., "backlite_dubai")
+            location_key: Location identifier (e.g., "dubai_mall")
+
+        Returns:
+            Template file bytes or None if not found
+        """
+        try:
+            response = await self._request(
+                "GET",
+                f"/api/v1/storage/templates/{company}/{location_key}",
+            )
+            if response and "data" in response:
+                import base64
+                return base64.b64decode(response["data"])
+            return None
+        except Exception as e:
+            logger.error(f"[ASSET CLIENT] Failed to get template {location_key}: {e}")
+            return None
+
+    async def get_template_url(
+        self,
+        company: str,
+        location_key: str,
+        expires_in: int = 3600,
+    ) -> str | None:
+        """
+        Get signed URL for template download.
+
+        Args:
+            company: Company schema
+            location_key: Location identifier
+            expires_in: URL expiry in seconds
+
+        Returns:
+            Signed URL or None if not found
+        """
+        result = await self._request(
+            "GET",
+            f"/api/v1/storage/templates/{company}/{location_key}/url",
+            params={"expires_in": expires_in},
+        )
+        return result.get("url") if result else None
+
+    async def list_templates(self, company: str) -> list[dict]:
+        """
+        List all templates for a company.
+
+        Args:
+            company: Company schema
+
+        Returns:
+            List of template info dicts with location_key and storage_key
+        """
+        return await self._request("GET", f"/api/v1/storage/templates/{company}") or []
+
+    async def template_exists(self, company: str, location_key: str) -> bool:
+        """
+        Check if template exists for location.
+
+        Args:
+            company: Company schema
+            location_key: Location identifier
+
+        Returns:
+            True if template exists
+        """
+        result = await self._request(
+            "GET",
+            f"/api/v1/storage/templates/{company}/{location_key}/exists",
+        )
+        return result.get("exists", False) if result else False
+
+    async def get_mockup_frames(
+        self,
+        company: str,
+        location_key: str,
+    ) -> list[dict]:
+        """
+        Get all mockup frames for a location.
+
+        Args:
+            company: Company schema
+            location_key: Location identifier
+
+        Returns:
+            List of mockup frame dicts with time_of_day, finish, photo_filename, frames_data
+        """
+        return await self._request(
+            "GET",
+            f"/api/v1/mockup-frames/{company}/{location_key}",
+        ) or []
+
+    async def get_mockup_frame(
+        self,
+        company: str,
+        location_key: str,
+        time_of_day: str = "day",
+        finish: str = "gold",
+        photo_filename: str | None = None,
+    ) -> dict | None:
+        """
+        Get specific mockup frame data.
+
+        Args:
+            company: Company schema
+            location_key: Location identifier
+            time_of_day: "day" or "night"
+            finish: "gold", "silver", or "black"
+            photo_filename: Specific photo (optional, returns first match if None)
+
+        Returns:
+            Mockup frame data dict or None
+        """
+        params: dict[str, Any] = {"time_of_day": time_of_day, "finish": finish}
+        if photo_filename:
+            params["photo_filename"] = photo_filename
+
+        return await self._request(
+            "GET",
+            f"/api/v1/mockup-frames/{company}/{location_key}/frame",
+            params=params,
+        )
+
+    async def get_mockup_photo(
+        self,
+        company: str,
+        location_key: str,
+        time_of_day: str,
+        finish: str,
+        photo_filename: str,
+    ) -> bytes | None:
+        """
+        Download mockup background photo from Asset-Management storage.
+
+        Args:
+            company: Company schema
+            location_key: Location identifier
+            time_of_day: "day" or "night"
+            finish: "gold", "silver", or "black"
+            photo_filename: Photo filename
+
+        Returns:
+            Photo bytes or None if not found
+        """
+        try:
+            response = await self._request(
+                "GET",
+                f"/api/v1/storage/mockups/{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}",
+            )
+            if response and "data" in response:
+                import base64
+                return base64.b64decode(response["data"])
+            return None
+        except Exception as e:
+            logger.error(f"[ASSET CLIENT] Failed to get mockup photo: {e}")
+            return None
+
+    async def get_mockup_photo_url(
+        self,
+        company: str,
+        location_key: str,
+        time_of_day: str,
+        finish: str,
+        photo_filename: str,
+        expires_in: int = 3600,
+    ) -> str | None:
+        """
+        Get signed URL for mockup photo.
+
+        Args:
+            company: Company schema
+            location_key: Location identifier
+            time_of_day: "day" or "night"
+            finish: "gold", "silver", or "black"
+            photo_filename: Photo filename
+            expires_in: URL expiry in seconds
+
+        Returns:
+            Signed URL or None if not found
+        """
+        result = await self._request(
+            "GET",
+            f"/api/v1/storage/mockups/{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}/url",
+            params={"expires_in": expires_in},
+        )
+        return result.get("url") if result else None
+
+    async def get_intro_outro_pdf(self, company: str, pdf_name: str) -> bytes | None:
+        """
+        Download intro/outro PDF from Asset-Management storage.
+
+        Args:
+            company: Company schema
+            pdf_name: PDF name (e.g., "landmark_series", "rest")
+
+        Returns:
+            PDF bytes or None if not found
+        """
+        try:
+            response = await self._request(
+                "GET",
+                f"/api/v1/storage/intro-outro/{company}/{pdf_name}",
+            )
+            if response and "data" in response:
+                import base64
+                return base64.b64decode(response["data"])
+            return None
+        except Exception as e:
+            logger.debug(f"[ASSET CLIENT] Intro/outro PDF not found: {pdf_name}")
+            return None
+
 
 # Singleton instance for convenience
 asset_mgmt_client = AssetManagementClient()

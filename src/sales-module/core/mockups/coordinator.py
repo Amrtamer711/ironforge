@@ -103,7 +103,7 @@ class MockupCoordinator:
         self.logger.info(f"[COORDINATOR] Matched '{location_name}' to '{location_key}'")
         return location_key, None
 
-    def validate_location_configuration(
+    async def validate_location_configuration(
         self,
         location_key: str
     ) -> tuple[bool, str | None]:
@@ -116,7 +116,7 @@ class MockupCoordinator:
         Returns:
             Tuple of (is_valid, error_message)
         """
-        return self.validator.validate_location_has_mockups(location_key)
+        return await self.validator.validate_location_has_mockups(location_key)
 
     async def generate_mockup(
         self,
@@ -178,7 +178,7 @@ class MockupCoordinator:
             return None, [], {}, error_msg
 
         # Validate location configuration
-        is_valid, error_msg = self.validate_location_configuration(location_key)
+        is_valid, error_msg = await self.validate_location_configuration(location_key)
         if not is_valid:
             mockup_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:3000") + "/mockup"
             error_msg = (

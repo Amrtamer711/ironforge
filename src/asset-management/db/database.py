@@ -402,19 +402,37 @@ class _DatabaseNamespace:
     # CROSS-SERVICE LOOKUPS
     # =========================================================================
 
-    def has_rate_card(
-        self,
-        location_id: int,
-        company_schema: str,
-    ) -> bool:
-        return self._backend.has_rate_card(location_id, company_schema)
-
     def has_mockup_frame(
         self,
         location_key: str,
         company_schema: str,
     ) -> bool:
         return self._backend.has_mockup_frame(location_key, company_schema)
+
+    # =========================================================================
+    # MOCKUP FRAMES
+    # =========================================================================
+
+    def list_mockup_frames(
+        self,
+        location_key: str,
+        company_schema: str,
+    ) -> list[dict[str, Any]]:
+        """List all mockup frames for a location."""
+        return self._backend.list_mockup_frames(location_key, company_schema)
+
+    def get_mockup_frame(
+        self,
+        location_key: str,
+        company: str,
+        time_of_day: str = "day",
+        finish: str = "gold",
+        photo_filename: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Get specific mockup frame data."""
+        return self._backend.get_mockup_frame(
+            location_key, company, time_of_day, finish, photo_filename
+        )
 
 
 # Create the singleton database interface

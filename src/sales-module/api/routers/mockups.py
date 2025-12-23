@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 
 import config
 from core.services import AssetService
+from core.services.mockup_frame_service import MockupFrameService
 from core.utils import sanitize_path_component  # ✅ Use shared utility (removed duplicate)
 from crm_security import require_permission_user as require_permission, AuthUser
 from api.schemas import (
@@ -253,18 +254,22 @@ async def test_preview_mockup(
 async def list_mockup_photos(location_key: str, time_of_day: str = "all", finish: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:read"))):
     """List all photos for a location with specific time_of_day and finish. Requires sales:mockups:read permission."""
     try:
-        # If "all" is specified, we need to aggregate from all variations
+        # Use MockupFrameService to fetch from Asset-Management (searches all companies)
+        service = MockupFrameService(companies=user.companies)
+        all_photos = set()
+
         if time_of_day == "all" or finish == "all":
-            variations = db.list_mockup_variations(location_key, user.companies)
-            all_photos = set()
+            # Get all variations and aggregate photos
+            variations = await service.list_variations(location_key)
             for tod in variations:
                 for fin in variations[tod]:
-                    photos = db.list_mockup_photos(location_key, user.companies, tod, fin)
+                    photos = await service.list_photos(location_key, tod, fin)
                     all_photos.update(photos)
-            return {"photos": sorted(all_photos)}
         else:
-            photos = db.list_mockup_photos(location_key, user.companies, time_of_day, finish)
-            return {"photos": photos}
+            photos = await service.list_photos(location_key, time_of_day, finish)
+            all_photos.update(photos)
+
+        return {"photos": sorted(all_photos)}
     except Exception as e:
         logger.error(f"[MOCKUP API] Error listing photos: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -275,22 +280,25 @@ async def list_mockup_templates(location_key: str, time_of_day: str = "all", fin
     """List all templates (photos with frame configs) for a location. Requires sales:mockups:read permission."""
     try:
         templates = []
+        seen_photos = set()  # Track unique photo/tod/finish combos
 
-        # If "all" is specified, aggregate from all variations
+        # Use MockupFrameService to fetch from Asset-Management (searches all companies)
+        service = MockupFrameService(companies=user.companies)
+
         if time_of_day == "all" or finish == "all":
-            variations = db.list_mockup_variations(location_key, user.companies)
+            # Get all variations and their photos
+            variations = await service.list_variations(location_key)
             for tod in variations:
                 for fin in variations[tod]:
-                    photos = db.list_mockup_photos(location_key, user.companies, tod, fin)
+                    photos = await service.list_photos(location_key, tod, fin)
                     for photo in photos:
-                        # Get frame count and config - search through schemas
-                        frames_data = None
-                        for schema in user.companies:
-                            frames_data = db.get_mockup_frames(location_key, photo, schema, tod, fin)
-                            if frames_data:
-                                break
+                        key = (photo, tod, fin)
+                        if key in seen_photos:
+                            continue
+                        seen_photos.add(key)
+
+                        frames_data = await service.get_frames(location_key, tod, fin, photo)
                         if frames_data:
-                            # Get first frame's config (all frames typically share same config in UI)
                             frame_config = frames_data[0].get("config", {}) if frames_data else {}
                             templates.append({
                                 "photo": photo,
@@ -300,14 +308,14 @@ async def list_mockup_templates(location_key: str, time_of_day: str = "all", fin
                                 "config": frame_config
                             })
         else:
-            photos = db.list_mockup_photos(location_key, user.companies, time_of_day, finish)
+            photos = await service.list_photos(location_key, time_of_day, finish)
             for photo in photos:
-                # Get frame count and config - search through schemas
-                frames_data = None
-                for schema in user.companies:
-                    frames_data = db.get_mockup_frames(location_key, photo, schema, time_of_day, finish)
-                    if frames_data:
-                        break
+                key = (photo, time_of_day, finish)
+                if key in seen_photos:
+                    continue
+                seen_photos.add(key)
+
+                frames_data = await service.get_frames(location_key, time_of_day, finish, photo)
                 if frames_data:
                     frame_config = frames_data[0].get("config", {}) if frames_data else {}
                     templates.append({
@@ -325,67 +333,60 @@ async def list_mockup_templates(location_key: str, time_of_day: str = "all", fin
 
 
 @router.get("/api/mockup/photo/{location_key}/{photo_filename}")
-async def get_mockup_photo(location_key: str, photo_filename: str, time_of_day: str = "all", finish: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:read"))):
-    """Get a specific photo file. Requires sales:mockups:read permission."""
-    from generators import mockup as mockup_generator
-
+async def get_mockup_photo(
+    location_key: str,
+    photo_filename: str,
+    time_of_day: str = "all",
+    finish: str = "all",
+    background_tasks: BackgroundTasks = None,
+    user: AuthUser = Depends(require_permission("sales:mockups:read")),
+):
+    """Get a specific photo file from Asset-Management storage. Requires sales:mockups:read permission."""
     # Sanitize path components to prevent path traversal attacks
     location_key = sanitize_path_component(location_key)
     photo_filename = sanitize_path_component(photo_filename)
 
     logger.info(f"[PHOTO GET] Request for photo: {location_key}/{photo_filename} (time_of_day={time_of_day}, finish={finish})")
 
-    # If "all" is specified, find the photo in any variation
+    # Use MockupFrameService to fetch from Asset-Management (searches all companies)
+    service = MockupFrameService(companies=user.companies)
+
     if time_of_day == "all" or finish == "all":
-        logger.info("[PHOTO GET] Searching across variations (all mode)")
-        variations = db.list_mockup_variations(location_key, user.companies)
+        # Search across all variations
+        variations = await service.list_variations(location_key)
         logger.info(f"[PHOTO GET] Available variations: {variations}")
 
-        all_checked_paths = []
         for tod in variations:
             for fin in variations[tod]:
-                photo_path = mockup_generator.get_location_photos_dir(location_key, tod, fin) / photo_filename
-                all_checked_paths.append(str(photo_path))
-                logger.info(f"[PHOTO GET] Checking: {photo_path}")
+                # Check if this photo exists in this variation
+                photos = await service.list_photos(location_key, tod, fin)
+                if photo_filename in photos:
+                    # Download the photo
+                    photo_path = await service.download_photo(location_key, tod, fin, photo_filename)
+                    if photo_path and photo_path.exists():
+                        file_size = os.path.getsize(photo_path)
+                        logger.info(f"[PHOTO GET] ✓ FOUND: {photo_path} ({file_size} bytes)")
 
-                if photo_path.exists():
-                    file_size = os.path.getsize(photo_path)
-                    logger.info(f"[PHOTO GET] ✓ FOUND: {photo_path} ({file_size} bytes)")
-                    return FileResponse(photo_path)
-                else:
-                    logger.info(f"[PHOTO GET] ✗ NOT FOUND: {photo_path}")
+                        # Schedule cleanup after response is sent
+                        if background_tasks:
+                            background_tasks.add_task(os.unlink, photo_path)
 
-        logger.error(f"[PHOTO GET] ✗ Photo not found in any variation. Checked paths: {all_checked_paths}")
-
-        # Check if directory exists at all
-        mockups_base = mockup_generator.MOCKUPS_DIR / location_key
-        if mockups_base.exists():
-            logger.info(f"[PHOTO GET] Base directory exists: {mockups_base}")
-            logger.info(f"[PHOTO GET] Contents: {list(os.walk(mockups_base))}")
-        else:
-            logger.error(f"[PHOTO GET] Base directory doesn't exist: {mockups_base}")
-
-        raise HTTPException(status_code=404, detail=f"Photo not found: {photo_filename}")
+                        return FileResponse(photo_path, filename=photo_filename)
     else:
-        photo_path = mockup_generator.get_location_photos_dir(location_key, time_of_day, finish) / photo_filename
-        logger.info(f"[PHOTO GET] Direct path request: {photo_path}")
+        # Direct lookup with specific time_of_day and finish
+        photo_path = await service.download_photo(location_key, time_of_day, finish, photo_filename)
+        if photo_path and photo_path.exists():
+            file_size = os.path.getsize(photo_path)
+            logger.info(f"[PHOTO GET] ✓ FOUND: {photo_path} ({file_size} bytes)")
 
-        if not photo_path.exists():
-            logger.error(f"[PHOTO GET] ✗ Photo not found: {photo_path}")
+            # Schedule cleanup after response is sent
+            if background_tasks:
+                background_tasks.add_task(os.unlink, photo_path)
 
-            # Check parent directories
-            parent_dir = photo_path.parent
-            if parent_dir.exists():
-                logger.info(f"[PHOTO GET] Parent directory exists: {parent_dir}")
-                logger.info(f"[PHOTO GET] Contents: {list(parent_dir.iterdir())}")
-            else:
-                logger.error(f"[PHOTO GET] Parent directory doesn't exist: {parent_dir}")
+            return FileResponse(photo_path, filename=photo_filename)
 
-            raise HTTPException(status_code=404, detail=f"Photo not found: {photo_filename}")
-
-        file_size = os.path.getsize(photo_path)
-        logger.info(f"[PHOTO GET] ✓ Found photo: {photo_path} ({file_size} bytes)")
-        return FileResponse(photo_path)
+    logger.error(f"[PHOTO GET] ✗ Photo not found: {location_key}/{photo_filename}")
+    raise HTTPException(status_code=404, detail=f"Photo not found: {photo_filename}")
 
 
 @router.delete("/api/mockup/photo/{location_key}/{photo_filename}")
@@ -406,10 +407,12 @@ async def delete_mockup_photo(location_key: str, photo_filename: str, time_of_da
 
         # If "all" is specified, find and delete the photo from whichever variation it's in
         if time_of_day == "all" or finish == "all":
-            variations = db.list_mockup_variations(location_key, user.companies)
+            # Use MockupFrameService to find the photo's variation (searches all companies)
+            service = MockupFrameService(companies=user.companies)
+            variations = await service.list_variations(location_key)
             for tod in variations:
                 for fin in variations[tod]:
-                    photos = db.list_mockup_photos(location_key, user.companies, tod, fin)
+                    photos = await service.list_photos(location_key, tod, fin)
                     if photo_filename in photos:
                         success = mockup_generator.delete_location_photo(location_key, photo_filename, company_schema, tod, fin)
                         if success:
@@ -423,6 +426,8 @@ async def delete_mockup_photo(location_key: str, photo_filename: str, time_of_da
                 return {"success": True}
             else:
                 raise HTTPException(status_code=500, detail="Failed to delete photo")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"[MOCKUP API] Error deleting photo: {e}")
         raise HTTPException(status_code=500, detail=str(e))

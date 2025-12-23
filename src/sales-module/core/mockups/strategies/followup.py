@@ -96,7 +96,7 @@ class FollowupMockupStrategy(MockupStrategy):
             raise ValueError("No mockup history found for user")
 
         # Validate history
-        is_valid, error_msg = self.validator.validate_mockup_history(
+        is_valid, error_msg = await self.validator.validate_mockup_history(
             mockup_user_hist,
             location_key,
             time_of_day,

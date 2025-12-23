@@ -2,13 +2,14 @@
 Mockup Validation Module.
 
 Validates mockup generation requests.
+Uses Asset-Management API for mockup frame data.
 """
 
+from pathlib import Path
 from typing import Any
 
 import config
-from db.cache import get_location_frame_count
-from db.database import db
+from core.services.mockup_frame_service import MockupFrameService
 
 
 class MockupValidator:
@@ -30,8 +31,10 @@ class MockupValidator:
         """
         self.user_companies = user_companies
         self.logger = config.logger
+        # Single service that searches all companies
+        self._service = MockupFrameService(companies=user_companies)
 
-    def validate_location_has_mockups(
+    async def validate_location_has_mockups(
         self,
         location_key: str
     ) -> tuple[bool, str | None]:
@@ -46,12 +49,13 @@ class MockupValidator:
             - is_valid: True if location has mockups
             - error_message: Error message if invalid, None otherwise
         """
-        variations = db.list_mockup_variations(location_key, self.user_companies)
-        if not variations:
-            return False, f"No billboard photos configured for location '{location_key}'"
-        return True, None
+        variations = await self._service.list_variations(location_key)
+        if variations:
+            return True, None
 
-    def validate_creative_count(
+        return False, f"No billboard photos configured for location '{location_key}'"
+
+    async def validate_creative_count(
         self,
         location_key: str,
         creative_count: int,
@@ -77,12 +81,14 @@ class MockupValidator:
             - required_frame_count: Expected frame count for location
             - error_message: Error message if invalid, None otherwise
         """
-        frame_count = get_location_frame_count(
+        frame_count = await self._get_location_frame_count(
             location_key,
-            self.user_companies,
             time_of_day,
             finish
         )
+
+        if frame_count is None:
+            return False, 0, f"No mockup frames found for location '{location_key}'"
 
         is_valid = (creative_count == 1) or (creative_count == frame_count)
 
@@ -95,7 +101,7 @@ class MockupValidator:
 
         return True, frame_count, None
 
-    def validate_mockup_history(
+    async def validate_mockup_history(
         self,
         mockup_history: dict[str, Any],
         location_key: str,
@@ -125,7 +131,6 @@ class MockupValidator:
             return False, "No creatives found in history"
 
         # Verify all files still exist
-        from pathlib import Path
         missing_files = [
             str(p) for p in stored_creative_paths
             if not Path(p).exists()
@@ -136,12 +141,14 @@ class MockupValidator:
             return False, "Previous creative files are no longer available"
 
         # Validate count matches new location
-        frame_count = get_location_frame_count(
+        frame_count = await self._get_location_frame_count(
             location_key,
-            self.user_companies,
             time_of_day,
             finish
         )
+
+        if frame_count is None:
+            return False, f"No mockup frames found for location '{location_key}'"
 
         num_stored = len(stored_creative_paths)
         is_valid_count = (num_stored == 1) or (num_stored == frame_count)
@@ -155,3 +162,42 @@ class MockupValidator:
             return False, error_msg
 
         return True, None
+
+    async def _get_location_frame_count(
+        self,
+        location_key: str,
+        time_of_day: str = "all",
+        finish: str = "all",
+    ) -> int | None:
+        """Get the number of frames for a specific location configuration.
+
+        Args:
+            location_key: The location key to look up
+            time_of_day: Filter by time of day ("day", "night", "all")
+            finish: Filter by finish type ("gold", "matte", "all")
+
+        Returns:
+            Number of frames, or None if location not found or no mockups configured
+        """
+        variations = await self._service.list_variations(location_key)
+        if not variations:
+            return None
+
+        # Get the first available variation that matches time_of_day/finish
+        for tod, finish_list in variations.items():
+            if time_of_day != "all" and tod != time_of_day:
+                continue
+
+            for fin in finish_list:
+                if finish != "all" and fin != finish:
+                    continue
+
+                # Get photos for this time_of_day/finish combination
+                photos = await self._service.list_photos(location_key, tod, fin)
+                if photos:
+                    # Get frames for first photo
+                    frames_data = await self._service.get_frames(location_key, tod, fin, photos[0])
+                    if frames_data:
+                        return len(frames_data)
+
+        return None

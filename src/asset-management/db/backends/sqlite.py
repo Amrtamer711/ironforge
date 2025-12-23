@@ -108,6 +108,21 @@ CREATE TABLE IF NOT EXISTS package_items (
     FOREIGN KEY (location_id) REFERENCES locations(id)
 );
 
+-- Mockup frames table
+CREATE TABLE IF NOT EXISTS mockup_frames (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    location_key TEXT NOT NULL,
+    time_of_day TEXT NOT NULL DEFAULT 'day' CHECK(time_of_day IN ('day', 'night')),
+    finish TEXT NOT NULL DEFAULT 'gold' CHECK(finish IN ('gold', 'silver', 'black')),
+    photo_filename TEXT NOT NULL,
+    frames_data TEXT NOT NULL DEFAULT '[]',
+    config TEXT,
+    company TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(location_key, time_of_day, finish, photo_filename, company)
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_networks_company ON networks(company);
 CREATE INDEX IF NOT EXISTS idx_networks_key ON networks(network_key);
@@ -119,6 +134,8 @@ CREATE INDEX IF NOT EXISTS idx_locations_company ON locations(company);
 CREATE INDEX IF NOT EXISTS idx_locations_key ON locations(location_key);
 CREATE INDEX IF NOT EXISTS idx_packages_company ON packages(company);
 CREATE INDEX IF NOT EXISTS idx_package_items_package ON package_items(package_id);
+CREATE INDEX IF NOT EXISTS idx_mockup_frames_location ON mockup_frames(location_key);
+CREATE INDEX IF NOT EXISTS idx_mockup_frames_company ON mockup_frames(company);
 """
 
 
@@ -1156,3 +1173,87 @@ class SQLiteBackend(DatabaseBackend):
                 eligible.append(net)
 
         return eligible[offset:offset + limit]
+
+    # =========================================================================
+    # CROSS-SERVICE LOOKUPS
+    # =========================================================================
+
+    def has_mockup_frame(
+        self,
+        location_key: str,
+        company_schema: str,
+    ) -> bool:
+        """Check if a location has a mockup frame."""
+        frames = self.list_mockup_frames(location_key, company_schema)
+        return len(frames) > 0
+
+    # =========================================================================
+    # MOCKUP FRAMES
+    # =========================================================================
+
+    def list_mockup_frames(
+        self,
+        location_key: str,
+        company_schema: str,
+    ) -> list[dict[str, Any]]:
+        """List all mockup frames for a location."""
+        conn = self._connect()
+        try:
+            cursor = conn.execute(
+                """
+                SELECT * FROM mockup_frames
+                WHERE location_key = ? AND company = ?
+                ORDER BY time_of_day, finish, photo_filename
+                """,
+                (location_key, company_schema),
+            )
+            results = self._rows_to_list(cursor.fetchall())
+            for r in results:
+                r["frames_data"] = json.loads(r.get("frames_data", "[]"))
+                if r.get("config"):
+                    r["config"] = json.loads(r["config"])
+            return results
+        finally:
+            conn.close()
+
+    def get_mockup_frame(
+        self,
+        location_key: str,
+        company: str,
+        time_of_day: str = "day",
+        finish: str = "gold",
+        photo_filename: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Get specific mockup frame data."""
+        conn = self._connect()
+        try:
+            if photo_filename:
+                cursor = conn.execute(
+                    """
+                    SELECT * FROM mockup_frames
+                    WHERE location_key = ? AND company = ?
+                    AND time_of_day = ? AND finish = ? AND photo_filename = ?
+                    LIMIT 1
+                    """,
+                    (location_key, company, time_of_day, finish, photo_filename),
+                )
+            else:
+                cursor = conn.execute(
+                    """
+                    SELECT * FROM mockup_frames
+                    WHERE location_key = ? AND company = ?
+                    AND time_of_day = ? AND finish = ?
+                    LIMIT 1
+                    """,
+                    (location_key, company, time_of_day, finish),
+                )
+
+            row = cursor.fetchone()
+            result = self._row_to_dict(row)
+            if result:
+                result["frames_data"] = json.loads(result.get("frames_data", "[]"))
+                if result.get("config"):
+                    result["config"] = json.loads(result["config"])
+            return result
+        finally:
+            conn.close()

@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from core.services.mockup_frame_service import MockupFrameService
 from core.services.template_service import TemplateService
 from db.database import db
 
@@ -106,12 +107,18 @@ class EligibilityService:
 
     Usage:
         service = EligibilityService()
-        result = await service.check_location_eligibility("dubai_mall", "backlite_dubai")
+        result = await service.check_location_eligibility("dubai_mall", ["backlite_dubai"])
     """
 
-    def __init__(self, template_service: TemplateService | None = None):
+    def __init__(
+        self,
+        company_schemas: list[str] | None = None,
+        template_service: TemplateService | None = None,
+    ):
         self.logger = _get_logger()
-        self.template_service = template_service or TemplateService()
+        self.company_schemas = company_schemas or ["backlite_dubai"]
+        self.template_service = template_service or TemplateService(self.company_schemas[0])
+        self.mockup_frame_service = MockupFrameService(companies=self.company_schemas)
 
     async def check_location_eligibility(
         self,
@@ -152,8 +159,8 @@ class EligibilityService:
             len(missing_fields) == 0 and result.template_exists
         )
 
-        # Check mockup eligibility
-        mockup_variations = db.list_mockup_variations(location_key, company_schemas)
+        # Check mockup eligibility (via Asset-Management)
+        mockup_variations = await self.mockup_frame_service.list_variations(location_key)
         result.mockup_variants = self._build_mockup_variants(mockup_variations)
         result.mockup_frame_count = len(result.mockup_variants)
         result.mockup_eligible = result.mockup_frame_count > 0
@@ -201,8 +208,8 @@ class EligibilityService:
             bool(result.network_name) and result.template_exists
         )
 
-        # For mockup eligibility, check if any mockup frames exist
-        mockup_variations = db.list_mockup_variations(network_key, company_schemas)
+        # For mockup eligibility, check if any mockup frames exist (via Asset-Management)
+        mockup_variations = await self.mockup_frame_service.list_variations(network_key)
         result.mockup_frame_count = sum(
             len(finishes) for finishes in mockup_variations.values()
         )
@@ -227,22 +234,20 @@ class EligibilityService:
         """
         return await self.template_service.exists(location_key)
 
-    def get_mockup_variants(
+    async def get_mockup_variants(
         self,
         location_key: str,
-        company_schemas: list[str],
     ) -> list[MockupVariant]:
         """
         Get available mockup variants for a location.
 
         Args:
             location_key: Location identifier
-            company_schemas: Company schemas to search
 
         Returns:
             List of available MockupVariant combinations
         """
-        mockup_variations = db.list_mockup_variations(location_key, company_schemas)
+        mockup_variations = await self.mockup_frame_service.list_variations(location_key)
         return self._build_mockup_variants(mockup_variations)
 
     def _get_location_data(
@@ -364,7 +369,7 @@ async def check_location_eligibility(
     company_schemas: list[str],
 ) -> LocationEligibilityResult:
     """Check eligibility for a location."""
-    service = EligibilityService()
+    service = EligibilityService(company_schemas=company_schemas)
     return await service.check_location_eligibility(location_key, company_schemas)
 
 
@@ -373,5 +378,5 @@ async def check_network_eligibility(
     company_schemas: list[str],
 ) -> NetworkEligibilityResult:
     """Check eligibility for a network."""
-    service = EligibilityService()
+    service = EligibilityService(company_schemas=company_schemas)
     return await service.check_network_eligibility(network_key, company_schemas)

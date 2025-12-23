@@ -615,17 +615,8 @@ class DatabaseBackend(ABC):
         pass
 
     # =========================================================================
-    # CROSS-SERVICE LOOKUPS (for eligibility checks)
+    # CROSS-SERVICE LOOKUPS
     # =========================================================================
-
-    @abstractmethod
-    def has_rate_card(
-        self,
-        location_id: int,
-        company_schema: str,
-    ) -> bool:
-        """Check if a location has an active rate card (from sales-module)."""
-        pass
 
     @abstractmethod
     def has_mockup_frame(
@@ -634,4 +625,50 @@ class DatabaseBackend(ABC):
         company_schema: str,
     ) -> bool:
         """Check if a location has a mockup frame (from sales-module)."""
+        pass
+
+    # =========================================================================
+    # MOCKUP FRAMES
+    # =========================================================================
+
+    @abstractmethod
+    def list_mockup_frames(
+        self,
+        location_key: str,
+        company_schema: str,
+    ) -> list[dict[str, Any]]:
+        """
+        List all mockup frames for a location.
+
+        Args:
+            location_key: Location identifier
+            company_schema: Company schema
+
+        Returns:
+            List of mockup frame records
+        """
+        pass
+
+    @abstractmethod
+    def get_mockup_frame(
+        self,
+        location_key: str,
+        company: str,
+        time_of_day: str = "day",
+        finish: str = "gold",
+        photo_filename: str | None = None,
+    ) -> dict[str, Any] | None:
+        """
+        Get specific mockup frame data.
+
+        Args:
+            location_key: Location identifier
+            company: Company schema
+            time_of_day: "day" or "night"
+            finish: "gold", "silver", or "black"
+            photo_filename: Specific photo (optional, returns first if None)
+
+        Returns:
+            Mockup frame record or None
+        """
         pass

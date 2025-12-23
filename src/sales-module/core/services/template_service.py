@@ -1,8 +1,8 @@
 """
-Template Service - Manages templates in Supabase Storage.
+Template Service - Manages templates from Asset-Management.
 
-Handles template discovery, caching, and downloads from Supabase Storage.
-Replaces the filesystem-based template discovery in config.py.
+Fetches templates from Asset-Management Supabase Storage via the Asset-Management API.
+Templates are stored in Asset-Management because they are location-specific assets.
 """
 
 import asyncio
@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from integrations.storage import get_storage_client
+from integrations.asset_management import asset_mgmt_client
 
 # Lazy import to avoid circular dependency
 _logger = None
@@ -33,29 +33,28 @@ class TemplateCache:
     """Thread-safe cache for template discovery results."""
 
     def __init__(self):
-        self._templates: dict[str, dict[str, Any]] = {}
-        self._mapping: dict[str, str] = {}  # location_key -> storage_key
-        self._last_refresh: float = 0
+        self._templates: dict[str, dict[str, Any]] = {}  # {company: {location_key: info}}
+        self._last_refresh: dict[str, float] = {}  # {company: timestamp}
         self._lock = asyncio.Lock()
 
-    def is_stale(self) -> bool:
-        """Check if cache needs refresh."""
-        return time.time() - self._last_refresh > CACHE_TTL
+    def is_stale(self, company: str) -> bool:
+        """Check if cache needs refresh for company."""
+        last = self._last_refresh.get(company, 0)
+        return time.time() - last > CACHE_TTL
 
-    async def refresh(self, templates: dict[str, dict[str, Any]], mapping: dict[str, str]) -> None:
-        """Update cache with new data."""
+    async def refresh(self, company: str, templates: dict[str, dict[str, Any]]) -> None:
+        """Update cache with new data for company."""
         async with self._lock:
-            self._templates = templates
-            self._mapping = mapping
-            self._last_refresh = time.time()
+            self._templates[company] = templates
+            self._last_refresh[company] = time.time()
 
-    def get_templates(self) -> dict[str, dict[str, Any]]:
-        """Get cached templates."""
-        return self._templates
+    def get_templates(self, company: str) -> dict[str, dict[str, Any]]:
+        """Get cached templates for company."""
+        return self._templates.get(company, {})
 
-    def get_mapping(self) -> dict[str, str]:
-        """Get cached location_key -> storage_key mapping."""
-        return self._mapping
+    def has_template(self, company: str, location_key: str) -> bool:
+        """Check if template is in cache."""
+        return location_key.lower() in self._templates.get(company, {})
 
 
 # Global cache instance
@@ -64,16 +63,20 @@ _template_cache = TemplateCache()
 
 class TemplateService:
     """
-    Service for managing proposal templates in Supabase Storage.
+    Service for managing proposal templates from Asset-Management.
+
+    Templates are stored in Asset-Management Supabase Storage and accessed
+    via the Asset-Management API. This ensures templates are co-located
+    with their location metadata.
 
     Responsibilities:
-    - Discover templates from Supabase Storage bucket
+    - Discover templates from Asset-Management API
     - Cache template metadata with TTL
     - Download templates to temp files for processing
     - Check template existence
 
     Usage:
-        service = TemplateService()
+        service = TemplateService(company="backlite_dubai")
 
         # Check if template exists
         if await service.exists("dubai_mall"):
@@ -81,105 +84,66 @@ class TemplateService:
             # Use template_path...
     """
 
-    BUCKET = "templates"
+    def __init__(self, company: str = "backlite_dubai"):
+        """
+        Initialize TemplateService.
 
-    def __init__(self):
+        Args:
+            company: Company schema (e.g., "backlite_dubai")
+        """
+        self.company = company
         self.logger = _get_logger()
 
-    async def _discover_templates(self) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
+    async def _discover_templates(self) -> dict[str, dict[str, Any]]:
         """
-        Discover templates from Supabase Storage.
-
-        Scans the templates bucket and builds a mapping of location keys
-        to their storage paths and metadata.
+        Discover templates from Asset-Management API.
 
         Returns:
-            Tuple of (templates dict, mapping dict)
-            - templates: {location_key: {storage_key, company, filename, ...}}
-            - mapping: {location_key: storage_key}
+            Dict mapping location_key to template info
         """
-        storage = get_storage_client()
-        templates: dict[str, dict[str, Any]] = {}
-        mapping: dict[str, str] = {}
-
-        self.logger.info("[TEMPLATE_SERVICE] Starting template discovery from Supabase Storage")
+        self.logger.info(f"[TEMPLATE_SERVICE] Discovering templates from Asset-Management for {self.company}")
 
         try:
-            # List all files in templates bucket
-            result = await storage.list_files(self.BUCKET, limit=1000)
+            template_list = await asset_mgmt_client.list_templates(self.company)
+            templates: dict[str, dict[str, Any]] = {}
 
-            if not result.success:
-                self.logger.error(f"[TEMPLATE_SERVICE] Failed to list templates: {result.error}")
-                return templates, mapping
-
-            for file in result.files:
-                # Expected structure: {company}/{location_key}/{location_key}.pptx
-                # or: {company}/{location_key}/metadata.txt
-                key = file.key
-                if not key.endswith(".pptx"):
-                    continue
-
-                # Parse the path
-                parts = key.split("/")
-                if len(parts) < 3:
-                    self.logger.warning(f"[TEMPLATE_SERVICE] Skipping malformed path: {key}")
-                    continue
-
-                company = parts[0]
-                location_key = parts[1]
-                filename = parts[-1]
-
-                # Normalize location key
-                normalized_key = location_key.lower().strip()
-
-                templates[normalized_key] = {
-                    "storage_key": key,
-                    "company": company,
-                    "location_key": location_key,
-                    "filename": filename,
-                    "size": file.size,
-                }
-                mapping[normalized_key] = key
-
-                self.logger.debug(f"[TEMPLATE_SERVICE] Found template: {normalized_key} -> {key}")
+            for t in template_list:
+                location_key = t.get("location_key", "").lower().strip()
+                if location_key:
+                    templates[location_key] = {
+                        "storage_key": t.get("storage_key"),
+                        "company": self.company,
+                        "location_key": t.get("location_key"),
+                        "filename": t.get("filename"),
+                    }
 
             self.logger.info(f"[TEMPLATE_SERVICE] Discovered {len(templates)} templates")
-            return templates, mapping
+            return templates
 
         except Exception as e:
             self.logger.error(f"[TEMPLATE_SERVICE] Error discovering templates: {e}")
-            return templates, mapping
+            return {}
 
     async def refresh_cache(self) -> None:
         """Force refresh the template cache."""
-        templates, mapping = await self._discover_templates()
-        await _template_cache.refresh(templates, mapping)
+        templates = await self._discover_templates()
+        await _template_cache.refresh(self.company, templates)
         self.logger.info(f"[TEMPLATE_SERVICE] Cache refreshed with {len(templates)} templates")
 
     async def _ensure_cache(self) -> None:
         """Ensure cache is populated and fresh."""
-        if _template_cache.is_stale():
+        if _template_cache.is_stale(self.company):
             await self.refresh_cache()
 
     async def get_templates(self) -> dict[str, dict[str, Any]]:
         """
-        Get all discovered templates.
+        Get all discovered templates for company.
 
         Returns:
             Dict mapping location_key to template info
         """
         await self._ensure_cache()
-        return _template_cache.get_templates()
-
-    async def get_mapping(self) -> dict[str, str]:
-        """
-        Get location_key -> storage_key mapping.
-
-        Returns:
-            Dict mapping location_key to storage path
-        """
-        await self._ensure_cache()
-        return _template_cache.get_mapping()
+        return _template_cache.get_templates(self.company)
 
     async def exists(self, location_key: str) -> bool:
         """
@@ -189,29 +153,23 @@ class TemplateService:
             location_key: Location identifier (e.g., "dubai_mall")
 
         Returns:
-            True if template exists in storage
+            True if template exists
         """
+        # First check cache
         await self._ensure_cache()
         normalized = location_key.lower().strip()
-        return normalized in _template_cache.get_mapping()
+        if _template_cache.has_template(self.company, normalized):
+            return True
 
-    async def get_storage_key(self, location_key: str) -> str | None:
-        """
-        Get the storage key for a location's template.
-
-        Args:
-            location_key: Location identifier
-
-        Returns:
-            Storage key (path in bucket) or None if not found
-        """
-        await self._ensure_cache()
-        normalized = location_key.lower().strip()
-        return _template_cache.get_mapping().get(normalized)
+        # Fallback: check via API
+        try:
+            return await asset_mgmt_client.template_exists(self.company, location_key)
+        except Exception:
+            return False
 
     async def download(self, location_key: str) -> bytes | None:
         """
-        Download template file contents.
+        Download template file contents from Asset-Management.
 
         Args:
             location_key: Location identifier
@@ -219,20 +177,18 @@ class TemplateService:
         Returns:
             File bytes or None if not found
         """
-        storage_key = await self.get_storage_key(location_key)
-        if not storage_key:
+        self.logger.info(f"[TEMPLATE_SERVICE] Downloading template: {location_key}")
+
+        try:
+            data = await asset_mgmt_client.get_template(self.company, location_key)
+            if data:
+                self.logger.info(f"[TEMPLATE_SERVICE] Downloaded template: {location_key}")
+                return data
             self.logger.warning(f"[TEMPLATE_SERVICE] Template not found: {location_key}")
             return None
-
-        storage = get_storage_client()
-        result = await storage.download(self.BUCKET, storage_key)
-
-        if result.success:
-            self.logger.info(f"[TEMPLATE_SERVICE] Downloaded template: {storage_key}")
-            return result.data
-
-        self.logger.error(f"[TEMPLATE_SERVICE] Failed to download {storage_key}: {result.error}")
-        return None
+        except Exception as e:
+            self.logger.error(f"[TEMPLATE_SERVICE] Failed to download {location_key}: {e}")
+            return None
 
     async def download_to_temp(self, location_key: str, suffix: str = ".pptx") -> str | None:
         """
@@ -259,7 +215,7 @@ class TemplateService:
 
     async def get_intro_outro_pdf(self, pdf_name: str) -> bytes | None:
         """
-        Download an intro/outro PDF from storage.
+        Download an intro/outro PDF from Asset-Management storage.
 
         Args:
             pdf_name: Name of PDF (e.g., "landmark_series", "rest", "digital_icons")
@@ -267,16 +223,16 @@ class TemplateService:
         Returns:
             PDF bytes or None if not found
         """
-        storage = get_storage_client()
-        storage_key = f"intro_outro/{pdf_name}.pdf"
-
-        result = await storage.download(self.BUCKET, storage_key)
-        if result.success:
-            self.logger.info(f"[TEMPLATE_SERVICE] Downloaded intro/outro PDF: {pdf_name}")
-            return result.data
-
-        self.logger.debug(f"[TEMPLATE_SERVICE] Intro/outro PDF not found: {storage_key}")
-        return None
+        try:
+            data = await asset_mgmt_client.get_intro_outro_pdf(self.company, pdf_name)
+            if data:
+                self.logger.info(f"[TEMPLATE_SERVICE] Downloaded intro/outro PDF: {pdf_name}")
+                return data
+            self.logger.debug(f"[TEMPLATE_SERVICE] Intro/outro PDF not found: {pdf_name}")
+            return None
+        except Exception as e:
+            self.logger.debug(f"[TEMPLATE_SERVICE] Error getting intro/outro PDF: {e}")
+            return None
 
     async def download_intro_outro_to_temp(self, pdf_name: str) -> str | None:
         """
@@ -302,24 +258,24 @@ class TemplateService:
 # Convenience functions for module-level access
 
 
-async def get_template_service() -> TemplateService:
+async def get_template_service(company: str = "backlite_dubai") -> TemplateService:
     """Get a TemplateService instance."""
-    return TemplateService()
+    return TemplateService(company=company)
 
 
-async def template_exists(location_key: str) -> bool:
+async def template_exists(location_key: str, company: str = "backlite_dubai") -> bool:
     """Check if template exists for location."""
-    service = TemplateService()
+    service = TemplateService(company=company)
     return await service.exists(location_key)
 
 
-async def download_template(location_key: str) -> str | None:
+async def download_template(location_key: str, company: str = "backlite_dubai") -> str | None:
     """Download template to temp file."""
-    service = TemplateService()
+    service = TemplateService(company=company)
     return await service.download_to_temp(location_key)
 
 
-async def get_template_mapping() -> dict[str, str]:
-    """Get location_key -> storage_key mapping."""
-    service = TemplateService()
-    return await service.get_mapping()
+async def get_template_mapping(company: str = "backlite_dubai") -> dict[str, dict[str, Any]]:
+    """Get all templates with their info."""
+    service = TemplateService(company=company)
+    return await service.get_templates()
