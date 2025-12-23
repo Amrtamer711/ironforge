@@ -55,4 +55,4 @@ variables:
       fi
 
 include:
-  - local: "src/unifiedui/c-cd.yml"
+  - local: "src/unified-ui/c-cd.yml"
