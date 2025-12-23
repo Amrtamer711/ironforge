@@ -67,6 +67,13 @@ except ImportError:
 
 ROOT_DIR = Path(__file__).parent.resolve()
 
+# Load .env so all services get shared environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv(ROOT_DIR / ".env")
+except ImportError:
+    pass  # dotenv not installed, services will load their own .env
+
 # ANSI color codes
 COLORS = {
     "blue": "\033[34m",

@@ -602,31 +602,22 @@ def _fetch_locations_from_asset_management() -> list[dict]:
     # Get Asset-Management URL
     asset_mgmt_url = os.getenv("ASSET_MANAGEMENT_URL", "http://localhost:8001")
 
-    # Get service token for inter-service auth
-    inter_service_secret = os.getenv("INTER_SERVICE_SECRET", "")
+    # Get proxy secret for trusted service auth
+    proxy_secret = os.getenv("PROXY_SECRET", "")
 
-    if not inter_service_secret:
-        logger.warning("[DISCOVER] No INTER_SERVICE_SECRET, cannot call Asset-Management")
+    if not proxy_secret:
+        logger.warning("[DISCOVER] No PROXY_SECRET, cannot call Asset-Management")
         return []
 
     try:
-        # Create service JWT token
-        import jwt
-        from datetime import datetime, timedelta, timezone
-
-        payload = {
-            "sub": "sales-module",
-            "service": True,
-            "iat": datetime.now(timezone.utc),
-            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
-        }
-        token = jwt.encode(payload, inter_service_secret, algorithm="HS256")
-
-        # Fetch all locations
+        # Fetch all locations with proxy secret header
         with httpx.Client(timeout=10.0) as client:
             response = client.get(
                 f"{asset_mgmt_url}/api/locations",
-                headers={"Authorization": f"Bearer {token}"},
+                headers={
+                    "X-Proxy-Secret": proxy_secret,
+                    "X-Service-Name": "sales-module",
+                },
                 params={"active_only": "true"},
             )
             response.raise_for_status()
