@@ -9,6 +9,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 import config
+from core.services import AssetService
+from core.utils import match_location_key
+from core.mockups import MockupCoordinator  # ✅ NEW: Use modular mockup coordinator
 from db.cache import (
     get_location_frame_count,
     get_mockup_history,
@@ -73,125 +76,104 @@ async def handle_mockup_generation(
     if not isinstance(ai_prompts, list):
         ai_prompts = [ai_prompts] if ai_prompts else []
     ai_prompts = [str(p).strip() for p in ai_prompts if p]
-    num_ai_frames = len(ai_prompts)
 
-    if ai_prompts:
-        logger.info(f"[MOCKUP] LLM extracted {num_ai_frames} AI prompt(s)")
-    else:
-        logger.info("[MOCKUP] No AI prompts provided")
+    # Extract uploaded images
+    uploaded_creatives = await _extract_uploaded_images(channel_event, download_file_func)
 
-    # Resolve location key
-    location_key = config.get_location_key_from_display_name(location_name)
-    if not location_key:
-        location_key = location_name.lower().replace(" ", "_")
+    # ✅ NEW: Use MockupCoordinator for business logic
+    coordinator = MockupCoordinator(
+        user_companies=user_companies,
+        generate_mockup_func=generate_mockup_queued_func,
+        generate_ai_mockup_func=generate_ai_mockup_queued_func
+    )
+
+    # Generate mockup (coordinator handles all modes: upload/AI/followup)
+    result_path, creative_paths, metadata, error = await coordinator.generate_mockup(
+        location_name=location_name,
+        time_of_day=time_of_day,
+        finish=finish,
+        user_id=user_id,
+        uploaded_creatives=uploaded_creatives,
+        ai_prompts=ai_prompts,
+    )
 
     channel_adapter = config.get_channel_adapter()
 
-    # Validate location exists
-    if location_key not in config.LOCATION_METADATA:
+    # Handle errors
+    if error:
+        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+        await channel_adapter.send_message(channel_id=channel, content=f"❌ **Error:** {error}")
+        return True
+
+    # Handle success - upload the mockup
+    if not result_path:
         await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
         await channel_adapter.send_message(
             channel_id=channel,
-            content=f"❌ **Error:** Location '{location_name}' not found. Please choose from available locations."
+            content="❌ **Error:** Failed to generate mockup (no result)"
         )
         return True
 
-    # Check if location has any mockup photos configured (search user's company schemas)
-    variations = db.list_mockup_variations(location_key, user_companies)
-    if not variations:
-        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        mockup_url = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:3000") + "/mockup"
-        await channel_adapter.send_message(
-            channel_id=channel,
-            content=(
-                f"❌ **Error:** No billboard photos configured for *{location_name}* (location key: `{location_key}`).\n\n"
-                f"Ask an admin to set up mockup frames at {mockup_url}"
-            )
-        )
-        return True
-
-    # Get frame count for this location (from user's accessible company schemas)
-    new_location_frame_count = get_location_frame_count(location_key, user_companies, time_of_day, finish)
-
-    # Get user's mockup history if exists
-    mockup_user_hist = get_mockup_history(user_id)
-
-    # Check if user uploaded image(s) with the request
-    uploaded_creatives = await _extract_uploaded_images(
-        channel_event, download_file_func
-    )
-    has_images = len(uploaded_creatives) > 0
-
-    # Determine mode and handle accordingly
-    # Priority: 1) New upload 2) AI prompt 3) History reuse 4) Error
-
-    # FOLLOW-UP MODE: Check if this is a follow-up request
-    if not has_images and not ai_prompts and mockup_user_hist:
-        return await _handle_followup_mode(
-            mockup_user_hist=mockup_user_hist,
-            location_key=location_key,
-            location_name=location_name,
-            time_of_day=time_of_day,
-            finish=finish,
-            new_location_frame_count=new_location_frame_count,
-            user_id=user_id,
-            channel=channel,
-            status_ts=status_ts,
-            user_companies=user_companies,
-            generate_mockup_queued_func=generate_mockup_queued_func,
-        )
-
-    # UPLOAD MODE: User uploaded image(s)
-    if has_images:
-        return await _handle_upload_mode(
-            uploaded_creatives=uploaded_creatives,
-            location_key=location_key,
-            location_name=location_name,
-            time_of_day=time_of_day,
-            finish=finish,
-            new_location_frame_count=new_location_frame_count,
-            user_id=user_id,
-            channel=channel,
-            status_ts=status_ts,
-            user_companies=user_companies,
-            generate_mockup_queued_func=generate_mockup_queued_func,
-        )
-
-    # AI MODE: User provided AI prompt(s)
-    if ai_prompts:
-        return await _handle_ai_mode(
-            ai_prompts=ai_prompts,
-            num_ai_frames=num_ai_frames,
-            location_key=location_key,
-            location_name=location_name,
-            time_of_day=time_of_day,
-            finish=finish,
-            new_location_frame_count=new_location_frame_count,
-            user_id=user_id,
-            channel=channel,
-            status_ts=status_ts,
-            user_companies=user_companies,
-            generate_ai_mockup_queued_func=generate_ai_mockup_queued_func,
-        )
-
-    # NO INPUT PROVIDED: Show help message
-    await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-    await channel_adapter.send_message(
+    # Update status
+    await channel_adapter.update_message(
         channel_id=channel,
-        content=(
-            f"❌ **Sorry!** You need to provide a creative for the mockup.\n\n"
-            f"**Three ways to generate mockups:**\n\n"
-            f"1️⃣ **Upload Your Image:** Attach your creative when you send the request\n"
-            f"   Example: [Upload creative.jpg] + \"mockup for {location_name}\"\n\n"
-            f"2️⃣ **AI Generation (No upload needed):** Describe what you want\n"
-            f"   Example: \"mockup for {location_name} with luxury watch ad, gold and elegant typography\"\n"
-            f"   The AI will generate the creative for you!\n\n"
-            f"3️⃣ **Follow-up Request:** If you recently generated a mockup (within 30 min), just ask!\n"
-            f"   Example: \"show me this on {location_name}\" or \"apply to {location_name}\"\n"
-            f"   I'll reuse your previous creative(s) automatically.\n\n"
-            f"Please try again with an image attachment, creative description, or generate a mockup first!"
-        )
+        message_id=status_ts,
+        content="📤 Uploading mockup..."
     )
+
+    # Build upload message based on mode
+    mode = metadata.get("mode", "unknown")
+    location_display = location_name
+    num_frames = metadata.get("num_frames", 1)
+
+    variation_info = ""
+    if time_of_day != "all" or finish != "all":
+        variation_info = f" ({time_of_day}/{finish})"
+
+    frames_info = f" ({num_frames} frame(s))" if num_frames > 1 else ""
+
+    if mode == "followup":
+        previous_location = metadata.get("previous_location", "unknown")
+        comment = (
+            f"🎨 **Billboard Mockup Generated** (Follow-up)\n\n"
+            f"📍 New Location: {location_display}{variation_info}\n"
+            f"🔄 Using creative(s) from: {previous_location}{frames_info}\n"
+            f"✨ Your creative has been applied to this location."
+        )
+    elif mode == "ai_generated":
+        comment = (
+            f"🎨 **AI-Generated Billboard Mockup**\n\n"
+            f"📍 Location: {location_display}{variation_info}{frames_info}\n"
+        )
+    else:  # uploaded
+        comment = (
+            f"🎨 **Billboard Mockup Generated**\n\n"
+            f"📍 Location: {location_display}{variation_info}\n"
+            f"🖼️ Creative(s): {len(creative_paths)} image(s)\n"
+            f"✨ Your creative has been applied to a billboard photo."
+        )
+
+    # Upload the mockup
+    await channel_adapter.upload_file(
+        channel_id=channel,
+        file_path=str(result_path),
+        title=f"mockup_{metadata.get('location_key', location_name)}_{time_of_day}_{finish}.jpg",
+        comment=comment
+    )
+
+    # Delete status message
+    try:
+        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+    except Exception as e:
+        logger.debug(f"[MOCKUP] Failed to delete status message: {e}")
+
+    # Cleanup result file
+    try:
+        os.unlink(result_path)
+    except OSError as e:
+        logger.debug(f"[MOCKUP] Failed to cleanup result file: {e}")
+
+    logger.info(f"[MOCKUP] Mockup generated successfully for user {user_id}")
     return True
 
 
@@ -235,379 +217,3 @@ async def _extract_uploaded_images(
                 logger.error(f"[MOCKUP] Failed to download image: {e}")
 
     return uploaded_creatives
-
-
-async def _handle_followup_mode(
-    mockup_user_hist: dict,
-    location_key: str,
-    location_name: str,
-    time_of_day: str,
-    finish: str,
-    new_location_frame_count: int,
-    user_id: str,
-    channel: str,
-    status_ts: str,
-    user_companies: list[str],
-    generate_mockup_queued_func: Callable,
-) -> bool:
-    """Handle follow-up request to apply previous creatives to new location."""
-    stored_frames = mockup_user_hist.get("metadata", {}).get("num_frames", 1)
-    stored_creative_paths = mockup_user_hist.get("creative_paths", [])
-    stored_location = mockup_user_hist.get("metadata", {}).get("location_name", "unknown")
-
-    channel_adapter = config.get_channel_adapter()
-
-    # Verify all creative files still exist
-    missing_files = [str(p) for p in stored_creative_paths if not p.exists()]
-
-    if missing_files:
-        logger.error(f"[MOCKUP] Creative files missing from history: {missing_files}")
-        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        await channel_adapter.send_message(
-            channel_id=channel,
-            content=(
-                "❌ **Error:** Your previous creative files are no longer available.\n\n"
-                "Please upload new images or use AI generation."
-            )
-        )
-        # Clean up corrupted history
-        del mockup_history[user_id]
-        return True
-
-    # Validate creative count: Allow if 1 creative (tile) OR matches frame count
-    num_stored_creatives = len(stored_creative_paths)
-    is_valid_count = (num_stored_creatives == 1) or (num_stored_creatives == new_location_frame_count)
-
-    if not is_valid_count:
-        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        await channel_adapter.send_message(
-            channel_id=channel,
-            content=(
-                f"⚠️ **Creative Count Mismatch**\n\n"
-                f"I have **{num_stored_creatives} creative(s)** from your previous mockup (**{stored_location}**), "
-                f"but **{location_name}** requires **{new_location_frame_count} frame(s)**.\n\n"
-                f"**Valid options:**\n"
-                f"• Upload **1 image** (will be tiled across all frames)\n"
-                f"• Upload **{new_location_frame_count} images** (one per frame)\n"
-                f"• Use AI generation with a creative description"
-            )
-        )
-        return True
-
-    logger.info(f"[MOCKUP] Follow-up request - reusing {len(stored_creative_paths)} creative(s)")
-
-    await channel_adapter.update_message(
-        channel_id=channel,
-        message_id=status_ts,
-        content=f"⏳ _Applying your previous creative(s) to {location_name}..._"
-    )
-
-    result_path = None
-    try:
-        result_path, _ = await generate_mockup_queued_func(
-            location_key,
-            stored_creative_paths,
-            time_of_day=time_of_day,
-            finish=finish,
-            company_schemas=user_companies,
-        )
-
-        if not result_path:
-            raise Exception("Failed to generate mockup")
-
-        await channel_adapter.update_message(
-            channel_id=channel,
-            message_id=status_ts,
-            content="📤 Uploading mockup..."
-        )
-
-        variation_info = ""
-        if time_of_day != "all" or finish != "all":
-            variation_info = f" ({time_of_day}/{finish})"
-
-        frames_info = f" ({stored_frames} frame(s))" if stored_frames > 1 else ""
-
-        await channel_adapter.upload_file(
-            channel_id=channel,
-            file_path=str(result_path),
-            title=f"mockup_{location_key}_{time_of_day}_{finish}.jpg",
-            comment=(
-                f"🎨 **Billboard Mockup Generated** (Follow-up)\n\n"
-                f"📍 New Location: {location_name}{variation_info}\n"
-                f"🔄 Using creative(s) from: {stored_location}{frames_info}\n"
-                f"✨ Your creative has been applied to this location."
-            )
-        )
-
-        try:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        except Exception as e:
-            logger.debug(f"[MOCKUP] Failed to delete status message: {e}")
-
-        # Update history with new location
-        mockup_user_hist["metadata"]["location_key"] = location_key
-        mockup_user_hist["metadata"]["location_name"] = location_name
-        mockup_user_hist["metadata"]["time_of_day"] = time_of_day
-        mockup_user_hist["metadata"]["finish"] = finish
-
-        logger.info(f"[MOCKUP] Follow-up mockup generated successfully for user {user_id}")
-
-    except Exception as e:
-        logger.error(f"[MOCKUP] Error generating follow-up mockup: {e}", exc_info=True)
-        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        await channel_adapter.send_message(
-            channel_id=channel,
-            content=f"❌ **Error:** Failed to generate follow-up mockup. {str(e)}"
-        )
-    finally:
-        # Cleanup and memory management
-        if result_path:
-            try:
-                os.unlink(result_path)
-            except OSError as cleanup_err:
-                logger.debug(f"[MOCKUP] Failed to cleanup result file: {cleanup_err}")
-        cleanup_memory(context="mockup_followup", aggressive=False, log_stats=False)
-
-    return True
-
-
-async def _handle_upload_mode(
-    uploaded_creatives: list[Path],
-    location_key: str,
-    location_name: str,
-    time_of_day: str,
-    finish: str,
-    new_location_frame_count: int,
-    user_id: str,
-    channel: str,
-    status_ts: str,
-    user_companies: list[str],
-    generate_mockup_queued_func: Callable,
-) -> bool:
-    """Handle mockup generation from uploaded images."""
-    logger.info(f"[MOCKUP] Processing {len(uploaded_creatives)} uploaded image(s)")
-
-    channel_adapter = config.get_channel_adapter()
-
-    # Validate creative count
-    num_uploaded = len(uploaded_creatives)
-    is_valid_count = (num_uploaded == 1) or (num_uploaded == new_location_frame_count)
-
-    if not is_valid_count:
-        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        await channel_adapter.send_message(
-            channel_id=channel,
-            content=(
-                f"⚠️ **Creative Count Mismatch**\n\n"
-                f"You uploaded **{num_uploaded} image(s)**, but **{location_name}** requires **{new_location_frame_count} frame(s)**.\n\n"
-                f"**Valid options:**\n"
-                f"• Upload **1 image** (will be tiled across all frames)\n"
-                f"• Upload **{new_location_frame_count} images** (one per frame)"
-            )
-        )
-        return True
-
-    await channel_adapter.update_message(
-        channel_id=channel,
-        message_id=status_ts,
-        content="⏳ _Generating mockup from uploaded image(s)..._"
-    )
-
-    result_path = None
-    try:
-        result_path, _ = await generate_mockup_queued_func(
-            location_key,
-            uploaded_creatives,
-            time_of_day=time_of_day,
-            finish=finish,
-            company_schemas=user_companies,
-        )
-
-        if not result_path:
-            raise Exception("Failed to generate mockup")
-
-        await channel_adapter.update_message(
-            channel_id=channel,
-            message_id=status_ts,
-            content="📤 Uploading mockup..."
-        )
-
-        variation_info = ""
-        if time_of_day != "all" or finish != "all":
-            variation_info = f" ({time_of_day}/{finish})"
-
-        await channel_adapter.upload_file(
-            channel_id=channel,
-            file_path=str(result_path),
-            title=f"mockup_{location_key}_{time_of_day}_{finish}.jpg",
-            comment=(
-                f"🎨 **Billboard Mockup Generated**\n\n"
-                f"📍 Location: {location_name}{variation_info}\n"
-                f"🖼️ Creative(s): {len(uploaded_creatives)} image(s)\n"
-                f"✨ Your creative has been applied to a billboard photo."
-            )
-        )
-
-        try:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        except Exception as e:
-            logger.debug(f"[MOCKUP] Failed to delete status message: {e}")
-
-        # Store in history for follow-ups
-        location_frame_count = get_location_frame_count(location_key, user_companies, time_of_day, finish)
-        store_mockup_history(user_id, uploaded_creatives, {
-            "location_key": location_key,
-            "location_name": location_name,
-            "time_of_day": time_of_day,
-            "finish": finish,
-            "mode": "uploaded",
-            "num_frames": location_frame_count or 1
-        })
-        logger.info(f"[MOCKUP] Stored {len(uploaded_creatives)} uploaded creative(s) in history")
-
-    except Exception as e:
-        logger.error(f"[MOCKUP] Error generating mockup from upload: {e}", exc_info=True)
-        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        await channel_adapter.send_message(
-            channel_id=channel,
-            content=f"❌ **Error:** Failed to generate mockup. {str(e)}"
-        )
-        # Cleanup uploaded files on error
-        for creative_file in uploaded_creatives:
-            try:
-                os.unlink(creative_file)
-            except OSError as cleanup_err:
-                logger.debug(f"[MOCKUP] Failed to cleanup creative file: {cleanup_err}")
-    finally:
-        # Cleanup and memory management
-        if result_path:
-            try:
-                os.unlink(result_path)
-            except OSError as cleanup_err:
-                logger.debug(f"[MOCKUP] Failed to cleanup result file: {cleanup_err}")
-        cleanup_memory(context="mockup_upload", aggressive=False, log_stats=False)
-
-    return True
-
-
-async def _handle_ai_mode(
-    ai_prompts: list[str],
-    num_ai_frames: int,
-    location_key: str,
-    location_name: str,
-    time_of_day: str,
-    finish: str,
-    new_location_frame_count: int,
-    user_id: str,
-    channel: str,
-    status_ts: str,
-    user_companies: list[str],
-    generate_ai_mockup_queued_func: Callable,
-) -> bool:
-    """Handle mockup generation with AI-generated creative."""
-
-    channel_adapter = config.get_channel_adapter()
-
-    # Validate frame count
-    is_valid_count = (num_ai_frames == 1) or (num_ai_frames == new_location_frame_count)
-
-    if not is_valid_count:
-        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        await channel_adapter.send_message(
-            channel_id=channel,
-            content=(
-                f"⚠️ **Frame Count Mismatch**\n\n"
-                f"You provided **{num_ai_frames} AI prompt(s)**, but **{location_name}** has **{new_location_frame_count} frame(s)**.\n\n"
-                f"**Valid options:**\n"
-                f"• Provide **1 prompt** (will be tiled across all frames)\n"
-                f"• Provide **{new_location_frame_count} prompts** (one per frame)"
-            )
-        )
-        return True
-
-    frames_text = f"{num_ai_frames} artworks and mockup" if num_ai_frames > 1 else "AI artwork and mockup"
-    await channel_adapter.update_message(
-        channel_id=channel,
-        message_id=status_ts,
-        content=f"⏳ _Generating {frames_text}..._"
-    )
-
-    result_path = None
-    ai_creative_paths = []
-
-    try:
-        # generate_ai_creative applies the system prompt internally
-        result_path, ai_creative_paths = await generate_ai_mockup_queued_func(
-            ai_prompts=ai_prompts,
-            location_key=location_key,
-            time_of_day=time_of_day,
-            finish=finish,
-            user_id=user_id,
-            company_schemas=user_companies,
-        )
-
-        if not result_path:
-            raise Exception("Failed to generate mockup")
-
-        await channel_adapter.update_message(
-            channel_id=channel,
-            message_id=status_ts,
-            content="📤 Uploading mockup..."
-        )
-
-        variation_info = ""
-        if time_of_day != "all" or finish != "all":
-            variation_info = f" ({time_of_day}/{finish})"
-
-        frames_info = f" ({num_ai_frames} frames)" if num_ai_frames > 1 else ""
-
-        await channel_adapter.upload_file(
-            channel_id=channel,
-            file_path=str(result_path),
-            title=f"ai_mockup_{location_key}_{time_of_day}_{finish}.jpg",
-            comment=(
-                f"🎨 **AI-Generated Billboard Mockup**\n\n"
-                f"📍 Location: {location_name}{variation_info}{frames_info}\n"
-            )
-        )
-
-        try:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        except Exception as e:
-            logger.debug(f"[MOCKUP] Failed to delete status message: {e}")
-
-        # Store in history for follow-ups
-        store_mockup_history(user_id, ai_creative_paths, {
-            "location_key": location_key,
-            "location_name": location_name,
-            "time_of_day": time_of_day,
-            "finish": finish,
-            "mode": "ai_generated",
-            "num_frames": num_ai_frames
-        })
-        logger.info(f"[MOCKUP] Stored {len(ai_creative_paths)} AI creative(s) in history")
-
-    except Exception as e:
-        logger.error(f"[MOCKUP] Error generating AI mockup: {e}", exc_info=True)
-        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        await channel_adapter.send_message(
-            channel_id=channel,
-            content=f"❌ **Error:** Failed to generate AI mockup. {str(e)}"
-        )
-        # Cleanup AI creatives on error
-        for creative_path in ai_creative_paths:
-            if creative_path and creative_path.exists():
-                try:
-                    os.unlink(creative_path)
-                except OSError as cleanup_err:
-                    logger.debug(f"[MOCKUP] Failed to cleanup AI creative: {cleanup_err}")
-    finally:
-        # Cleanup and memory management
-        if result_path:
-            try:
-                os.unlink(result_path)
-            except OSError as cleanup_err:
-                logger.debug(f"[MOCKUP] Failed to cleanup result file: {cleanup_err}")
-        cleanup_memory(context="mockup_ai", aggressive=False, log_stats=False)
-
-    return True

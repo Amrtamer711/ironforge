@@ -6,12 +6,14 @@ import os
 from datetime import datetime
 
 import config
-from core.proposals import process_proposals
+from core.proposals import process_proposals  # ✅ Using new modular API
 from db.cache import pending_location_additions
 from db.database import db
 from integrations.llm import ToolCall
-from routers.mockup_handler import handle_mockup_generation
 from workflows.bo_parser import BookingOrderParser, sanitize_filename
+
+# ✅ NEW: Using modular mockups (replaces routers.mockup_handler)
+# from routers.mockup_handler import handle_mockup_generation  # DEPRECATED
 
 logger = config.logger
 
@@ -149,7 +151,7 @@ async def handle_tool_call(
             content="⏳ _Building Proposal..._"
         )
 
-        result = await process_proposals(proposals_data, "separate", None, user_id, client_name, payment_terms, currency)
+        result = await process_proposals(proposals_data, "separate", None, user_id, client_name, payment_terms, currency, user_companies)
     elif tool_name == "get_combined_proposal":
         # Company access validation (security - no backwards compatibility)
         has_access, error_msg = _validate_company_access(user_companies)
@@ -209,7 +211,7 @@ async def handle_tool_call(
                 proposal["durations"] = [proposal.pop("duration")]
                 logger.info(f"[COMBINED] Transformed proposal: {proposal}")
 
-        result = await process_proposals(proposals_data, "combined", combined_net_rate, user_id, client_name, payment_terms, currency)
+        result = await process_proposals(proposals_data, "combined", combined_net_rate, user_id, client_name, payment_terms, currency, user_companies)
 
     # Handle result for both get_separate_proposals and get_combined_proposal
     if tool_name in ["get_separate_proposals", "get_combined_proposal"] and 'result' in locals():

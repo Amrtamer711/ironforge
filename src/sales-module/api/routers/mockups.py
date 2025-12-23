@@ -10,6 +10,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
 import config
+from core.services import AssetService
+from core.utils import sanitize_path_component  # ✅ Use shared utility (removed duplicate)
 from crm_security import require_permission_user as require_permission, AuthUser
 from api.schemas import (
     validate_image_upload,
@@ -23,21 +25,6 @@ router = APIRouter(tags=["mockups"])
 # Valid enum values for form parameters
 VALID_TIME_OF_DAY = {"day", "night", "all"}
 VALID_FINISH = {"gold", "silver", "all"}
-
-
-def sanitize_path_component(value: str) -> str:
-    """
-    Sanitize a path component to prevent path traversal attacks.
-    Removes any path separators and parent directory references.
-    """
-    # Get just the filename/component, strip any path parts
-    sanitized = Path(value).name
-    # Additional safety: reject if it contains suspicious patterns
-    if ".." in sanitized or sanitized.startswith(".") or "/" in sanitized or "\\" in sanitized:
-        raise HTTPException(status_code=400, detail=f"Invalid path component: {value}")
-    if not sanitized or sanitized != value:
-        raise HTTPException(status_code=400, detail=f"Invalid path component: {value}")
-    return sanitized
 
 
 @router.get("/mockup")
@@ -132,9 +119,11 @@ async def save_mockup_frame(
             except json.JSONDecodeError:
                 raise HTTPException(status_code=400, detail="Invalid config JSON")
 
-        # Validate location
-        if location_key not in config.LOCATION_METADATA:
-            raise HTTPException(status_code=400, detail=f"Invalid location: {location_key}")
+        # Validate location exists and user has access (using AssetService)
+        asset_service = AssetService()
+        has_access, error_msg = asset_service.validate_location_access(location_key, user.companies)
+        if not has_access:
+            raise HTTPException(status_code=403, detail=error_msg or f"Location '{location_key}' not found or not accessible")
 
         # Read photo data
         logger.info(f"[MOCKUP API] Reading photo data from upload: {photo.filename}")
@@ -451,7 +440,16 @@ async def generate_mockup_api(
     frame_config: str | None = Form(None),
     user: AuthUser = Depends(require_permission("sales:mockups:generate"))
 ):
-    """Generate a mockup by warping creative onto billboard (upload or AI-generated). Requires sales:mockups:generate permission."""
+    """
+    Generate a mockup by warping creative onto billboard (upload or AI-generated).
+
+    NOTE: This REST API endpoint uses generators.mockup directly rather than MockupCoordinator
+    because it has REST-specific requirements (specific_photo selection, frame_config override)
+    that the coordinator doesn't support. The coordinator is designed for orchestrating
+    chat/Slack workflows with automatic strategy selection.
+
+    Requires sales:mockups:generate permission.
+    """
     import tempfile
 
     from generators import mockup as mockup_generator
