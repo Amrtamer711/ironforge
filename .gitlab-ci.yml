@@ -44,7 +44,7 @@ variables:
 
   script:
     - echo "Building ${SERVICE_NAME} from ${SERVICE_DIR}"
-    - docker build -f "${SERVICE_DIR}/Dockerfile" -t "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}" "${SERVICE_DIR}"
+    - docker build -f "src/unified-ui/Dockerfile" -t "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}" .
     - docker push "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}"
 
     # Push latest only from default branch
