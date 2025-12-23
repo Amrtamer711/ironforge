@@ -7,6 +7,7 @@ Modular routers for asset management endpoints.
 from api.routers.asset_types import router as asset_types_router
 from api.routers.eligibility import router as eligibility_router
 from api.routers.health import router as health_router
+from api.routers.internal import router as internal_router
 from api.routers.locations import router as locations_router
 from api.routers.mockup_frames import router as mockup_frames_router
 from api.routers.network_assets import router as network_assets_router
@@ -24,4 +25,5 @@ __all__ = [
     "eligibility_router",
     "storage_router",
     "mockup_frames_router",
+    "internal_router",
 ]

@@ -20,6 +20,7 @@ from api.routers import (
     asset_types_router,
     eligibility_router,
     health_router,
+    internal_router,
     locations_router,
     mockup_frames_router,
     network_assets_router,
@@ -56,9 +57,11 @@ app.add_middleware(RequestLoggingMiddleware)
 logger.info("[SECURITY] RequestLoggingMiddleware enabled")
 
 # Trusted user context middleware (authentication + RBAC context)
+# Exempt /health and /api/internal/* (internal endpoints use service JWT auth)
 app.add_middleware(
     TrustedUserMiddleware,
     exempt_paths={"/health"},
+    exempt_prefixes={"/api/internal"},
 )
 logger.info("[SECURITY] TrustedUserMiddleware enabled - proxy secret validation active")
 
@@ -82,3 +85,5 @@ app.include_router(packages_router)
 app.include_router(eligibility_router)
 app.include_router(storage_router)
 app.include_router(mockup_frames_router)
+app.include_router(internal_router)
+logger.info("[INTERNAL] Internal service-to-service endpoints enabled at /api/internal/*")

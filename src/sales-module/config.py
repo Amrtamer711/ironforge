@@ -593,31 +593,40 @@ def _discover_templates() -> tuple[dict[str, str], list[str]]:
 
 def _fetch_locations_from_asset_management() -> list[dict]:
     """
-    Fetch locations from Asset-Management API synchronously.
+    Fetch locations from Asset-Management internal API.
 
-    Uses httpx for sync HTTP calls to avoid async complexity in config module.
+    Uses service JWT auth for machine-to-machine communication.
+    Calls /api/internal/locations which doesn't require user permissions.
     """
     import httpx
+    import jwt
+    from datetime import datetime, timedelta, timezone
 
     # Get Asset-Management URL
     asset_mgmt_url = os.getenv("ASSET_MANAGEMENT_URL", "http://localhost:8001")
 
-    # Get proxy secret for trusted service auth
-    proxy_secret = os.getenv("PROXY_SECRET", "")
+    # Get inter-service secret for JWT auth
+    inter_service_secret = os.getenv("INTER_SERVICE_SECRET", "")
 
-    if not proxy_secret:
-        logger.warning("[DISCOVER] No PROXY_SECRET, cannot call Asset-Management")
+    if not inter_service_secret:
+        logger.warning("[DISCOVER] No INTER_SERVICE_SECRET, cannot call Asset-Management")
         return []
 
     try:
-        # Fetch all locations with proxy secret header
+        # Create short-lived service JWT
+        payload = {
+            "sub": "sales-module",
+            "service": True,
+            "iat": datetime.now(timezone.utc),
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+        }
+        token = jwt.encode(payload, inter_service_secret, algorithm="HS256")
+
+        # Call internal endpoint (service-to-service, no user permissions required)
         with httpx.Client(timeout=10.0) as client:
             response = client.get(
-                f"{asset_mgmt_url}/api/locations",
-                headers={
-                    "X-Proxy-Secret": proxy_secret,
-                    "X-Service-Name": "sales-module",
-                },
+                f"{asset_mgmt_url}/api/internal/locations",
+                headers={"Authorization": f"Bearer {token}"},
                 params={"active_only": "true"},
             )
             response.raise_for_status()
