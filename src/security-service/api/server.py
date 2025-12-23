@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
+from crm_security import TrustedUserMiddleware as SharedTrustedUserMiddleware
 import config
 from api.routers import (
     health_router,
@@ -142,6 +143,13 @@ logger.info("[SECURITY] SecurityHeadersMiddleware enabled")
 # Request logging middleware
 app.add_middleware(RequestLoggingMiddleware)
 logger.info("[SECURITY] RequestLoggingMiddleware enabled")
+
+# Trusted user context middleware (authentication + RBAC context)
+app.add_middleware(
+    SharedTrustedUserMiddleware,
+    exempt_paths={"/health"},
+)
+logger.info("[SECURITY] TrustedUserMiddleware enabled - proxy secret validation active")
 
 # CORS middleware
 app.add_middleware(

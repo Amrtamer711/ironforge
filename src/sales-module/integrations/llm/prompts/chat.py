@@ -24,7 +24,11 @@ def get_main_system_prompt(
     # Format company access info
     if user_companies:
         companies_str = ", ".join(user_companies)
-        company_info = f"You have access to locations from: {companies_str}\n"
+        company_info = (
+            f"📋 Your Company Access: {companies_str}\n"
+            f"   You can ONLY work with locations from these companies.\n"
+            f"   All locations below are tagged with [company_schema] for reference.\n"
+        )
     else:
         companies_str = "None"
         company_info = "⚠️ No company access configured - location operations will be restricted.\n"

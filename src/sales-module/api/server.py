@@ -267,6 +267,7 @@ setup_exception_handlers(app)
 # Include routers
 app.include_router(slack_router)
 app.include_router(health_router)
+app.include_router(locations_router)
 app.include_router(costs_router)
 app.include_router(mockups_router)
 app.include_router(chat_router)

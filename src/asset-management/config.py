@@ -32,12 +32,26 @@ HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "8001"))
 
 # =============================================================================
-# SUPABASE
+# SUPABASE (Asset Management Database)
 # =============================================================================
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+# Development Supabase
+ASSETMGMT_DEV_SUPABASE_URL = os.getenv("ASSETMGMT_DEV_SUPABASE_URL", "")
+ASSETMGMT_DEV_SUPABASE_SERVICE_KEY = os.getenv("ASSETMGMT_DEV_SUPABASE_SERVICE_KEY", "")
+
+# Production Supabase
+ASSETMGMT_PROD_SUPABASE_URL = os.getenv("ASSETMGMT_PROD_SUPABASE_URL", "")
+ASSETMGMT_PROD_SUPABASE_SERVICE_KEY = os.getenv("ASSETMGMT_PROD_SUPABASE_SERVICE_KEY", "")
+
+# Active environment (auto-selected based on ENVIRONMENT)
+SUPABASE_URL = (
+    ASSETMGMT_PROD_SUPABASE_URL if ENVIRONMENT == "production"
+    else ASSETMGMT_DEV_SUPABASE_URL
+)
+SUPABASE_SERVICE_KEY = (
+    ASSETMGMT_PROD_SUPABASE_SERVICE_KEY if ENVIRONMENT == "production"
+    else ASSETMGMT_DEV_SUPABASE_SERVICE_KEY
+)
 
 # =============================================================================
 # COMPANY SCHEMAS

@@ -1,0 +1,380 @@
+-- =============================================================================
+-- ASSET MANAGEMENT - CONSOLIDATED SCHEMA
+-- =============================================================================
+-- Two distinct asset types:
+--   1. Network Assets - belong to networks, inherit attributes from network/type
+--   2. Standalone Assets - independent, have all attributes directly
+--
+-- Packages can bundle networks and/or standalone assets
+-- =============================================================================
+
+-- =============================================================================
+-- NETWORKS
+-- Large-scale groupings (malls, mega installations like Al Qana)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS networks (
+    id BIGSERIAL PRIMARY KEY,
+    network_key TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT,
+
+    -- Network-level attributes (inherited by child assets)
+    series TEXT,                        -- e.g., "Al Qana", "The Landmark Series"
+    sov_percent DECIMAL(5,2),           -- Share of voice %
+    upload_fee DECIMAL(10,2),
+    spot_duration INTEGER,              -- Seconds per spot (digital)
+    loop_duration INTEGER,              -- Total loop duration (digital)
+    number_of_faces INTEGER,            -- Total faces across network
+
+    -- Template: company/network/network.pptx
+    template_path TEXT,
+
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by TEXT,
+    notes TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_networks_key ON networks(network_key);
+CREATE INDEX IF NOT EXISTS idx_networks_active ON networks(is_active) WHERE is_active = true;
+
+-- =============================================================================
+-- ASSET TYPES
+-- Categories within a network (e.g., "Digital Screens", "Static Posters")
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS asset_types (
+    id BIGSERIAL PRIMARY KEY,
+    network_id BIGINT NOT NULL REFERENCES networks(id) ON DELETE CASCADE,
+    type_key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+
+    -- Type-level attributes
+    display_type TEXT NOT NULL CHECK (display_type IN ('digital', 'static')),
+    height TEXT,
+    width TEXT,
+    specs JSONB DEFAULT '{}',
+
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by TEXT,
+
+    CONSTRAINT asset_types_unique UNIQUE (network_id, type_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_asset_types_network ON asset_types(network_id);
+
+-- =============================================================================
+-- NETWORK ASSETS
+-- Individual assets belonging to a network (inherit from network/type)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS network_assets (
+    id BIGSERIAL PRIMARY KEY,
+    asset_key TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+
+    -- Required hierarchy
+    network_id BIGINT NOT NULL REFERENCES networks(id) ON DELETE CASCADE,
+    type_id BIGINT NOT NULL REFERENCES asset_types(id) ON DELETE CASCADE,
+
+    -- Asset-specific location info only
+    city TEXT,
+    area TEXT,
+    address TEXT,
+    gps_lat DECIMAL(10,7),
+    gps_lng DECIMAL(10,7),
+
+    -- Optional override for individual asset template
+    template_path TEXT,                 -- NULL = use network template
+
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by TEXT,
+    notes TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_network_assets_key ON network_assets(asset_key);
+CREATE INDEX IF NOT EXISTS idx_network_assets_network ON network_assets(network_id);
+CREATE INDEX IF NOT EXISTS idx_network_assets_type ON network_assets(type_id);
+CREATE INDEX IF NOT EXISTS idx_network_assets_active ON network_assets(is_active) WHERE is_active = true;
+
+-- =============================================================================
+-- STANDALONE ASSETS
+-- Independent assets NOT part of any network (have all attributes directly)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS standalone_assets (
+    id BIGSERIAL PRIMARY KEY,
+    asset_key TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+
+    -- All attributes stored directly
+    display_type TEXT NOT NULL CHECK (display_type IN ('digital', 'static')),
+    series TEXT,
+    height TEXT,
+    width TEXT,
+    number_of_faces INTEGER DEFAULT 1,
+    spot_duration INTEGER,
+    loop_duration INTEGER,
+    sov_percent DECIMAL(5,2),
+    upload_fee DECIMAL(10,2),
+
+    -- Location info
+    city TEXT,
+    area TEXT,
+    address TEXT,
+    gps_lat DECIMAL(10,7),
+    gps_lng DECIMAL(10,7),
+
+    -- Template: company/asset/asset.pptx
+    template_path TEXT,
+
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by TEXT,
+    notes TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_standalone_assets_key ON standalone_assets(asset_key);
+CREATE INDEX IF NOT EXISTS idx_standalone_assets_active ON standalone_assets(is_active) WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS idx_standalone_assets_city ON standalone_assets(city);
+
+-- =============================================================================
+-- PACKAGES
+-- Sellable bundles of networks and/or standalone assets
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS packages (
+    id BIGSERIAL PRIMARY KEY,
+    package_key TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT,
+
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_packages_key ON packages(package_key);
+CREATE INDEX IF NOT EXISTS idx_packages_active ON packages(is_active) WHERE is_active = true;
+
+-- =============================================================================
+-- PACKAGE ITEMS
+-- Junction: packages contain networks OR standalone assets
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS package_items (
+    id BIGSERIAL PRIMARY KEY,
+    package_id BIGINT NOT NULL REFERENCES packages(id) ON DELETE CASCADE,
+    item_type TEXT NOT NULL CHECK (item_type IN ('network', 'standalone')),
+    network_id BIGINT REFERENCES networks(id) ON DELETE CASCADE,
+    standalone_asset_id BIGINT REFERENCES standalone_assets(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT package_item_type_check CHECK (
+        (item_type = 'network' AND network_id IS NOT NULL AND standalone_asset_id IS NULL) OR
+        (item_type = 'standalone' AND standalone_asset_id IS NOT NULL AND network_id IS NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_package_items_package ON package_items(package_id);
+
+-- =============================================================================
+-- ASSET PHOTOS
+-- Real photos of physical billboards/screens (asset level only)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS asset_photos (
+    id BIGSERIAL PRIMARY KEY,
+
+    -- One of these must be set (asset level only)
+    network_asset_id BIGINT REFERENCES network_assets(id) ON DELETE CASCADE,
+    standalone_asset_id BIGINT REFERENCES standalone_assets(id) ON DELETE CASCADE,
+
+    filename TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    file_size BIGINT,
+    width INTEGER,
+    height INTEGER,
+
+    is_primary BOOLEAN DEFAULT false,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by TEXT,
+    notes TEXT,
+
+    CONSTRAINT asset_photos_one_parent CHECK (
+        (network_asset_id IS NOT NULL AND standalone_asset_id IS NULL) OR
+        (standalone_asset_id IS NOT NULL AND network_asset_id IS NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_asset_photos_network_asset ON asset_photos(network_asset_id) WHERE network_asset_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_asset_photos_standalone ON asset_photos(standalone_asset_id) WHERE standalone_asset_id IS NOT NULL;
+
+-- =============================================================================
+-- ASSET OCCUPATIONS
+-- Booking/availability tracking (links to sales-module proposals/BOs)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS asset_occupations (
+    id BIGSERIAL PRIMARY KEY,
+
+    -- One of these must be set
+    network_asset_id BIGINT REFERENCES network_assets(id) ON DELETE CASCADE,
+    standalone_asset_id BIGINT REFERENCES standalone_assets(id) ON DELETE CASCADE,
+
+    -- References to sales-module (public schema)
+    bo_id BIGINT,
+    proposal_id BIGINT,
+
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+
+    client_name TEXT,
+    campaign_name TEXT,
+    brand TEXT,
+
+    status TEXT NOT NULL DEFAULT 'tentative' CHECK (status IN (
+        'tentative', 'pending', 'confirmed', 'live', 'completed', 'cancelled'
+    )),
+
+    net_rate DECIMAL(15,2),             -- Negotiated rate
+
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by TEXT,
+    notes TEXT,
+
+    CONSTRAINT occupations_one_parent CHECK (
+        (network_asset_id IS NOT NULL AND standalone_asset_id IS NULL) OR
+        (standalone_asset_id IS NOT NULL AND network_asset_id IS NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_occupations_dates ON asset_occupations(start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_occupations_status ON asset_occupations(status);
+
+-- =============================================================================
+-- VIEW: All assets unified (for querying across both types)
+-- =============================================================================
+CREATE OR REPLACE VIEW all_assets AS
+-- Network assets with inherited attributes
+SELECT
+    'network' AS asset_source,
+    na.id,
+    na.asset_key,
+    na.display_name,
+    t.display_type,
+    n.series,
+    t.height,
+    t.width,
+    n.number_of_faces,
+    n.spot_duration,
+    n.loop_duration,
+    n.sov_percent,
+    n.upload_fee,
+    na.city,
+    na.area,
+    na.address,
+    na.gps_lat,
+    na.gps_lng,
+    COALESCE(na.template_path, n.template_path) AS template_path,
+    na.is_active,
+    na.created_at,
+    na.updated_at,
+    na.notes,
+    n.id AS network_id,
+    n.network_key,
+    n.name AS network_name,
+    t.id AS type_id,
+    t.type_key,
+    t.name AS type_name
+FROM network_assets na
+JOIN networks n ON na.network_id = n.id
+JOIN asset_types t ON na.type_id = t.id
+
+UNION ALL
+
+-- Standalone assets
+SELECT
+    'standalone' AS asset_source,
+    sa.id,
+    sa.asset_key,
+    sa.display_name,
+    sa.display_type,
+    sa.series,
+    sa.height,
+    sa.width,
+    sa.number_of_faces,
+    sa.spot_duration,
+    sa.loop_duration,
+    sa.sov_percent,
+    sa.upload_fee,
+    sa.city,
+    sa.area,
+    sa.address,
+    sa.gps_lat,
+    sa.gps_lng,
+    sa.template_path,
+    sa.is_active,
+    sa.created_at,
+    sa.updated_at,
+    sa.notes,
+    NULL::BIGINT AS network_id,
+    NULL::TEXT AS network_key,
+    NULL::TEXT AS network_name,
+    NULL::BIGINT AS type_id,
+    NULL::TEXT AS type_key,
+    NULL::TEXT AS type_name
+FROM standalone_assets sa;
+
+-- =============================================================================
+-- TRIGGERS
+-- =============================================================================
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_networks_updated_at BEFORE UPDATE ON networks
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER trg_asset_types_updated_at BEFORE UPDATE ON asset_types
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER trg_network_assets_updated_at BEFORE UPDATE ON network_assets
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER trg_standalone_assets_updated_at BEFORE UPDATE ON standalone_assets
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER trg_packages_updated_at BEFORE UPDATE ON packages
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+CREATE TRIGGER trg_occupations_updated_at BEFORE UPDATE ON asset_occupations
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- =============================================================================
+-- ROW LEVEL SECURITY
+-- =============================================================================
+ALTER TABLE networks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE asset_types ENABLE ROW LEVEL SECURITY;
+ALTER TABLE network_assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE standalone_assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE packages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE package_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE asset_photos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE asset_occupations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Service role full access" ON networks FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON asset_types FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON network_assets FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON standalone_assets FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON packages FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON package_items FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON asset_photos FOR ALL USING (true);
+CREATE POLICY "Service role full access" ON asset_occupations FOR ALL USING (true);

@@ -15,12 +15,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 import config
-from crm_security import SecurityHeadersMiddleware
+from crm_security import SecurityHeadersMiddleware, TrustedUserMiddleware, RequestLoggingMiddleware
 from api.routers import (
     asset_types_router,
     eligibility_router,
     health_router,
     locations_router,
+    network_assets_router,
     networks_router,
     packages_router,
 )
@@ -48,6 +49,17 @@ app = FastAPI(
 app.add_middleware(SecurityHeadersMiddleware)
 logger.info("[SECURITY] SecurityHeadersMiddleware enabled")
 
+# Request logging middleware (audit trail)
+app.add_middleware(RequestLoggingMiddleware)
+logger.info("[SECURITY] RequestLoggingMiddleware enabled")
+
+# Trusted user context middleware (authentication + RBAC context)
+app.add_middleware(
+    TrustedUserMiddleware,
+    exempt_paths={"/health"},
+)
+logger.info("[SECURITY] TrustedUserMiddleware enabled - proxy secret validation active")
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -62,6 +74,7 @@ logger.info(f"[CORS] Allowed origins: {config.get_cors_origins_list()}")
 app.include_router(health_router)
 app.include_router(networks_router)
 app.include_router(asset_types_router)
+app.include_router(network_assets_router)
 app.include_router(locations_router)
 app.include_router(packages_router)
 app.include_router(eligibility_router)

@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     # RATE LIMITING CONFIGURATION
     # ==========================================================================
     RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_DEFAULT: int = 100  # Max requests per window
+    RATE_LIMIT_WINDOW_SECONDS: int = 60  # Window size (1 minute)
     RATE_LIMIT_DEFAULT_PER_MINUTE: int = 100
     RATE_LIMIT_DEFAULT_PER_DAY: int = 10000
 

@@ -473,6 +473,195 @@ class SupabaseBackend(DatabaseBackend):
             return False
 
     # =========================================================================
+    # NETWORK ASSETS
+    # =========================================================================
+
+    def create_network_asset(
+        self,
+        asset_key: str,
+        display_name: str,
+        display_type: str,
+        network_id: int,
+        type_id: int,
+        company_schema: str,
+        created_by: str | None = None,
+        **kwargs,
+    ) -> dict[str, Any] | None:
+        client = self._get_client()
+        try:
+            now = self._now()
+            data = {
+                "asset_key": asset_key,
+                "display_name": display_name,
+                "display_type": display_type,
+                "network_id": network_id,
+                "type_id": type_id,
+                "is_active": True,
+                "created_at": now,
+                "updated_at": now,
+                "created_by": created_by,
+            }
+
+            # Add optional fields
+            optional_fields = [
+                "series", "height", "width", "number_of_faces", "spot_duration",
+                "loop_duration", "sov_percent", "upload_fee", "city", "area",
+                "address", "gps_lat", "gps_lng", "template_path", "notes"
+            ]
+            for field in optional_fields:
+                if field in kwargs and kwargs[field] is not None:
+                    data[field] = kwargs[field]
+
+            response = client.schema(company_schema).table("network_assets").insert(data).execute()
+
+            if response.data:
+                result = response.data[0]
+                result["company_schema"] = company_schema
+                return result
+            return None
+        except Exception as e:
+            logger.error(f"[SUPABASE] Failed to create network asset: {e}")
+            return None
+
+    def get_network_asset(
+        self,
+        asset_id: int,
+        company_schemas: list[str],
+    ) -> dict[str, Any] | None:
+        result, schema, status = self._find_in_schemas(
+            "network_assets",
+            {"id": asset_id, "is_active": True},
+            company_schemas,
+        )
+        if status == "found" and result:
+            # Enrich with network and type names
+            if result.get("network_id"):
+                network = self.get_network(result["network_id"], [schema])
+                if network:
+                    result["network_name"] = network.get("name")
+            if result.get("type_id"):
+                asset_type = self.get_asset_type(result["type_id"], [schema])
+                if asset_type:
+                    result["type_name"] = asset_type.get("name")
+        return result if status == "found" else None
+
+    def get_network_asset_by_key(
+        self,
+        asset_key: str,
+        company_schemas: list[str],
+    ) -> dict[str, Any] | None:
+        result, schema, status = self._find_in_schemas(
+            "network_assets",
+            {"asset_key": asset_key, "is_active": True},
+            company_schemas,
+        )
+        if status == "found" and result:
+            if result.get("network_id"):
+                network = self.get_network(result["network_id"], [schema])
+                if network:
+                    result["network_name"] = network.get("name")
+            if result.get("type_id"):
+                asset_type = self.get_asset_type(result["type_id"], [schema])
+                if asset_type:
+                    result["type_name"] = asset_type.get("name")
+        return result if status == "found" else None
+
+    def list_network_assets(
+        self,
+        company_schemas: list[str],
+        network_id: int | None = None,
+        type_id: int | None = None,
+        include_inactive: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        filters = {} if include_inactive else {"is_active": True}
+        if network_id is not None:
+            filters["network_id"] = network_id
+        if type_id is not None:
+            filters["type_id"] = type_id
+
+        results = self._query_schemas(
+            "network_assets",
+            company_schemas,
+            filters=filters,
+            order_by="display_name",
+            limit=limit,
+            offset=offset,
+        )
+
+        # Enrich with network and type names
+        for r in results:
+            schema = r.get("company_schema")
+            if r.get("network_id"):
+                network = self.get_network(r["network_id"], [schema])
+                if network:
+                    r["network_name"] = network.get("name")
+            if r.get("type_id"):
+                asset_type = self.get_asset_type(r["type_id"], [schema])
+                if asset_type:
+                    r["type_name"] = asset_type.get("name")
+
+        return results
+
+    def update_network_asset(
+        self,
+        asset_id: int,
+        company_schema: str,
+        updates: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        if not updates:
+            return self.get_network_asset(asset_id, [company_schema])
+
+        client = self._get_client()
+        try:
+            updates["updated_at"] = self._now()
+            response = (
+                client.schema(company_schema)
+                .table("network_assets")
+                .update(updates)
+                .eq("id", asset_id)
+                .execute()
+            )
+            if response.data:
+                result = response.data[0]
+                result["company_schema"] = company_schema
+                return result
+            return None
+        except Exception as e:
+            logger.error(f"[SUPABASE] Failed to update network asset: {e}")
+            return None
+
+    def delete_network_asset(
+        self,
+        asset_id: int,
+        company_schema: str,
+        hard_delete: bool = False,
+    ) -> bool:
+        client = self._get_client()
+        try:
+            if hard_delete:
+                response = (
+                    client.schema(company_schema)
+                    .table("network_assets")
+                    .delete()
+                    .eq("id", asset_id)
+                    .execute()
+                )
+            else:
+                response = (
+                    client.schema(company_schema)
+                    .table("network_assets")
+                    .update({"is_active": False, "updated_at": self._now()})
+                    .eq("id", asset_id)
+                    .execute()
+                )
+            return len(response.data) > 0 if response.data else False
+        except Exception as e:
+            logger.error(f"[SUPABASE] Failed to delete network asset: {e}")
+            return False
+
+    # =========================================================================
     # LOCATIONS
     # =========================================================================
 

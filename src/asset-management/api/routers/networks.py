@@ -8,13 +8,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 import config
 from core.networks import Network, NetworkCreate, NetworkUpdate, NetworkService
+from core.network_assets import NetworkAssetService
 from crm_security import TrustedUserContext, require_permission
 
 router = APIRouter(prefix="/api/networks", tags=["Networks"])
 logger = config.get_logger("api.routers.networks")
 
-# Service singleton
+# Service singletons
 _service = NetworkService()
+_network_asset_service = NetworkAssetService()
 
 
 @router.get("")
@@ -124,3 +126,35 @@ def delete_network(
     if not success:
         raise HTTPException(status_code=404, detail="Network not found")
     return {"status": "deleted", "network_id": network_id}
+
+
+@router.get("/{company}/{network_id}/assets")
+def get_network_assets(
+    company: str,
+    network_id: int,
+    active_only: bool = Query(default=True, description="Only return active assets"),
+    user: TrustedUserContext = Depends(require_permission("assets:networks:read")),
+):
+    """
+    Get all network assets (individual billboards) in a network.
+
+    Requires: assets:networks:read permission
+
+    Convenience endpoint for fetching all assets that belong to a specific network.
+    """
+    # Verify company access
+    user_companies = user.get("companies", [])
+    if user_companies and company not in user_companies:
+        raise HTTPException(status_code=403, detail=f"No access to company: {company}")
+
+    # Verify network exists
+    network = _service.get_network(company=company, network_id=network_id, include_types=False)
+    if not network:
+        raise HTTPException(status_code=404, detail="Network not found")
+
+    # Return all assets in this network
+    return _network_asset_service.list_network_assets(
+        companies=[company],
+        network_id=network_id,
+        active_only=active_only,
+    )
