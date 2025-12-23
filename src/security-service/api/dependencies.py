@@ -23,7 +23,7 @@ async def verify_service_secret(request: Request) -> str:
     """
     Verify that the request comes from an authorized service.
 
-    Checks X-Service-Secret header against SERVICE_API_SECRET.
+    Checks X-Service-Secret header against INTER_SERVICE_SECRET.
 
     Returns:
         Service name from X-Service-Name header
@@ -36,9 +36,9 @@ async def verify_service_secret(request: Request) -> str:
     service_name = request.headers.get("X-Service-Name", "unknown")
 
     # Check if service auth is required
-    if not settings.SERVICE_API_SECRET:
+    if not settings.INTER_SERVICE_SECRET:
         # No secret configured - allow (development mode)
-        logger.debug(f"[AUTH] No SERVICE_API_SECRET configured, allowing {service_name}")
+        logger.debug(f"[AUTH] No INTER_SERVICE_SECRET configured, allowing {service_name}")
         return service_name
 
     if not service_secret:
@@ -49,7 +49,7 @@ async def verify_service_secret(request: Request) -> str:
         )
 
     # Constant-time comparison
-    if not hmac.compare_digest(service_secret, settings.SERVICE_API_SECRET):
+    if not hmac.compare_digest(service_secret, settings.INTER_SERVICE_SECRET):
         logger.warning(f"[AUTH] Invalid service secret from {service_name}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

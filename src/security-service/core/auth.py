@@ -26,8 +26,8 @@ class AuthService:
     """
 
     def __init__(self):
-        self._jwt_secret = settings.SERVICE_API_SECRET
-        self._jwt_algorithm = "HS256"
+        self._jwt_secret = settings.jwt_signing_secret  # Uses JWT_SECRET or INTER_SERVICE_SECRET
+        self._jwt_algorithm = settings.JWT_ALGORITHM
 
     # =========================================================================
     # TOKEN VALIDATION
