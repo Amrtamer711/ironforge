@@ -5,30 +5,31 @@ Uses the unified channel abstraction layer for file downloads.
 """
 
 import contextlib
+import logging
 from pathlib import Path
 from typing import Any
 
 from pptx import Presentation
 
-import config
 from core.utils.memory import cleanup_memory
 
-logger = config.logger
+# Use logging directly to avoid circular import with config
+logger = logging.getLogger("proposal-bot")
 
 def _validate_pdf_file(file_path: Path) -> bool:
     """Validate that uploaded file is actually a PDF."""
     try:
         # Check if file exists first
         if not file_path.exists():
-            config.logger.error(f"[VALIDATION] File does not exist: {file_path}")
+            logger.error(f"[VALIDATION] File does not exist: {file_path}")
             return False
 
         file_size = file_path.stat().st_size
-        config.logger.info(f"[VALIDATION] Validating PDF file: {file_path} (size: {file_size} bytes)")
+        logger.info(f"[VALIDATION] Validating PDF file: {file_path} (size: {file_size} bytes)")
 
         # Quick sanity checks before invoking PyMuPDF
         if file_size <= 0:
-            config.logger.warning(f"[VALIDATION] PDF file is empty: {file_path}")
+            logger.warning(f"[VALIDATION] PDF file is empty: {file_path}")
             return False
 
         # Try to open with PyMuPDF
@@ -38,13 +39,13 @@ def _validate_pdf_file(file_path: Path) -> bool:
         doc.close()
 
         if page_count <= 0:
-            config.logger.warning(f"[VALIDATION] PDF has no pages: {file_path}")
+            logger.warning(f"[VALIDATION] PDF has no pages: {file_path}")
             return False
 
-        config.logger.info(f"[VALIDATION] ✓ Valid PDF with {page_count} pages")
+        logger.info(f"[VALIDATION] ✓ Valid PDF with {page_count} pages")
         return True
     except Exception as e:
-        config.logger.error(f"[VALIDATION] Invalid PDF file: {e}")
+        logger.error(f"[VALIDATION] Invalid PDF file: {e}")
         return False
 
 
@@ -71,12 +72,12 @@ async def _convert_pdf_to_pptx(pdf_path: Path) -> Path | None:
     doc = None
 
     try:
-        config.logger.info(f"[PDF_CONVERT] Starting PDF to PPTX conversion: {pdf_path}")
+        logger.info(f"[PDF_CONVERT] Starting PDF to PPTX conversion: {pdf_path}")
 
         # Open PDF
         doc = fitz.open(pdf_path)
         page_count = len(doc)
-        config.logger.info(f"[PDF_CONVERT] PDF has {page_count} pages")
+        logger.info(f"[PDF_CONVERT] PDF has {page_count} pages")
 
         # Create temporary directory for images
         temp_dir = tempfile.mkdtemp(prefix="pdf_convert_")
@@ -93,13 +94,13 @@ async def _convert_pdf_to_pptx(pdf_path: Path) -> Path | None:
             img_path = os.path.join(temp_dir, f"page_{page_num + 1}.png")
             pix.save(img_path)
             image_paths.append(img_path)
-            config.logger.info(f"[PDF_CONVERT] Extracted page {page_num + 1}/{page_count} ({pix.width}x{pix.height}px)")
+            logger.info(f"[PDF_CONVERT] Extracted page {page_num + 1}/{page_count} ({pix.width}x{pix.height}px)")
 
         doc.close()
         doc = None
 
         # Create PowerPoint presentation
-        config.logger.info("[PDF_CONVERT] Creating PowerPoint presentation...")
+        logger.info("[PDF_CONVERT] Creating PowerPoint presentation...")
         prs = Presentation()
 
         # Set slide size to 16:9 widescreen
@@ -134,7 +135,7 @@ async def _convert_pdf_to_pptx(pdf_path: Path) -> Path | None:
 
             # Add image to slide
             slide.shapes.add_picture(img_path, left, top, width, height)
-            config.logger.info(f"[PDF_CONVERT] Added slide {i}/{page_count}")
+            logger.info(f"[PDF_CONVERT] Added slide {i}/{page_count}")
 
         # Save PPTX to temporary file
         pptx_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".pptx")
@@ -142,12 +143,12 @@ async def _convert_pdf_to_pptx(pdf_path: Path) -> Path | None:
         pptx_temp.close()
 
         file_size_mb = os.path.getsize(pptx_temp.name) / (1024 * 1024)
-        config.logger.info(f"[PDF_CONVERT] ✓ Conversion complete: {pptx_temp.name} ({file_size_mb:.1f} MB, {page_count} slides, 300 DPI)")
+        logger.info(f"[PDF_CONVERT] ✓ Conversion complete: {pptx_temp.name} ({file_size_mb:.1f} MB, {page_count} slides, 300 DPI)")
 
         return Path(pptx_temp.name)
 
     except Exception as e:
-        config.logger.error(f"[PDF_CONVERT] Conversion failed: {e}", exc_info=True)
+        logger.error(f"[PDF_CONVERT] Conversion failed: {e}", exc_info=True)
         return None
 
     finally:
@@ -168,15 +169,15 @@ def _validate_powerpoint_file(file_path: Path) -> bool:
     try:
         # Check if file exists first
         if not file_path.exists():
-            config.logger.error(f"[VALIDATION] File does not exist: {file_path}")
+            logger.error(f"[VALIDATION] File does not exist: {file_path}")
             return False
 
         file_size = file_path.stat().st_size
-        config.logger.info(f"[VALIDATION] Validating PowerPoint file: {file_path} (size: {file_size} bytes)")
+        logger.info(f"[VALIDATION] Validating PowerPoint file: {file_path} (size: {file_size} bytes)")
 
         # Quick sanity checks before invoking python-pptx
         if file_size <= 0:
-            config.logger.warning(f"[VALIDATION] PowerPoint file is empty: {file_path}")
+            logger.warning(f"[VALIDATION] PowerPoint file is empty: {file_path}")
             return False
 
         # PPTX files are ZIP packages starting with 'PK\x03\x04'
@@ -184,13 +185,13 @@ def _validate_powerpoint_file(file_path: Path) -> bool:
             with open(file_path, 'rb') as fp:
                 magic = fp.read(4)
             if magic != b'PK\x03\x04':
-                config.logger.warning(
+                logger.warning(
                     f"[VALIDATION] File does not look like a PPTX (ZIP signature missing). "
                     f"Likely an HTML error/permission issue from Slack. Path: {file_path}"
                 )
                 return False
         except Exception as e:
-            config.logger.warning(f"[VALIDATION] Failed to read file header for {file_path}: {e}")
+            logger.warning(f"[VALIDATION] Failed to read file header for {file_path}: {e}")
             return False
 
         # Try to open as PowerPoint - this will fail if not a valid PPTX
@@ -204,13 +205,13 @@ def _validate_powerpoint_file(file_path: Path) -> bool:
         cleanup_memory(context="pptx_validation", aggressive=False, log_stats=False)
 
         if slide_count < 1:
-            config.logger.warning(f"[VALIDATION] PowerPoint file has no slides: {file_path}")
+            logger.warning(f"[VALIDATION] PowerPoint file has no slides: {file_path}")
             return False
 
-        config.logger.info(f"[VALIDATION] PowerPoint validation successful: {slide_count} slides")
+        logger.info(f"[VALIDATION] PowerPoint validation successful: {slide_count} slides")
         return True
     except Exception as e:
-        config.logger.warning(f"[VALIDATION] PowerPoint validation failed: {e}")
+        logger.warning(f"[VALIDATION] PowerPoint validation failed: {e}")
         # Cleanup on error path too
         try:
             del pres
@@ -231,15 +232,15 @@ async def download_file(file_info: dict[str, Any]) -> Path:
     if not channel:
         raise RuntimeError("No channel adapter available")
 
-    config.logger.info(f"[DOWNLOAD] Downloading file: {file_info.get('name', 'unknown')}")
+    logger.info(f"[DOWNLOAD] Downloading file: {file_info.get('name', 'unknown')}")
 
     # Use channel adapter to download file
     file_path = await channel.download_file(file_info)
 
     # Verify file was written
     if file_path.exists():
-        config.logger.info(f"[DOWNLOAD] File successfully written: {file_path} (size: {file_path.stat().st_size} bytes)")
+        logger.info(f"[DOWNLOAD] File successfully written: {file_path} (size: {file_path.stat().st_size} bytes)")
     else:
-        config.logger.error(f"[DOWNLOAD] File not found after write: {file_path}")
+        logger.error(f"[DOWNLOAD] File not found after write: {file_path}")
 
     return file_path
