@@ -4,16 +4,18 @@ Consolidated Migration Script: Local Data → Supabase (Multi-Service Architectu
 
 This script migrates data to the correct Supabase projects:
 
-ASSET-MANAGEMENT SUPABASE (inventory/locations):
+ASSET-MANAGEMENT SUPABASE (inventory/locations/templates/mockups):
   - {company}.standalone_assets - Location metadata from metadata.txt files
   - {company}.networks - Network groupings (future)
   - {company}.packages - Package bundles (future)
+  - {company}.mockup_frames - Mockup frame coordinate data
+  - Storage: templates/ - PowerPoint templates per location
+  - Storage: mockups/ - Mockup background photos per location
 
-SALES-MODULE SUPABASE (proposals/mockups/BOs):
-  - Storage: templates/, mockups/, fonts/, booking_orders/
+SALES-MODULE SUPABASE (proposals/BOs/analytics):
+  - Storage: fonts/, booking_orders/
   - public.proposals_log - Proposal history
   - public.proposal_locations - Links proposals to locations (via location_key)
-  - {company}.mockup_frames - Mockup coordinate data
   - {company}.mockup_usage - Mockup analytics
   - public.booking_orders - Booking order records
   - public.bo_locations - Links BOs to locations (via location_key)
@@ -42,9 +44,10 @@ Usage:
 
 Prerequisites:
     - Asset-Management schema applied: asset-management/db/migrations/01_schema.sql
+    - Asset-Management mockup_frames: asset-management/db/migrations/02_mockup_frames.sql
     - Sales-Module schema applied: sales-module/db/migrations/salesbot/01_schema.sql
-    - Sales-Module schema updated: sales-module/db/migrations/salesbot/04_remove_locations_table.sql
-    - Storage buckets created in Sales-Module: templates, mockups, fonts, booking_orders
+    - Storage buckets created in Asset-Management: templates, mockups
+    - Storage buckets created in Sales-Module: fonts, booking_orders
 
 Environment Variables:
     ASSETMGMT_DEV_SUPABASE_URL, ASSETMGMT_DEV_SUPABASE_SERVICE_ROLE_KEY
@@ -246,8 +249,8 @@ def upload_file(supabase: Client, bucket: str, storage_path: str,
 
 
 def upload_templates(supabase: Client, company: str, dry_run: bool = False) -> int:
-    """Upload templates to Sales-Module Storage."""
-    print("\n--- Uploading templates to Sales-Module ---")
+    """Upload templates to Asset-Management Storage."""
+    print("\n--- Uploading templates to Asset-Management ---")
     templates_dir = TEMPLATES_DIR if TEMPLATES_DIR.exists() else RENDER_TEMPLATES_DIR
     if not templates_dir.exists():
         print("  No templates directory found")
@@ -263,6 +266,7 @@ def upload_templates(supabase: Client, company: str, dry_run: bool = False) -> i
         for f in loc_dir.iterdir():
             if f.name.startswith('.'):
                 continue
+            # Asset-Management storage structure: {company}/{location_key}/{filename}
             path = f"{company}/{loc_dir.name}/{f.name}"
             if dry_run:
                 print(f"    [DRY RUN] templates/{path}")
@@ -274,8 +278,8 @@ def upload_templates(supabase: Client, company: str, dry_run: bool = False) -> i
 
 
 def upload_mockups(supabase: Client, company: str, dry_run: bool = False) -> int:
-    """Upload mockups to Sales-Module Storage."""
-    print("\n--- Uploading mockups to Sales-Module ---")
+    """Upload mockups to Asset-Management Storage."""
+    print("\n--- Uploading mockups to Asset-Management ---")
     mockups_dir = MOCKUPS_DIR if MOCKUPS_DIR.exists() else RENDER_MOCKUPS_DIR
     if not mockups_dir.exists():
         print("  No mockups directory found")
@@ -483,8 +487,8 @@ def load_proposals_log(supabase: Client, conn: sqlite3.Connection,
 
 def load_mockup_frames(supabase: Client, conn: sqlite3.Connection,
                        dry_run: bool = False) -> int:
-    """Load mockup_frames to Sales-Module (company schema)."""
-    print("\n--- mockup_frames ---")
+    """Load mockup_frames to Asset-Management (company schema)."""
+    print("\n--- mockup_frames (to Asset-Management) ---")
     cursor = conn.execute("SELECT * FROM mockup_frames ORDER BY id")
     rows = cursor.fetchall()
     if not rows:
@@ -510,7 +514,7 @@ def load_mockup_frames(supabase: Client, conn: sqlite3.Connection,
             'frames_data': parse_json_field(row['frames_data']) or [],
             'created_at': row['created_at'],
             'created_by': row['created_by'],
-            'config_json': parse_json_field(row['config_json']),
+            'config': parse_json_field(row['config_json']),
         })
 
     if dry_run:
@@ -713,9 +717,11 @@ def run_migration(args: argparse.Namespace):
     print("=" * 70)
 
     results = {}
+    asset_sb = None
+    sales_sb = None
 
     # =========================================================================
-    # ASSET-MANAGEMENT: Seed locations
+    # ASSET-MANAGEMENT: Locations, Templates, Mockups, Mockup Frames
     # =========================================================================
     if not args.sales_only:
         print("\n" + "=" * 70)
@@ -723,13 +729,33 @@ def run_migration(args: argparse.Namespace):
         print("=" * 70)
         try:
             asset_sb = get_asset_mgmt_supabase()
+
+            # Seed locations
             results['assets'] = seed_assets_to_asset_mgmt(asset_sb, args.dry_run)
+
+            # Storage uploads (templates and mockups go to Asset-Management)
+            if not args.skip_storage:
+                results['templates'] = upload_templates(asset_sb, args.company, args.dry_run)
+                results['mockups'] = upload_mockups(asset_sb, args.company, args.dry_run)
+
+            # Mockup frames (from SQLite to Asset-Management)
+            print("\n" + "=" * 60)
+            print("ASSET-MANAGEMENT: Load Mockup Frames from SQLite")
+            print("=" * 60)
+            try:
+                conn = get_sqlite()
+                results['mockup_frames'] = load_mockup_frames(asset_sb, conn, args.dry_run)
+                conn.close()
+            except FileNotFoundError as e:
+                print(f"  SKIPPED: {e}")
+                results['mockup_frames'] = 0
+
         except ValueError as e:
             print(f"  SKIPPED: {e}")
             results['assets'] = 0
 
     # =========================================================================
-    # SALES-MODULE: Storage + Data
+    # SALES-MODULE: Proposals, Fonts, Usage Analytics, BOs
     # =========================================================================
     if not args.assets_only:
         print("\n" + "=" * 70)
@@ -738,10 +764,8 @@ def run_migration(args: argparse.Namespace):
         try:
             sales_sb = get_sales_supabase()
 
-            # Storage uploads
+            # Fonts storage (shared, goes to Sales-Module)
             if not args.skip_storage:
-                results['templates'] = upload_templates(sales_sb, args.company, args.dry_run)
-                results['mockups'] = upload_mockups(sales_sb, args.company, args.dry_run)
                 results['fonts'] = upload_fonts(sales_sb, args.dry_run)
 
             # Database migration
@@ -749,21 +773,23 @@ def run_migration(args: argparse.Namespace):
             print("SALES-MODULE: Load SQLite Data")
             print("=" * 60)
 
-            conn = get_sqlite()
-            count, proposal_map = load_proposals_log(sales_sb, conn, args.dry_run)
-            results['proposals_log'] = count
+            try:
+                conn = get_sqlite()
+                count, proposal_map = load_proposals_log(sales_sb, conn, args.dry_run)
+                results['proposals_log'] = count
 
-            results['mockup_frames'] = load_mockup_frames(sales_sb, conn, args.dry_run)
-            results['mockup_usage'] = load_mockup_usage(sales_sb, conn, args.dry_run)
-            results['bo_workflows'] = load_bo_workflows(sales_sb, conn, args.dry_run)
-            results['ai_costs'] = load_ai_costs(sales_sb, conn, args.dry_run)
-            conn.close()
+                results['mockup_usage'] = load_mockup_usage(sales_sb, conn, args.dry_run)
+                results['bo_workflows'] = load_bo_workflows(sales_sb, conn, args.dry_run)
+                results['ai_costs'] = load_ai_costs(sales_sb, conn, args.dry_run)
+                conn.close()
 
-            # Create proposal_locations
-            if proposal_map:
-                results['proposal_locations'] = create_proposal_locations(
-                    sales_sb, proposal_map, args.dry_run
-                )
+                # Create proposal_locations
+                if proposal_map:
+                    results['proposal_locations'] = create_proposal_locations(
+                        sales_sb, proposal_map, args.dry_run
+                    )
+            except FileNotFoundError as e:
+                print(f"  SKIPPED: {e}")
 
         except ValueError as e:
             print(f"  SKIPPED: {e}")
