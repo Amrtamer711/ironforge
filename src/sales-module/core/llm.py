@@ -1092,60 +1092,52 @@ async def main_llm_loop(
                   any(filename.endswith(ext) for ext in [".pdf", ".xlsx", ".xls", ".csv", ".docx", ".doc"])):
                 document_files.append(f.get("name", "document"))
 
-        # PRE-ROUTING CLASSIFIER: Classify and route files before LLM
-        if len(files) == 1:
-            logger.info("[PRE-ROUTER] Single file upload detected, running classification...")
+        # PRE-ROUTING CLASSIFIER: Use centralized classifier for file routing
+        from core.classification import ClassificationContext, RequestType, get_classifier
 
-            try:
-                file_info = files[0]
+        classifier = get_classifier()
+        classification_result = await classifier.classify(
+            context=ClassificationContext(
+                text=user_input,
+                files=files,
+                user_id=user_id,
+                user_companies=user_companies,
+                channel_type="slack" if channel else "web",
+            ),
+            download_file_func=download_file,
+        )
 
-                # Download file
-                tmp_file = await download_file(file_info)
-                logger.info(f"[PRE-ROUTER] Downloaded: {tmp_file}")
+        logger.info(f"[CLASSIFIER] Result: {classification_result.request_type.value} "
+                    f"(confidence={classification_result.confidence.value}, "
+                    f"deterministic={classification_result.is_deterministic})")
 
-                # Classify using existing classifier (converts to PDF, sends to OpenAI, returns classification)
-                from core.bo_messaging import get_user_real_name
-                from workflows.bo_parser import BookingOrderParser
-                user_name = await get_user_real_name(user_id) if user_id else None
-                parser = BookingOrderParser(company="backlite")  # Company will be determined by classifier
-                classification = await parser.classify_document(tmp_file, user_message=user_input, user_id=user_name)
+        # Route based on HIGH confidence classification
+        if classification_result.is_high_confidence:
+            if classification_result.request_type == RequestType.BO_PARSING:
+                company = classification_result.company or "backlite"
+                logger.info(f"[CLASSIFIER] HIGH CONFIDENCE BO ({company}) - routing directly")
 
-                logger.info(f"[PRE-ROUTER] Classification: {classification}")
+                await _handle_booking_order_parse(
+                    company=company,
+                    channel_event=channel_event,
+                    channel=channel,
+                    status_ts=status_ts,
+                    user_notes="",
+                    user_id=user_id,
+                    user_message=user_input
+                )
+                return  # Exit early - don't call LLM
 
-                # Route based on HIGH confidence only
-                if classification.get("classification") == "BOOKING_ORDER" and classification.get("confidence") == "high":
-                    company = classification.get("company", "backlite")  # Get company from classifier
-                    logger.info(f"[PRE-ROUTER] HIGH CONFIDENCE BOOKING ORDER ({company}) - routing directly")
+            elif classification_result.request_type == RequestType.MOCKUP:
+                logger.info("[CLASSIFIER] HIGH CONFIDENCE MOCKUP - letting LLM handle")
+                # Clear document_files and set as image for LLM to handle as mockup
+                document_files.clear()
+                if not image_files:
+                    for f in classification_result.files:
+                        image_files.append(f.filename)
+                # Fall through to LLM for mockup generation
 
-                    # Route to booking order parser
-                    await _handle_booking_order_parse(
-                        company=company,
-                        channel_event=channel_event,
-                        channel=channel,
-                        status_ts=status_ts,
-                        user_notes="",
-                        user_id=user_id,
-                        user_message=user_input
-                    )
-                    return  # Exit early - don't call LLM
-
-                elif classification.get("classification") == "ARTWORK" and classification.get("confidence") == "high":
-                    logger.info("[PRE-ROUTER] HIGH CONFIDENCE ARTWORK - letting LLM handle mockup")
-                    tmp_file.unlink(missing_ok=True)
-                    # Clear document_files and set as image for LLM to handle as mockup
-                    document_files.clear()
-                    if not image_files:  # If not already marked as image
-                        image_files.append(file_info.get("name", "artwork"))
-                    # Fall through to LLM for mockup generation
-
-                else:
-                    logger.info("[PRE-ROUTER] Low/medium confidence - letting LLM decide")
-                    tmp_file.unlink(missing_ok=True)
-                    # Fall through to LLM
-
-            except Exception as e:
-                logger.error(f"[PRE-ROUTER] Classification/routing failed: {e}", exc_info=True)
-                # Fall through to LLM on error
+        # Low/medium confidence or unknown - fall through to LLM
 
         # Inform LLM about uploaded files (only if pre-router didn't handle it)
         if image_files:
