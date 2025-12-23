@@ -10,7 +10,8 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    git \
+  && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
 # Use requirements.render.txt for production (git-based SDK install)
