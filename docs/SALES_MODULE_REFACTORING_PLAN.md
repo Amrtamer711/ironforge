@@ -1330,6 +1330,62 @@ async def test_get_location_from_asset_management(
 
 ---
 
+### Phase 1.6: Directory Restructure (Planned)
+**Goal:** Clean up directory structure to eliminate confusion and bloat
+
+**Current Issues:**
+- `routers/` vs `api/routers/` - confusing naming (both called "routers")
+- `utils/` vs `core/utils/` - two utility directories
+- `clients/` - single file, should be in integrations/
+- Loose files at root (`font_utils.py`, `pdf_slide_utils.py`)
+
+**Target Structure:**
+```
+sales-module/
+├── api/                    # HTTP layer
+│   └── routers/
+├── core/                   # Business logic
+│   ├── mockups/
+│   ├── proposals/
+│   ├── models/
+│   ├── services/
+│   └── utils/              # ← Single utils location
+├── db/                     # Database
+├── generators/             # Content generation
+├── handlers/               # ← Renamed from routers/
+├── integrations/           # External services
+│   ├── asset_management/   # ← Moved from clients/
+│   ├── auth/
+│   ├── channels/
+│   ├── llm/
+│   ├── rbac/
+│   └── storage/
+├── workflows/              # Business workflows
+├── data/                   # Runtime data
+│   ├── templates/
+│   └── storage/
+├── tests/
+├── config.py
+└── main.py
+```
+
+**Tasks:**
+1. 📋 Rename `routers/` → `handlers/` (update all imports)
+2. 📋 Move `clients/asset_management.py` → `integrations/asset_management/`
+3. 📋 Move `font_utils.py` → `utils/`
+4. 📋 Move `pdf_slide_utils.py` → `utils/`
+5. 📋 Consolidate `utils/` into `core/utils/` (single source)
+
+**Benefits:**
+- ✅ Clear naming (handlers vs routers distinction)
+- ✅ Single utils location
+- ✅ All external service clients in integrations/
+- ✅ No loose utility files at root
+
+**Deliverable:** Clean, consistent directory structure
+
+---
+
 ### Phase 1.75: Request Classification (Planned)
 **Goal:** Decouple request classification from LLM prompt and both workflows
 
