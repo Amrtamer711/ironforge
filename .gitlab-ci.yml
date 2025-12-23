@@ -1,0 +1,58 @@
+stages:
+  - build
+
+variables:
+  AWS_REGION: "us-east-1"
+  AWS_ACCOUNT_ID: "018881300778"
+  ECR_REGISTRY: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+  # Docker-in-Docker
+  DOCKER_HOST: "tcp://docker:2375"
+  DOCKER_TLS_CERTDIR: ""
+
+  # Image tagging
+  IMAGE_TAG: "${CI_COMMIT_SHORT_SHA}"
+
+# Template job all services extend
+.build_push_ecr_template:
+  stage: build
+  image: docker:24
+  services:
+    - name: docker:24-dind
+  id_tokens:
+    AWS_ID_TOKEN:
+      aud: "https://gitlab.com"   # must match the trust policy "aud" you set in AWS
+  before_script:
+    - apk add --no-cache python3 py3-pip jq
+    - pip3 install --no-cache-dir awscli
+
+    # Assume AWS role using GitLab OIDC token
+    - |
+      CREDS=$(aws sts assume-role-with-web-identity \
+        --role-arn "$AWS_ROLE_ARN" \
+        --role-session-name "gitlab-${CI_PROJECT_PATH_SLUG}-${CI_PIPELINE_ID}" \
+        --web-identity-token "$AWS_ID_TOKEN" \
+        --duration-seconds 3600)
+
+      export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
+      export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
+      export AWS_SESSION_TOKEN=$(echo "$CREDS" | jq -r '.Credentials.SessionToken')
+
+    # Login to ECR
+    - aws ecr get-login-password --region "$AWS_REGION" |
+      docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+  script:
+    - echo "Building ${SERVICE_NAME} from ${SERVICE_DIR}"
+    - docker build -f "${SERVICE_DIR}/Dockerfile" -t "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}" "${SERVICE_DIR}"
+    - docker push "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}"
+
+    # Push latest only from default branch
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        docker tag "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}" "${ECR_REGISTRY}/${ECR_REPO}:latest"
+        docker push "${ECR_REGISTRY}/${ECR_REPO}:latest"
+      fi
+
+include:
+  - local: "src/unifiedui/c-cd.yml"
