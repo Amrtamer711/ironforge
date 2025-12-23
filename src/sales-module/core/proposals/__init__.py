@@ -27,6 +27,8 @@ Usage:
 
 from typing import Any
 
+from core.services.template_service import TemplateService
+
 from .intro_outro import IntroOutroHandler
 from .processor import ProposalProcessor
 from .renderer import ProposalRenderer
@@ -82,13 +84,14 @@ async def process_proposals(
         return {"success": False, "error": "No proposals provided"}
 
     if not user_companies:
-        user_companies = []
+        return {"success": False, "error": "User companies are required"}
 
     # Create module instances
     validator = ProposalValidator(user_companies)
     renderer = ProposalRenderer()
     intro_outro = IntroOutroHandler(validator.available_locations)
-    processor = ProposalProcessor(validator, renderer, intro_outro)
+    template_service = TemplateService(companies=user_companies)
+    processor = ProposalProcessor(validator, renderer, intro_outro, template_service)
 
     # Route to appropriate processor method
     if package_type == "combined" and len(proposals_data) > 1:
@@ -146,13 +149,14 @@ async def process_combined_package(
         ... )
     """
     if not user_companies:
-        user_companies = []
+        return {"success": False, "error": "User companies are required"}
 
     # Create module instances
     validator = ProposalValidator(user_companies)
     renderer = ProposalRenderer()
     intro_outro = IntroOutroHandler(validator.available_locations)
-    processor = ProposalProcessor(validator, renderer, intro_outro)
+    template_service = TemplateService(companies=user_companies)
+    processor = ProposalProcessor(validator, renderer, intro_outro, template_service)
 
     return await processor.process_combined(
         proposals_data,

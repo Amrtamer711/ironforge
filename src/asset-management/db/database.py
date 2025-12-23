@@ -434,6 +434,19 @@ class _DatabaseNamespace:
             location_key, company, time_of_day, finish, photo_filename
         )
 
+    def delete_mockup_frame(
+        self,
+        location_key: str,
+        company: str,
+        photo_filename: str,
+        time_of_day: str = "day",
+        finish: str = "gold",
+    ) -> bool:
+        """Delete a mockup frame."""
+        return self._backend.delete_mockup_frame(
+            location_key, company, photo_filename, time_of_day, finish
+        )
+
 
 # Create the singleton database interface
 db = _DatabaseNamespace(_backend)

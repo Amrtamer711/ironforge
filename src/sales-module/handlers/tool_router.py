@@ -268,6 +268,24 @@ async def handle_tool_call(
             return True
 
         args = args
+
+        # Validate company parameter
+        target_company = args.get("company", "").strip().lower()
+        if not target_company:
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** Company is required. Please specify which company to add the location to.")
+            return True
+
+        # Check user has access to the target company
+        if not user_companies or target_company not in user_companies:
+            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            available = ", ".join(user_companies) if user_companies else "none"
+            await channel_adapter.send_message(
+                channel_id=channel,
+                content=f"❌ **Error:** You don't have access to company `{target_company}`. Your available companies: {available}"
+            )
+            return True
+
         location_key = args.get("location_key", "").strip().lower().replace(" ", "_")
 
         if not location_key:
@@ -275,17 +293,18 @@ async def handle_tool_call(
             await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** Location key is required.")
             return True
 
-        # Check if location already exists (filesystem + cache check for security)
-        # SECURITY FIX: Previous vulnerability allowed duplicate locations when cache was stale
-        # Now we check both filesystem (authoritative) and cache (fallback) to prevent bypass
-        location_dir = config.TEMPLATES_DIR / location_key
+        # Check if location already exists via Asset-Management storage
+        # SECURITY FIX: Check storage (authoritative) and cache (fallback) to prevent duplicates
+        from core.services.template_service import TemplateService
+        template_service = TemplateService(companies=user_companies)
+        template_exists, _ = await template_service.exists(location_key)
         mapping = config.get_location_mapping()
 
-        # Dual check: filesystem (primary) + cache (secondary) to prevent bypass
-        if location_dir.exists() or location_key in mapping:
+        # Dual check: storage (primary) + cache (secondary) to prevent bypass
+        if template_exists or location_key in mapping:
             await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            if location_dir.exists():
-                logger.warning(f"[SECURITY] Duplicate location attempt blocked - filesystem check: {location_key}")
+            if template_exists:
+                logger.warning(f"[SECURITY] Duplicate location attempt blocked - storage check: {location_key}")
             await channel_adapter.send_message(channel_id=channel, content=f"⚠️ Location `{location_key}` already exists. Please use a different key.")
             return True
 
@@ -369,6 +388,7 @@ async def handle_tool_call(
         # Store the pending location data
         pending_location_additions[user_id] = {
             "location_key": location_key,
+            "company": target_company,  # Explicit company selected by user
             "display_name": display_name,
             "display_type": display_type,
             "height": height,
@@ -379,7 +399,7 @@ async def handle_tool_call(
             "spot_duration": spot_duration,
             "loop_duration": loop_duration,
             "upload_fee": upload_fee,
-            "timestamp": datetime.now()
+            "timestamp": datetime.now(),
         }
 
         logger.info(f"[LOCATION_ADD] Stored pending location for user {user_id}: {location_key}")

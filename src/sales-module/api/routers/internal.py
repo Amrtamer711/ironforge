@@ -21,16 +21,10 @@ from crm_security import require_service, verify_service_token
 router = APIRouter(prefix="/internal", tags=["Internal"])
 logger = get_logger("api.internal")
 
-# Singleton service instance
-_eligibility_service: EligibilityService | None = None
 
-
-def get_eligibility_service() -> EligibilityService:
-    """Get or create eligibility service singleton."""
-    global _eligibility_service
-    if _eligibility_service is None:
-        _eligibility_service = EligibilityService()
-    return _eligibility_service
+def get_eligibility_service(company_schemas: list[str]) -> EligibilityService:
+    """Create eligibility service with specified companies."""
+    return EligibilityService(company_schemas=company_schemas)
 
 
 @router.get(
@@ -48,7 +42,6 @@ async def check_location_eligibility(
         example=["backlite_dubai", "backlite_uk"],
     ),
     calling_service: str = Depends(verify_service_token),
-    service: EligibilityService = Depends(get_eligibility_service),
 ) -> LocationEligibilityResult:
     """
     Check eligibility for a specific location.
@@ -68,6 +61,7 @@ async def check_location_eligibility(
         f"[INTERNAL] Location eligibility check from {calling_service}: {location_key}"
     )
 
+    service = get_eligibility_service(company_schemas)
     result = await service.check_location_eligibility(location_key, company_schemas)
 
     logger.info(
@@ -92,7 +86,6 @@ async def check_network_eligibility(
         example=["backlite_dubai", "backlite_uk"],
     ),
     calling_service: str = Depends(verify_service_token),
-    service: EligibilityService = Depends(get_eligibility_service),
 ) -> NetworkEligibilityResult:
     """
     Check eligibility for a specific network.
@@ -105,6 +98,7 @@ async def check_network_eligibility(
         f"[INTERNAL] Network eligibility check from {calling_service}: {network_key}"
     )
 
+    service = get_eligibility_service(company_schemas)
     result = await service.check_network_eligibility(network_key, company_schemas)
 
     logger.info(
@@ -123,14 +117,19 @@ async def check_network_eligibility(
 )
 async def check_template_exists(
     location_key: str,
+    company_schemas: list[str] = Query(
+        ...,
+        description="Company schemas to search",
+        example=["backlite_dubai"],
+    ),
     calling_service: str = Depends(verify_service_token),
-    service: EligibilityService = Depends(get_eligibility_service),
 ) -> dict:
     """
     Check if a template exists for a location.
 
     Simple endpoint to verify template availability without full eligibility check.
     """
+    service = get_eligibility_service(company_schemas)
     exists = await service.check_template_exists(location_key)
     return {
         "location_key": location_key,
@@ -152,7 +151,6 @@ async def get_mockup_variants(
         example=["backlite_dubai"],
     ),
     calling_service: str = Depends(verify_service_token),
-    service: EligibilityService = Depends(get_eligibility_service),
 ) -> list[MockupVariant]:
     """
     Get available mockup variants for a location.
@@ -160,7 +158,8 @@ async def get_mockup_variants(
     Returns a list of time_of_day/finish combinations that have mockup frames
     available for the specified location.
     """
-    variants = service.get_mockup_variants(location_key, company_schemas)
+    service = get_eligibility_service(company_schemas)
+    variants = await service.get_mockup_variants(location_key)
     return variants
 
 
@@ -182,7 +181,6 @@ async def bulk_check_eligibility(
         example=["backlite_dubai", "backlite_uk"],
     ),
     calling_service: str = Depends(verify_service_token),
-    service: EligibilityService = Depends(get_eligibility_service),
 ) -> list[LocationEligibilityResult]:
     """
     Bulk check eligibility for multiple locations.
@@ -193,6 +191,7 @@ async def bulk_check_eligibility(
         f"[INTERNAL] Bulk eligibility check from {calling_service}: {len(location_keys)} locations"
     )
 
+    service = get_eligibility_service(company_schemas)
     results = []
     for location_key in location_keys:
         result = await service.check_location_eligibility(location_key, company_schemas)

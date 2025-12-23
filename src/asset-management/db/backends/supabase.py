@@ -1379,3 +1379,30 @@ class SupabaseBackend(DatabaseBackend):
         except Exception as e:
             logger.debug(f"[SUPABASE] Failed to get mockup frame: {e}")
             return None
+
+    def delete_mockup_frame(
+        self,
+        location_key: str,
+        company: str,
+        photo_filename: str,
+        time_of_day: str = "day",
+        finish: str = "gold",
+    ) -> bool:
+        """Delete a mockup frame."""
+        client = self._get_client()
+        try:
+            response = (
+                client.schema(company)
+                .table("mockup_frames")
+                .delete()
+                .eq("location_key", location_key)
+                .eq("photo_filename", photo_filename)
+                .eq("time_of_day", time_of_day)
+                .eq("finish", finish)
+                .execute()
+            )
+            logger.info(f"[SUPABASE] Deleted mockup frame: {location_key}/{photo_filename}")
+            return True
+        except Exception as e:
+            logger.error(f"[SUPABASE] Failed to delete mockup frame: {e}")
+            return False

@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import config
-from db.database import db
 from core.utils.memory import cleanup_memory
 
 # Global for user conversation history
@@ -133,46 +132,3 @@ def get_mockup_history(user_id: str) -> dict[str, Any] | None:
     return data
 
 
-def get_location_frame_count(
-    location_key: str,
-    company_schemas: list[str],
-    time_of_day: str = "all",
-    finish: str = "all",
-) -> int | None:
-    """Get the number of frames for a specific location configuration.
-
-    Args:
-        location_key: The location key to look up
-        company_schemas: List of company schemas user can access
-        time_of_day: Filter by time of day ("day", "night", "all")
-        finish: Filter by finish type ("gold", "matte", "all")
-
-    Returns:
-        Number of frames, or None if location not found or no mockups configured
-    """
-
-    # Get available variations for the location (searches all user's schemas)
-    variations = db.list_mockup_variations(location_key, company_schemas)
-    if not variations:
-        return None
-
-    # Get the first available variation that matches time_of_day/finish
-    # variations structure: {'day': ['gold', 'silver'], 'night': ['gold']}
-    for tod, finish_list in variations.items():
-        if time_of_day != "all" and tod != time_of_day:
-            continue
-
-        for fin in finish_list:
-            if finish != "all" and fin != finish:
-                continue
-
-            # Get all photos for this time_of_day/finish combination
-            photos = db.list_mockup_photos(location_key, company_schemas, tod, fin)
-            if photos:
-                # Search each schema to find which has the frames for this photo
-                for schema in company_schemas:
-                    frames_data = db.get_mockup_frames(location_key, photos[0], schema, tod, fin)
-                    if frames_data:
-                        return len(frames_data)
-
-    return None

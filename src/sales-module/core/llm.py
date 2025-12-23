@@ -58,7 +58,7 @@ async def _generate_mockup_queued(
     async def _generate():
         try:
             logger.info(f"[QUEUE] Starting mockup generation for {location_key}")
-            result_path, metadata = mockup_generator.generate_mockup(
+            result_path, metadata = await mockup_generator.generate_mockup_async(
                 location_key,
                 creative_paths,
                 time_of_day=time_of_day,
@@ -134,7 +134,7 @@ async def _generate_ai_mockup_queued(
             logger.info(f"[QUEUE] All AI creatives ready, generating mockup for {location_key}")
 
             # Generate mockup with AI creatives
-            result_path, metadata = mockup_generator.generate_mockup(
+            result_path, metadata = await mockup_generator.generate_mockup_async(
                 location_key,
                 ai_creative_paths,
                 time_of_day=time_of_day,
@@ -157,15 +157,48 @@ async def _generate_ai_mockup_queued(
     return await mockup_queue.submit(_generate)
 
 
-async def _persist_location_upload(location_key: str, pptx_path: Path, metadata_text: str) -> None:
-    location_dir = config.TEMPLATES_DIR / location_key
-    location_dir.mkdir(parents=True, exist_ok=True)
-    target_pptx = location_dir / f"{location_key}.pptx"
-    target_meta = location_dir / "metadata.txt"
-    # Move/copy files
-    import shutil
-    shutil.move(str(pptx_path), str(target_pptx))
-    target_meta.write_text(metadata_text, encoding="utf-8")
+async def _persist_location_upload(
+    location_key: str,
+    pptx_path: Path,
+    metadata_text: str,
+    company: str,
+) -> None:
+    """
+    Upload template to Asset-Management storage.
+
+    Args:
+        location_key: Location identifier
+        pptx_path: Path to the PPTX file
+        metadata_text: Metadata text (kept for backwards compatibility)
+        company: Target company to upload to (explicitly selected by user)
+
+    Note: The metadata_text parameter is kept for backwards compatibility but
+    location metadata should be managed through Asset-Management's location API.
+    """
+    from core.services.template_service import TemplateService
+
+    if not company:
+        raise ValueError("Company must be specified for template upload")
+
+    # Read file data
+    with open(pptx_path, "rb") as f:
+        file_data = f.read()
+
+    # Upload to Asset-Management storage
+    service = TemplateService(companies=[company])
+    success = await service.upload(location_key, file_data, company=company)
+
+    if not success:
+        raise Exception(f"Failed to upload template for {location_key} to {company}")
+
+    # Clean up the temp file
+    try:
+        import os
+        os.unlink(pptx_path)
+    except OSError:
+        pass
+
+    config.logger.info(f"[LOCATION_UPLOAD] Template uploaded to {company}: {location_key}")
 
 
 async def _handle_booking_order_parse(
@@ -880,8 +913,14 @@ async def main_llm_loop(
             metadata_text = "\n".join(metadata_lines)
 
             try:
-                # Save the location
-                await _persist_location_upload(pending_data['location_key'], pptx_file, metadata_text)
+                # Save the location to the explicitly selected company
+                target_company = pending_data['company']
+                await _persist_location_upload(
+                    pending_data['location_key'],
+                    pptx_file,
+                    metadata_text,
+                    company=target_company,
+                )
 
                 # Clean up
                 del pending_location_additions[user_id]
@@ -895,7 +934,7 @@ async def main_llm_loop(
                 await channel_adapter.send_message(
                     channel_id=channel,
                     content=(
-                        f"**Successfully added location `{pending_data['location_key']}`**\n\n"
+                        f"**Successfully added location `{pending_data['location_key']}` to `{target_company}`**\n\n"
                         f"The location is now available for use in proposals."
                     )
                 )
@@ -931,36 +970,59 @@ async def main_llm_loop(
         location_key = user_input.strip().lower().replace("confirm delete ", "").strip()
 
         if location_key in config.LOCATION_METADATA:
-            location_dir = config.TEMPLATES_DIR / location_key
             display_name = config.LOCATION_METADATA[location_key].get('display_name', location_key)
 
             try:
-                # Delete the location directory and all its contents
-                import shutil
-
+                from core.services.template_service import TemplateService
                 from generators import mockup as mockup_generator
+                from integrations.asset_management import asset_mgmt_client
 
-                # Delete PowerPoint templates
-                if location_dir.exists():
-                    shutil.rmtree(location_dir)
-                    logger.info(f"[LOCATION_DELETE] Deleted location directory: {location_dir}")
+                # Get user companies for deletion (must have companies to delete)
+                if not user_companies:
+                    raise ValueError("User companies required for location deletion")
 
-                # Delete all mockup photos and database entries for this location
+                # Delete PowerPoint templates from Asset-Management storage
+                template_service = TemplateService(companies=user_companies)
+                template_deleted = False
+                for company in user_companies:
+                    try:
+                        deleted = await template_service.delete(location_key, company)
+                        if deleted:
+                            template_deleted = True
+                            logger.info(f"[LOCATION_DELETE] Deleted template for {location_key} from {company}")
+                    except Exception as e:
+                        logger.debug(f"[LOCATION_DELETE] Template not found in {company}: {e}")
+
+                if template_deleted:
+                    logger.info(f"[LOCATION_DELETE] Template deleted from Asset-Management storage")
+
+                # Delete local mockup photos if they exist (legacy cleanup)
                 mockup_dir = mockup_generator.MOCKUPS_DIR / location_key
                 if mockup_dir.exists():
+                    import shutil
                     shutil.rmtree(mockup_dir)
-                    logger.info(f"[LOCATION_DELETE] Deleted mockup directory: {mockup_dir}")
+                    logger.info(f"[LOCATION_DELETE] Deleted local mockup directory: {mockup_dir}")
 
-                # Delete all mockup frame data from database
-                import db
-                conn = db._connect()
-                try:
-                    result = conn.execute("DELETE FROM mockup_frames WHERE location_key = ?", (location_key,))
-                    deleted_count = result.rowcount
-                    conn.commit()
-                    logger.info(f"[LOCATION_DELETE] Deleted {deleted_count} mockup frame entries from database")
-                finally:
-                    conn.close()
+                # Delete all mockup frame data from Asset-Management for each company
+                deleted_count = 0
+                for company in user_companies:
+                    try:
+                        # Get all frames for this location in this company
+                        frames = await asset_mgmt_client.get_mockup_frames(company, location_key)
+                        for frame in frames:
+                            success = await asset_mgmt_client.delete_mockup_frame(
+                                company=company,
+                                location_key=location_key,
+                                photo_filename=frame.get("photo_filename", ""),
+                                time_of_day=frame.get("time_of_day", "day"),
+                                finish=frame.get("finish", "gold"),
+                            )
+                            if success:
+                                deleted_count += 1
+                    except Exception as e:
+                        logger.debug(f"[LOCATION_DELETE] Error deleting frames from {company}: {e}")
+
+                logger.info(f"[LOCATION_DELETE] Deleted {deleted_count} mockup frame entries from Asset-Management")
 
                 # Refresh templates to remove from cache
                 config.refresh_templates()

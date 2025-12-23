@@ -296,7 +296,8 @@ class EligibilityService:
         )
 
         # Get location counts (local database)
-        total_locations = db.count_network_locations(network_id, [company])
+        network_locations = db.list_locations([company], network_id=network_id)
+        total_locations = len(network_locations)
         eligible_locations = 0  # Would need async bulk check, simplified for now
 
         return EligibilityCheck(

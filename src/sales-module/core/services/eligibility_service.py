@@ -112,13 +112,16 @@ class EligibilityService:
 
     def __init__(
         self,
-        company_schemas: list[str] | None = None,
+        company_schemas: list[str],
         template_service: TemplateService | None = None,
     ):
+        if not company_schemas:
+            raise ValueError("At least one company schema must be provided")
+
         self.logger = _get_logger()
-        self.company_schemas = company_schemas or ["backlite_dubai"]
-        self.template_service = template_service or TemplateService(self.company_schemas[0])
-        self.mockup_frame_service = MockupFrameService(companies=self.company_schemas)
+        self.company_schemas = company_schemas
+        self.template_service = template_service or TemplateService(companies=company_schemas)
+        self.mockup_frame_service = MockupFrameService(companies=company_schemas)
 
     async def check_location_eligibility(
         self,
@@ -152,11 +155,12 @@ class EligibilityService:
         result.proposal_missing_fields = missing_fields
 
         # Check template exists
-        result.template_exists = await self.template_service.exists(location_key)
+        template_exists, _ = await self.template_service.exists(location_key)
+        result.template_exists = template_exists
 
         # Location is proposal eligible if all fields present AND template exists
         result.proposal_eligible = (
-            len(missing_fields) == 0 and result.template_exists
+            len(missing_fields) == 0 and template_exists
         )
 
         # Check mockup eligibility (via Asset-Management)
@@ -203,9 +207,10 @@ class EligibilityService:
         # For networks, proposal eligibility just requires:
         # - Network name exists
         # - Template exists for the network
-        result.template_exists = await self.template_service.exists(network_key)
+        template_exists, _ = await self.template_service.exists(network_key)
+        result.template_exists = template_exists
         result.proposal_eligible = (
-            bool(result.network_name) and result.template_exists
+            bool(result.network_name) and template_exists
         )
 
         # For mockup eligibility, check if any mockup frames exist (via Asset-Management)
@@ -232,7 +237,8 @@ class EligibilityService:
         Returns:
             True if template exists
         """
-        return await self.template_service.exists(location_key)
+        exists, _ = await self.template_service.exists(location_key)
+        return exists
 
     async def get_mockup_variants(
         self,

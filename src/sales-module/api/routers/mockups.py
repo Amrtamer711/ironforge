@@ -414,14 +414,14 @@ async def delete_mockup_photo(location_key: str, photo_filename: str, time_of_da
                 for fin in variations[tod]:
                     photos = await service.list_photos(location_key, tod, fin)
                     if photo_filename in photos:
-                        success = mockup_generator.delete_location_photo(location_key, photo_filename, company_schema, tod, fin)
+                        success = await mockup_generator.delete_location_photo(location_key, photo_filename, company_schema, tod, fin)
                         if success:
                             return {"success": True}
                         else:
                             raise HTTPException(status_code=500, detail="Failed to delete photo")
             raise HTTPException(status_code=404, detail="Photo not found")
         else:
-            success = mockup_generator.delete_location_photo(location_key, photo_filename, company_schema, time_of_day, finish)
+            success = await mockup_generator.delete_location_photo(location_key, photo_filename, company_schema, time_of_day, finish)
             if success:
                 return {"success": True}
             else:
@@ -515,7 +515,7 @@ async def generate_mockup_api(
             raise HTTPException(status_code=400, detail="Either ai_prompt or creative file must be provided")
 
         # Generate mockup (pass as list) with time_of_day, finish, specific_photo, and config override
-        result_path, photo_used = mockup_generator.generate_mockup(
+        result_path, photo_used = await mockup_generator.generate_mockup_async(
             location_key,
             [creative_path],
             time_of_day=time_of_day,
@@ -627,7 +627,7 @@ async def generate_mockup_api(
                 finish=finish,
                 photo_used=specific_photo or "random",
                 creative_type=creative_type or "unknown",
-                company_schema=company_schema if 'company_schema' in locals() else user.companies[0] if user.companies else "unknown",
+                company_schema=company_schema if 'company_schema' in locals() else "unknown",
                 ai_prompt=ai_prompt if ai_prompt else None,
                 template_selected=template_selected,
                 success=False,

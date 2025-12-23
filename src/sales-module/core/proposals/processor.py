@@ -41,7 +41,7 @@ class ProposalProcessor:
         validator: ProposalValidator,
         renderer: ProposalRenderer,
         intro_outro_handler: IntroOutroHandler,
-        template_service: TemplateService | None = None
+        template_service: TemplateService,
     ):
         """
         Initialize processor with dependencies.
@@ -50,12 +50,12 @@ class ProposalProcessor:
             validator: ProposalValidator instance
             renderer: ProposalRenderer instance
             intro_outro_handler: IntroOutroHandler instance
-            template_service: TemplateService instance (optional, created if not provided)
+            template_service: TemplateService instance (required)
         """
         self.validator = validator
         self.renderer = renderer
         self.intro_outro_handler = intro_outro_handler
-        self.template_service = template_service or TemplateService()
+        self.template_service = template_service
         self.logger = config.logger
 
     @staticmethod

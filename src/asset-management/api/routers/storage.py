@@ -17,7 +17,7 @@ from db.database import db
 logger = logging.getLogger("asset-management")
 
 router = APIRouter(
-    prefix="/api/v1/storage",
+    prefix="/api/storage",
     tags=["storage"],
 )
 
@@ -210,6 +210,113 @@ async def get_template_url(
         raise
     except Exception as e:
         logger.error(f"[STORAGE] Failed to create signed URL: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class UploadTemplateRequest(BaseModel):
+    """Request for uploading a template."""
+    location_key: str
+    data: str  # Base64-encoded file data
+    filename: str = None  # Optional, defaults to {location_key}.pptx
+
+
+class UploadResponse(BaseModel):
+    """Response for upload operations."""
+    success: bool
+    storage_key: str
+    message: str
+
+
+@router.post("/templates/{company}", response_model=UploadResponse)
+async def upload_template(company: str, request: UploadTemplateRequest) -> dict[str, Any]:
+    """
+    Upload a template file for a location.
+
+    Templates are stored in: templates/{location_key}/{location_key}.pptx
+
+    Args:
+        company: Company schema (e.g., "backlite_dubai")
+        request: Upload request with location_key and base64 data
+
+    Returns:
+        Upload result with storage key
+    """
+    location_key = request.location_key.lower().strip()
+    logger.info(f"[STORAGE] Uploading template for {location_key}")
+
+    try:
+        storage = _get_storage_client()
+        bucket = storage.from_("templates")
+
+        # Decode base64 data
+        import base64 as b64
+        file_data = b64.b64decode(request.data)
+
+        # Determine filename
+        filename = request.filename or f"{location_key}.pptx"
+        storage_key = f"{location_key}/{filename}"
+
+        # Upload file
+        result = bucket.upload(
+            storage_key,
+            file_data,
+            {
+                "content-type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "upsert": "true",  # Overwrite if exists
+            },
+        )
+
+        logger.info(f"[STORAGE] Template uploaded: {storage_key}")
+        return {
+            "success": True,
+            "storage_key": storage_key,
+            "message": f"Template uploaded for {location_key}",
+        }
+
+    except Exception as e:
+        logger.error(f"[STORAGE] Failed to upload template: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/templates/{company}/{location_key}", response_model=UploadResponse)
+async def delete_template(company: str, location_key: str) -> dict[str, Any]:
+    """
+    Delete a template file for a location.
+
+    Args:
+        company: Company schema
+        location_key: Location identifier
+
+    Returns:
+        Delete result
+    """
+    location_key = location_key.lower().strip()
+    logger.info(f"[STORAGE] Deleting template for {location_key}")
+
+    try:
+        storage = _get_storage_client()
+        bucket = storage.from_("templates")
+
+        storage_key = f"{location_key}/{location_key}.pptx"
+
+        # Delete file
+        bucket.remove([storage_key])
+
+        # Also try to remove the folder if empty
+        try:
+            bucket.remove([location_key])
+        except Exception:
+            pass  # Folder may not be empty or may not exist
+
+        logger.info(f"[STORAGE] Template deleted: {storage_key}")
+        return {
+            "success": True,
+            "storage_key": storage_key,
+            "message": f"Template deleted for {location_key}",
+        }
+
+    except Exception as e:
+        logger.error(f"[STORAGE] Failed to delete template: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

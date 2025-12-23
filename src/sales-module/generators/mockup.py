@@ -1,12 +1,9 @@
 import logging
 import os
-import random
 from pathlib import Path
 
 import cv2
 import numpy as np
-
-from db.database import db
 
 # Import compositing from effects module
 from generators.effects import warp_creative_to_billboard
@@ -119,87 +116,6 @@ def list_location_photos(location_key: str, time_of_day: str = "day", finish: st
         photos.extend([p.name for p in location_dir.glob(ext)])
 
     return sorted(photos)
-
-
-def get_random_location_photo(
-    location_key: str,
-    time_of_day: str = "all",
-    finish: str = "all",
-    company_schemas: list[str] | None = None,
-) -> tuple[str, str, str, Path] | None:
-    """Get a random photo for a location that has a frame configured. Returns (photo_filename, time_of_day, finish, photo_path)."""
-    from config import COMPANY_SCHEMAS
-
-    # Use provided schemas or default to all known schemas
-    schemas = company_schemas if company_schemas else COMPANY_SCHEMAS
-
-    # Special handling for "all" - pick from filtered variations
-    if time_of_day == "all" or finish == "all":
-        # Get all variations available for this location
-        variations = db.list_mockup_variations(location_key, schemas)
-        if not variations:
-            logger.warning(f"[MOCKUP] No variations found for location '{location_key}'")
-            return None
-
-        # Build list of all (time_of_day, finish, photo) tuples, filtered by specified dimension
-        all_photos = []
-        for tod in variations:
-            # If user specified time_of_day, only use that one
-            if time_of_day != "all" and tod != time_of_day:
-                continue
-
-            for fin in variations[tod]:
-                # If user specified finish, only use that one
-                if finish != "all" and fin != finish:
-                    continue
-
-                photos = db.list_mockup_photos(location_key, schemas, tod, fin)
-                for photo in photos:
-                    all_photos.append((photo, tod, fin))
-
-        if not all_photos:
-            filter_info = ""
-            if time_of_day != "all":
-                filter_info += f" time_of_day={time_of_day}"
-            if finish != "all":
-                filter_info += f" finish={finish}"
-            logger.warning(f"[MOCKUP] No photos found for location '{location_key}'{filter_info}")
-            return None
-
-        # Pick random from filtered available photos
-        photo_filename, selected_tod, selected_finish = random.choice(all_photos)
-        photo_path = get_location_photos_dir(location_key, selected_tod, selected_finish) / photo_filename
-
-        if not photo_path.exists():
-            logger.error(f"[MOCKUP] Photo file not found: {photo_path}")
-            return None
-
-        filter_desc = []
-        if time_of_day != "all":
-            filter_desc.append(f"time={time_of_day}")
-        if finish != "all":
-            filter_desc.append(f"finish={finish}")
-        filter_str = f" (filtered: {', '.join(filter_desc)})" if filter_desc else " (all variations)"
-        logger.info(f"[MOCKUP] Selected random photo for '{location_key}'{filter_str}: {photo_filename} ({selected_tod}/{selected_finish})")
-        return photo_filename, selected_tod, selected_finish, photo_path
-
-    # Specific variation requested
-    photos_with_frames = db.list_mockup_photos(location_key, schemas, time_of_day, finish)
-
-    if not photos_with_frames:
-        logger.warning(f"[MOCKUP] No photos with frames found for location '{location_key}/{time_of_day}/{finish}'")
-        return None
-
-    # Pick a random photo
-    photo_filename = random.choice(photos_with_frames)
-    photo_path = get_location_photos_dir(location_key, time_of_day, finish) / photo_filename
-
-    if not photo_path.exists():
-        logger.error(f"[MOCKUP] Photo file not found: {photo_path}")
-        return None
-
-    logger.info(f"[MOCKUP] Selected random photo for '{location_key}/{time_of_day}/{finish}': {photo_filename}")
-    return photo_filename, time_of_day, finish, photo_path
 
 
 async def generate_ai_creative(
@@ -328,168 +244,7 @@ async def generate_ai_creative(
         return None
 
 
-def generate_mockup(
-    location_key: str,
-    creative_images: list[Path],
-    output_path: Path | None = None,
-    specific_photo: str | None = None,
-    time_of_day: str = "day",
-    finish: str = "gold",
-    config_override: dict | None = None,
-    company_schemas: list[str] | None = None,
-) -> Path | None:
-    """
-    Generate a mockup by warping creatives onto a location billboard.
-
-    Args:
-        location_key: The location identifier
-        creative_images: List of creative/ad image paths (1 image = duplicate across frames, N images = 1 per frame)
-        output_path: Optional output path (generates temp file if not provided)
-        specific_photo: Optional specific photo filename to use (random if not provided)
-        time_of_day: Time of day variation (default: "day")
-        finish: Billboard finish (default: "gold")
-        config_override: Optional config dict to override saved frame config
-        company_schemas: List of company schemas to search (defaults to all known schemas)
-
-    Returns:
-        Tuple of (Path to the generated mockup image, photo_filename used), or (None, None) if failed
-    """
-    from config import COMPANY_SCHEMAS
-
-    # Use provided schemas or default to all known schemas
-    schemas = company_schemas if company_schemas else COMPANY_SCHEMAS
-
-    logger.info(f"[MOCKUP] Generating mockup for location '{location_key}/{time_of_day}/{finish}' with {len(creative_images)} creative(s)")
-
-    # Get billboard photo
-    if specific_photo:
-        photo_filename = specific_photo
-        photo_path = get_location_photos_dir(location_key, time_of_day, finish) / photo_filename
-        if not photo_path.exists():
-            logger.error(f"[MOCKUP] Specific photo not found: {photo_path}")
-            return None, None
-    else:
-        result = get_random_location_photo(location_key, time_of_day, finish, schemas)
-        if not result:
-            return None, None
-        photo_filename, time_of_day, finish, photo_path = result
-
-    # Get all frame coordinates (list of frames) - search through schemas
-    frames_data = None
-    found_schema = None
-    for schema in schemas:
-        frames_data = db.get_mockup_frames(location_key, photo_filename, schema, time_of_day, finish)
-        if frames_data:
-            found_schema = schema
-            break
-
-    if not frames_data:
-        logger.error(f"[MOCKUP] No frame coordinates found for '{location_key}/{time_of_day}/{finish}/{photo_filename}'")
-        return None, None
-
-    # Get config for this photo (if any) - use the same schema where frames were found
-    photo_config = db.get_mockup_config(location_key, photo_filename, found_schema, time_of_day, finish)
-    if photo_config:
-        logger.info(f"[MOCKUP] Using saved config: {photo_config}")
-
-    num_frames = len(frames_data)
-    num_creatives = len(creative_images)
-
-    logger.info(f"[MOCKUP] Using {num_frames} frame(s), {num_creatives} creative(s)")
-
-    # Validate creative count
-    if num_creatives != 1 and num_creatives != num_frames:
-        logger.error(f"[MOCKUP] Invalid creative count: need 1 (duplicate) or {num_frames} (one per frame), got {num_creatives}")
-        return None, None
-
-    # Load billboard
-    try:
-        billboard = cv2.imread(str(photo_path))
-        if billboard is None:
-            logger.error(f"[MOCKUP] Failed to load billboard image: {photo_path}")
-            return None, None
-    except Exception as e:
-        logger.error(f"[MOCKUP] Error loading billboard: {e}")
-        return None, None
-
-    # Start with the billboard as the result
-    result = billboard.copy()
-
-    # Apply each creative to each frame
-    for i, frame_data in enumerate(frames_data):
-        # New format: {"points": [...], "config": {brightness: 100, blurStrength: 8, ...}}
-        frame_points = frame_data["points"]
-        frame_config = frame_data.get("config", {})
-
-        logger.info(f"[MOCKUP] Frame {i+1} raw config: {frame_config}")
-
-        # Merge configs: photo_config < frame_config < config_override (highest priority)
-        merged_config = photo_config.copy() if photo_config else {}
-        merged_config.update(frame_config)
-        if config_override:
-            merged_config.update(config_override)
-            logger.info(f"[MOCKUP] Frame {i+1} applying config override: {config_override}")
-
-        logger.info(f"[MOCKUP] Frame {i+1} merged config: {merged_config}")
-
-        # Determine which creative to use
-        if num_creatives == 1:
-            creative_path = creative_images[0]  # Duplicate the same creative
-        else:
-            creative_path = creative_images[i]  # Use corresponding creative
-
-        # Load creative
-        try:
-            creative = cv2.imread(str(creative_path))
-            if creative is None:
-                logger.error(f"[MOCKUP] Failed to load creative image: {creative_path}")
-                return None, None
-        except Exception as e:
-            logger.error(f"[MOCKUP] Error loading creative {i}: {e}")
-            return None, None
-
-        # Warp creative onto this frame with merged config
-        try:
-            result = warp_creative_to_billboard(result, creative, frame_points, config=merged_config, time_of_day=time_of_day)
-            edge_blur = merged_config.get('edgeBlur', 8)
-            image_blur = merged_config.get('imageBlur', 0)
-            logger.info(f"[MOCKUP] Applied creative {i+1}/{num_frames} to frame {i+1} (edge blur: {edge_blur}px, image blur: {image_blur})")
-        except Exception as e:
-            logger.error(f"[MOCKUP] Error warping creative {i}: {e}")
-            # Cleanup on error
-            del billboard, result, creative
-            cleanup_memory(context="mockup_warp_error", aggressive=False, log_stats=False)
-            return None, None
-
-        # Explicitly delete creative image to free memory after each frame
-        del creative
-
-    # Save result
-    if not output_path:
-        import tempfile
-        output_path = Path(tempfile.mktemp(suffix=".jpg"))
-
-    try:
-        cv2.imwrite(str(output_path), result)
-        logger.info(f"[MOCKUP] Generated mockup saved to: {output_path}")
-
-        # Cleanup large numpy arrays to free memory immediately
-        del billboard, result
-        cleanup_memory(context="mockup_save", aggressive=False, log_stats=False)
-
-        return output_path, photo_filename
-    except Exception as e:
-        logger.error(f"[MOCKUP] Error saving mockup: {e}")
-        # Cleanup on error
-        try:
-            del billboard, result
-        except NameError:
-            pass  # Variables may not have been assigned
-        cleanup_memory(context="mockup_save_error", aggressive=False, log_stats=False)
-        return None, None
-
-
-def delete_location_photo(
+async def delete_location_photo(
     location_key: str,
     photo_filename: str,
     company_schema: str,
@@ -498,8 +253,8 @@ def delete_location_photo(
 ) -> bool:
     """Delete a location photo and its frame data.
 
-    Note: This performs a hard delete of the local file but the storage
-    system maintains a soft-deleted record for audit purposes.
+    Deletes frame data from Asset-Management database and local file.
+    Also soft-deletes from storage system for audit purposes.
 
     Args:
         location_key: Location identifier
@@ -507,35 +262,40 @@ def delete_location_photo(
         company_schema: Company schema to delete from (e.g., "backlite_dubai")
         time_of_day: Time of day variation
         finish: Finish type
-    """
-    try:
-        # Delete from database (frame data)
-        db.delete_mockup_frame(location_key, photo_filename, company_schema, time_of_day, finish)
 
-        # Delete local file
+    Returns:
+        True if deleted successfully
+    """
+    from integrations.asset_management import asset_mgmt_client
+
+    try:
+        # Delete from Asset-Management database (frame data)
+        success = await asset_mgmt_client.delete_mockup_frame(
+            company=company_schema,
+            location_key=location_key,
+            photo_filename=photo_filename,
+            time_of_day=time_of_day,
+            finish=finish,
+        )
+
+        if not success:
+            logger.warning(f"[MOCKUP] Failed to delete frame from Asset-Management: {location_key}/{photo_filename}")
+
+        # Delete local file if exists
         photo_path = get_location_photos_dir(location_key, time_of_day, finish) / photo_filename
         if photo_path.exists():
             photo_path.unlink()
 
         # Soft-delete from storage system if tracked
         try:
-            import asyncio
-
             from integrations.storage import soft_delete_mockup_by_location
 
-            async def _soft_delete():
-                await soft_delete_mockup_by_location(
-                    location_key=location_key,
-                    photo_filename=photo_filename,
-                    time_of_day=time_of_day,
-                    finish=finish,
-                )
-
-            try:
-                asyncio.get_running_loop()
-                asyncio.create_task(_soft_delete())
-            except RuntimeError:
-                pass
+            await soft_delete_mockup_by_location(
+                location_key=location_key,
+                photo_filename=photo_filename,
+                time_of_day=time_of_day,
+                finish=finish,
+            )
         except Exception as track_err:
             logger.debug(f"[MOCKUP] Storage soft-delete skipped: {track_err}")
 
@@ -584,8 +344,10 @@ async def generate_mockup_async(
     """
     from core.services.mockup_frame_service import MockupFrameService
 
-    # Use all company schemas
-    companies = company_schemas if company_schemas else ["backlite_dubai"]
+    # Require company_schemas - no fallback to hardcoded company
+    if not company_schemas:
+        raise ValueError("company_schemas is required for generate_mockup_async")
+    companies = company_schemas
     service = MockupFrameService(companies=companies)
 
     logger.info(f"[MOCKUP_ASYNC] Generating mockup for {location_key} via Asset-Management")
