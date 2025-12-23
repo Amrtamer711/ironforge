@@ -179,22 +179,26 @@ class SalesModuleClient:
     async def check_template_exists(
         self,
         location_key: str,
+        company_schemas: list[str],
     ) -> bool:
         """
         Check if template exists for a location.
 
         Args:
             location_key: Location identifier
+            company_schemas: Company schemas to search
 
         Returns:
             True if template exists
         """
         url = f"{self.base_url}/internal/eligibility/template/{location_key}"
+        params = {"company_schemas": company_schemas}
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(
                     url,
+                    params=params,
                     headers=self._get_headers(),
                 )
 

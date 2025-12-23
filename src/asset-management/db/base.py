@@ -672,3 +672,27 @@ class DatabaseBackend(ABC):
             Mockup frame record or None
         """
         pass
+
+    @abstractmethod
+    def delete_mockup_frame(
+        self,
+        location_key: str,
+        company: str,
+        photo_filename: str,
+        time_of_day: str = "day",
+        finish: str = "gold",
+    ) -> bool:
+        """
+        Delete a mockup frame.
+
+        Args:
+            location_key: Location identifier
+            company: Company schema
+            photo_filename: Photo filename
+            time_of_day: "day" or "night"
+            finish: "gold", "silver", or "black"
+
+        Returns:
+            True if deleted successfully
+        """
+        pass

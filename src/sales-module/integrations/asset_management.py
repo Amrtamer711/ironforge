@@ -112,7 +112,7 @@ class AssetManagementClient:
 
         Args:
             method: HTTP method (GET, POST, etc.)
-            endpoint: API endpoint (e.g., "/api/v1/locations")
+            endpoint: API endpoint (e.g., "/api/locations")
             **kwargs: Additional arguments to pass to httpx
 
         Returns:
@@ -177,7 +177,7 @@ class AssetManagementClient:
             "companies": companies,
             "active_only": active_only,
         }
-        return await self._request("GET", "/api/v1/networks", params=params) or []
+        return await self._request("GET", "/api/networks", params=params) or []
 
     async def get_network(self, company: str, network_id: int) -> dict | None:
         """
@@ -190,7 +190,7 @@ class AssetManagementClient:
         Returns:
             Network object or None if not found
         """
-        return await self._request("GET", f"/api/v1/networks/{company}/{network_id}")
+        return await self._request("GET", f"/api/networks/{company}/{network_id}")
 
     # =========================================================================
     # LOCATIONS
@@ -227,7 +227,7 @@ class AssetManagementClient:
         if type_id is not None:
             params["type_id"] = type_id
 
-        return await self._request("GET", "/api/v1/locations", params=params) or []
+        return await self._request("GET", "/api/locations", params=params) or []
 
     async def get_location(
         self,
@@ -249,7 +249,7 @@ class AssetManagementClient:
         params = {"include_eligibility": include_eligibility}
         return await self._request(
             "GET",
-            f"/api/v1/locations/{company}/{location_id}",
+            f"/api/locations/{company}/{location_id}",
             params=params,
         )
 
@@ -270,7 +270,7 @@ class AssetManagementClient:
         """
         return await self._request(
             "GET",
-            f"/api/v1/locations/by-key/{location_key}",
+            f"/api/locations/by-key/{location_key}",
             params={"companies": companies},
         )
 
@@ -284,7 +284,7 @@ class AssetManagementClient:
         Returns:
             Flat list of location objects
         """
-        return await self._request("POST", "/api/v1/locations/expand", json=items) or []
+        return await self._request("POST", "/api/locations/expand", json=items) or []
 
     # =========================================================================
     # PACKAGES
@@ -309,7 +309,7 @@ class AssetManagementClient:
             "companies": companies,
             "active_only": active_only,
         }
-        return await self._request("GET", "/api/v1/packages", params=params) or []
+        return await self._request("GET", "/api/packages", params=params) or []
 
     async def get_package(
         self,
@@ -331,7 +331,7 @@ class AssetManagementClient:
         params = {"include_items": include_items}
         return await self._request(
             "GET",
-            f"/api/v1/packages/{company}/{package_id}",
+            f"/api/packages/{company}/{package_id}",
             params=params,
         )
 
@@ -362,7 +362,7 @@ class AssetManagementClient:
 
         result = await self._request(
             "GET",
-            f"/api/v1/eligibility/check/{company}/{location_id}",
+            f"/api/eligibility/check/{company}/{location_id}",
             params=params,
         )
         return result or {"eligible": False, "error": "Location not found"}
@@ -384,7 +384,7 @@ class AssetManagementClient:
         """
         return await self._request(
             "GET",
-            "/api/v1/eligibility/eligible-locations",
+            "/api/eligibility/eligible-locations",
             params={"service": service, "companies": companies},
         ) or []
 
@@ -416,7 +416,7 @@ class AssetManagementClient:
         if network_id is not None:
             params["network_id"] = network_id
 
-        return await self._request("GET", "/api/v1/asset-types", params=params) or []
+        return await self._request("GET", "/api/asset-types", params=params) or []
 
     # =========================================================================
     # STORAGE - Templates & Mockups from Asset-Management
@@ -440,7 +440,7 @@ class AssetManagementClient:
         try:
             response = await self._request(
                 "GET",
-                f"/api/v1/storage/templates/{company}/{location_key}",
+                f"/api/storage/templates/{company}/{location_key}",
             )
             if response and "data" in response:
                 import base64
@@ -469,7 +469,7 @@ class AssetManagementClient:
         """
         result = await self._request(
             "GET",
-            f"/api/v1/storage/templates/{company}/{location_key}/url",
+            f"/api/storage/templates/{company}/{location_key}/url",
             params={"expires_in": expires_in},
         )
         return result.get("url") if result else None
@@ -484,7 +484,7 @@ class AssetManagementClient:
         Returns:
             List of template info dicts with location_key and storage_key
         """
-        return await self._request("GET", f"/api/v1/storage/templates/{company}") or []
+        return await self._request("GET", f"/api/storage/templates/{company}") or []
 
     async def template_exists(self, company: str, location_key: str) -> bool:
         """
@@ -499,9 +499,69 @@ class AssetManagementClient:
         """
         result = await self._request(
             "GET",
-            f"/api/v1/storage/templates/{company}/{location_key}/exists",
+            f"/api/storage/templates/{company}/{location_key}/exists",
         )
         return result.get("exists", False) if result else False
+
+    async def upload_template(
+        self,
+        company: str,
+        location_key: str,
+        file_data: bytes,
+        filename: str | None = None,
+    ) -> dict | None:
+        """
+        Upload template file to Asset-Management storage.
+
+        Args:
+            company: Company schema (e.g., "backlite_dubai")
+            location_key: Location identifier (e.g., "dubai_mall")
+            file_data: Template file bytes
+            filename: Optional custom filename (defaults to {location_key}.pptx)
+
+        Returns:
+            Upload result dict with success, storage_key, message or None on error
+        """
+        import base64
+        try:
+            result = await self._request(
+                "POST",
+                f"/api/storage/templates/{company}",
+                json={
+                    "location_key": location_key,
+                    "data": base64.b64encode(file_data).decode("utf-8"),
+                    "filename": filename,
+                },
+            )
+            return result
+        except Exception as e:
+            logger.error(f"[ASSET CLIENT] Failed to upload template {location_key}: {e}")
+            return None
+
+    async def delete_template(
+        self,
+        company: str,
+        location_key: str,
+    ) -> dict | None:
+        """
+        Delete template file from Asset-Management storage.
+
+        Args:
+            company: Company schema
+            location_key: Location identifier
+
+        Returns:
+            Delete result dict with success, storage_key, message or None on error
+        """
+        try:
+            result = await self._request(
+                "DELETE",
+                f"/api/storage/templates/{company}/{location_key}",
+            )
+            return result
+        except Exception as e:
+            logger.error(f"[ASSET CLIENT] Failed to delete template {location_key}: {e}")
+            return None
 
     async def get_mockup_frames(
         self,
@@ -520,7 +580,7 @@ class AssetManagementClient:
         """
         return await self._request(
             "GET",
-            f"/api/v1/mockup-frames/{company}/{location_key}",
+            f"/api/mockup-frames/{company}/{location_key}",
         ) or []
 
     async def get_mockup_frame(
@@ -550,9 +610,45 @@ class AssetManagementClient:
 
         return await self._request(
             "GET",
-            f"/api/v1/mockup-frames/{company}/{location_key}/frame",
+            f"/api/mockup-frames/{company}/{location_key}/frame",
             params=params,
         )
+
+    async def delete_mockup_frame(
+        self,
+        company: str,
+        location_key: str,
+        photo_filename: str,
+        time_of_day: str = "day",
+        finish: str = "gold",
+    ) -> bool:
+        """
+        Delete a mockup frame from Asset-Management.
+
+        Args:
+            company: Company schema
+            location_key: Location identifier
+            photo_filename: Photo filename to delete
+            time_of_day: "day" or "night"
+            finish: "gold", "silver", or "black"
+
+        Returns:
+            True if deleted successfully
+        """
+        try:
+            result = await self._request(
+                "DELETE",
+                f"/api/mockup-frames/{company}/{location_key}",
+                params={
+                    "photo_filename": photo_filename,
+                    "time_of_day": time_of_day,
+                    "finish": finish,
+                },
+            )
+            return result.get("success", False) if result else False
+        except Exception as e:
+            logger.error(f"[ASSET CLIENT] Failed to delete mockup frame: {e}")
+            return False
 
     async def get_mockup_photo(
         self,
@@ -578,7 +674,7 @@ class AssetManagementClient:
         try:
             response = await self._request(
                 "GET",
-                f"/api/v1/storage/mockups/{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}",
+                f"/api/storage/mockups/{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}",
             )
             if response and "data" in response:
                 import base64
@@ -613,7 +709,7 @@ class AssetManagementClient:
         """
         result = await self._request(
             "GET",
-            f"/api/v1/storage/mockups/{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}/url",
+            f"/api/storage/mockups/{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}/url",
             params={"expires_in": expires_in},
         )
         return result.get("url") if result else None
@@ -632,7 +728,7 @@ class AssetManagementClient:
         try:
             response = await self._request(
                 "GET",
-                f"/api/v1/storage/intro-outro/{company}/{pdf_name}",
+                f"/api/storage/intro-outro/{company}/{pdf_name}",
             )
             if response and "data" in response:
                 import base64

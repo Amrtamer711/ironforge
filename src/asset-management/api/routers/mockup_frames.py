@@ -16,7 +16,7 @@ from db.database import db
 logger = logging.getLogger("asset-management")
 
 router = APIRouter(
-    prefix="/api/v1/mockup-frames",
+    prefix="/api/mockup-frames",
     tags=["mockup-frames"],
 )
 
@@ -114,4 +114,60 @@ async def get_mockup_frame(
 
     except Exception as e:
         logger.error(f"[MOCKUP_FRAMES] Failed to get frame: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class DeleteResponse(BaseModel):
+    """Response for delete operations."""
+    success: bool
+    message: str
+
+
+@router.delete("/{company}/{location_key}", response_model=DeleteResponse)
+async def delete_mockup_frame(
+    company: str,
+    location_key: str,
+    photo_filename: str = Query(..., description="Photo filename to delete"),
+    time_of_day: str = Query(default="day"),
+    finish: str = Query(default="gold"),
+) -> dict[str, Any]:
+    """
+    Delete a mockup frame.
+
+    Args:
+        company: Company schema
+        location_key: Location identifier
+        photo_filename: Photo filename to delete
+        time_of_day: "day" or "night"
+        finish: "gold", "silver", or "black"
+
+    Returns:
+        Delete result
+    """
+    logger.info(
+        f"[MOCKUP_FRAMES] Deleting frame for {company}/{location_key} "
+        f"({time_of_day}/{finish}/{photo_filename})"
+    )
+
+    try:
+        success = db.delete_mockup_frame(
+            location_key=location_key,
+            company=company,
+            photo_filename=photo_filename,
+            time_of_day=time_of_day,
+            finish=finish,
+        )
+
+        if success:
+            return {
+                "success": True,
+                "message": f"Deleted frame {photo_filename} for {location_key}",
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to delete frame")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[MOCKUP_FRAMES] Failed to delete frame: {e}")
         raise HTTPException(status_code=500, detail=str(e))

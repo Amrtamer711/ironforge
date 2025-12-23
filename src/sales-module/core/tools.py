@@ -122,10 +122,11 @@ def get_base_tools() -> list[ToolDefinition | RawTool]:
         ),
         ToolDefinition(
             name="add_location",
-            description="Add a new location. Admin must provide ALL required metadata upfront. Digital locations require: sov, spot_duration, loop_duration, upload_fee. Static locations don't need these fields. ADMIN ONLY.",
+            description="Add a new location to a specific company. Admin must provide ALL required metadata upfront. Digital locations require: sov, spot_duration, loop_duration, upload_fee. Static locations don't need these fields. ADMIN ONLY.",
             parameters={
                 "type": "object",
                 "properties": {
+                    "company": {"type": "string", "description": "Company to add the location to (e.g., 'backlite_dubai', 'backlite_ksa'). Must be a company the user has access to."},
                     "location_key": {"type": "string", "description": "Folder/key name (lowercase, underscores for spaces, e.g., 'dubai_gateway')"},
                     "display_name": {"type": "string", "description": "Display name shown to users (e.g., 'The Dubai Gateway')"},
                     "display_type": {"type": "string", "enum": ["Digital", "Static"], "description": "Display type - determines which fields are required"},
@@ -138,7 +139,7 @@ def get_base_tools() -> list[ToolDefinition | RawTool]:
                     "loop_duration": {"type": "integer", "description": "Total loop duration in seconds - REQUIRED for Digital only (e.g., 96, 100)"},
                     "upload_fee": {"type": "integer", "description": "Upload fee in AED - REQUIRED for Digital only (e.g., 1000, 1500, 2000, 3000)"}
                 },
-                "required": ["location_key", "display_name", "display_type", "height", "width", "series"]
+                "required": ["company", "location_key", "display_name", "display_type", "height", "width", "series"]
             }
         ),
         ToolDefinition(

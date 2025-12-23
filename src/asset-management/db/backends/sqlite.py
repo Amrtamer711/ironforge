@@ -1257,3 +1257,30 @@ class SQLiteBackend(DatabaseBackend):
             return result
         finally:
             conn.close()
+
+    def delete_mockup_frame(
+        self,
+        location_key: str,
+        company: str,
+        photo_filename: str,
+        time_of_day: str = "day",
+        finish: str = "gold",
+    ) -> bool:
+        """Delete a mockup frame."""
+        conn = self._connect()
+        try:
+            conn.execute(
+                """
+                DELETE FROM mockup_frames
+                WHERE location_key = ? AND company = ?
+                AND photo_filename = ? AND time_of_day = ? AND finish = ?
+                """,
+                (location_key, company, photo_filename, time_of_day, finish),
+            )
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"[SQLITE] Failed to delete mockup frame: {e}")
+            return False
+        finally:
+            conn.close()
