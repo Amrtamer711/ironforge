@@ -1,0 +1,414 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body {
+  height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  margin: 0;
+  font-family: "Space Grotesk", "Roboto Serif", ui-sans-serif, system-ui;
+  background: rgb(var(--bg, 248 249 251));
+  color: rgba(0,0,0,0.9);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Space Grotesk", "Roboto Serif", ui-sans-serif, system-ui;/*"Roboto Serif", "Space Grotesk", ui-serif, system-ui;*/
+}
+
+.dark body {
+  background: radial-gradient(1200px 800px at 10% 0%, rgba(255,255,255,0.08), transparent 55%),
+              radial-gradient(900px 650px at 90% 10%, rgba(255,255,255,0.06), transparent 50%),
+              rgba(0,0,0,0.92);
+  color: rgba(255,255,255,0.92);
+}
+
+/* Subtle “particles” */
+.mmg-particle {
+  position: fixed;
+  width: 260px;
+  height: 260px;
+  border-radius: 999px;
+  filter: blur(28px);
+  opacity: 0.35;
+  pointer-events: none;
+}
+.mmg-particle.one { left: -60px; top: -40px; background: rgba(51,129,255,0.16); }
+.mmg-particle.two { right: -80px; top: 120px; background: rgba(6,182,212,0.14); }
+.mmg-particle.three { left: 15%; bottom: -120px; background: rgba(168,85,247,0.14); }
+
+.cursor-glow {
+  position: fixed;
+  width: 520px;
+  height: 520px;
+  border-radius: 999px;
+  background: radial-gradient(circle at center, rgba(0,0,0,0.06), transparent 60%);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .2s ease;
+}
+.dark .cursor-glow {
+  background: radial-gradient(circle at center, rgba(255,255,255,0.07), transparent 60%);
+}
+.cursor-glow.active { opacity: 1; }
+
+* { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(0, 0, 0, 0.55) 50%),
+    linear-gradient(135deg, rgba(0, 0, 0, 0.55) 50%, transparent 50%),
+    linear-gradient(to right, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.12));
+  background-position:
+    calc(100% - 18px) calc(50%),
+    calc(100% - 12px) calc(50%),
+    calc(100% - 2.4rem) 50%;
+  background-size: 6px 6px, 6px 6px, 1px 1.6rem;
+  background-repeat: no-repeat;
+  padding-right: 2.75rem;
+}
+
+.dark select {
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.7) 50%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.7) 50%, transparent 50%),
+    linear-gradient(to right, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.18));
+}
+
+/* ------------------------------------------------------------------
+   Brand theme tokens (independent of light / dark)
+   These do NOT change anything unless a data-brand-theme is set
+   on the <body>. Light / dark still controlled purely by .dark.
+-------------------------------------------------------------------*/
+
+:root {
+  /* Primary / neutrals from provided palette */
+  --brand-primary: 0 0 0;          /* #000000 */
+  --brand-on-primary: 255 255 255; /* #FFFFFF */
+
+  --brand-neutral-900: 0 0 0;          /* strong text / icons on light */
+  --brand-neutral-700: 114 123 131;    /* #747B83 */
+  --brand-neutral-500: 162 170 173;    /* #A2AAAD */
+  --brand-neutral-300: 204 204 204;    /* #CCCCCC */
+  --brand-neutral-100: 246 246 246;    /* #F6F6F6 */
+
+  /* Accent defaults (blue variant) */
+  --brand-accent: 0 122 255;        /* #007AFF */
+  --brand-accent-soft: 226 239 255; /* light tint for backgrounds */
+
+  /* Shared surface tokens we can use in components */
+  --brand-header-bg: 255 255 255;
+  --brand-header-ring: rgba(0, 0, 0, 0.06);
+  --brand-card-bg: 255 255 255;
+  --brand-card-ring: rgba(0, 0, 0, 0.05);
+
+  --brand-secondary-1: 0 122 255;
+  --brand-secondary-2: 15 128 107;
+  --brand-secondary-3: 255 121 0;
+  --brand-secondary-4: 202 158 44;
+
+  /* Sidebar defaults (used for all themes unless overridden) */
+  --nav-bg: transparent;
+  --nav-border: transparent;
+  --nav-hover-bg: rgba(0, 0, 0, 0.04);
+  --nav-hover-border: transparent;
+  --nav-active-bg: rgba(0, 0, 0, 0.05);
+  --nav-active-border: transparent;
+  --nav-fg: rgba(0, 0, 0, 0.8);
+  --nav-active-fg: rgba(0, 0, 0, 0.9);
+  --nav-shadow: 0 10px 22px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+
+/* When any brand theme is active we slightly shift the global bg
+   to a cleaner neutral, while dark mode rule above still applies. */
+body[data-brand-theme] {
+  --bg: 246 246 246; /* #F6F6F6 */
+  --nav-active-fg: rgb(var(--brand-accent));
+  background:
+    radial-gradient(1200px 800px at 8% -12%, rgb(var(--brand-accent) / 0.12), transparent 58%),
+    radial-gradient(900px 680px at 92% 0%, rgb(var(--brand-accent) / 0.08), transparent 60%),
+    rgb(var(--bg));
+}
+
+/* Accent variants -------------------------------------------------*/
+body[data-brand-theme="blue"] {
+  --brand-accent: 0 122 255;        /* #007AFF */
+  --brand-accent-soft: 226 239 255; /* soft blue */
+}
+
+body[data-brand-theme="green"] {
+  --brand-accent: 15 127 106;       /* #0F806B */
+  --brand-accent-soft: 210 238 231; /* soft green */
+}
+
+body[data-brand-theme="orange"] {
+  --brand-accent: 255 121 0;        /* #FF7900 */
+  --brand-accent-soft: 255 234 214; /* soft orange */
+}
+
+body[data-brand-theme="gold"] {
+  --brand-accent: 202 158 44;       /* #CA9E2C */
+  --brand-accent-soft: 249 240 207; /* soft gold */
+}
+
+body[data-brand-theme="brand"] {
+  --brand-accent: 0 122 255;        /* primary accent */
+  --brand-accent-soft: 226 239 255;
+  --brand-card-bg: 246 246 246;     /* tertiary neutral */
+  --brand-card-ring: rgba(0, 0, 0, 0.06);
+  --brand-header-bg: 255 255 255;
+  --brand-header-ring: rgba(0, 0, 0, 0.08);
+  --bg: 246 246 246;
+  background:
+    radial-gradient(1100px 780px at 6% -12%, rgb(var(--brand-secondary-2) / 0.18), transparent 58%),
+    radial-gradient(900px 680px at 95% 0%, rgb(var(--brand-secondary-3) / 0.16), transparent 60%),
+    radial-gradient(1200px 800px at 40% -10%, rgb(var(--brand-secondary-1) / 0.12), transparent 62%),
+    radial-gradient(1000px 700px at 75% 85%, rgb(var(--brand-secondary-4) / 0.12), transparent 62%),
+    rgb(var(--bg));
+}
+
+/* Brand-aware shells & cards --------------------------------------*/
+
+body[data-brand-theme] .mmg-header-card {
+  background: linear-gradient(
+    135deg,
+    rgb(var(--brand-accent-soft)) 0%,
+    rgb(var(--brand-card-bg)) 58%,
+    rgb(var(--brand-accent-soft)) 120%
+  );
+  border-color: rgb(var(--brand-accent) / 0.18);
+  --tw-ring-color: rgb(var(--brand-accent) / 0.28);
+  box-shadow:
+    0 18px 45px rgb(var(--brand-accent) / 0.12),
+    0 0 0 1px rgb(var(--brand-accent) / 0.18);
+}
+
+body[data-brand-theme="brand"] .mmg-header-card {
+  background: linear-gradient(
+    120deg,
+    rgb(var(--brand-secondary-1) / 0.18) 0%,
+    rgb(var(--brand-secondary-2) / 0.16) 38%,
+    rgb(var(--brand-secondary-3) / 0.16) 72%,
+    rgb(var(--brand-secondary-4) / 0.16) 90%,
+    rgb(var(--brand-card-bg)) 100%
+  );
+}
+
+body[data-brand-theme] .mmg-card {
+  background: linear-gradient(
+    160deg,
+    rgb(var(--brand-card-bg)) 0%,
+    rgb(var(--brand-accent-soft)) 140%
+  );
+  border-color: rgb(var(--brand-accent) / 0.12);
+  --tw-ring-color: rgb(var(--brand-accent) / 0.16);
+}
+
+body[data-brand-theme="brand"] .mmg-card {
+  background: linear-gradient(
+    160deg,
+    rgb(var(--brand-card-bg)) 0%,
+    rgb(var(--brand-secondary-2) / 0.12) 46%,
+    rgb(var(--brand-secondary-3) / 0.1) 78%,
+    rgb(var(--brand-secondary-4) / 0.12) 110%
+  );
+}
+
+.dark body[data-brand-theme] .mmg-card {
+  background: linear-gradient(
+    160deg,
+    rgba(15, 15, 17, 0.92) 0%,
+    rgb(var(--brand-accent) / 0.12) 140%
+  );
+  border-color: rgba(255, 255, 255, 0.08);
+  --tw-ring-color: rgb(var(--brand-accent) / 0.32);
+}
+
+/* Primary buttons pick up the accent when brand theme is active */
+body[data-brand-theme] .mmg-btn-primary {
+  background-color: rgb(var(--brand-accent));
+  color: rgb(var(--brand-on-primary));
+}
+
+body[data-brand-theme] .mmg-btn-primary:hover {
+  background-color: rgb(var(--brand-accent) / 0.9);
+}
+
+.dark body[data-brand-theme] .mmg-btn-primary:hover {
+  background-color: rgb(var(--brand-accent) / 0.85);
+  color: rgb(var(--brand-on-primary));
+}
+
+.dark body[data-brand-theme] .mmg-btn-primary:active,
+body[data-brand-theme] .mmg-btn-primary:active {
+  transform: translateY(0.5px);
+  box-shadow: inset 0 1px 0 rgba(0,0,0,0.08);
+}
+
+/* In dark mode, keep text light even with brand theme */
+.dark body[data-brand-theme] {
+  color: rgba(255,255,255,0.92);
+  background:
+    radial-gradient(1000px 700px at 12% -10%, rgb(var(--brand-accent) / 0.35), transparent 55%),
+    radial-gradient(900px 680px at 92% 0%, rgb(var(--brand-accent) / 0.22), transparent 60%),
+    radial-gradient(1200px 800px at 60% 100%, rgb(var(--brand-accent) / 0.16), transparent 62%),
+    radial-gradient(1200px 800px at 10% 0%, rgba(255,255,255,0.08), transparent 55%),
+    radial-gradient(900px 650px at 90% 10%, rgba(255,255,255,0.06), transparent 50%),
+    rgba(0,0,0,0.92);
+}
+
+.dark body[data-brand-theme="brand"] {
+  background:
+    radial-gradient(1100px 760px at 8% -12%, rgb(var(--brand-secondary-2) / 0.35), transparent 58%),
+    radial-gradient(1000px 720px at 95% 0%, rgb(var(--brand-secondary-3) / 0.28), transparent 60%),
+    radial-gradient(1200px 860px at 60% 100%, rgb(var(--brand-secondary-4) / 0.2), transparent 62%),
+    radial-gradient(1200px 800px at 10% 0%, rgba(255,255,255,0.08), transparent 55%),
+    radial-gradient(900px 650px at 90% 10%, rgba(255,255,255,0.06), transparent 50%),
+    rgba(0,0,0,0.92);
+}
+
+/* Sidebar defaults (all themes) */
+.mmg-nav-btn {
+  background: var(--nav-bg);
+  color: var(--nav-fg);
+  box-shadow: var(--nav-shadow), inset 0 0 0 1px var(--nav-border);
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  font-size: 0.90rem;
+}
+
+.mmg-nav-btn:hover {
+  background: var(--nav-hover-bg);
+  box-shadow: var(--nav-shadow), inset 0 0 0 1px var(--nav-hover-border);
+  color: var(--nav-fg);
+}
+
+.mmg-nav-btn-active {
+  background: var(--nav-active-bg);
+  box-shadow: var(--nav-shadow), inset 0 0 0 1px var(--nav-active-border);
+  color: var(--nav-active-fg, var(--nav-fg));
+}
+
+.mmg-nav-icon {
+  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.dark {
+  --nav-bg: transparent;
+  --nav-border: transparent;
+  --nav-hover-bg: rgba(255, 255, 255, 0.08);
+  --nav-hover-border: transparent;
+  --nav-active-bg: rgba(255, 255, 255, 0.1);
+  --nav-active-border: transparent;
+  --nav-fg: rgba(255, 255, 255, 0.85);
+  --nav-active-fg: rgba(255, 255, 255, 0.95);
+  --nav-shadow: 0 14px 26px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+/* Sidebar nav buttons pick up accent when brand theme is active */
+body[data-brand-theme] {
+  --nav-border: rgb(var(--brand-accent) / 0.18);
+  --nav-hover-bg: rgb(var(--brand-accent) / 0.12);
+  --nav-hover-border: rgb(var(--brand-accent) / 0.32);
+  --nav-active-bg: rgb(var(--brand-accent) / 0.22);
+  --nav-active-border: rgb(var(--brand-accent) / 0.5);
+  --nav-fg: rgb(var(--brand-neutral-900));
+}
+
+.dark body[data-brand-theme] {
+  --nav-border: rgb(var(--brand-accent) / 0.42);
+  --nav-hover-bg: rgb(var(--brand-accent) / 0.36);
+  --nav-hover-border: rgb(var(--brand-accent) / 0.62);
+  --nav-active-bg: rgb(var(--brand-accent) / 0.52);
+  --nav-active-border: rgb(var(--brand-accent) / 0.78);
+  --nav-fg: #fff;
+}
+
+/* Button / tabs readability in dark mode brand */
+.dark body[data-brand-theme] .mmg-btn-primary {
+  color: rgb(var(--brand-on-primary));
+}
+
+.dark body[data-brand-theme] .mmg-btn-primary:hover,
+.dark body[data-brand-theme] .mmg-btn-primary:focus-visible {
+  color: rgb(var(--brand-on-primary));
+}
+
+/* Force nav colors to apply even when utility classes compete */
+body[data-brand-theme] .mmg-nav-btn {
+  background: var(--nav-bg) !important;
+  color: var(--nav-fg) !important;
+}
+
+body[data-brand-theme] .mmg-nav-btn:hover {
+  background: var(--nav-hover-bg) !important;
+  color: var(--nav-fg) !important;
+  box-shadow: inset 0 0 0 1px var(--nav-hover-border) !important;
+}
+
+body[data-brand-theme] .mmg-nav-btn-active {
+  background: var(--nav-active-bg) !important;
+  box-shadow: inset 0 0 0 1px var(--nav-active-border) !important;
+}
+
+/* Ensure primary buttons stay readable when brand theme is on */
+body[data-brand-theme] .mmg-btn-primary {
+  background-color: rgb(var(--brand-accent)) !important;
+  color: rgb(var(--brand-on-primary)) !important;
+  border-color: transparent !important;
+}
+
+body[data-brand-theme] .mmg-btn-primary:hover,
+body[data-brand-theme] .mmg-btn-primary:focus-visible {
+  background-color: rgb(var(--brand-accent) / 0.9) !important;
+  color: rgb(var(--brand-on-primary)) !important;
+}
+
+.dark body[data-brand-theme] .mmg-btn-primary {
+  background-color: rgb(var(--brand-accent));
+  color: rgb(var(--brand-on-primary));
+}
+
+.dark body[data-brand-theme] .mmg-header-card {
+  background: radial-gradient(circle at top left, rgb(var(--brand-accent) / 0.18), transparent 55%),
+              radial-gradient(circle at top right, rgba(255,255,255,0.08), transparent 60%),
+              rgba(15, 15, 17, 0.9);
+  border-color: rgba(255, 255, 255, 0.12);
+  --tw-ring-color: rgb(var(--brand-accent) / 0.4);
+  box-shadow:
+    0 18px 40px rgb(var(--brand-accent) / 0.2),
+    0 0 0 1px rgb(var(--brand-accent) / 0.22);
+}
+
+body[data-brand-theme] .mmg-nav-icon {
+  background: color-mix(
+    in srgb,
+    rgb(var(--brand-accent-soft)) 70%,
+    rgb(var(--brand-card-bg)) 30%
+  );
+  color: rgb(var(--brand-accent));
+  box-shadow: inset 0 0 0 1px rgb(var(--brand-accent) / 0.2);
+}
+
+body[data-brand-theme] .mmg-nav-btn-active .mmg-nav-icon {
+  background: rgb(var(--brand-accent));
+  color: rgb(var(--brand-on-primary));
+  box-shadow: 0 10px 20px rgb(var(--brand-accent) / 0.28);
+}
+
+.dark body[data-brand-theme] .mmg-nav-icon {
+  background: rgb(var(--brand-accent) / 0.18);
+  color: rgb(var(--brand-on-primary));
+  box-shadow: inset 0 0 0 1px rgb(var(--brand-accent) / 0.4);
+}
+
+.dark body[data-brand-theme] .mmg-nav-btn-active .mmg-nav-icon {
+  background: rgb(var(--brand-accent));
+  color: rgb(var(--brand-on-primary));
+  box-shadow: 0 12px 22px rgb(var(--brand-accent) / 0.35);
+}
