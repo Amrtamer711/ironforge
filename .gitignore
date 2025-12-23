@@ -80,3 +80,7 @@ temp/
 
 # Fonts (proprietary)
 Sofia-Pro Font/
+
+#Terraform
+.terraform
+.terraform.lock.hcl
