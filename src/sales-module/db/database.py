@@ -216,48 +216,6 @@ class _DatabaseNamespace:
             created_by, time_of_day, finish, config
         )
 
-    def get_mockup_frames(
-        self,
-        location_key: str,
-        photo_filename: str,
-        company_schema: str,
-        time_of_day: str = "day",
-        finish: str = "gold",
-    ) -> list[dict] | None:
-        return self._backend.get_mockup_frames(
-            location_key, photo_filename, company_schema, time_of_day, finish
-        )
-
-    def get_mockup_config(
-        self,
-        location_key: str,
-        photo_filename: str,
-        company_schema: str,
-        time_of_day: str = "day",
-        finish: str = "gold",
-    ) -> dict | None:
-        return self._backend.get_mockup_config(
-            location_key, photo_filename, company_schema, time_of_day, finish
-        )
-
-    def list_mockup_photos(
-        self,
-        location_key: str,
-        company_schemas: list[str],
-        time_of_day: str = "day",
-        finish: str = "gold",
-    ) -> list[str]:
-        return self._backend.list_mockup_photos(
-            location_key, company_schemas, time_of_day, finish
-        )
-
-    def list_mockup_variations(
-        self,
-        location_key: str,
-        company_schemas: list[str],
-    ) -> dict[str, list[str]]:
-        return self._backend.list_mockup_variations(location_key, company_schemas)
-
     def delete_mockup_frame(
         self,
         location_key: str,

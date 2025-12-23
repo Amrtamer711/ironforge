@@ -268,50 +268,6 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
-    def get_mockup_frames(
-        self,
-        location_key: str,
-        photo_filename: str,
-        company_schema: str,
-        time_of_day: str = "day",
-        finish: str = "gold",
-    ) -> list[dict] | None:
-        """Get frame coordinates for a mockup photo from company-specific schema."""
-        pass
-
-    @abstractmethod
-    def get_mockup_config(
-        self,
-        location_key: str,
-        photo_filename: str,
-        company_schema: str,
-        time_of_day: str = "day",
-        finish: str = "gold",
-    ) -> dict | None:
-        """Get config for a mockup photo from company-specific schema."""
-        pass
-
-    @abstractmethod
-    def list_mockup_photos(
-        self,
-        location_key: str,
-        company_schemas: list[str],
-        time_of_day: str = "day",
-        finish: str = "gold",
-    ) -> list[str]:
-        """List all photos with frames for a location from user's accessible company schemas."""
-        pass
-
-    @abstractmethod
-    def list_mockup_variations(
-        self,
-        location_key: str,
-        company_schemas: list[str],
-    ) -> dict[str, list[str]]:
-        """List all time_of_day/finish combinations for a location from user's accessible company schemas."""
-        pass
-
-    @abstractmethod
     def delete_mockup_frame(
         self,
         location_key: str,
