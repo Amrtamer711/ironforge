@@ -93,6 +93,7 @@ class RequestClassifier:
 
         This reuses the existing LLM-based classification logic.
         """
+        tmp_file = None
         try:
             logger.info(f"[CLASSIFIER] Running LLM classification on: {detected_file.filename}")
 
@@ -116,10 +117,28 @@ class RequestClassifier:
             logger.info(f"[CLASSIFIER] LLM classification: {classification}")
 
             # Map to ClassificationResult
-            return self._map_classification(classification, [detected_file])
+            result = self._map_classification(classification, [detected_file])
+
+            # Cleanup tmp file after classification
+            # Note: _handle_booking_order_parse downloads the file again,
+            # so we can safely clean up here for all cases
+            if tmp_file:
+                try:
+                    Path(tmp_file).unlink(missing_ok=True)
+                    logger.debug(f"[CLASSIFIER] Cleaned up tmp file: {tmp_file}")
+                except Exception:
+                    pass
+
+            return result
 
         except Exception as e:
             logger.error(f"[CLASSIFIER] Document classification failed: {e}", exc_info=True)
+            # Cleanup on error
+            if tmp_file:
+                try:
+                    Path(tmp_file).unlink(missing_ok=True)
+                except Exception:
+                    pass
             return None
 
     def _map_classification(
