@@ -28,6 +28,7 @@ from typing import Any
 
 from db.backends.sqlite import SQLiteBackend
 from db.base import DatabaseBackend
+import config  # Import config to use service-specific env vars
 
 logger = logging.getLogger("asset-management")
 
@@ -49,8 +50,9 @@ def _get_backend() -> DatabaseBackend:
     is_production = environment == "production"
 
     if DB_BACKEND == "supabase":
-        supabase_url = os.getenv("SUPABASE_URL", "")
-        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_KEY", "")
+        # Use config values which derive from service-specific env vars
+        supabase_url = config.SUPABASE_URL
+        supabase_key = config.SUPABASE_SERVICE_KEY
 
         if not supabase_url or not supabase_key:
             if is_production:

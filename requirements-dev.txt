@@ -1,7 +1,7 @@
 # =============================================================================
 # CRM Platform - Development Dependencies
 # =============================================================================
-# Install ALL dependencies for local development across both services.
+# Install ALL dependencies for local development across all services.
 #
 # Usage:
 #   pip install -r requirements-dev.txt
@@ -10,8 +10,27 @@
 # requirements.txt files to keep images lean.
 # =============================================================================
 
-# Include both services' dependencies
+# =============================================================================
+# SHARED PACKAGE (must be installed first - path is from project root)
+# =============================================================================
+-e src/shared/crm-security[fastapi]
+
+# =============================================================================
+# SERVICE DEPENDENCIES (uses --no-deps to skip the crm-security already installed)
+# =============================================================================
+# Note: The -e ../shared/crm-security lines in these files will be skipped
+# because we already installed it above with the correct path.
+
+# Sales Module
 -r src/sales-module/requirements.txt
+
+# Asset Management
+-r src/asset-management/requirements.txt
+
+# Security Service
+-r src/security-service/requirements.txt
+
+# Unified UI
 -r src/unified-ui/requirements.txt
 
 # =============================================================================

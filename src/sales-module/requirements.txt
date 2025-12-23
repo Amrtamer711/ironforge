@@ -24,8 +24,10 @@ PyMuPDF==1.23.8
 supabase>=2.11.0
 python-jose[cryptography]>=3.3.0
 
-# CRM Security SDK (editable install for development)
--e ../shared/crm-security[fastapi]
+# CRM Security SDK
+# When installing from project root: pip install -r requirements-dev.txt
+# When installing standalone: pip install -e ../shared/crm-security[fastapi]
+# crm-security  # Installed via requirements-dev.txt or PYTHONPATH
 
 # Development & Testing (install with: pip install -r requirements.txt)
 pytest==8.0.0

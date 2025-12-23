@@ -524,7 +524,12 @@ def _parse_metadata_file(folder: Path) -> dict[str, object]:
 
 
 def _discover_templates() -> tuple[dict[str, str], list[str]]:
-    logger.info(f"[DISCOVER] Starting template discovery in '{TEMPLATES_DIR}'")
+    """
+    Discover templates from Asset-Management API.
+
+    Falls back to local filesystem scanning if Asset-Management is unavailable.
+    """
+    logger.info("[DISCOVER] Starting template discovery from Asset-Management")
     key_to_relpath: dict[str, str] = {}
     display_names: list[str] = []
 
@@ -532,11 +537,123 @@ def _discover_templates() -> tuple[dict[str, str], list[str]]:
     LOCATION_DETAILS.clear()
     LOCATION_METADATA.clear()
 
+    # Try to fetch from Asset-Management API
+    locations = _fetch_locations_from_asset_management()
+
+    if locations:
+        logger.info(f"[DISCOVER] Got {len(locations)} locations from Asset-Management")
+        for loc in locations:
+            key = loc.get("location_key", "")
+            if not key:
+                continue
+
+            display_name = loc.get("display_name", key)
+            display_names.append(display_name)
+
+            # Build description
+            display_type = loc.get("display_type", "Digital")
+            sov = loc.get("sov_percent") or 16.6
+            spot = loc.get("spot_duration") or 16
+            description = f"{display_name} - {display_type} Display - 1 Spot - {spot} Seconds - {sov}% SOV"
+            LOCATION_DETAILS[key] = description
+
+            # Upload fee
+            upload_fee = loc.get("upload_fee")
+            UPLOAD_FEES_MAPPING[key] = int(upload_fee) if upload_fee else 3000
+
+            # Build metadata dict matching the old format
+            LOCATION_METADATA[key] = {
+                "display_name": display_name,
+                "upload_fee": int(upload_fee) if upload_fee else None,
+                "sov": f"{sov}%",
+                "series": loc.get("series", ""),
+                "height": loc.get("height", ""),
+                "width": loc.get("width", ""),
+                "number_of_faces": loc.get("number_of_faces", 1),
+                "display_type": display_type,
+                "spot_duration": loc.get("spot_duration") or 16,
+                "loop_duration": loc.get("loop_duration") or 96,
+                "template_path": loc.get("template_path", ""),
+                "company": loc.get("company", ""),
+            }
+
+            # Template path for compatibility
+            if loc.get("template_path"):
+                key_to_relpath[key] = loc["template_path"]
+            else:
+                key_to_relpath[key] = f"{key}/{key}.pptx"
+
+        logger.info(f"[DISCOVER] Discovery complete. Found {len(key_to_relpath)} templates")
+        return key_to_relpath, display_names
+
+    # Fallback to local filesystem (legacy mode)
+    logger.warning("[DISCOVER] Asset-Management unavailable, falling back to local filesystem")
+    return _discover_templates_from_filesystem()
+
+
+def _fetch_locations_from_asset_management() -> list[dict]:
+    """
+    Fetch locations from Asset-Management API synchronously.
+
+    Uses httpx for sync HTTP calls to avoid async complexity in config module.
+    """
+    import httpx
+
+    # Get Asset-Management URL
+    asset_mgmt_url = os.getenv("ASSET_MANAGEMENT_URL", "http://localhost:8001")
+
+    # Get service token for inter-service auth
+    inter_service_secret = os.getenv("INTER_SERVICE_SECRET", "")
+
+    if not inter_service_secret:
+        logger.warning("[DISCOVER] No INTER_SERVICE_SECRET, cannot call Asset-Management")
+        return []
+
+    try:
+        # Create service JWT token
+        import jwt
+        from datetime import datetime, timedelta, timezone
+
+        payload = {
+            "sub": "sales-module",
+            "service": True,
+            "iat": datetime.now(timezone.utc),
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+        }
+        token = jwt.encode(payload, inter_service_secret, algorithm="HS256")
+
+        # Fetch all locations
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(
+                f"{asset_mgmt_url}/api/locations",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"active_only": "true"},
+            )
+            response.raise_for_status()
+            return response.json()
+
+    except httpx.ConnectError:
+        logger.warning(f"[DISCOVER] Cannot connect to Asset-Management at {asset_mgmt_url}")
+        return []
+    except Exception as e:
+        logger.warning(f"[DISCOVER] Failed to fetch from Asset-Management: {e}")
+        return []
+
+
+def _discover_templates_from_filesystem() -> tuple[dict[str, str], list[str]]:
+    """
+    Legacy: Discover templates from local filesystem.
+
+    Only used as fallback when Asset-Management is unavailable.
+    """
+    logger.info(f"[DISCOVER] Scanning local filesystem: '{TEMPLATES_DIR}'")
+    key_to_relpath: dict[str, str] = {}
+    display_names: list[str] = []
+
     if not TEMPLATES_DIR.exists():
         logger.warning(f"[DISCOVER] Templates directory does not exist: '{TEMPLATES_DIR}'")
         return key_to_relpath, display_names
 
-    logger.info(f"[DISCOVER] Scanning for PPTX files in '{TEMPLATES_DIR}'")
     for pptx_path in TEMPLATES_DIR.rglob("*.pptx"):
         try:
             rel_path = pptx_path.relative_to(TEMPLATES_DIR)
@@ -544,32 +661,24 @@ def _discover_templates() -> tuple[dict[str, str], list[str]]:
             rel_path = pptx_path
         key = _normalize_key(pptx_path.stem)
         key_to_relpath[key] = str(rel_path)
-        logger.info(f"[DISCOVER] Found template: '{pptx_path}' -> key: '{key}'")
 
         meta = _parse_metadata_file(pptx_path.parent)
-        logger.info(f"[DISCOVER] Metadata for '{key}': {meta}")
 
         display_name = meta.get("display_name") or pptx_path.stem
-        description = meta.get("description") or f"{pptx_path.stem} - Digital Display - 1 Spot - 16 Seconds - 16.6% SOV - Total Loop is 6 spots"
-        meta.get("upload_fee") or 3000
-        meta.get("base_sov_percent") or 16.6
+        description = meta.get("description") or f"{pptx_path.stem} - Digital Display - 1 Spot - 16 Seconds - 16.6% SOV"
 
         display_names.append(str(display_name))
         LOCATION_DETAILS[key] = str(description)
 
-        # Use upload fee from metadata or default
         if meta.get("upload_fee") is not None:
             UPLOAD_FEES_MAPPING[key] = int(meta.get("upload_fee"))
         else:
             UPLOAD_FEES_MAPPING[key] = 3000
 
-        # Store all metadata fields
         LOCATION_METADATA[key] = meta
         LOCATION_METADATA[key]["pptx_rel_path"] = str(rel_path)
 
-    logger.info(f"[DISCOVER] Discovery complete. Found {len(key_to_relpath)} templates")
-    logger.info(f"[DISCOVER] Location keys: {list(key_to_relpath.keys())}")
-    logger.info(f"[DISCOVER] Display names: {display_names}")
+    logger.info(f"[DISCOVER] Filesystem scan complete. Found {len(key_to_relpath)} templates")
     return key_to_relpath, display_names
 
 

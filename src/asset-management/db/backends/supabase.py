@@ -11,7 +11,7 @@ import os
 from datetime import datetime
 from typing import Any
 
-from config import COMPANY_SCHEMAS
+from config import COMPANY_SCHEMAS, SUPABASE_URL, SUPABASE_SERVICE_KEY
 from db.base import DatabaseBackend
 
 logger = logging.getLogger("asset-management")
@@ -31,12 +31,12 @@ class SupabaseBackend(DatabaseBackend):
     """
 
     def __init__(self):
-        """Initialize Supabase backend using environment variables."""
+        """Initialize Supabase backend using config values."""
         self._client = None
 
-        # Get credentials from environment
-        self._url = os.getenv("SUPABASE_URL", "")
-        self._key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_KEY", "")
+        # Use config values which derive from service-specific env vars
+        self._url = SUPABASE_URL
+        self._key = SUPABASE_SERVICE_KEY
 
         if not self._url or not self._key:
             logger.warning(

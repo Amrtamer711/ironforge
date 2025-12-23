@@ -20,8 +20,10 @@ httpx>=0.28.1,<1.0.0
 python-dotenv==1.0.0
 python-multipart==0.0.6
 
-# CRM Security SDK (editable install for development)
--e ../shared/crm-security[fastapi]
+# CRM Security SDK
+# When installing from project root: pip install -r requirements-dev.txt
+# When installing standalone: pip install -e ../shared/crm-security[fastapi]
+# crm-security  # Installed via requirements-dev.txt or PYTHONPATH
 
 # Development & Testing
 pytest==8.0.0

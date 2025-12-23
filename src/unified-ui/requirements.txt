@@ -37,8 +37,10 @@ PyJWT>=2.8.0
 # Note: FastAPI includes CORS middleware, no separate package needed
 # Helmet-like security headers are configured via middleware
 
-# CRM Security SDK (editable install for development)
--e ../shared/crm-security[fastapi]
+# CRM Security SDK
+# When installing from project root: pip install -r requirements-dev.txt
+# When installing standalone: pip install -e ../shared/crm-security[fastapi]
+# crm-security  # Installed via requirements-dev.txt or PYTHONPATH
 
 # =============================================================================
 # DEV TOOLS (for dev panel)
