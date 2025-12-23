@@ -1,0 +1,17 @@
+build_unifiedui:
+  extends: .build_push_ecr_template
+  variables:
+    SERVICE_NAME: "unifiedui"
+    SERVICE_DIR: "src/unifiedui"
+    ECR_REPO: "unifiedui"
+  rules:
+  # Only run on main AND only if this service changed
+  - if: '$CI_COMMIT_BRANCH == "main"'
+    changes:
+      - src/unifiedui/**/*
+    when: on_success
+
+  # Optional: allow manual run on main
+  - if: '$CI_COMMIT_BRANCH == "main"'
+    when: manual
+    allow_failure: true
