@@ -14,10 +14,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy requirements first for better caching
 # Use requirements.render.txt for production (git-based SDK install)
-COPY requirements.txt .
+COPY requirements.render.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.render.txt
 
 # Copy backend code
 COPY backend/ ./backend/
