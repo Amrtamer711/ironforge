@@ -121,7 +121,7 @@ async def save_mockup_frame(
 
         # Validate location exists and user has access (using AssetService)
         asset_service = AssetService()
-        has_access, error_msg = asset_service.validate_location_access(location_key, user.companies)
+        has_access, error_msg = await asset_service.validate_location_access(location_key, user.companies)
         if not has_access:
             raise HTTPException(status_code=403, detail=error_msg or f"Location '{location_key}' not found or not accessible")
 

@@ -233,8 +233,8 @@ class ProposalProcessor:
         self.logger.info(f"[PROCESSOR] Client: {client_name}, Submitted by: {submitted_by}")
         self.logger.info(f"[PROCESSOR] Currency: {currency or 'AED'}")
 
-        # Validate proposals
-        validated_proposals, errors = self.validator.validate_proposals(proposals_data)
+        # Validate proposals (async)
+        validated_proposals, errors = await self.validator.validate_proposals(proposals_data)
         if errors:
             return {"success": False, "errors": errors}
 
@@ -447,8 +447,8 @@ class ProposalProcessor:
         self.logger.info(f"[PROCESSOR] Payment terms: {payment_terms}")
         self.logger.info(f"[PROCESSOR] Currency: {currency or 'AED'}")
 
-        # Validate proposals
-        validated_proposals, errors = self.validator.validate_combined_package(
+        # Validate proposals (async)
+        validated_proposals, errors = await self.validator.validate_combined_package(
             proposals_data,
             combined_net_rate
         )

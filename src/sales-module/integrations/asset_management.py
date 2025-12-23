@@ -1,19 +1,19 @@
 """
-Secure HTTP client for Asset-Management service.
+Async HTTP client for Asset-Management service.
 
 Uses short-lived JWT tokens for service-to-service authentication.
 
 Usage:
     from integrations import asset_mgmt_client
 
-    # Get locations for companies
-    locations = asset_mgmt_client.get_locations(["backlite_dubai", "backlite_abudhabi"])
+    # Get locations for companies (async)
+    locations = await asset_mgmt_client.get_locations(["backlite_dubai", "backlite_abudhabi"])
 
     # Get a specific location
-    location = asset_mgmt_client.get_location("backlite_dubai", 123)
+    location = await asset_mgmt_client.get_location_by_key("dubai_gateway", ["backlite_dubai"])
 
     # Check eligibility
-    eligibility = asset_mgmt_client.check_location_eligibility("backlite_dubai", 123)
+    eligibility = await asset_mgmt_client.check_location_eligibility("backlite_dubai", 123)
 """
 
 import logging
@@ -28,10 +28,12 @@ logger = logging.getLogger(__name__)
 
 class AssetManagementClient:
     """
-    HTTP client for asset-management service with JWT auth.
+    Async HTTP client for asset-management service with JWT auth.
 
-    Provides methods to query networks, locations, packages, and eligibility
+    Provides async methods to query networks, locations, packages, and eligibility
     from the centralized asset-management service.
+
+    All methods are async and should be awaited.
     """
 
     def __init__(
@@ -52,6 +54,7 @@ class AssetManagementClient:
         self.service_name = service_name
         self.timeout = timeout
         self._auth_client = None
+        self._http_client: httpx.AsyncClient | None = None
 
     def _get_auth_client(self):
         """Lazy-load the auth client."""
@@ -83,14 +86,29 @@ class AssetManagementClient:
 
         return headers
 
-    def _request(
+    async def _get_http_client(self) -> httpx.AsyncClient:
+        """Get or create the async HTTP client."""
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(
+                base_url=self.base_url,
+                timeout=self.timeout,
+            )
+        return self._http_client
+
+    async def close(self):
+        """Close the HTTP client. Call when done using the client."""
+        if self._http_client and not self._http_client.is_closed:
+            await self._http_client.aclose()
+            self._http_client = None
+
+    async def _request(
         self,
         method: str,
         endpoint: str,
         **kwargs,
     ) -> dict[str, Any] | list[dict] | None:
         """
-        Make authenticated request to asset-management.
+        Make authenticated async request to asset-management.
 
         Args:
             method: HTTP method (GET, POST, etc.)
@@ -107,14 +125,13 @@ class AssetManagementClient:
         headers = kwargs.pop("headers", {})
         headers.update(self._get_headers())
 
-        url = f"{self.base_url}{endpoint}"
+        client = await self._get_http_client()
 
         try:
-            response = httpx.request(
+            response = await client.request(
                 method,
-                url,
+                endpoint,
                 headers=headers,
-                timeout=self.timeout,
                 **kwargs,
             )
             response.raise_for_status()
@@ -130,18 +147,18 @@ class AssetManagementClient:
             raise
 
         except httpx.ConnectError as e:
-            logger.error(f"[ASSET CLIENT] Connection failed to {url}: {e}")
+            logger.error(f"[ASSET CLIENT] Connection failed to {self.base_url}{endpoint}: {e}")
             raise ConnectionError(f"Failed to connect to asset-management: {e}")
 
         except httpx.RequestError as e:
-            logger.error(f"[ASSET CLIENT] Request error for {url}: {e}")
+            logger.error(f"[ASSET CLIENT] Request error for {endpoint}: {e}")
             raise ConnectionError(f"Request to asset-management failed: {e}")
 
     # =========================================================================
     # NETWORKS
     # =========================================================================
 
-    def get_networks(
+    async def get_networks(
         self,
         companies: list[str],
         active_only: bool = True,
@@ -160,9 +177,9 @@ class AssetManagementClient:
             "companies": companies,
             "active_only": active_only,
         }
-        return self._request("GET", "/api/v1/networks", params=params) or []
+        return await self._request("GET", "/api/v1/networks", params=params) or []
 
-    def get_network(self, company: str, network_id: int) -> dict | None:
+    async def get_network(self, company: str, network_id: int) -> dict | None:
         """
         Get a specific network by ID.
 
@@ -173,13 +190,13 @@ class AssetManagementClient:
         Returns:
             Network object or None if not found
         """
-        return self._request("GET", f"/api/v1/networks/{company}/{network_id}")
+        return await self._request("GET", f"/api/v1/networks/{company}/{network_id}")
 
     # =========================================================================
     # LOCATIONS
     # =========================================================================
 
-    def get_locations(
+    async def get_locations(
         self,
         companies: list[str],
         network_id: int | None = None,
@@ -210,9 +227,9 @@ class AssetManagementClient:
         if type_id is not None:
             params["type_id"] = type_id
 
-        return self._request("GET", "/api/v1/locations", params=params) or []
+        return await self._request("GET", "/api/v1/locations", params=params) or []
 
-    def get_location(
+    async def get_location(
         self,
         company: str,
         location_id: int,
@@ -230,13 +247,13 @@ class AssetManagementClient:
             Location object or None if not found
         """
         params = {"include_eligibility": include_eligibility}
-        return self._request(
+        return await self._request(
             "GET",
             f"/api/v1/locations/{company}/{location_id}",
             params=params,
         )
 
-    def get_location_by_key(
+    async def get_location_by_key(
         self,
         location_key: str,
         companies: list[str],
@@ -251,13 +268,13 @@ class AssetManagementClient:
         Returns:
             Location object or None if not found
         """
-        return self._request(
+        return await self._request(
             "GET",
             f"/api/v1/locations/by-key/{location_key}",
             params={"companies": companies},
         )
 
-    def expand_to_locations(self, items: list[dict]) -> list[dict]:
+    async def expand_to_locations(self, items: list[dict]) -> list[dict]:
         """
         Expand packages/networks to flat list of locations.
 
@@ -267,13 +284,13 @@ class AssetManagementClient:
         Returns:
             Flat list of location objects
         """
-        return self._request("POST", "/api/v1/locations/expand", json=items) or []
+        return await self._request("POST", "/api/v1/locations/expand", json=items) or []
 
     # =========================================================================
     # PACKAGES
     # =========================================================================
 
-    def get_packages(
+    async def get_packages(
         self,
         companies: list[str],
         active_only: bool = True,
@@ -292,9 +309,9 @@ class AssetManagementClient:
             "companies": companies,
             "active_only": active_only,
         }
-        return self._request("GET", "/api/v1/packages", params=params) or []
+        return await self._request("GET", "/api/v1/packages", params=params) or []
 
-    def get_package(
+    async def get_package(
         self,
         company: str,
         package_id: int,
@@ -312,7 +329,7 @@ class AssetManagementClient:
             Package object or None if not found
         """
         params = {"include_items": include_items}
-        return self._request(
+        return await self._request(
             "GET",
             f"/api/v1/packages/{company}/{package_id}",
             params=params,
@@ -322,7 +339,7 @@ class AssetManagementClient:
     # ELIGIBILITY
     # =========================================================================
 
-    def check_location_eligibility(
+    async def check_location_eligibility(
         self,
         company: str,
         location_id: int,
@@ -343,14 +360,14 @@ class AssetManagementClient:
         if service:
             params["service"] = service
 
-        result = self._request(
+        result = await self._request(
             "GET",
             f"/api/v1/eligibility/check/{company}/{location_id}",
             params=params,
         )
         return result or {"eligible": False, "error": "Location not found"}
 
-    def get_eligible_locations(
+    async def get_eligible_locations(
         self,
         service: str,
         companies: list[str],
@@ -365,7 +382,7 @@ class AssetManagementClient:
         Returns:
             List of eligible location objects
         """
-        return self._request(
+        return await self._request(
             "GET",
             "/api/v1/eligibility/eligible-locations",
             params={"service": service, "companies": companies},
@@ -375,7 +392,7 @@ class AssetManagementClient:
     # ASSET TYPES
     # =========================================================================
 
-    def get_asset_types(
+    async def get_asset_types(
         self,
         companies: list[str],
         network_id: int | None = None,
@@ -399,7 +416,7 @@ class AssetManagementClient:
         if network_id is not None:
             params["network_id"] = network_id
 
-        return self._request("GET", "/api/v1/asset-types", params=params) or []
+        return await self._request("GET", "/api/v1/asset-types", params=params) or []
 
 
 # Singleton instance for convenience

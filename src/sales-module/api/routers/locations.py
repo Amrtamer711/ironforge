@@ -86,8 +86,8 @@ async def get_available_locations(
         # Initialize AssetService
         asset_service = AssetService()
 
-        # Get all locations for user's companies
-        all_locations = asset_service.get_locations_for_companies(user.companies)
+        # Get all locations for user's companies (async)
+        all_locations = await asset_service.get_locations_for_companies(user.companies)
 
         # Filter by display_type if specified
         if display_type:
@@ -157,7 +157,7 @@ async def get_location_by_key(
         asset_service = AssetService()
 
         # Validate user has access
-        has_access, error = asset_service.validate_location_access(
+        has_access, error = await asset_service.validate_location_access(
             location_key=location_key,
             user_companies=user.companies,
         )
@@ -169,7 +169,7 @@ async def get_location_by_key(
             )
 
         # Get location
-        location = asset_service.get_location_by_key(location_key, user.companies)
+        location = await asset_service.get_location_by_key(location_key, user.companies)
 
         if not location:
             raise HTTPException(

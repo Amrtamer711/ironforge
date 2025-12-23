@@ -1,40 +1,69 @@
 """
 Asset Service - Central abstraction for asset/location data.
 
-Phase 1: Database-backed implementation
-Phase 2 (Future): Will add Asset-Management API integration with caching
+All location data comes from Asset-Management API. No local DB fallback.
 """
 
+import logging
 from typing import Any
 
-from db.database import db
+from cachetools import TTLCache
+
+from app_settings import settings
+from integrations.asset_management import AssetManagementClient, asset_mgmt_client
+
+logger = logging.getLogger(__name__)
+
+# Cache configuration
+CACHE_TTL = settings.cache_default_ttl or 300  # 5 minutes
+CACHE_MAX_SIZE = settings.cache_max_size
 
 
 class AssetService:
     """
-    Manages asset and location data access.
+    Async service for asset and location data access.
 
-    Current Implementation (Phase 1):
-    - Queries database directly via db.get_locations_for_companies()
-    - Simple pass-through to database layer
+    All data is fetched from Asset-Management API.
 
-    Future Enhancement (Phase 2):
-    - Add caching layer (TTLCache + Redis)
-    - Call Asset-Management API instead of database
-    - Automatic cache invalidation on updates
-    - Graceful degradation if Asset-Management is down
+    Features:
+    - Async methods (non-blocking)
+    - In-memory caching with TTL
+    - All location data from Asset-Management API
+
+    Usage:
+        service = AssetService()
+        locations = await service.get_locations_for_companies(["backlite_dubai"])
     """
 
-    def __init__(self):
-        """Initialize AssetService."""
-        # Future: Will accept AssetManagementClient and cache configuration
-        pass
+    def __init__(
+        self,
+        client: AssetManagementClient | None = None,
+        cache_ttl: int = CACHE_TTL,
+        cache_max_size: int = CACHE_MAX_SIZE,
+    ):
+        """
+        Initialize AssetService.
+
+        Args:
+            client: Optional AssetManagementClient instance
+            cache_ttl: Cache TTL in seconds (default from settings)
+            cache_max_size: Maximum cache entries (default from settings)
+        """
+        self._client = client or asset_mgmt_client
+        self._cache: TTLCache = TTLCache(maxsize=cache_max_size, ttl=cache_ttl)
+        logger.info(
+            f"[ASSET SERVICE] Initialized (url={settings.asset_mgmt_url or 'http://localhost:8001'})"
+        )
+
+    def _cache_key(self, prefix: str, *args) -> str:
+        """Generate a cache key."""
+        return f"{prefix}:{':'.join(str(a) for a in args)}"
 
     # =========================================================================
     # LOCATION OPERATIONS
     # =========================================================================
 
-    def get_locations_for_companies(
+    async def get_locations_for_companies(
         self,
         companies: list[str],
     ) -> list[dict[str, Any]]:
@@ -46,7 +75,7 @@ class AssetService:
             {
                 "location_key": "dubai_gateway",
                 "display_name": "The Gateway",
-                "display_type": "digital",  # or "static"
+                "display_type": "digital",
                 "company_schema": "backlite_dubai",
                 ...
             },
@@ -59,19 +88,25 @@ class AssetService:
         Returns:
             List of location dictionaries
 
-        Example:
-            >>> service = AssetService()
-            >>> locations = service.get_locations_for_companies(["backlite_dubai"])
-            >>> len(locations)
-            42
+        Raises:
+            ConnectionError: If Asset-Management API is unreachable
         """
         if not companies:
             return []
 
-        # Phase 1: Direct database query
-        return db.get_locations_for_companies(companies)
+        # Check cache
+        cache_key = self._cache_key("locations", *sorted(companies))
+        if cache_key in self._cache:
+            logger.debug(f"[ASSET SERVICE] Cache hit for locations: {companies}")
+            return self._cache[cache_key]
 
-    def get_location_by_key(
+        # Fetch from Asset-Management API
+        locations = await self._client.get_locations(companies)
+        self._cache[cache_key] = locations
+        logger.debug(f"[ASSET SERVICE] Fetched {len(locations)} locations from API")
+        return locations
+
+    async def get_location_by_key(
         self,
         location_key: str,
         companies: list[str],
@@ -86,17 +121,23 @@ class AssetService:
         Returns:
             Location dict if found and user has access, None otherwise
 
-        Example:
-            >>> service = AssetService()
-            >>> loc = service.get_location_by_key("dubai_gateway", ["backlite_dubai"])
-            >>> loc["display_name"]
-            "The Gateway"
+        Raises:
+            ConnectionError: If Asset-Management API is unreachable
         """
         if not location_key or not companies:
             return None
 
-        # Phase 1: Direct database query
-        return db.get_location_by_key(location_key, companies)
+        # Check cache
+        cache_key = self._cache_key("location", location_key, *sorted(companies))
+        if cache_key in self._cache:
+            logger.debug(f"[ASSET SERVICE] Cache hit for location: {location_key}")
+            return self._cache[cache_key]
+
+        # Fetch from Asset-Management API
+        location = await self._client.get_location_by_key(location_key, companies)
+        if location:
+            self._cache[cache_key] = location
+        return location
 
     def filter_locations(
         self,
@@ -105,7 +146,7 @@ class AssetService:
         active_only: bool = True,
     ) -> list[dict[str, Any]]:
         """
-        Filter locations by criteria.
+        Filter locations by criteria. (Sync - operates on in-memory data)
 
         Args:
             locations: List of location dicts to filter
@@ -114,11 +155,6 @@ class AssetService:
 
         Returns:
             Filtered list of locations
-
-        Example:
-            >>> service = AssetService()
-            >>> all_locs = service.get_locations_for_companies(["backlite_dubai"])
-            >>> digital_locs = service.filter_locations(all_locs, display_type="digital")
         """
         filtered = locations
 
@@ -130,7 +166,6 @@ class AssetService:
             ]
 
         if active_only:
-            # Assume locations are active by default if field not present
             filtered = [
                 loc for loc in filtered
                 if loc.get("is_active", True)
@@ -138,7 +173,7 @@ class AssetService:
 
         return filtered
 
-    def get_digital_locations(
+    async def get_digital_locations(
         self,
         companies: list[str],
     ) -> list[dict[str, Any]]:
@@ -151,10 +186,10 @@ class AssetService:
         Returns:
             List of digital location dicts
         """
-        all_locations = self.get_locations_for_companies(companies)
+        all_locations = await self.get_locations_for_companies(companies)
         return self.filter_locations(all_locations, display_type="digital")
 
-    def get_static_locations(
+    async def get_static_locations(
         self,
         companies: list[str],
     ) -> list[dict[str, Any]]:
@@ -167,14 +202,14 @@ class AssetService:
         Returns:
             List of static location dicts
         """
-        all_locations = self.get_locations_for_companies(companies)
+        all_locations = await self.get_locations_for_companies(companies)
         return self.filter_locations(all_locations, display_type="static")
 
     # =========================================================================
     # VALIDATION OPERATIONS
     # =========================================================================
 
-    def validate_location_access(
+    async def validate_location_access(
         self,
         location_key: str,
         user_companies: list[str],
@@ -190,20 +225,11 @@ class AssetService:
             Tuple of (has_access, error_message)
             - If valid: (True, None)
             - If invalid: (False, "error message")
-
-        Example:
-            >>> service = AssetService()
-            >>> has_access, error = service.validate_location_access(
-            ...     "dubai_gateway",
-            ...     ["backlite_dubai"]
-            ... )
-            >>> has_access
-            True
         """
         if not user_companies:
             return False, "No company access configured"
 
-        location = self.get_location_by_key(location_key, user_companies)
+        location = await self.get_location_by_key(location_key, user_companies)
 
         if not location:
             return False, f"Location '{location_key}' not found or not accessible"
@@ -211,7 +237,7 @@ class AssetService:
         return True, None
 
     # =========================================================================
-    # FUTURE ENHANCEMENTS (Phase 2) - Stubs for now
+    # ELIGIBILITY & PRICING
     # =========================================================================
 
     async def check_eligibility(
@@ -222,9 +248,6 @@ class AssetService:
     ) -> dict[str, Any]:
         """
         Check if location is eligible for a service.
-
-        Phase 2: Will call Asset-Management eligibility API
-        Phase 1: Returns True for all locations (no eligibility checks yet)
 
         Args:
             location_key: The location to check
@@ -237,10 +260,17 @@ class AssetService:
                 "details": list[str],  # Reasons if not eligible
             }
         """
-        # Phase 1: Stub - assume all locations eligible
+        location = await self.get_location_by_key(location_key, [company])
+        if location and "id" in location:
+            return await self._client.check_location_eligibility(
+                company=company,
+                location_id=location["id"],
+                service=service,
+            )
+
         return {
-            "eligible": True,
-            "details": [],
+            "eligible": False,
+            "details": ["Location not found"],
         }
 
     async def get_pricing(
@@ -251,22 +281,14 @@ class AssetService:
         """
         Get current pricing for a location.
 
-        Phase 2: Will call Asset-Management pricing API
-        Phase 1: Returns empty dict (pricing stored in proposals directly)
-
         Args:
             location_key: The location key
             company: Company schema
 
         Returns:
-            {
-                "base_rate": Decimal,
-                "upload_fee": Decimal,
-                "currency": str,
-                ...
-            }
+            Pricing info dict or empty dict if not available
         """
-        # Phase 1: Stub - pricing not available yet from centralized source
+        # TODO: Implement when Asset-Management has pricing endpoint
         return {}
 
     async def expand_package(
@@ -277,9 +299,6 @@ class AssetService:
         """
         Expand a package to its constituent locations.
 
-        Phase 2: Will call Asset-Management package expansion API
-        Phase 1: Not implemented yet
-
         Args:
             package_id: The package ID to expand
             company: Company schema
@@ -287,5 +306,40 @@ class AssetService:
         Returns:
             List of location dicts
         """
-        # Phase 1: Stub - package expansion not available yet
+        package = await self._client.get_package(company, package_id, include_items=True)
+        if package and "expanded_locations" in package:
+            return package["expanded_locations"]
         return []
+
+    # =========================================================================
+    # CACHE MANAGEMENT
+    # =========================================================================
+
+    def clear_cache(self):
+        """Clear the entire cache."""
+        self._cache.clear()
+        logger.info("[ASSET SERVICE] Cache cleared")
+
+    def invalidate_location(self, location_key: str):
+        """Invalidate cache entries for a specific location."""
+        keys_to_remove = [k for k in self._cache.keys() if location_key in k]
+        for key in keys_to_remove:
+            del self._cache[key]
+        logger.debug(f"[ASSET SERVICE] Invalidated {len(keys_to_remove)} cache entries for {location_key}")
+
+
+# Singleton instance
+_asset_service: AssetService | None = None
+
+
+def get_asset_service() -> AssetService:
+    """
+    Get the singleton AssetService instance.
+
+    Returns:
+        AssetService instance
+    """
+    global _asset_service
+    if _asset_service is None:
+        _asset_service = AssetService()
+    return _asset_service

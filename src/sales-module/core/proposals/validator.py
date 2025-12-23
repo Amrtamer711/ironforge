@@ -31,10 +31,18 @@ class ProposalValidator:
         """
         self.user_companies = user_companies
         self.asset_service = AssetService()
-        self.available_locations = self.asset_service.get_locations_for_companies(user_companies)
+        self._available_locations: list[dict[str, Any]] | None = None
         self.logger = config.logger
 
-    def validate_proposals(
+    async def _get_available_locations(self) -> list[dict[str, Any]]:
+        """Lazy-load available locations (async)."""
+        if self._available_locations is None:
+            self._available_locations = await self.asset_service.get_locations_for_companies(
+                self.user_companies
+            )
+        return self._available_locations
+
+    async def validate_proposals(
         self,
         proposals_data: list[dict[str, Any]]
     ) -> tuple[list[dict[str, Any]], list[str]]:
@@ -51,7 +59,7 @@ class ProposalValidator:
 
         Example:
             >>> validator = ProposalValidator(["backlite_dubai"])
-            >>> validated, errors = validator.validate_proposals(proposals_data)
+            >>> validated, errors = await validator.validate_proposals(proposals_data)
             >>> if errors:
             ...     return {"success": False, "errors": errors}
         """
@@ -61,6 +69,9 @@ class ProposalValidator:
         if not proposals_data:
             errors.append("No proposals provided")
             return validated, errors
+
+        # Fetch locations once (async)
+        available_locations = await self._get_available_locations()
 
         for idx, proposal in enumerate(proposals_data):
             # Extract proposal data
@@ -82,7 +93,7 @@ class ProposalValidator:
                 continue
 
             # Match location to canonical key
-            matched_key = match_location_key(location, self.available_locations)
+            matched_key = match_location_key(location, available_locations)
             if not matched_key:
                 self.logger.error(f"[VALIDATOR] No match found for location '{location}'")
                 errors.append(
@@ -133,7 +144,7 @@ class ProposalValidator:
 
         return validated, errors
 
-    def validate_combined_package(
+    async def validate_combined_package(
         self,
         proposals_data: list[dict[str, Any]],
         combined_net_rate: str,
@@ -151,8 +162,8 @@ class ProposalValidator:
         if not combined_net_rate:
             return [], ["Combined package requires combined_net_rate"]
 
-        # Use standard validation
-        validated, errors = self.validate_proposals(proposals_data)
+        # Use standard validation (async)
+        validated, errors = await self.validate_proposals(proposals_data)
 
         # Additional validation for combined packages
         if validated and len(validated) < 2:

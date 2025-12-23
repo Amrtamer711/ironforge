@@ -53,9 +53,9 @@ class MockupCoordinator:
         self.generate_ai_mockup_func = generate_ai_mockup_func
         self.logger = config.logger
 
-        # Initialize components
+        # Initialize components (lazy-load locations)
         self.asset_service = AssetService()
-        self.available_locations = self.asset_service.get_locations_for_companies(user_companies)
+        self._available_locations: list[dict[str, Any]] | None = None
         self.validator = MockupValidator(user_companies)
 
         # Initialize strategies
@@ -65,7 +65,15 @@ class MockupCoordinator:
             FollowupMockupStrategy(self.validator, generate_mockup_func),
         ]
 
-    def resolve_location(
+    async def _get_available_locations(self) -> list[dict[str, Any]]:
+        """Lazy-load available locations (async)."""
+        if self._available_locations is None:
+            self._available_locations = await self.asset_service.get_locations_for_companies(
+                self.user_companies
+            )
+        return self._available_locations
+
+    async def resolve_location(
         self,
         location_name: str
     ) -> tuple[str | None, str | None]:
@@ -82,7 +90,8 @@ class MockupCoordinator:
         """
         self.logger.info(f"[COORDINATOR] Resolving location '{location_name}'")
 
-        location_key = match_location_key(location_name, self.available_locations)
+        available_locations = await self._get_available_locations()
+        location_key = match_location_key(location_name, available_locations)
 
         if not location_key:
             error_msg = (
@@ -163,8 +172,8 @@ class MockupCoordinator:
         self.logger.info(f"[COORDINATOR] Generating mockup for {location_name}")
         self.logger.info(f"[COORDINATOR] Time: {time_of_day}, Finish: {finish}")
 
-        # Resolve location
-        location_key, error_msg = self.resolve_location(location_name)
+        # Resolve location (async)
+        location_key, error_msg = await self.resolve_location(location_name)
         if not location_key:
             return None, [], {}, error_msg
 
