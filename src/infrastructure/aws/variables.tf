@@ -62,7 +62,8 @@ variable "ecr_repository_names" {
     "revenuerecognition",
     "accountsreceivable",
     "salesordermanagement",
-    "testapprepo"
+    "testapprepo",
+    "mmg-unified-ui"
   ]
 }
 
@@ -126,3 +127,6 @@ variable "db_publicly_accessible" {
   description = "Whether the RDS instance is publicly accessible (recommended false)."
   default     = false
 }
+
+
+ 
