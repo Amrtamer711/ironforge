@@ -1,0 +1,2651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mockup Frame Setup</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      opacity: 0.9;
+      font-size: 16px;
+    }
+
+    .mode-toggle {
+      display: flex;
+      justify-content: center;
+      gap: 15px;
+      padding: 20px;
+      background: #f8f9fa;
+      border-bottom: 2px solid #e9ecef;
+    }
+
+    .mode-btn {
+      padding: 12px 30px;
+      border: 2px solid #667eea;
+      background: white;
+      color: #667eea;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .mode-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+
+    .mode-btn.active {
+      background: #667eea;
+      color: white;
+    }
+
+    .content {
+      padding: 30px;
+    }
+
+    .section {
+      display: none;
+    }
+
+    .section.active {
+      display: block;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+
+    .form-group select,
+    .form-group input[type="file"] {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      font-size: 15px;
+      transition: border-color 0.3s;
+    }
+
+    .form-group select:focus,
+    .form-group input[type="file"]:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    /* Make range sliders smaller and more compact */
+    input[type="range"] {
+      height: 4px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      border-radius: 2px;
+      outline: none;
+      position: relative;
+    }
+
+    /* WebKit (Chrome, Safari, Edge) - Track */
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 4px;
+      background: transparent;
+      border-radius: 2px;
+      position: relative;
+    }
+
+    /* WebKit - Thumb */
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 12px;
+      height: 12px;
+      background: #667eea;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-top: -4px;
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      background: #5568d3;
+      transform: scale(1.1);
+    }
+
+    /* Firefox - Track */
+    input[type="range"]::-moz-range-track {
+      height: 4px;
+      background: #e9ecef;
+      border-radius: 2px;
+    }
+
+    /* Firefox - Progress (purple fill from left) */
+    input[type="range"]::-moz-range-progress {
+      height: 4px;
+      background: #667eea;
+      border-radius: 2px 0 0 2px;
+    }
+
+    /* Firefox - Thumb */
+    input[type="range"]::-moz-range-thumb {
+      width: 12px;
+      height: 12px;
+      background: #667eea;
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+      transition: background 0.2s;
+    }
+
+    input[type="range"]::-moz-range-thumb:hover {
+      background: #5568d3;
+      transform: scale(1.1);
+    }
+
+    .canvas-container {
+      margin-top: 20px;
+      text-align: center;
+      position: relative;
+    }
+
+    #canvas {
+      max-width: 100%;
+      height: auto;
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      cursor: crosshair;
+      background: #f8f9fa;
+    }
+
+    .hint {
+      margin-top: 15px;
+      padding: 15px;
+      background: #e7f3ff;
+      border-left: 4px solid #2196F3;
+      border-radius: 4px;
+      color: #0c5091;
+      font-size: 14px;
+    }
+
+    .btn {
+      padding: 12px 30px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-right: 10px;
+    }
+
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #5568d3;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #5a6268;
+    }
+
+    .btn-danger {
+      background: #dc3545;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #c82333;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .button-group {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .photo-list {
+      margin-top: 20px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 20px;
+    }
+
+    .photo-card {
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      overflow: hidden;
+      transition: transform 0.3s;
+    }
+
+    .photo-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.1);
+    }
+
+    .photo-card img {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+    }
+
+    .photo-card-info {
+      padding: 15px;
+      background: #f8f9fa;
+    }
+
+    .photo-card-info h4 {
+      margin-bottom: 8px;
+      color: #333;
+      font-size: 14px;
+      word-break: break-all;
+    }
+
+    .photo-card-info button {
+      width: 100%;
+      margin-top: 8px;
+    }
+
+    .message {
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: none;
+    }
+
+    .message.success {
+      background: #d4edda;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+      display: block;
+    }
+
+    .message.error {
+      background: #f8d7da;
+      border: 1px solid #f5c6cb;
+      color: #721c24;
+      display: block;
+    }
+
+    .creative-upload {
+      margin-top: 20px;
+    }
+
+    .mockup-result {
+      margin-top: 20px;
+      text-align: center;
+    }
+
+    .mockup-result img {
+      max-width: 100%;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 40px;
+    }
+
+    .loading.active {
+      display: block;
+    }
+
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* Toggle Switch with Progressive Fill */
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 26px;
+    }
+
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #e9ecef;
+      border-radius: 26px;
+      transition: all 0.3s ease;
+      overflow: hidden;
+    }
+
+    /* Purple fill that grows from left to right */
+    .toggle-slider:after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 0%;
+      background-color: #667eea;
+      border-radius: 26px;
+      transition: width 0.3s ease;
+      z-index: 0;
+    }
+
+    /* White sliding button */
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 20px;
+      width: 20px;
+      left: 3px;
+      bottom: 3px;
+      background-color: #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+      transition: transform 0.3s ease;
+      z-index: 1;
+    }
+
+    /* When checked: purple fill expands to full width, button slides right */
+    .toggle-switch input:checked + .toggle-slider:after {
+      width: 100%;
+    }
+
+    .toggle-switch input:checked + .toggle-slider:before {
+      transform: translateX(24px);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Billboard Mockup Manager</h1>
+      <p>Configure billboard frames and generate mockups</p>
+    </div>
+
+    <div class="mode-toggle">
+      <button class="mode-btn active" onclick="switchMode('setup')">Setup Mode</button>
+      <button class="mode-btn" onclick="switchMode('generate')">Generate Mode</button>
+    </div>
+
+    <div class="content">
+      <div id="message" class="message"></div>
+
+      <!-- Setup Mode Password Protection -->
+      <div id="setup-password-screen" class="section" style="max-width: 400px; margin: 100px auto; text-align: center; display: block;">
+        <h2 style="margin-bottom: 20px;">🔒 Setup Mode</h2>
+        <p style="color: #6c757d; margin-bottom: 20px;">This section is password protected</p>
+        <div class="form-group">
+          <input type="password" id="setup-password" placeholder="Enter password" style="width: 100%; padding: 12px; font-size: 16px; border: 2px solid #e9ecef; border-radius: 4px;">
+        </div>
+        <button class="btn btn-primary" onclick="verifySetupPassword()" style="width: 100%;">Unlock Setup Mode</button>
+        <p id="password-error" style="color: #dc3545; margin-top: 10px; display: none;">Incorrect password</p>
+      </div>
+
+      <!-- Setup Mode -->
+      <div id="setup-section" class="section" style="display: none;">
+        <h2 style="margin-bottom: 20px;">Setup Billboard Frames</h2>
+
+        <div class="form-group">
+          <label for="setup-location">Select Location</label>
+          <select id="setup-location">
+            <option value="">-- Select a location --</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="setup-time-of-day">Time of Day</label>
+          <select id="setup-time-of-day">
+            <option value="all">All (Default)</option>
+            <option value="day">Day</option>
+            <option value="night">Night</option>
+          </select>
+          <small style="color: #6c757d; display: block; margin-top: 5px;">Select the time of day for this photo</small>
+        </div>
+
+        <div class="form-group">
+          <label for="setup-finish">Billboard Finish</label>
+          <select id="setup-finish">
+            <option value="all">All (Default)</option>
+            <option value="gold">Gold</option>
+            <option value="silver">Silver</option>
+          </select>
+          <small style="color: #6c757d; display: block; margin-top: 5px;">Select the billboard frame finish</small>
+        </div>
+
+        <div class="form-group">
+          <label for="billboard-photo">Upload Billboard Photo</label>
+          <input type="file" id="billboard-photo" accept="image/*">
+        </div>
+
+        <div class="form-group" style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+            <label class="toggle-switch" style="margin: 0;">
+              <input type="checkbox" id="greenscreen-toggle">
+              <span class="toggle-slider"></span>
+            </label>
+            <label for="greenscreen-toggle" style="cursor: pointer; margin: 0;">
+              <strong>Auto-detect Green Screen</strong>
+              <br>
+              <small style="color: #6c757d;">Automatically detect billboard frame using green screen chroma key</small>
+            </label>
+          </div>
+          <div id="color-picker-section" style="display: none; padding-top: 10px; border-top: 1px solid #dee2e6;">
+            <label for="greenscreen-color" style="display: block; margin-bottom: 5px;">
+              <strong>Green Screen Color:</strong>
+            </label>
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+              <input type="color" id="greenscreen-color" value="#1CFF1C" style="width: 60px; height: 40px; border: 2px solid #dee2e6; border-radius: 4px; cursor: pointer;">
+              <input type="text" id="greenscreen-color-hex" value="#1CFF1C" placeholder="#1CFF1C" style="flex: 1; padding: 8px; border: 1px solid #dee2e6; border-radius: 4px; font-family: monospace;">
+            </div>
+            <small style="color: #6c757d; display: block; margin-top: -5px; margin-bottom: 10px;">
+              💡 <strong>Tip:</strong> Hold Shift and click on the green screen in the preview to auto-detect and set the exact color
+            </small>
+            <label for="color-tolerance" style="display: block; margin-bottom: 5px;">
+              <strong>Color Tolerance:</strong> <span id="tolerance-value">40</span>
+              <small style="color: #6c757d;">(lower = stricter, higher = more forgiving)</small>
+            </label>
+            <input type="range" id="color-tolerance" min="10" max="100" value="40" style="width: 100%;">
+
+            <button type="button" id="detect-greenscreen-btn" class="btn btn-primary" style="width: 100%; margin-top: 15px;" disabled>
+              🔍 Detect Green Screen Now
+            </button>
+          </div>
+        </div>
+
+        <div class="canvas-container">
+          <canvas id="canvas" width="1200" height="800"></canvas>
+          <div class="hint" id="setup-hint">
+            1. Select a location above<br>
+            2. Upload a billboard photo<br>
+            3. Click 4 corners of the billboard screen to define the frame<br>
+            4. Click "Save Frame" to store the configuration
+          </div>
+        </div>
+
+        <div id="current-frame-config-section" style="display: none; margin-top: 15px; padding: 15px; background: #d1ecf1; border-radius: 8px; border-left: 4px solid #17a2b8;">
+          <h4 style="margin-bottom: 15px; font-size: 16px; color: #0c5460;">🎯 Current Frame Settings</h4>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div>
+              <label for="frame-brightness" style="display: block; margin-bottom: 5px;">
+                <strong>Brightness:</strong> <span id="frame-brightness-value">100</span>%
+              </label>
+              <input type="range" id="frame-brightness" min="50" max="200" value="100" style="width: 100%;">
+            </div>
+
+            <div>
+              <label for="frame-contrast" style="display: block; margin-bottom: 5px;">
+                <strong>Contrast:</strong> <span id="frame-contrast-value">100</span>%
+              </label>
+              <input type="range" id="frame-contrast" min="50" max="200" value="100" style="width: 100%;">
+            </div>
+
+            <div>
+              <label for="frame-saturation" style="display: block; margin-bottom: 5px;">
+                <strong>Saturation:</strong> <span id="frame-saturation-value">100</span>%
+              </label>
+              <input type="range" id="frame-saturation" min="0" max="200" value="100" style="width: 100%;">
+            </div>
+
+            <div>
+              <label for="frame-image-blur" style="display: block; margin-bottom: 5px;">
+                <strong>Image Blur:</strong> <span id="frame-image-blur-value">0</span>
+              </label>
+              <input type="range" id="frame-image-blur" min="0" max="20" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Blur entire creative (0 = off)</small>
+            </div>
+
+            <div>
+              <label for="frame-edge-blur" style="display: block; margin-bottom: 5px;">
+                <strong>Edge Blur:</strong> <span id="frame-edge-blur-value">1</span>px
+              </label>
+              <input type="range" id="frame-edge-blur" min="1" max="20" value="1" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Edge blur amount (1 = off)</small>
+            </div>
+
+            <div>
+              <label for="frame-overlay-opacity" style="display: block; margin-bottom: 5px;">
+                <strong>Overlay Opacity:</strong> <span id="frame-overlay-value">0</span>%
+              </label>
+              <input type="range" id="frame-overlay-opacity" min="0" max="50" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Billboard overlay</small>
+            </div>
+
+            <div style="grid-column: span 2; display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+              <div>
+                <label style="display: block; margin-bottom: 8px;">
+                  <strong>Light Direction:</strong> <span id="frame-light-direction-label">Top</span>
+                </label>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; width: 150px;">
+                  <button type="button" class="light-dir-btn" data-direction="top-left" style="grid-column: 1; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Top Left">↖</button>
+                  <button type="button" class="light-dir-btn active" data-direction="top" style="grid-column: 2; padding: 8px; border: 2px solid #667eea; background: #e3f2fd; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Top">↑</button>
+                  <button type="button" class="light-dir-btn" data-direction="top-right" style="grid-column: 3; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Top Right">↗</button>
+                  <button type="button" class="light-dir-btn" data-direction="left" style="grid-column: 1; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Left">←</button>
+                  <button type="button" class="light-dir-btn" data-direction="center" style="grid-column: 2; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Center">●</button>
+                  <button type="button" class="light-dir-btn" data-direction="right" style="grid-column: 3; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Right">→</button>
+                  <button type="button" class="light-dir-btn" data-direction="bottom-left" style="grid-column: 1; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Bottom Left">↙</button>
+                  <button type="button" class="light-dir-btn" data-direction="bottom" style="grid-column: 2; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Bottom">↓</button>
+                  <button type="button" class="light-dir-btn" data-direction="bottom-right" style="grid-column: 3; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Bottom Right">↘</button>
+                </div>
+                <input type="hidden" id="frame-light-direction" value="top">
+                <small style="color: #0c5460; display: block; margin-top: 5px;">Light source direction for day mode depth effects</small>
+              </div>
+
+              <div>
+                <label for="frame-depth-multiplier" style="display: block; margin-bottom: 5px;">
+                  <strong>Depth Perception:</strong> <span id="frame-depth-value">15</span>x
+                </label>
+                <input type="range" id="frame-depth-multiplier" min="5" max="30" value="15" style="width: 100%;">
+                <small style="color: #0c5460; display: block; margin-top: 2px;">Perspective compensation</small>
+              </div>
+            </div>
+
+            <div>
+              <label for="frame-shadow-intensity" style="display: block; margin-bottom: 5px;">
+                <strong>Shadow Intensity:</strong> <span id="frame-shadow-value">0</span>%
+              </label>
+              <input type="range" id="frame-shadow-intensity" min="0" max="100" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Edge darkening</small>
+            </div>
+
+            <div>
+              <label for="frame-lighting-adjustment" style="display: block; margin-bottom: 5px;">
+                <strong>Lighting Match:</strong> <span id="frame-lighting-value">0</span>%
+              </label>
+              <input type="range" id="frame-lighting-adjustment" min="-50" max="50" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Brightness matching</small>
+            </div>
+
+            <div>
+              <label for="frame-color-temperature" style="display: block; margin-bottom: 5px;">
+                <strong>Color Temperature:</strong> <span id="frame-temperature-value">0</span>
+              </label>
+              <input type="range" id="frame-color-temperature" min="-50" max="50" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Warm/cool shift</small>
+            </div>
+
+            <div>
+              <label for="frame-vignette" style="display: block; margin-bottom: 5px;">
+                <strong>Vignette:</strong> <span id="frame-vignette-value">0</span>%
+              </label>
+              <input type="range" id="frame-vignette" min="0" max="100" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Corner darkening</small>
+            </div>
+
+            <div>
+              <label for="frame-edge-smoother" style="display: block; margin-bottom: 5px;">
+                <strong>Edge Smoother:</strong> <span id="frame-edge-smoother-value">3</span>x
+              </label>
+              <input type="range" id="frame-edge-smoother" min="1" max="20" value="3" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Anti-aliasing smoothness (higher = much softer edges)</small>
+            </div>
+
+            <div>
+              <label for="frame-sharpening" style="display: block; margin-bottom: 5px;">
+                <strong>Sharpening:</strong> <span id="frame-sharpening-value">0</span>%
+              </label>
+              <input type="range" id="frame-sharpening" min="0" max="100" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Unsharp mask strength (0 = off, use sparingly)</small>
+            </div>
+          </div>
+
+          <small style="color: #0c5460; display: block; margin-top: 10px; text-align: center;">
+            ℹ️ These settings apply to this frame only. Each frame can have different values.
+          </small>
+        </div>
+
+        <div id="test-preview-section" style="display: none; margin-top: 15px; padding: 15px; background: #e3f2fd; border-radius: 8px; border-left: 4px solid #2196f3;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+            <label class="toggle-switch" style="margin: 0;">
+              <input type="checkbox" id="test-preview-toggle">
+              <span class="toggle-slider"></span>
+            </label>
+            <label for="test-preview-toggle" style="cursor: pointer; margin: 0; flex: 1;">
+              <strong>🧪 Test Preview Mode</strong>
+              <br>
+              <small style="color: #1565c0;">Preview creative on current frame before adding it</small>
+            </label>
+          </div>
+
+          <div id="test-preview-upload" style="display: none;">
+            <label for="test-creative-upload" style="display: block; margin-bottom: 8px;">
+              <strong>Upload Test Creative:</strong>
+            </label>
+            <input type="file" id="test-creative-upload" accept="image/*" style="width: 100%; margin-bottom: 10px;">
+            <button class="btn btn-primary" id="generate-preview-btn" onclick="generateBackendPreview()" disabled style="width: 100%;">
+              <span id="preview-btn-text">Generate Test Preview</span>
+              <span id="preview-loading" style="display: none;">⏳ Generating...</span>
+            </button>
+            <small style="color: #1565c0; display: block; margin-top: 5px;">
+              Click "Generate Test Preview" to see how the creative will look with current settings
+            </small>
+          </div>
+        </div>
+
+        <div class="button-group">
+          <button class="btn btn-primary" id="add-frame-btn" onclick="addFrame()" disabled>Add Frame</button>
+          <button class="btn btn-secondary" onclick="resetCurrentFrame()">Reset Current Frame</button>
+          <button class="btn btn-primary" id="save-all-btn" onclick="saveAllFrames()" disabled>Save All Frames</button>
+          <button class="btn btn-danger" onclick="clearAllFrames()">Clear All Frames</button>
+        </div>
+        <div id="frames-info" style="margin-top: 15px; padding: 10px; background: #e7f3ff; border-radius: 4px; display: none;">
+          <strong>Frames configured: <span id="frame-count">0</span></strong>
+        </div>
+
+        <h3 style="margin-top: 40px; margin-bottom: 15px;">Existing Photos</h3>
+        <div id="photo-list" class="photo-list"></div>
+      </div>
+
+      <!-- Generate Mode -->
+      <div id="generate-section" class="section">
+        <h2 style="margin-bottom: 20px;">Generate Mockup</h2>
+
+        <div class="form-group">
+          <label for="generate-location">Select Location</label>
+          <select id="generate-location">
+            <option value="">-- Select a location --</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="generate-time-of-day">Time of Day</label>
+          <select id="generate-time-of-day">
+            <option value="all">All (Default)</option>
+            <option value="day">Day</option>
+            <option value="night">Night</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="generate-finish">Billboard Finish</label>
+          <select id="generate-finish">
+            <option value="all">All (Default)</option>
+            <option value="gold">Gold</option>
+            <option value="silver">Silver</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="generate-template-selection" style="display: none;">
+          <label for="generate-template">Select Template</label>
+          <select id="generate-template">
+            <option value="">-- Select a template --</option>
+          </select>
+          <small style="color: #6c757d; display: block; margin-top: 5px;">Choose a specific billboard photo template</small>
+        </div>
+
+        <div class="creative-upload">
+          <div class="form-group">
+            <label for="creative-photo">Upload Creative/Ad Image</label>
+            <input type="file" id="creative-photo" accept="image/*">
+            <small style="color: #6c757d; display: block; margin-top: 5px;">Upload your own creative image</small>
+          </div>
+
+          <div style="text-align: center; margin: 20px 0; color: #6c757d; font-weight: 500;">
+            — OR —
+          </div>
+
+          <div class="form-group">
+            <label for="ai-creative-prompt">AI-Generated Creative (Describe what you want)</label>
+            <textarea
+              id="ai-creative-prompt"
+              placeholder="e.g., luxury watch ad with gold typography on dark background, professional and elegant"
+              rows="3"
+              style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 4px; font-family: inherit; resize: vertical;"
+            ></textarea>
+            <small style="color: #6c757d; display: block; margin-top: 5px;">
+              💡 The AI will generate a billboard creative based on your description (no upload needed)
+            </small>
+          </div>
+
+          <!-- Config Customization Toggle -->
+        <div class="form-group" id="generate-config-toggle-section" style="display: none; margin-top: 20px;">
+          <label style="display: flex; align-items: center; cursor: pointer; user-select: none;">
+            <input type="checkbox" id="generate-config-toggle" style="margin-right: 10px;">
+            <span><strong>Customize Frame Configuration</strong> (optional)</span>
+          </label>
+          <small style="color: #6c757d; display: block; margin-top: 5px; margin-left: 24px;">
+            Enable to adjust settings like brightness, contrast, edge smoothing, etc. and regenerate the mockup
+          </small>
+        </div>
+
+        <!-- Generate Mode Config Sliders (shown when toggle is enabled) -->
+        <div id="generate-frame-config-section" style="display: none; background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+          <h3 style="margin-top: 0; margin-bottom: 15px; font-size: 1.1rem; color: #495057;">Frame Configuration</h3>
+          <small style="color: #6c757d; display: block; margin-bottom: 15px;">Adjust these settings to customize your mockup</small>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div>
+              <label for="gen-frame-brightness" style="display: block; margin-bottom: 5px;">
+                <strong>Brightness:</strong> <span id="gen-frame-brightness-value">100</span>%
+              </label>
+              <input type="range" id="gen-frame-brightness" min="50" max="200" value="100" style="width: 100%;">
+            </div>
+
+            <div>
+              <label for="gen-frame-contrast" style="display: block; margin-bottom: 5px;">
+                <strong>Contrast:</strong> <span id="gen-frame-contrast-value">100</span>%
+              </label>
+              <input type="range" id="gen-frame-contrast" min="50" max="200" value="100" style="width: 100%;">
+            </div>
+
+            <div>
+              <label for="gen-frame-saturation" style="display: block; margin-bottom: 5px;">
+                <strong>Saturation:</strong> <span id="gen-frame-saturation-value">100</span>%
+              </label>
+              <input type="range" id="gen-frame-saturation" min="0" max="200" value="100" style="width: 100%;">
+            </div>
+
+            <div>
+              <label for="gen-frame-image-blur" style="display: block; margin-bottom: 5px;">
+                <strong>Image Blur:</strong> <span id="gen-frame-image-blur-value">0</span>
+              </label>
+              <input type="range" id="gen-frame-image-blur" min="0" max="20" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Blur entire creative (0 = off)</small>
+            </div>
+
+            <div>
+              <label for="gen-frame-edge-blur" style="display: block; margin-bottom: 5px;">
+                <strong>Edge Blur:</strong> <span id="gen-frame-edge-blur-value">1</span>px
+              </label>
+              <input type="range" id="gen-frame-edge-blur" min="1" max="20" value="1" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Edge blur amount (1 = off)</small>
+            </div>
+
+            <div>
+              <label for="gen-frame-overlay-opacity" style="display: block; margin-bottom: 5px;">
+                <strong>Overlay Opacity:</strong> <span id="gen-frame-overlay-value">0</span>%
+              </label>
+              <input type="range" id="gen-frame-overlay-opacity" min="0" max="50" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Billboard overlay</small>
+            </div>
+
+            <div style="grid-column: span 2; display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+              <div>
+                <label style="display: block; margin-bottom: 8px;">
+                  <strong>Light Direction:</strong> <span id="gen-frame-light-direction-label">Top</span>
+                </label>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; width: 150px;">
+                  <button type="button" class="gen-light-dir-btn" data-direction="top-left" style="grid-column: 1; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Top Left">↖</button>
+                  <button type="button" class="gen-light-dir-btn active" data-direction="top" style="grid-column: 2; padding: 8px; border: 2px solid #667eea; background: #e3f2fd; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Top">↑</button>
+                  <button type="button" class="gen-light-dir-btn" data-direction="top-right" style="grid-column: 3; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Top Right">↗</button>
+                  <button type="button" class="gen-light-dir-btn" data-direction="left" style="grid-column: 1; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Left">←</button>
+                  <button type="button" class="gen-light-dir-btn" data-direction="center" style="grid-column: 2; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Center">●</button>
+                  <button type="button" class="gen-light-dir-btn" data-direction="right" style="grid-column: 3; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Right">→</button>
+                  <button type="button" class="gen-light-dir-btn" data-direction="bottom-left" style="grid-column: 1; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Bottom Left">↙</button>
+                  <button type="button" class="gen-light-dir-btn" data-direction="bottom" style="grid-column: 2; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Bottom">↓</button>
+                  <button type="button" class="gen-light-dir-btn" data-direction="bottom-right" style="grid-column: 3; padding: 8px; border: 2px solid #dee2e6; background: white; border-radius: 4px; cursor: pointer; font-size: 16px;" title="Bottom Right">↘</button>
+                </div>
+                <input type="hidden" id="gen-frame-light-direction" value="top">
+                <small style="color: #0c5460; display: block; margin-top: 5px;">Light source direction for day mode depth effects</small>
+              </div>
+
+              <div>
+                <label for="gen-frame-depth-multiplier" style="display: block; margin-bottom: 5px;">
+                  <strong>Depth Perception:</strong> <span id="gen-frame-depth-value">15</span>x
+                </label>
+                <input type="range" id="gen-frame-depth-multiplier" min="5" max="30" value="15" style="width: 100%;">
+                <small style="color: #0c5460; display: block; margin-top: 2px;">Perspective compensation</small>
+              </div>
+            </div>
+
+            <div>
+              <label for="gen-frame-shadow-intensity" style="display: block; margin-bottom: 5px;">
+                <strong>Shadow Intensity:</strong> <span id="gen-frame-shadow-value">0</span>%
+              </label>
+              <input type="range" id="gen-frame-shadow-intensity" min="0" max="100" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Edge darkening</small>
+            </div>
+
+            <div>
+              <label for="gen-frame-lighting-adjustment" style="display: block; margin-bottom: 5px;">
+                <strong>Lighting Match:</strong> <span id="gen-frame-lighting-value">0</span>%
+              </label>
+              <input type="range" id="gen-frame-lighting-adjustment" min="-50" max="50" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Brightness matching</small>
+            </div>
+
+            <div>
+              <label for="gen-frame-color-temperature" style="display: block; margin-bottom: 5px;">
+                <strong>Color Temperature:</strong> <span id="gen-frame-temperature-value">0</span>
+              </label>
+              <input type="range" id="gen-frame-color-temperature" min="-50" max="50" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Warm/cool shift</small>
+            </div>
+
+            <div>
+              <label for="gen-frame-vignette" style="display: block; margin-bottom: 5px;">
+                <strong>Vignette:</strong> <span id="gen-frame-vignette-value">0</span>%
+              </label>
+              <input type="range" id="gen-frame-vignette" min="0" max="100" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Corner darkening</small>
+            </div>
+
+            <div>
+              <label for="gen-frame-edge-smoother" style="display: block; margin-bottom: 5px;">
+                <strong>Edge Smoother:</strong> <span id="gen-frame-edge-smoother-value">3</span>x
+              </label>
+              <input type="range" id="gen-frame-edge-smoother" min="1" max="20" value="3" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Anti-aliasing smoothness (higher = much softer edges)</small>
+            </div>
+
+            <div>
+              <label for="gen-frame-sharpening" style="display: block; margin-bottom: 5px;">
+                <strong>Sharpening:</strong> <span id="gen-frame-sharpening-value">0</span>%
+              </label>
+              <input type="range" id="gen-frame-sharpening" min="0" max="100" value="0" style="width: 100%;">
+              <small style="color: #0c5460; display: block; margin-top: 2px;">Unsharp mask strength (0 = off, use sparingly)</small>
+            </div>
+          </div>
+
+          <small style="color: #0c5460; display: block; margin-top: 10px; text-align: center;">
+            ℹ️ These settings customize the mockup appearance. Adjust and regenerate for different variations.
+          </small>
+        </div>
+
+          <div class="button-group">
+            <button class="btn btn-primary" onclick="generateMockup()" id="generate-btn" disabled>Generate Mockup</button>
+          </div>
+        </div>
+
+        <div id="loading" class="loading">
+          <div class="spinner"></div>
+          <p>Generating mockup...</p>
+        </div>
+
+        <div id="mockup-result" class="mockup-result"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    // Password for setup mode (in production, use environment variable or config)
+    const SETUP_PASSWORD = "admin123";  // Change this to your desired password
+    let isSetupAuthenticated = false;
+
+    let currentMode = 'setup';
+    let previewImg = null;
+    let currentPhoto = null;
+    let currentPoints = [];  // Points for current frame being drawn
+    let allFrames = [];       // All completed frames [[x,y,x,y,x,y,x,y], ...]
+    let locations = [];
+    let testCreativeFile = null; // Test creative file for backend preview
+    let testPreviewMode = false; // Test preview mode flag
+    let testPreviewImage = null; // Backend-generated preview image
+    let isGeneratingPreview = false; // Flag to prevent multiple requests
+
+    // Canvas state
+    let imgNaturalW = 0, imgNaturalH = 0;
+    let drawX = 0, drawY = 0, drawW = 0, drawH = 0;
+    let scale = 1;
+
+    // Load locations
+    async function loadLocations() {
+      try {
+        const response = await fetch('/api/mockup/locations');
+        const data = await response.json();
+        locations = data.locations || [];
+
+        const setupSelect = document.getElementById('setup-location');
+        const generateSelect = document.getElementById('generate-location');
+
+        setupSelect.innerHTML = '<option value="">-- Select a location --</option>';
+        generateSelect.innerHTML = '<option value="">-- Select a location --</option>';
+
+        locations.forEach(loc => {
+          setupSelect.innerHTML += `<option value="${loc.key}">${loc.name}</option>`;
+          generateSelect.innerHTML += `<option value="${loc.key}">${loc.name}</option>`;
+        });
+      } catch (err) {
+        showMessage('Failed to load locations', 'error');
+      }
+    }
+
+    // Toggle color picker visibility
+    document.getElementById('greenscreen-toggle').addEventListener('change', function(e) {
+      const colorPickerSection = document.getElementById('color-picker-section');
+      colorPickerSection.style.display = e.target.checked ? 'block' : 'none';
+
+      // Enable/disable detect button based on toggle and if image is loaded
+      const detectBtn = document.getElementById('detect-greenscreen-btn');
+      detectBtn.disabled = !e.target.checked || !previewImg;
+    });
+
+    // Sync color picker and hex input
+    document.getElementById('greenscreen-color').addEventListener('input', function(e) {
+      document.getElementById('greenscreen-color-hex').value = e.target.value.toUpperCase();
+    });
+
+    document.getElementById('greenscreen-color-hex').addEventListener('input', function(e) {
+      const hex = e.target.value;
+      if (/^#[0-9A-F]{6}$/i.test(hex)) {
+        document.getElementById('greenscreen-color').value = hex;
+      }
+    });
+
+    // Update tolerance value display
+    document.getElementById('color-tolerance').addEventListener('input', function(e) {
+      document.getElementById('tolerance-value').textContent = e.target.value;
+    });
+
+    // Helper function to update range slider fill
+    function updateRangeSliderFill(slider) {
+      const min = slider.min || 0;
+      const max = slider.max || 100;
+      const value = slider.value;
+      const percent = ((value - min) / (max - min)) * 100;
+      slider.style.background = `linear-gradient(to right, #667eea ${percent}%, #e9ecef ${percent}%)`;
+    }
+
+    // Per-frame config sliders - update displays only (no auto-preview)
+    document.getElementById('frame-brightness').addEventListener('input', function(e) {
+      document.getElementById('frame-brightness-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('frame-contrast').addEventListener('input', function(e) {
+      document.getElementById('frame-contrast-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('frame-saturation').addEventListener('input', function(e) {
+      document.getElementById('frame-saturation-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('frame-depth-multiplier').addEventListener('input', function(e) {
+      document.getElementById('frame-depth-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('frame-image-blur').addEventListener('input', function(e) {
+      document.getElementById('frame-image-blur-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('frame-edge-blur').addEventListener('input', function(e) {
+      document.getElementById('frame-edge-blur-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('frame-overlay-opacity').addEventListener('input', function(e) {
+      document.getElementById('frame-overlay-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('frame-shadow-intensity').addEventListener('input', function(e) {
+      document.getElementById('frame-shadow-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('frame-lighting-adjustment').addEventListener('input', function(e) {
+      document.getElementById('frame-lighting-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('frame-color-temperature').addEventListener('input', function(e) {
+      document.getElementById('frame-temperature-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('frame-vignette').addEventListener('input', function(e) {
+      document.getElementById('frame-vignette-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('frame-edge-smoother').addEventListener('input', function(e) {
+      document.getElementById('frame-edge-smoother-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('frame-sharpening').addEventListener('input', function(e) {
+      document.getElementById('frame-sharpening-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+
+    // Initialize range slider fills on page load
+    document.querySelectorAll('input[type="range"]').forEach(slider => {
+      updateRangeSliderFill(slider);
+    });
+
+    // Light direction button handler
+    document.querySelectorAll('.light-dir-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        // Remove active class from all buttons
+        document.querySelectorAll('.light-dir-btn').forEach(b => {
+          b.style.border = '2px solid #dee2e6';
+          b.style.background = 'white';
+          b.classList.remove('active');
+        });
+
+        // Add active class to clicked button
+        this.style.border = '2px solid #667eea';
+        this.style.background = '#e3f2fd';
+        this.classList.add('active');
+
+        // Update hidden input and label
+        const direction = this.dataset.direction;
+        document.getElementById('frame-light-direction').value = direction;
+
+        // Update label text
+        const labelMap = {
+          'top-left': 'Top Left',
+          'top': 'Top',
+          'top-right': 'Top Right',
+          'left': 'Left',
+          'center': 'Center',
+          'right': 'Right',
+          'bottom-left': 'Bottom Left',
+          'bottom': 'Bottom',
+          'bottom-right': 'Bottom Right'
+        };
+        document.getElementById('frame-light-direction-label').textContent = labelMap[direction];
+      });
+    });
+
+    // Test preview toggle
+    document.getElementById('test-preview-toggle').addEventListener('change', function(e) {
+      testPreviewMode = e.target.checked;
+      const uploadSection = document.getElementById('test-preview-upload');
+      uploadSection.style.display = testPreviewMode ? 'block' : 'none';
+
+      if (!testPreviewMode) {
+        // Turn off preview mode - clear test creative
+        testCreativeFile = null;
+        testPreviewImage = null;
+        drawPreview();
+      } else {
+        // Turn on preview mode - generate preview if file is already selected
+        const fileInput = document.getElementById('test-creative-upload');
+        const file = fileInput.files[0];
+        if (file) {
+          testCreativeFile = file;
+          generateBackendPreview();
+        }
+      }
+    });
+
+    // Test creative upload
+    // Generate backend preview
+    async function generateBackendPreview() {
+      if (!testCreativeFile || !currentPhoto || currentPoints.length !== 4) {
+        showMessage('Please upload a billboard photo, draw a frame, and upload a test creative first', 'error');
+        return;
+      }
+      if (isGeneratingPreview) return; // Prevent multiple concurrent requests
+
+      isGeneratingPreview = true;
+
+      // Update button state
+      const btn = document.getElementById('generate-preview-btn');
+      const btnText = document.getElementById('preview-btn-text');
+      const loading = document.getElementById('preview-loading');
+      btn.disabled = true;
+      btnText.style.display = 'none';
+      loading.style.display = 'inline';
+
+      try {
+        // Collect current frame config
+        const frameConfig = {
+          brightness: parseInt(document.getElementById('frame-brightness').value),
+          contrast: parseInt(document.getElementById('frame-contrast').value),
+          saturation: parseInt(document.getElementById('frame-saturation').value),
+          depthMultiplier: parseInt(document.getElementById('frame-depth-multiplier').value),
+          lightDirection: document.getElementById('frame-light-direction').value,
+          imageBlur: parseInt(document.getElementById('frame-image-blur').value),
+          edgeBlur: parseInt(document.getElementById('frame-edge-blur').value),
+          overlayOpacity: parseInt(document.getElementById('frame-overlay-opacity').value),
+          shadowIntensity: parseInt(document.getElementById('frame-shadow-intensity').value),
+          lightingAdjustment: parseInt(document.getElementById('frame-lighting-adjustment').value),
+          colorTemperature: parseInt(document.getElementById('frame-color-temperature').value),
+          vignette: parseInt(document.getElementById('frame-vignette').value),
+          edgeSmoother: parseInt(document.getElementById('frame-edge-smoother').value),
+          sharpening: parseInt(document.getElementById('frame-sharpening').value)
+        };
+
+        // Prepare form data
+        const formData = new FormData();
+        formData.append('billboard_photo', currentPhoto);
+        formData.append('creative', testCreativeFile);
+        formData.append('frame_points', JSON.stringify(currentPoints));
+        formData.append('config', JSON.stringify(frameConfig));
+
+        // Send time_of_day for context-aware depth effects
+        const timeOfDay = document.getElementById('setup-time-of-day').value || 'day';
+        formData.append('time_of_day', timeOfDay);
+
+        // Send to backend
+        const response = await fetch('/api/mockup/test-preview', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!response.ok) {
+          throw new Error(`Preview failed: ${response.statusText}`);
+        }
+
+        // Get image blob and create URL
+        const blob = await response.blob();
+        const imageUrl = URL.createObjectURL(blob);
+
+        // Load preview image
+        const img = new Image();
+        img.onload = function() {
+          testPreviewImage = img;
+          drawPreview();
+        };
+        img.src = imageUrl;
+
+      } catch (error) {
+        console.error('[Test Preview] Error:', error);
+        showMessage('Error generating preview: ' + error.message, 'error');
+      } finally {
+        isGeneratingPreview = false;
+        // Reset button state
+        btn.disabled = false;
+        btnText.style.display = 'inline';
+        loading.style.display = 'none';
+      }
+    }
+
+    document.getElementById('test-creative-upload').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) {
+        document.getElementById('generate-preview-btn').disabled = true;
+        return;
+      }
+
+      testCreativeFile = file;
+      // Enable the preview button now that we have a creative file
+      if (currentPhoto && currentPoints.length === 4) {
+        document.getElementById('generate-preview-btn').disabled = false;
+      }
+    });
+
+    // Manual detect green screen button
+    document.getElementById('detect-greenscreen-btn').addEventListener('click', function() {
+      if (!previewImg) return;
+
+      // Draw image to a temp canvas for pixel analysis
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = previewImg.width;
+      tempCanvas.height = previewImg.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.drawImage(previewImg, 0, 0);
+      const imageData = tempCtx.getImageData(0, 0, previewImg.width, previewImg.height);
+
+      console.log('[Green Screen] Starting manual detection...');
+      const detectedFrame = detectGreenScreen(imageData);
+      if (detectedFrame) {
+        currentPoints = detectedFrame;
+        document.getElementById('add-frame-btn').disabled = false;
+        document.getElementById('setup-hint').innerHTML =
+          '✓ Green screen detected! Frame auto-configured. Drag corners to adjust or click "Add Frame" to save.';
+
+        // Show frame config and test preview sections when frame is auto-detected
+        document.getElementById('current-frame-config-section').style.display = 'block';
+        document.getElementById('test-preview-section').style.display = 'block';
+
+        console.log('[Green Screen] ✓ Detection successful!');
+        showMessage('Green screen detected successfully!', 'success');
+      } else {
+        document.getElementById('setup-hint').innerHTML =
+          '❌ No green screen detected. Check console (F12) for details, try adjusting tolerance, or draw frame manually.';
+        console.log('[Green Screen] ❌ Detection failed - see details above');
+        showMessage('No green screen detected. Check console for details.', 'error');
+      }
+
+      drawPreview();
+    });
+
+    // Verify setup password
+    function verifySetupPassword() {
+      const password = document.getElementById('setup-password').value;
+      const errorMsg = document.getElementById('password-error');
+
+      if (password === SETUP_PASSWORD) {
+        isSetupAuthenticated = true;
+        document.getElementById('setup-password-screen').style.display = 'none';
+        document.getElementById('setup-section').style.display = 'block';
+        errorMsg.style.display = 'none';
+        document.getElementById('setup-password').value = ''; // Clear password field
+        loadPhotoList();
+        showMessage('Setup mode unlocked successfully!', 'success');
+      } else {
+        errorMsg.style.display = 'block';
+        document.getElementById('setup-password').value = ''; // Clear password field
+        document.getElementById('setup-password').focus(); // Re-focus input
+      }
+    }
+
+    // Allow Enter key to submit password
+    document.getElementById('setup-password').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        verifySetupPassword();
+      }
+    });
+
+    // Switch between modes
+    function switchMode(mode) {
+      currentMode = mode;
+
+      document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+
+      document.querySelectorAll('.section').forEach(section => section.classList.remove('active'));
+
+      if (mode === 'setup') {
+        // Check if authenticated
+        if (!isSetupAuthenticated) {
+          // Show password screen instead of setup section
+          document.getElementById('setup-password-screen').style.display = 'block';
+          document.getElementById('setup-password-screen').classList.add('active');
+          document.getElementById('setup-section').style.display = 'none';
+          document.getElementById('generate-section').style.display = 'none';
+          // Focus password input
+          setTimeout(() => {
+            document.getElementById('setup-password').focus();
+          }, 100);
+        } else {
+          // Already authenticated - show setup section
+          document.getElementById('setup-password-screen').style.display = 'none';
+          document.getElementById('setup-section').style.display = 'block';
+          document.getElementById('setup-section').classList.add('active');
+          document.getElementById('generate-section').style.display = 'none';
+          loadPhotoList();
+        }
+      } else {
+        // Generate mode - no authentication required
+        document.getElementById('setup-password-screen').style.display = 'none';
+        document.getElementById('setup-section').style.display = 'none';
+        document.getElementById('generate-section').style.display = 'block';
+        document.getElementById('generate-section').classList.add('active');
+      }
+    }
+
+    // Canvas drawing functions
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#f8f9fa';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function applyPerspectiveTransform(creative, points, canvasCtx) {
+      // Simple perspective transform using canvas transform matrix
+      // This is a basic implementation - for production use a proper perspective library
+      const [tl, tr, br, bl] = points.map(pt => [drawX + pt[0] * scale, drawY + pt[1] * scale]);
+
+      // Calculate the transformation
+      canvasCtx.save();
+      canvasCtx.beginPath();
+      canvasCtx.moveTo(tl[0], tl[1]);
+      canvasCtx.lineTo(tr[0], tr[1]);
+      canvasCtx.lineTo(br[0], br[1]);
+      canvasCtx.lineTo(bl[0], bl[1]);
+      canvasCtx.closePath();
+      canvasCtx.clip();
+
+      // Draw creative stretched to fit the quadrilateral (simplified)
+      const minX = Math.min(tl[0], tr[0], br[0], bl[0]);
+      const minY = Math.min(tl[1], tr[1], br[1], bl[1]);
+      const maxX = Math.max(tl[0], tr[0], br[0], bl[0]);
+      const maxY = Math.max(tl[1], tr[1], br[1], bl[1]);
+
+      canvasCtx.globalAlpha = 0.8;
+      canvasCtx.drawImage(creative, minX, minY, maxX - minX, maxY - minY);
+      canvasCtx.globalAlpha = 1.0;
+      canvasCtx.restore();
+    }
+
+    // Old JavaScript-based perspective transform removed - now using backend for 100% accuracy
+
+    function drawPreview() {
+      clearCanvas();
+      if (!previewImg) return;
+
+      // If test preview mode is active and we have a backend-generated preview, show it
+      if (testPreviewMode && testPreviewImage) {
+        // Draw the backend-generated preview image (it already has the creative warped onto the billboard)
+        ctx.drawImage(testPreviewImage, drawX, drawY, drawW, drawH);
+        // Skip drawing frame borders in test preview mode
+        return;
+      }
+
+      // Normal mode: draw billboard without creative
+      ctx.drawImage(previewImg, drawX, drawY, drawW, drawH);
+
+      // Draw all completed frames with grey fill and dashed edges with hard corners
+      allFrames.forEach((frameData, frameIndex) => {
+        const isSelected = selectedFrameIndex === frameIndex;
+        const framePoints = frameData.points;
+
+        ctx.fillStyle = 'rgba(128, 128, 128, 0.3)'; // Grey semi-transparent fill
+        ctx.strokeStyle = isSelected ? '#667eea' : '#333'; // Blue if selected, dark grey otherwise
+        ctx.lineWidth = isSelected ? 4 : 3; // Thicker, bolder lines
+        ctx.setLineDash([8, 4]); // Dashed lines
+        ctx.lineCap = 'butt'; // Sharp/hard corners (not rounded)
+        ctx.lineJoin = 'miter'; // Sharp corner joins
+
+        ctx.beginPath();
+        for (let i = 0; i < framePoints.length; i++) {
+          const cx = drawX + framePoints[i][0] * scale;
+          const cy = drawY + framePoints[i][1] * scale;
+          if (i === 0) ctx.moveTo(cx, cy);
+          else ctx.lineTo(cx, cy);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.setLineDash([]); // Reset dash
+
+        // Draw small square corner markers for precision
+        framePoints.forEach((pt, ptIndex) => {
+          const cx = drawX + pt[0] * scale;
+          const cy = drawY + pt[1] * scale;
+          const markerSize = 8;
+
+          ctx.fillStyle = isSelected ? '#667eea' : '#333';
+
+          // Draw small square marker at corner
+          ctx.fillRect(cx - markerSize/2, cy - markerSize/2, markerSize, markerSize);
+        });
+      });
+
+      // Draw current frame being edited
+      if (currentPoints.length > 0) {
+        ctx.fillStyle = 'rgba(128, 128, 128, 0.3)'; // Grey semi-transparent fill
+        ctx.strokeStyle = '#667eea'; // Blue outline for current editing
+        ctx.lineWidth = 4; // Thick, bold line
+        ctx.setLineDash([8, 4]); // Dashed line
+        ctx.lineCap = 'butt'; // Sharp/hard corners
+        ctx.lineJoin = 'miter'; // Sharp corner joins
+
+        ctx.beginPath();
+        currentPoints.forEach((pt, i) => {
+          const cx = drawX + pt[0] * scale;
+          const cy = drawY + pt[1] * scale;
+          if (i === 0) ctx.moveTo(cx, cy);
+          else ctx.lineTo(cx, cy);
+        });
+        if (currentPoints.length === 4) {
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.stroke();
+        ctx.setLineDash([]); // Reset dash
+
+        // Draw small square corner markers
+        currentPoints.forEach(pt => {
+          const cx = drawX + pt[0] * scale;
+          const cy = drawY + pt[1] * scale;
+          const markerSize = 8;
+
+          ctx.fillStyle = '#667eea';
+          ctx.fillRect(cx - markerSize/2, cy - markerSize/2, markerSize, markerSize);
+        });
+      }
+    }
+
+    function fitImageIntoCanvas(imgW, imgH) {
+      const s = Math.min(canvas.width / imgW, canvas.height / imgH);
+      const w = Math.round(imgW * s);
+      const h = Math.round(imgH * s);
+      const x = Math.round((canvas.width - w) / 2);
+      const y = Math.round((canvas.height - h) / 2);
+      return { x, y, w, h, s };
+    }
+
+    // Helper: Check if point is inside polygon (ray casting algorithm for image coordinates)
+    function isPointInPolygon(x, y, points) {
+      let inside = false;
+      for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+        const xi = points[i][0], yi = points[i][1];
+        const xj = points[j][0], yj = points[j][1];
+
+        const intersect = ((yi > y) !== (yj > y))
+            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    // Detect green screen and extract actual corner coordinates (handles perspective/angled billboards)
+    function detectGreenScreen(imageData) {
+      const data = imageData.data;
+      const width = imageData.width;
+      const height = imageData.height;
+
+      // Get target color from picker
+      const targetHex = document.getElementById('greenscreen-color').value;
+      const targetR = parseInt(targetHex.slice(1, 3), 16);
+      const targetG = parseInt(targetHex.slice(3, 5), 16);
+      const targetB = parseInt(targetHex.slice(5, 7), 16);
+
+      // Color tolerance from slider
+      const colorTolerance = parseInt(document.getElementById('color-tolerance').value);
+
+      console.log(`[Green Screen] Target color: ${targetHex} (RGB: ${targetR}, ${targetG}, ${targetB}), Tolerance: ${colorTolerance}`);
+      console.log(`[Green Screen] Excluding ${allFrames.length} already-marked frame(s) from detection`);
+
+      // Sample center pixel to help debug
+      const centerIdx = (Math.floor(height / 2) * width + Math.floor(width / 2)) * 4;
+      const sampleR = data[centerIdx];
+      const sampleG = data[centerIdx + 1];
+      const sampleB = data[centerIdx + 2];
+      console.log(`[Green Screen] Sample pixel at center (RGB: ${sampleR}, ${sampleG}, ${sampleB})`);
+
+      // Create exclusion mask for already-marked frames
+      const exclusionMask = new Uint8Array(width * height);
+      allFrames.forEach((frameData, idx) => {
+        const pts = frameData.points;
+        // Mark all pixels inside this frame polygon as excluded
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            if (isPointInPolygon(x, y, pts)) {
+              exclusionMask[y * width + x] = 1;
+            }
+          }
+        }
+        console.log(`[Green Screen] Excluded frame ${idx + 1} from detection`);
+      });
+
+      // Create binary mask of matching pixels (excluding already-marked frames)
+      const mask = new Uint8Array(width * height);
+      let matchedPixelCount = 0;
+      let minDistance = Infinity;
+      let maxDistance = 0;
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const pixelIdx = y * width + x;
+
+          // Skip pixels inside already-marked frames
+          if (exclusionMask[pixelIdx] === 1) {
+            mask[pixelIdx] = 0;
+            continue;
+          }
+
+          const i = pixelIdx * 4;
+          const r = data[i];
+          const g = data[i + 1];
+          const b = data[i + 2];
+
+          // Calculate Euclidean distance from target color
+          const distance = Math.sqrt(
+            Math.pow(r - targetR, 2) +
+            Math.pow(g - targetG, 2) +
+            Math.pow(b - targetB, 2)
+          );
+
+          minDistance = Math.min(minDistance, distance);
+          maxDistance = Math.max(maxDistance, distance);
+
+          // Check if within tolerance
+          if (distance <= colorTolerance) {
+            mask[pixelIdx] = 255;
+            matchedPixelCount++;
+          } else {
+            mask[pixelIdx] = 0;
+          }
+        }
+      }
+
+      console.log(`[Green Screen] Distance range: ${minDistance.toFixed(1)} to ${maxDistance.toFixed(1)}`);
+
+      console.log(`[Green Screen] Matched ${matchedPixelCount} pixels out of ${width * height} total`);
+      console.log(`[Green Screen] Match percentage: ${(matchedPixelCount / (width * height) * 100).toFixed(2)}%`);
+
+      if (matchedPixelCount < 1000) {
+        console.log('[Green Screen] ❌ Not enough pixels matched (need at least 1000)');
+        console.log('[Green Screen] Tip: Try increasing tolerance slider or check if green screen color matches');
+        return null;
+      }
+
+      // Dilate (expand) the mask to extend green region outward
+      const dilatedMask = new Uint8Array(width * height);
+      // Expand detection slightly to catch edges
+      const expandPixels = 3;
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = y * width + x;
+          let hasGreenNearby = false;
+
+          for (let dy = -expandPixels; dy <= expandPixels; dy++) {
+            for (let dx = -expandPixels; dx <= expandPixels; dx++) {
+              const ny = y + dy;
+              const nx = x + dx;
+              if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+                if (mask[ny * width + nx] === 255) {
+                  hasGreenNearby = true;
+                  break;
+                }
+              }
+            }
+            if (hasGreenNearby) break;
+          }
+
+          dilatedMask[idx] = hasGreenNearby ? 255 : 0;
+        }
+      }
+
+      // Find contour points on the OUTSIDE edge of dilated region
+      const contourPoints = [];
+
+      for (let y = 1; y < height - 1; y++) {
+        for (let x = 1; x < width - 1; x++) {
+          const idx = y * width + x;
+          if (dilatedMask[idx] === 0) {
+            const hasDilatedNeighbor =
+              dilatedMask[idx - 1] === 255 ||
+              dilatedMask[idx + 1] === 255 ||
+              dilatedMask[idx - width] === 255 ||
+              dilatedMask[idx + width] === 255 ||
+              dilatedMask[idx - width - 1] === 255 ||
+              dilatedMask[idx - width + 1] === 255 ||
+              dilatedMask[idx + width - 1] === 255 ||
+              dilatedMask[idx + width + 1] === 255;
+
+            if (hasDilatedNeighbor) {
+              contourPoints.push([x, y]);
+            }
+          }
+        }
+      }
+
+      console.log(`[Green Screen] Found ${contourPoints.length} contour points`);
+
+      if (contourPoints.length < 4) {
+        console.log('[Green Screen] ❌ Not enough contour points');
+        return null;
+      }
+
+      // Find the 4 extreme corner points
+      let topLeft = contourPoints[0];
+      let topRight = contourPoints[0];
+      let bottomRight = contourPoints[0];
+      let bottomLeft = contourPoints[0];
+
+      for (const pt of contourPoints) {
+        const [x, y] = pt;
+        if (x + y < topLeft[0] + topLeft[1]) topLeft = pt;
+        if (x - y > topRight[0] - topRight[1]) topRight = pt;
+        if (x + y > bottomRight[0] + bottomRight[1]) bottomRight = pt;
+        if (x - y < bottomLeft[0] - bottomLeft[1]) bottomLeft = pt;
+      }
+
+      // Apply perspective-aware adaptive padding
+      const topWidth = Math.abs(topRight[0] - topLeft[0]);
+      const bottomWidth = Math.abs(bottomRight[0] - bottomLeft[0]);
+      const leftHeight = Math.abs(bottomLeft[1] - topLeft[1]);
+      const rightHeight = Math.abs(bottomRight[1] - topRight[1]);
+
+      const widthRatio = topWidth / bottomWidth;
+      const heightRatio = leftHeight / rightHeight;
+
+      console.log(`[Green Screen] Perspective - Width ratio: ${widthRatio.toFixed(2)}, Height ratio: ${heightRatio.toFixed(2)}`);
+
+      // Adaptive padding based on perspective distortion (depth perception effect)
+      // Smaller sides indicate greater depth/distance, requiring more padding
+      // Get depth multiplier from config slider
+      const depthMultiplier = parseInt(document.getElementById('frame-depth-multiplier').value);
+
+      if (widthRatio > 1.1) {
+        // Top wider: bottom recedes (further away), push bottom out more
+        const extra = Math.floor((widthRatio - 1) * depthMultiplier);
+        bottomLeft[1] = Math.min(height - 1, bottomLeft[1] + extra);
+        bottomRight[1] = Math.min(height - 1, bottomRight[1] + extra);
+        console.log(`[Green Screen] +${extra}px bottom (depth: ${widthRatio.toFixed(2)}x)`);
+      } else if (widthRatio < 0.9) {
+        // Bottom wider: top recedes (further away), push top out more
+        const extra = Math.floor((1 / widthRatio - 1) * depthMultiplier);
+        topLeft[1] = Math.max(0, topLeft[1] - extra);
+        topRight[1] = Math.max(0, topRight[1] - extra);
+        console.log(`[Green Screen] +${extra}px top (depth: ${(1/widthRatio).toFixed(2)}x)`);
+      }
+
+      if (heightRatio > 1.1) {
+        // Left taller: right recedes (further away), push right out more
+        const extra = Math.floor((heightRatio - 1) * depthMultiplier);
+        topRight[0] = Math.min(width - 1, topRight[0] + extra);
+        bottomRight[0] = Math.min(width - 1, bottomRight[0] + extra);
+        console.log(`[Green Screen] +${extra}px right (depth: ${heightRatio.toFixed(2)}x)`);
+      } else if (heightRatio < 0.9) {
+        // Right taller: left recedes (further away), push left out more
+        const extra = Math.floor((1 / heightRatio - 1) * depthMultiplier);
+        topLeft[0] = Math.max(0, topLeft[0] - extra);
+        bottomLeft[0] = Math.max(0, bottomLeft[0] - extra);
+        console.log(`[Green Screen] +${extra}px left (depth: ${(1/heightRatio).toFixed(2)}x)`);
+      }
+
+      console.log(`[Green Screen] ✓ Corners:`, {topLeft, topRight, bottomRight, bottomLeft});
+
+      return [topLeft, topRight, bottomRight, bottomLeft];
+    }
+
+    // Handle photo upload
+    document.getElementById('billboard-photo').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      currentPhoto = file;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const img = new Image();
+        img.onload = function() {
+          previewImg = img;
+          imgNaturalW = img.width;
+          imgNaturalH = img.height;
+
+          const fit = fitImageIntoCanvas(imgNaturalW, imgNaturalH);
+          drawX = fit.x;
+          drawY = fit.y;
+          drawW = fit.w;
+          drawH = fit.h;
+          scale = fit.s;
+
+          currentPoints = [];
+
+          // Enable detect button when image is loaded
+          if (document.getElementById('greenscreen-toggle').checked) {
+            document.getElementById('detect-greenscreen-btn').disabled = false;
+            document.getElementById('setup-hint').innerHTML =
+              'Click "Detect Green Screen Now" button to find the frame, or draw manually';
+          } else {
+            document.getElementById('setup-hint').innerHTML =
+              'Click and drag to draw a box around the billboard screen';
+          }
+
+          drawPreview();
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Handle canvas drag for drawing boxes and editing corners
+    let isDrawing = false;
+    let isDraggingCorner = false;
+    let isDraggingFrame = false;
+    let dragFrameIndex = -1;
+    let dragPointIndex = -1;
+    let selectedFrameIndex = -1;
+    let startX, startY;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+
+    function getClickedCorner(x, y) {
+      const hitRadius = 15;
+
+      // Check current frame first
+      if (currentPoints.length > 0) {
+        for (let i = 0; i < currentPoints.length; i++) {
+          const cx = drawX + currentPoints[i][0] * scale;
+          const cy = drawY + currentPoints[i][1] * scale;
+          const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
+          if (dist < hitRadius) {
+            return { frame: -1, point: i }; // -1 means current frame
+          }
+        }
+      }
+
+      // Check all saved frames
+      for (let fi = 0; fi < allFrames.length; fi++) {
+        const framePoints = allFrames[fi].points;
+        for (let pi = 0; pi < framePoints.length; pi++) {
+          const cx = drawX + framePoints[pi][0] * scale;
+          const cy = drawY + framePoints[pi][1] * scale;
+          const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
+          if (dist < hitRadius) {
+            return { frame: fi, point: pi };
+          }
+        }
+      }
+      return null;
+    }
+
+    function isPointInFrame(x, y, framePoints) {
+      // Check if point is inside polygon using ray casting
+      const imgX = (x - drawX) / scale;
+      const imgY = (y - drawY) / scale;
+
+      let inside = false;
+      for (let i = 0, j = framePoints.length - 1; i < framePoints.length; j = i++) {
+        const xi = framePoints[i][0], yi = framePoints[i][1];
+        const xj = framePoints[j][0], yj = framePoints[j][1];
+
+        const intersect = ((yi > imgY) !== (yj > imgY))
+            && (imgX < (xj - xi) * (imgY - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    function getHoveredFrame(x, y) {
+      // Check current frame first
+      if (currentPoints.length === 4 && isPointInFrame(x, y, currentPoints)) {
+        return -1;
+      }
+
+      // Check all saved frames
+      for (let fi = allFrames.length - 1; fi >= 0; fi--) {
+        if (isPointInFrame(x, y, allFrames[fi].points)) {
+          return fi;
+        }
+      }
+      return null;
+    }
+
+    canvas.addEventListener('mousedown', function(e) {
+      if (currentMode !== 'setup' || !previewImg) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Shift+Click to detect color at clicked point
+      if (e.shiftKey) {
+        // Check if click is inside image
+        if (x < drawX || y < drawY || x > drawX + drawW || y > drawY + drawH) return;
+
+        // Get pixel color from image
+        const ix = Math.floor((x - drawX) / scale);
+        const iy = Math.floor((y - drawY) / scale);
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = previewImg.width;
+        tempCanvas.height = previewImg.height;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(previewImg, 0, 0);
+        const imageData = tempCtx.getImageData(ix, iy, 1, 1);
+        const r = imageData.data[0];
+        const g = imageData.data[1];
+        const b = imageData.data[2];
+        const hex = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+
+        console.log(`[Color Picker] Clicked at (${ix}, ${iy}): RGB(${r}, ${g}, ${b}) = ${hex}`);
+
+        // Optionally set it as the target color
+        document.getElementById('greenscreen-color').value = hex;
+        document.getElementById('greenscreen-color-hex').value = hex;
+
+        showMessage(`Color detected: ${hex} (RGB: ${r}, ${g}, ${b})`, 'success');
+        return;
+      }
+
+      // Check if clicking on a corner (highest priority)
+      const corner = getClickedCorner(x, y);
+      if (corner) {
+        isDraggingCorner = true;
+        dragFrameIndex = corner.frame;
+        dragPointIndex = corner.point;
+        if (dragFrameIndex >= 0) {
+          selectedFrameIndex = dragFrameIndex;
+        }
+        drawPreview();
+        return;
+      }
+
+      // Check if clicking inside a frame (to drag entire frame)
+      const hoveredFrame = getHoveredFrame(x, y);
+      if (hoveredFrame !== null) {
+        isDraggingFrame = true;
+        dragFrameIndex = hoveredFrame;
+        selectedFrameIndex = hoveredFrame;
+        startX = x;
+        startY = y;
+        canvas.style.cursor = 'move';
+        drawPreview();
+        return;
+      }
+
+      // Check if click is inside image
+      if (x < drawX || y < drawY || x > drawX + drawW || y > drawY + drawH) return;
+
+      // Start drawing new box
+      isDrawing = true;
+      startX = x;
+      startY = y;
+      selectedFrameIndex = -1;
+    });
+
+    canvas.addEventListener('mousemove', function(e) {
+      if (currentMode !== 'setup' || !previewImg) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      // Dragging a corner
+      if (isDraggingCorner) {
+        const ix = (x - drawX) / scale;
+        const iy = (y - drawY) / scale;
+
+        if (dragFrameIndex === -1) {
+          // Editing current frame
+          currentPoints[dragPointIndex] = [Math.round(ix), Math.round(iy)];
+        } else {
+          // Editing saved frame
+          allFrames[dragFrameIndex].points[dragPointIndex] = [Math.round(ix), Math.round(iy)];
+        }
+        drawPreview();
+        return;
+      }
+
+      // Dragging entire frame
+      if (isDraggingFrame) {
+        const deltaX = (x - startX) / scale;
+        const deltaY = (y - startY) / scale;
+
+        if (dragFrameIndex === -1) {
+          // Move current frame
+          currentPoints = currentPoints.map(pt => [
+            Math.round(pt[0] + deltaX),
+            Math.round(pt[1] + deltaY)
+          ]);
+        } else {
+          // Move saved frame
+          allFrames[dragFrameIndex].points = allFrames[dragFrameIndex].points.map(pt => [
+            Math.round(pt[0] + deltaX),
+            Math.round(pt[1] + deltaY)
+          ]);
+        }
+
+        startX = x;
+        startY = y;
+        drawPreview();
+        return;
+      }
+
+      // Drawing new box
+      if (isDrawing) {
+        drawPreview();
+        const ctx = canvas.getContext('2d');
+
+        // Draw grey fill
+        ctx.fillStyle = 'rgba(128, 128, 128, 0.3)';
+        const width = x - startX;
+        const height = y - startY;
+        ctx.fillRect(startX, startY, width, height);
+
+        // Draw dashed outline with hard corners
+        ctx.strokeStyle = '#667eea';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([8, 4]);
+        ctx.lineCap = 'butt';
+        ctx.lineJoin = 'miter';
+        ctx.strokeRect(startX, startY, width, height);
+        ctx.setLineDash([]);
+        return;
+      }
+
+      // Update cursor based on hover state
+      const hoveredFrame = getHoveredFrame(x, y);
+      const hoveredCorner = getClickedCorner(x, y);
+
+      if (hoveredCorner) {
+        canvas.style.cursor = 'pointer';
+      } else if (hoveredFrame !== null) {
+        canvas.style.cursor = 'move';
+      } else {
+        canvas.style.cursor = 'crosshair';
+      }
+    });
+
+    canvas.addEventListener('mouseup', function(e) {
+      if (currentMode !== 'setup' || !previewImg) return;
+
+      if (isDraggingCorner) {
+        isDraggingCorner = false;
+        dragFrameIndex = -1;
+        dragPointIndex = -1;
+        canvas.style.cursor = 'crosshair';
+        drawPreview();
+        return;
+      }
+
+      if (isDraggingFrame) {
+        isDraggingFrame = false;
+        dragFrameIndex = -1;
+        canvas.style.cursor = 'crosshair';
+        drawPreview();
+        return;
+      }
+
+      if (!isDrawing) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const endX = e.clientX - rect.left;
+      const endY = e.clientY - rect.top;
+
+      const topLeftX = (Math.min(startX, endX) - drawX) / scale;
+      const topLeftY = (Math.min(startY, endY) - drawY) / scale;
+      const bottomRightX = (Math.max(startX, endX) - drawX) / scale;
+      const bottomRightY = (Math.max(startY, endY) - drawY) / scale;
+
+      currentPoints = [
+        [Math.round(topLeftX), Math.round(topLeftY)],
+        [Math.round(bottomRightX), Math.round(topLeftY)],
+        [Math.round(bottomRightX), Math.round(bottomRightY)],
+        [Math.round(topLeftX), Math.round(bottomRightY)]
+      ];
+
+      isDrawing = false;
+      drawPreview();
+
+      document.getElementById('add-frame-btn').disabled = false;
+      document.getElementById('setup-hint').innerHTML =
+        '✓ Frame drawn! Drag corners to adjust, or drag inside to move. Click "Add Frame" to save.';
+
+      // Show current frame config section and test preview section when frame is drawn
+      document.getElementById('current-frame-config-section').style.display = 'block';
+      document.getElementById('test-preview-section').style.display = 'block';
+    });
+
+    // Add current frame to allFrames
+    function addFrame() {
+      if (currentPoints.length !== 4) {
+        showMessage('Please select 4 corner points', 'error');
+        return;
+      }
+
+      // Collect all frame config values
+      const frameConfig = {
+        brightness: parseInt(document.getElementById('frame-brightness').value),
+        contrast: parseInt(document.getElementById('frame-contrast').value),
+        saturation: parseInt(document.getElementById('frame-saturation').value),
+        depthMultiplier: parseInt(document.getElementById('frame-depth-multiplier').value),
+        lightDirection: document.getElementById('frame-light-direction').value,
+        imageBlur: parseInt(document.getElementById('frame-image-blur').value),
+        edgeBlur: parseInt(document.getElementById('frame-edge-blur').value),
+        overlayOpacity: parseInt(document.getElementById('frame-overlay-opacity').value),
+        shadowIntensity: parseInt(document.getElementById('frame-shadow-intensity').value),
+        lightingAdjustment: parseInt(document.getElementById('frame-lighting-adjustment').value),
+        colorTemperature: parseInt(document.getElementById('frame-color-temperature').value),
+        vignette: parseInt(document.getElementById('frame-vignette').value),
+        edgeSmoother: parseInt(document.getElementById('frame-edge-smoother').value),
+        sharpening: parseInt(document.getElementById('frame-sharpening').value)
+      };
+
+      // Store frame with points and all config
+      allFrames.push({
+        points: [...currentPoints],
+        config: frameConfig
+      });
+
+      currentPoints = [];
+      document.getElementById('add-frame-btn').disabled = true;
+      document.getElementById('save-all-btn').disabled = false;
+      document.getElementById('frames-info').style.display = 'block';
+      document.getElementById('frame-count').textContent = allFrames.length;
+
+      document.getElementById('setup-hint').innerHTML =
+        `✓ Frame ${allFrames.length} added! Draw another box for more frames, or "Save All Frames" when done.`;
+
+      // Hide frame config and test preview sections when frame is added
+      document.getElementById('current-frame-config-section').style.display = 'none';
+      document.getElementById('test-preview-section').style.display = 'none';
+      document.getElementById('test-preview-toggle').checked = false;
+      testPreviewMode = false;
+
+      // Reset all config to defaults for next frame
+      document.getElementById('frame-brightness').value = 100;
+      document.getElementById('frame-brightness-value').textContent = '100';
+      document.getElementById('frame-contrast').value = 100;
+      document.getElementById('frame-contrast-value').textContent = '100';
+      document.getElementById('frame-saturation').value = 100;
+      document.getElementById('frame-saturation-value').textContent = '100';
+      document.getElementById('frame-depth-multiplier').value = 15;
+      document.getElementById('frame-depth-value').textContent = '15';
+      // Reset light direction to top (default)
+      document.getElementById('frame-light-direction').value = 'top';
+      document.getElementById('frame-light-direction-label').textContent = 'Top';
+      document.querySelectorAll('.light-dir-btn').forEach(b => {
+        b.style.border = '2px solid #dee2e6';
+        b.style.background = 'white';
+        b.classList.remove('active');
+      });
+      document.querySelector('.light-dir-btn[data-direction="top"]').style.border = '2px solid #667eea';
+      document.querySelector('.light-dir-btn[data-direction="top"]').style.background = '#e3f2fd';
+      document.querySelector('.light-dir-btn[data-direction="top"]').classList.add('active');
+      document.getElementById('frame-image-blur').value = 0;
+      document.getElementById('frame-image-blur-value').textContent = '0';
+      document.getElementById('frame-edge-blur').value = 1;
+      document.getElementById('frame-edge-blur-value').textContent = '1';
+      document.getElementById('frame-overlay-opacity').value = 0;
+      document.getElementById('frame-overlay-value').textContent = '0';
+      document.getElementById('frame-shadow-intensity').value = 0;
+      document.getElementById('frame-shadow-value').textContent = '0';
+      document.getElementById('frame-lighting-adjustment').value = 0;
+      document.getElementById('frame-lighting-value').textContent = '0';
+      document.getElementById('frame-color-temperature').value = 0;
+      document.getElementById('frame-temperature-value').textContent = '0';
+      document.getElementById('frame-vignette').value = 0;
+      document.getElementById('frame-vignette-value').textContent = '0';
+      document.getElementById('frame-edge-smoother').value = 3;
+      document.getElementById('frame-edge-smoother-value').textContent = '3';
+      document.getElementById('frame-sharpening').value = 0;
+      document.getElementById('frame-sharpening-value').textContent = '0';
+
+      // Update all range slider fills
+      document.querySelectorAll('#current-frame-config-section input[type="range"]').forEach(slider => {
+        updateRangeSliderFill(slider);
+      });
+
+      testCreativeFile = null;
+      testPreviewImage = null;
+      document.getElementById('test-preview-upload').style.display = 'none';
+      document.getElementById('test-creative-upload').value = '';
+
+      drawPreview();
+    }
+
+    // Reset current frame
+    function resetCurrentFrame() {
+      currentPoints = [];
+
+      // Hide config and test preview sections when frame is reset
+      document.getElementById('current-frame-config-section').style.display = 'none';
+      document.getElementById('test-preview-section').style.display = 'none';
+      document.getElementById('test-preview-toggle').checked = false;
+      testPreviewMode = false;
+      testCreativeFile = null;
+      testPreviewImage = null;
+      document.getElementById('test-preview-upload').style.display = 'none';
+      document.getElementById('test-creative-upload').value = '';
+
+      drawPreview();
+      document.getElementById('add-frame-btn').disabled = true;
+      if (previewImg) {
+        if (allFrames.length > 0) {
+          document.getElementById('setup-hint').innerHTML =
+            `${allFrames.length} frame(s) saved. Draw another box for another frame, or "Save All Frames" when done.`;
+        } else {
+          document.getElementById('setup-hint').innerHTML =
+            'Click and drag to draw a box around the billboard screen';
+        }
+      }
+    }
+
+    // Clear all frames
+    function clearAllFrames() {
+      if (allFrames.length === 0 && currentPoints.length === 0) return;
+      if (!confirm('Clear all frames? This will reset your work.')) return;
+
+      allFrames = [];
+      currentPoints = [];
+      document.getElementById('add-frame-btn').disabled = true;
+      document.getElementById('save-all-btn').disabled = true;
+      document.getElementById('frames-info').style.display = 'none';
+      document.getElementById('frame-count').textContent = '0';
+      document.getElementById('current-frame-config-section').style.display = 'none';
+      drawPreview();
+
+      if (previewImg) {
+        document.getElementById('setup-hint').innerHTML =
+          'Click and drag to draw a box around the billboard screen';
+      }
+    }
+
+    // Save all frames
+    async function saveAllFrames() {
+      const locationKey = document.getElementById('setup-location').value;
+      const timeOfDay = document.getElementById('setup-time-of-day').value;
+      const finish = document.getElementById('setup-finish').value;
+
+      if (!locationKey) {
+        showMessage('Please select a location', 'error');
+        return;
+      }
+
+      // Add current frame if it has 4 points (with current config)
+      if (currentPoints.length === 4) {
+        const frameConfig = {
+          brightness: parseInt(document.getElementById('frame-brightness').value),
+          contrast: parseInt(document.getElementById('frame-contrast').value),
+          saturation: parseInt(document.getElementById('frame-saturation').value),
+          depthMultiplier: parseInt(document.getElementById('frame-depth-multiplier').value),
+          lightDirection: document.getElementById('frame-light-direction').value,
+          imageBlur: parseInt(document.getElementById('frame-image-blur').value),
+          edgeBlur: parseInt(document.getElementById('frame-edge-blur').value),
+          overlayOpacity: parseInt(document.getElementById('frame-overlay-opacity').value),
+          shadowIntensity: parseInt(document.getElementById('frame-shadow-intensity').value),
+          lightingAdjustment: parseInt(document.getElementById('frame-lighting-adjustment').value),
+          colorTemperature: parseInt(document.getElementById('frame-color-temperature').value),
+          vignette: parseInt(document.getElementById('frame-vignette').value),
+          edgeSmoother: parseInt(document.getElementById('frame-edge-smoother').value),
+          sharpening: parseInt(document.getElementById('frame-sharpening').value)
+        };
+
+        allFrames.push({
+          points: [...currentPoints],
+          config: frameConfig
+        });
+        currentPoints = [];
+      }
+
+      if (allFrames.length === 0) {
+        showMessage('Please add at least one frame', 'error');
+        return;
+      }
+
+      if (!currentPhoto) {
+        showMessage('Please upload a photo', 'error');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('location_key', locationKey);
+      formData.append('time_of_day', timeOfDay);
+      formData.append('finish', finish);
+      formData.append('photo', currentPhoto);
+      formData.append('frames_data', JSON.stringify(allFrames));
+      // No global config - all config is per-frame now
+
+      try {
+        const response = await fetch('/api/mockup/save-frame', {
+          method: 'POST',
+          body: formData
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+          showMessage(`Saved ${allFrames.length} frame(s) successfully!`, 'success');
+          clearAllFrames();
+          document.getElementById('billboard-photo').value = '';
+          previewImg = null;
+          currentPhoto = null;
+          loadPhotoList();
+        } else {
+          showMessage(result.error || 'Failed to save frames', 'error');
+        }
+      } catch (err) {
+        showMessage('Network error: ' + err.message, 'error');
+      }
+    }
+
+    // Load photo list
+    async function loadPhotoList() {
+      const locationKey = document.getElementById('setup-location').value;
+      if (!locationKey) {
+        document.getElementById('photo-list').innerHTML = '';
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/mockup/photos/${locationKey}`);
+        const data = await response.json();
+
+        const photoList = document.getElementById('photo-list');
+        if (!data.photos || data.photos.length === 0) {
+          photoList.innerHTML = '<p style="grid-column: 1/-1; text-align: center; color: #6c757d;">No photos configured for this location yet.</p>';
+          return;
+        }
+
+        photoList.innerHTML = data.photos.map(photo => `
+          <div class="photo-card">
+            <img src="/api/mockup/photo/${locationKey}/${photo}" alt="${photo}">
+            <div class="photo-card-info">
+              <h4>${photo}</h4>
+              <button class="btn btn-danger btn-sm" onclick="deletePhoto('${locationKey}', '${photo}')">Delete</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        showMessage('Failed to load photos', 'error');
+      }
+    }
+
+    // Delete photo
+    async function deletePhoto(locationKey, photoFilename) {
+      if (!confirm(`Delete ${photoFilename}?`)) return;
+
+      try {
+        const response = await fetch(`/api/mockup/photo/${locationKey}/${photoFilename}`, {
+          method: 'DELETE'
+        });
+
+        if (response.ok) {
+          showMessage('Photo deleted successfully', 'success');
+          loadPhotoList();
+        } else {
+          const result = await response.json();
+          showMessage(result.error || 'Failed to delete photo', 'error');
+        }
+      } catch (err) {
+        showMessage('Network error: ' + err.message, 'error');
+      }
+    }
+
+    // Generate mockup
+    async function generateMockup() {
+      const locationKey = document.getElementById('generate-location').value;
+      const timeOfDay = document.getElementById('generate-time-of-day').value;
+      const finish = document.getElementById('generate-finish').value;
+      const creativeFile = document.getElementById('creative-photo').files[0];
+      const aiPrompt = document.getElementById('ai-creative-prompt').value.trim();
+
+      if (!locationKey) {
+        showMessage('Please select a location', 'error');
+        return;
+      }
+
+      if (!creativeFile && !aiPrompt) {
+        showMessage('Please either upload a creative image OR provide an AI prompt', 'error');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('location_key', locationKey);
+
+      // If a template is selected, use its specific time_of_day/finish/photo
+      // Otherwise use dropdown values for random selection
+      if (selectedTemplateConfig) {
+        formData.append('time_of_day', selectedTemplateConfig.time_of_day);
+        formData.append('finish', selectedTemplateConfig.finish);
+        formData.append('specific_photo', selectedTemplateConfig.photo);
+
+        // Collect current config values from controls
+        const frameConfig = {
+          brightness: parseInt(document.getElementById('gen-frame-brightness').value),
+          contrast: parseInt(document.getElementById('gen-frame-contrast').value),
+          saturation: parseInt(document.getElementById('gen-frame-saturation').value),
+          depthMultiplier: parseInt(document.getElementById('gen-frame-depth-multiplier').value),
+          lightDirection: document.getElementById('gen-frame-light-direction').value,
+          imageBlur: parseInt(document.getElementById('gen-frame-image-blur').value),
+          edgeBlur: parseInt(document.getElementById('gen-frame-edge-blur').value),
+          overlayOpacity: parseInt(document.getElementById('gen-frame-overlay-opacity').value),
+          shadowIntensity: parseInt(document.getElementById('gen-frame-shadow-intensity').value),
+          lightingAdjustment: parseInt(document.getElementById('gen-frame-lighting-adjustment').value),
+          colorTemperature: parseInt(document.getElementById('gen-frame-color-temperature').value),
+          vignette: parseInt(document.getElementById('gen-frame-vignette').value),
+          edgeSmoother: parseInt(document.getElementById('gen-frame-edge-smoother').value),
+          sharpening: parseInt(document.getElementById('gen-frame-sharpening').value)
+        };
+
+        formData.append('frame_config', JSON.stringify(frameConfig));
+      } else {
+        // No template selected - use dropdown values for random selection
+        formData.append('time_of_day', timeOfDay);
+        formData.append('finish', finish);
+      }
+
+      // If AI prompt is provided, use AI mode (ignore uploaded file)
+      if (aiPrompt) {
+        formData.append('ai_prompt', aiPrompt);
+      } else {
+        formData.append('creative', creativeFile);
+      }
+
+      document.getElementById('loading').classList.add('active');
+      document.getElementById('generate-btn').disabled = true;
+      document.getElementById('mockup-result').innerHTML = '';
+
+      try {
+        const response = await fetch('/api/mockup/generate', {
+          method: 'POST',
+          body: formData
+        });
+
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+
+          document.getElementById('mockup-result').innerHTML = `
+            <h3 style="margin-bottom: 15px;">Generated Mockup</h3>
+            <img src="${url}" alt="Generated Mockup">
+            <div style="margin-top: 15px;">
+              <a href="${url}" download="mockup.jpg" class="btn btn-primary">Download Mockup</a>
+            </div>
+          `;
+          showMessage('Mockup generated successfully!', 'success');
+        } else {
+          const result = await response.json();
+          showMessage(result.error || 'Failed to generate mockup', 'error');
+        }
+      } catch (err) {
+        showMessage('Network error: ' + err.message, 'error');
+      } finally {
+        document.getElementById('loading').classList.remove('active');
+        document.getElementById('generate-btn').disabled = false;
+      }
+    }
+
+    // Show message
+    function showMessage(text, type) {
+      const messageEl = document.getElementById('message');
+      messageEl.textContent = text;
+      messageEl.className = `message ${type}`;
+
+      setTimeout(() => {
+        messageEl.className = 'message';
+      }, 5000);
+    }
+
+    // Event listeners
+    document.getElementById('setup-location').addEventListener('change', loadPhotoList);
+
+    // Update generate button state when either upload or AI prompt changes
+    function updateGenerateButtonState() {
+      const hasFile = document.getElementById('creative-photo').files.length > 0;
+      const hasPrompt = document.getElementById('ai-creative-prompt').value.trim().length > 0;
+      const hasLocation = document.getElementById('generate-location').value !== '';
+      document.getElementById('generate-btn').disabled = !hasLocation || (!hasFile && !hasPrompt);
+    }
+
+    document.getElementById('creative-photo').addEventListener('change', updateGenerateButtonState);
+    document.getElementById('ai-creative-prompt').addEventListener('input', updateGenerateButtonState);
+    document.getElementById('generate-location').addEventListener('change', updateGenerateButtonState);
+
+    // Load templates when location/time/finish changes
+    let selectedTemplateConfig = null;
+
+    async function loadTemplatesForGenerate() {
+      const locationKey = document.getElementById('generate-location').value;
+      const timeOfDay = document.getElementById('generate-time-of-day').value;
+      const finish = document.getElementById('generate-finish').value;
+
+      if (!locationKey) {
+        document.getElementById('generate-template-selection').style.display = 'none';
+        document.getElementById('generate-frame-config-section').style.display = 'none';
+        selectedTemplateConfig = null; // Clear selected template
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/mockup/templates/${locationKey}?time_of_day=${timeOfDay}&finish=${finish}`);
+        const data = await response.json();
+
+        const templateSelect = document.getElementById('generate-template');
+        templateSelect.innerHTML = '<option value="">-- Select a template --</option>';
+        selectedTemplateConfig = null; // Clear selected template when loading new list
+
+        if (data.templates && data.templates.length > 0) {
+          data.templates.forEach(template => {
+            const displayName = `${template.photo} (${template.time_of_day}/${template.finish}, ${template.frame_count} frame${template.frame_count > 1 ? 's' : ''})`;
+            const option = document.createElement('option');
+            option.value = JSON.stringify({
+              photo: template.photo,
+              time_of_day: template.time_of_day,
+              finish: template.finish,
+              config: template.config
+            });
+            option.textContent = displayName;
+            templateSelect.appendChild(option);
+          });
+
+          document.getElementById('generate-template-selection').style.display = 'block';
+        } else {
+          document.getElementById('generate-template-selection').style.display = 'none';
+          document.getElementById('generate-config-toggle-section').style.display = 'none';
+          document.getElementById('generate-frame-config-section').style.display = 'none';
+          selectedTemplateConfig = null; // Clear selected template if no templates available
+        }
+      } catch (err) {
+        console.error('Error loading templates:', err);
+        showMessage('Failed to load templates', 'error');
+      }
+    }
+
+    // Load and display config when template is selected
+    function loadTemplateConfig() {
+      const templateSelect = document.getElementById('generate-template');
+      const selectedValue = templateSelect.value;
+
+      if (!selectedValue) {
+        document.getElementById('generate-config-toggle-section').style.display = 'none';
+        document.getElementById('generate-frame-config-section').style.display = 'none';
+        document.getElementById('generate-config-toggle').checked = false;
+        selectedTemplateConfig = null;
+        return;
+      }
+
+      try {
+        const templateData = JSON.parse(selectedValue);
+        selectedTemplateConfig = templateData;
+        const config = templateData.config || {};
+
+        // Populate all config controls with saved values
+        document.getElementById('gen-frame-brightness').value = config.brightness || 100;
+        document.getElementById('gen-frame-brightness-value').textContent = config.brightness || 100;
+        document.getElementById('gen-frame-contrast').value = config.contrast || 100;
+        document.getElementById('gen-frame-contrast-value').textContent = config.contrast || 100;
+        document.getElementById('gen-frame-saturation').value = config.saturation || 100;
+        document.getElementById('gen-frame-saturation-value').textContent = config.saturation || 100;
+        document.getElementById('gen-frame-depth-multiplier').value = config.depthMultiplier || 15;
+        document.getElementById('gen-frame-depth-value').textContent = config.depthMultiplier || 15;
+        document.getElementById('gen-frame-light-direction').value = config.lightDirection || 'top';
+        document.getElementById('gen-frame-image-blur').value = config.imageBlur || 0;
+        document.getElementById('gen-frame-image-blur-value').textContent = config.imageBlur || 0;
+        document.getElementById('gen-frame-edge-blur').value = config.edgeBlur || 1;
+        document.getElementById('gen-frame-edge-blur-value').textContent = config.edgeBlur || 1;
+        document.getElementById('gen-frame-overlay-opacity').value = config.overlayOpacity || 0;
+        document.getElementById('gen-frame-overlay-value').textContent = config.overlayOpacity || 0;
+        document.getElementById('gen-frame-shadow-intensity').value = config.shadowIntensity || 0;
+        document.getElementById('gen-frame-shadow-value').textContent = config.shadowIntensity || 0;
+        document.getElementById('gen-frame-lighting-adjustment').value = config.lightingAdjustment || 0;
+        document.getElementById('gen-frame-lighting-value').textContent = config.lightingAdjustment || 0;
+        document.getElementById('gen-frame-color-temperature').value = config.colorTemperature || 0;
+        document.getElementById('gen-frame-temperature-value').textContent = config.colorTemperature || 0;
+        document.getElementById('gen-frame-vignette').value = config.vignette || 0;
+        document.getElementById('gen-frame-vignette-value').textContent = config.vignette || 0;
+        document.getElementById('gen-frame-edge-smoother').value = config.edgeSmoother || 3;
+        document.getElementById('gen-frame-edge-smoother-value').textContent = config.edgeSmoother || 3;
+        document.getElementById('gen-frame-sharpening').value = config.sharpening || 0;
+        document.getElementById('gen-frame-sharpening-value').textContent = config.sharpening || 0;
+
+        // Update light direction buttons
+        const lightDirection = config.lightDirection || 'top';
+        document.querySelectorAll('.gen-light-dir-btn').forEach(btn => {
+          btn.style.border = '2px solid #dee2e6';
+          btn.style.background = 'white';
+          btn.classList.remove('active');
+        });
+        const activeBtn = document.querySelector(`.gen-light-dir-btn[data-direction="${lightDirection}"]`);
+        if (activeBtn) {
+          activeBtn.style.border = '2px solid #667eea';
+          activeBtn.style.background = '#e3f2fd';
+          activeBtn.classList.add('active');
+        }
+
+        const labelMap = {
+          'top-left': 'Top Left',
+          'top': 'Top',
+          'top-right': 'Top Right',
+          'left': 'Left',
+          'center': 'Center',
+          'right': 'Right',
+          'bottom-left': 'Bottom Left',
+          'bottom': 'Bottom',
+          'bottom-right': 'Bottom Right'
+        };
+        document.getElementById('gen-frame-light-direction-label').textContent = labelMap[lightDirection] || 'Top';
+
+        // Update all range slider fills
+        document.querySelectorAll('#generate-frame-config-section input[type="range"]').forEach(slider => {
+          updateRangeSliderFill(slider);
+        });
+
+        // Show the toggle section (config stays hidden until user enables it)
+        document.getElementById('generate-config-toggle-section').style.display = 'block';
+
+        // If toggle is already checked, show config section
+        if (document.getElementById('generate-config-toggle').checked) {
+          document.getElementById('generate-frame-config-section').style.display = 'block';
+        }
+      } catch (err) {
+        console.error('Error loading template config:', err);
+        showMessage('Error loading template configuration', 'error');
+      }
+    }
+
+    // Toggle config section visibility
+    document.getElementById('generate-config-toggle').addEventListener('change', function(e) {
+      const configSection = document.getElementById('generate-frame-config-section');
+      configSection.style.display = e.target.checked ? 'block' : 'none';
+    });
+
+    // Add event listeners for generate mode controls
+    document.getElementById('generate-location').addEventListener('change', loadTemplatesForGenerate);
+    document.getElementById('generate-time-of-day').addEventListener('change', loadTemplatesForGenerate);
+    document.getElementById('generate-finish').addEventListener('change', loadTemplatesForGenerate);
+    document.getElementById('generate-template').addEventListener('change', loadTemplateConfig);
+
+    // Add event listeners for all generate mode range sliders
+    document.getElementById('gen-frame-brightness').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-brightness-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-contrast').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-contrast-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-saturation').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-saturation-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-depth-multiplier').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-depth-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-image-blur').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-image-blur-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-edge-blur').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-edge-blur-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-overlay-opacity').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-overlay-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-shadow-intensity').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-shadow-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-lighting-adjustment').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-lighting-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-color-temperature').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-temperature-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-vignette').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-vignette-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-edge-smoother').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-edge-smoother-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+    document.getElementById('gen-frame-sharpening').addEventListener('input', function(e) {
+      document.getElementById('gen-frame-sharpening-value').textContent = e.target.value;
+      updateRangeSliderFill(e.target);
+    });
+
+    // Light direction button handler for generate mode
+    document.querySelectorAll('.gen-light-dir-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        // Remove active class from all buttons
+        document.querySelectorAll('.gen-light-dir-btn').forEach(b => {
+          b.style.border = '2px solid #dee2e6';
+          b.style.background = 'white';
+          b.classList.remove('active');
+        });
+
+        // Add active class to clicked button
+        this.style.border = '2px solid #667eea';
+        this.style.background = '#e3f2fd';
+        this.classList.add('active');
+
+        // Update hidden input and label
+        const direction = this.dataset.direction;
+        document.getElementById('gen-frame-light-direction').value = direction;
+
+        // Update label text
+        const labelMap = {
+          'top-left': 'Top Left',
+          'top': 'Top',
+          'top-right': 'Top Right',
+          'left': 'Left',
+          'center': 'Center',
+          'right': 'Right',
+          'bottom-left': 'Bottom Left',
+          'bottom': 'Bottom',
+          'bottom-right': 'Bottom Right'
+        };
+        document.getElementById('gen-frame-light-direction-label').textContent = labelMap[direction];
+      });
+    });
+
+    // Initialize
+    loadLocations();
+  </script>
+</body>
+</html>
