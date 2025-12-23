@@ -5,7 +5,7 @@ This module provides a single source of truth for timezone handling
 across the entire application.
 
 Usage:
-    from utils.time import UAE_TZ, get_uae_time, format_uae_datetime
+    from core.utils.time import UAE_TZ, get_uae_time, format_uae_datetime
 """
 
 from datetime import datetime, timedelta, timezone

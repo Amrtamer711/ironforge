@@ -12,7 +12,7 @@ from pydantic import BaseModel, field_validator
 
 from crm_security import require_permission_user as require_permission, AuthUser
 from integrations.rbac import get_rbac_client
-from utils.logging import get_logger
+from core.utils.logging import get_logger
 
 logger = get_logger("api.chat")
 

@@ -19,7 +19,7 @@ from crm_security import (
     require_auth_user as require_auth,
     has_permission,
 )
-from utils.logging import get_logger
+from core.utils.logging import get_logger
 
 router = APIRouter(prefix="/api/files", tags=["files"])
 logger = get_logger("api.files")

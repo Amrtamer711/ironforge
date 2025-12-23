@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from utils.logging import get_logger
+from core.utils.logging import get_logger
 
 logger = get_logger("db.migrations")
 

@@ -17,8 +17,8 @@ from crm_security import (
     require_permission_user as require_permission,
     has_permission,
 )
-from utils.logging import get_logger
-from utils.time import get_uae_time
+from core.utils.logging import get_logger
+from core.utils.time import get_uae_time
 
 router = APIRouter(prefix="/costs", tags=["costs"])
 logger = get_logger("api.costs")

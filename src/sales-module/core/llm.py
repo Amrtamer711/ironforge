@@ -19,7 +19,7 @@ from integrations.channels.base import ChannelType
 from integrations.llm.prompts.bo_editing import get_bo_edit_prompt
 from integrations.llm.prompts.chat import get_main_system_prompt
 from integrations.llm.schemas.bo_editing import get_bo_edit_response_schema
-from utils.task_queue import mockup_queue
+from core.utils.task_queue import mockup_queue
 from workflows.bo_parser import BookingOrderParser
 
 
@@ -1069,7 +1069,7 @@ async def main_llm_loop(
     document_files = []  # For PDFs, Excel, etc.
 
     if has_files and channel_event:
-        from utils.constants import is_document_mimetype, is_image_mimetype
+        from core.utils.constants import is_document_mimetype, is_image_mimetype
 
         files = channel_event.get("files", [])
         if not files and channel_event.get("subtype") == "file_share" and "file" in channel_event:

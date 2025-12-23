@@ -35,9 +35,9 @@ from api.routers import (
     slack_router,
 )
 from app_settings import settings
-from utils.font_utils import install_custom_fonts
-from utils.logging import get_logger, logging_middleware_helper
-from utils.time import get_uae_time
+from core.utils.font_utils import install_custom_fonts
+from core.utils.logging import get_logger, logging_middleware_helper
+from core.utils.time import get_uae_time
 
 # Install custom fonts on startup
 install_custom_fonts()

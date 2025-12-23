@@ -48,6 +48,43 @@ from core.utils.memory import (
     get_memory_usage,
     check_memory_threshold,
 )
+from core.utils.logging import (
+    get_logger,
+    setup_logging,
+    get_request_id,
+    logging_middleware_helper,
+)
+from core.utils.time import (
+    UAE_TZ,
+    get_uae_time,
+    format_uae_datetime,
+)
+from core.utils.task_queue import (
+    MockupTaskQueue,
+    mockup_queue,
+)
+from core.utils.audit import (
+    AuditAction,
+    AuditEvent,
+    AuditLogger,
+    audit_action,
+    audit_logger,
+)
+from core.utils.files import (
+    MAX_FILE_SIZE_DEFAULT,
+    MAX_FILE_SIZE_DOCUMENT,
+    MAX_FILE_SIZE_IMAGE,
+    calculate_file_hash,
+    calculate_sha256,
+    format_file_size,
+    get_file_extension,
+    get_mime_type,
+    validate_file_size,
+)
+from core.utils.constants import (
+    is_image_mimetype,
+    is_document_mimetype,
+)
 
 __all__ = [
     # Location utilities
@@ -87,4 +124,35 @@ __all__ = [
     "cleanup_memory",
     "get_memory_usage",
     "check_memory_threshold",
+    # Logging utilities
+    "get_logger",
+    "setup_logging",
+    "get_request_id",
+    "logging_middleware_helper",
+    # Time utilities
+    "UAE_TZ",
+    "get_uae_time",
+    "format_uae_datetime",
+    # Task queue
+    "MockupTaskQueue",
+    "mockup_queue",
+    # Audit utilities
+    "AuditAction",
+    "AuditEvent",
+    "AuditLogger",
+    "audit_action",
+    "audit_logger",
+    # File utilities (extended)
+    "MAX_FILE_SIZE_DEFAULT",
+    "MAX_FILE_SIZE_DOCUMENT",
+    "MAX_FILE_SIZE_IMAGE",
+    "calculate_file_hash",
+    "calculate_sha256",
+    "format_file_size",
+    "get_file_extension",
+    "get_mime_type",
+    "validate_file_size",
+    # Constants
+    "is_image_mimetype",
+    "is_document_mimetype",
 ]

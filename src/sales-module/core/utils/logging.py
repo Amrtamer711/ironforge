@@ -8,7 +8,7 @@ This module provides:
 - Log level configuration per module
 
 Usage:
-    from utils.logging import setup_logging, get_logger, get_request_id
+    from core.utils.logging import setup_logging, get_logger, get_request_id
 
     # Setup once at application startup
     setup_logging()
@@ -29,7 +29,7 @@ import uuid
 from contextvars import ContextVar
 from typing import Any
 
-from utils.time import get_uae_time
+from core.utils.time import get_uae_time
 
 # Context variable for request ID tracking
 _request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
@@ -264,7 +264,7 @@ async def logging_middleware_helper(request, call_next):
     Helper for creating FastAPI logging middleware.
 
     Usage in api/server.py:
-        from utils.logging import logging_middleware_helper
+        from core.utils.logging import logging_middleware_helper
 
         @app.middleware("http")
         async def logging_middleware(request, call_next):

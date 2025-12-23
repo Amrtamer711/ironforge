@@ -17,7 +17,7 @@ from integrations.auth.base import (
     AuthUser,
     TokenPayload,
 )
-from utils.time import get_uae_time
+from core.utils.time import get_uae_time
 
 logger = logging.getLogger("proposal-bot")
 

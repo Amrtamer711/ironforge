@@ -182,7 +182,7 @@ async def _extract_uploaded_images(
     if "files" not in channel_event and channel_event.get("subtype") != "file_share":
         return uploaded_creatives
 
-    from utils.constants import is_image_mimetype
+    from core.utils.constants import is_image_mimetype
 
     files = channel_event.get("files", [])
     if not files and channel_event.get("subtype") == "file_share" and "file" in channel_event:

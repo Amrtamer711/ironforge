@@ -9,7 +9,7 @@ Provides a general-purpose async job queue for long-running operations with:
 - Optional persistence for job status
 
 Usage:
-    from utils.job_queue import get_job_queue, JobStatus
+    from core.utils.job_queue import get_job_queue, JobStatus
 
     # Get queue instance
     queue = get_job_queue()
@@ -38,8 +38,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from utils.logging import get_logger
-from utils.time import get_uae_time
+from core.utils.logging import get_logger
+from core.utils.time import get_uae_time
 
 logger = get_logger("utils.job_queue")
 

@@ -560,7 +560,7 @@ def _validate_file_size(file_size: int, file_type: str) -> str | None:
 
     Returns error message if invalid, None if valid.
     """
-    from utils.files import format_file_size
+    from core.utils.files import format_file_size
 
     max_size = FILE_SIZE_LIMITS.get(file_type, FILE_SIZE_LIMITS["default"])
 
@@ -656,7 +656,7 @@ async def store_bo_file(
         TrackedFile with storage info and file_id
     """
     from db.database import db
-    from utils.files import calculate_sha256, get_mime_type
+    from core.utils.files import calculate_sha256, get_mime_type
 
     storage = get_storage_client()
     file_id = str(uuid.uuid4())
@@ -808,7 +808,7 @@ async def store_proposal_file(
     from datetime import datetime
 
     from db.database import db
-    from utils.files import calculate_sha256, get_mime_type
+    from core.utils.files import calculate_sha256, get_mime_type
 
     storage = get_storage_client()
     file_id = str(uuid.uuid4())
@@ -964,7 +964,7 @@ async def store_mockup_file(
         TrackedFile with storage info
     """
     from db.database import db
-    from utils.files import calculate_sha256, get_mime_type
+    from core.utils.files import calculate_sha256, get_mime_type
 
     storage = get_storage_client()
     file_id = str(uuid.uuid4())

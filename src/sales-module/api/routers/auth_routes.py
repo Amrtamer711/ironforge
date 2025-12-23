@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from crm_security import AuthUser, get_current_auth_user as get_current_user
 from integrations.auth import get_auth_client
 from integrations.auth.providers.local_dev import LocalDevAuthProvider
-from utils.logging import get_logger
+from core.utils.logging import get_logger
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 logger = get_logger("api.auth")

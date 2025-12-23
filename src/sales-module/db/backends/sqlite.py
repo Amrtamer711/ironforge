@@ -12,7 +12,7 @@ from typing import Any
 
 from db.base import DatabaseBackend
 from db.schema import get_sqlite_schema
-from utils.time import get_uae_time
+from core.utils.time import get_uae_time
 
 logger = logging.getLogger("proposal-bot")
 

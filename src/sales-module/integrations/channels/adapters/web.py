@@ -641,7 +641,7 @@ class WebAdapter(ChannelAdapter):
         file_hash = None
         file_size = path.stat().st_size
         try:
-            from utils.files import calculate_sha256, get_file_extension
+            from core.utils.files import calculate_sha256, get_file_extension
             file_hash = calculate_sha256(path)
             file_extension = get_file_extension(actual_filename)
         except Exception as e:
@@ -876,7 +876,7 @@ class WebAdapter(ChannelAdapter):
         # Calculate file hash for integrity/deduplication
         file_hash = None
         try:
-            from utils.files import calculate_sha256, get_file_extension
+            from core.utils.files import calculate_sha256, get_file_extension
             file_hash = calculate_sha256(file_bytes)
             file_extension = get_file_extension(filename)
         except Exception as e:

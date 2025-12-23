@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from utils.time import get_uae_time
+from core.utils.time import get_uae_time
 
 logger = logging.getLogger("proposal-bot")
 

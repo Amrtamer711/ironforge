@@ -30,7 +30,7 @@ from db.database import db
 from integrations.llm import LLMClient, LLMMessage, ReasoningEffort
 from integrations.llm.prompts.bo_editing import get_coordinator_thread_prompt
 from integrations.llm.schemas.bo_editing import get_coordinator_response_schema
-from utils.time import UAE_TZ, get_uae_time
+from core.utils.time import UAE_TZ, get_uae_time
 from workflows.bo_parser import BookingOrderParser
 
 logger = logging.getLogger("proposal-bot")

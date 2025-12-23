@@ -14,8 +14,8 @@ from typing import Any
 from fastapi import APIRouter, Depends
 
 from crm_security import AuthUser, require_auth_user as require_auth
-from utils.logging import get_logger
-from utils.time import get_uae_time
+from core.utils.logging import get_logger
+from core.utils.time import get_uae_time
 
 router = APIRouter(tags=["health"])
 logger = get_logger("api.health")

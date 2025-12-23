@@ -21,7 +21,7 @@ from integrations.rbac import (
     TeamRole,
     get_rbac_client,
 )
-from utils.logging import get_logger
+from core.utils.logging import get_logger
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 logger = get_logger("api.admin")
@@ -490,7 +490,7 @@ async def rotate_api_key(
     """
     from crm_security import generate_api_key
     from db.database import db
-    from utils.time import get_uae_time
+    from core.utils.time import get_uae_time
 
 
 
@@ -1748,7 +1748,7 @@ async def set_user_manager(
     Requires: core:users:manage permission
     """
     from db.database import db
-    from utils.time import get_uae_time
+    from core.utils.time import get_uae_time
 
 
     now = get_uae_time().isoformat()

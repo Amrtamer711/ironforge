@@ -5,7 +5,7 @@ Provides structured audit logging for tracking security-relevant actions
 such as authentication, authorization changes, and data modifications.
 
 Usage:
-    from utils.audit import audit_logger, audit_action, AuditAction
+    from core.utils.audit import audit_logger, audit_action, AuditAction
 
     # Direct logging
     await audit_logger.log(
@@ -30,8 +30,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from utils.logging import get_request_id
-from utils.time import get_uae_time
+from core.utils.logging import get_request_id
+from core.utils.time import get_uae_time
 
 logger = logging.getLogger("proposal-bot")
 
@@ -150,7 +150,7 @@ class AuditLogger:
     - Query/filtering support
 
     Usage:
-        from utils.audit import audit_logger
+        from core.utils.audit import audit_logger
 
         # Log an event
         await audit_logger.log(

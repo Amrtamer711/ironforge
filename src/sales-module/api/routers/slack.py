@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 import config
-from utils.time import get_uae_time
+from core.utils.time import get_uae_time
 
 logger = config.logger
 

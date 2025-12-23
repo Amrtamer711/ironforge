@@ -9,7 +9,7 @@ from typing import Any
 
 import config
 from integrations.channels import Button, ButtonStyle
-from utils.logging import get_logger
+from core.utils.logging import get_logger
 
 logger = get_logger("core.bo_messaging")
 

@@ -6,7 +6,7 @@ Provides a unified caching interface with swappable backends:
 - Redis: Distributed cache for multi-instance deployments
 
 Usage:
-    from utils.cache import get_cache, cache
+    from core.utils.cache import get_cache, cache
 
     # Get cache instance
     cache = get_cache()
@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import Any, TypeVar
 
-from utils.logging import get_logger
+from core.utils.logging import get_logger
 
 logger = get_logger("utils.cache")
 

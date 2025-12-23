@@ -25,7 +25,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).parent
 
 # Set up structured logging
-from utils.logging import get_logger, setup_logging
+from core.utils.logging import get_logger, setup_logging
 
 # Determine if we should use JSON format (production) or console format (development)
 _is_production = os.path.exists("/data/") or os.getenv("ENVIRONMENT") == "production"
