@@ -4,7 +4,7 @@ Secure HTTP client for Asset-Management service.
 Uses short-lived JWT tokens for service-to-service authentication.
 
 Usage:
-    from clients import asset_mgmt_client
+    from integrations import asset_mgmt_client
 
     # Get locations for companies
     locations = asset_mgmt_client.get_locations(["backlite_dubai", "backlite_abudhabi"])

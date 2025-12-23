@@ -1288,7 +1288,7 @@ async def main_llm_loop(
             history.append({"role": "assistant", "content": assistant_summary, "timestamp": datetime.now().isoformat()})
 
             # Dispatch to tool router
-            from routers.tool_router import handle_tool_call
+            from handlers.tool_router import handle_tool_call
             handled = await handle_tool_call(
                 tool_call=tool_call,
                 channel=channel,
