@@ -13,7 +13,9 @@ ASSET-MANAGEMENT SUPABASE (inventory/locations/templates/mockups):
   - Storage: mockups/ - Mockup background photos per location
 
 SALES-MODULE SUPABASE (proposals/BOs/analytics):
-  - Storage: fonts/, booking_orders/
+  - Storage: fonts/ - Sofia-Pro fonts for PDF rendering
+  - Storage: uploads/ - Uploaded documents (BO PDFs, creatives)
+  - Storage: proposals/ - Generated proposal PDFs
   - public.proposals_log - Proposal history
   - public.proposal_locations - Links proposals to locations (via location_key)
   - {company}.mockup_usage - Mockup analytics
@@ -47,7 +49,7 @@ Prerequisites:
     - Asset-Management mockup_frames: asset-management/db/migrations/02_mockup_frames.sql
     - Sales-Module schema applied: sales-module/db/migrations/salesbot/01_schema.sql
     - Storage buckets created in Asset-Management: templates, mockups
-    - Storage buckets created in Sales-Module: fonts, booking_orders
+    - Storage buckets created in Sales-Module: fonts, uploads, proposals
 
 Environment Variables:
     ASSETMGMT_DEV_SUPABASE_URL, ASSETMGMT_DEV_SUPABASE_SERVICE_ROLE_KEY
