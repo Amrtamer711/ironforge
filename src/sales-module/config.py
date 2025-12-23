@@ -557,14 +557,15 @@ def _discover_templates() -> tuple[dict[str, str], list[str]]:
             description = f"{display_name} - {display_type} Display - 1 Spot - {spot} Seconds - {sov}% SOV"
             LOCATION_DETAILS[key] = description
 
-            # Upload fee
+            # Upload fee (may come as float string like "3000.0")
             upload_fee = loc.get("upload_fee")
-            UPLOAD_FEES_MAPPING[key] = int(upload_fee) if upload_fee else 3000
+            upload_fee_int = int(float(upload_fee)) if upload_fee else 3000
+            UPLOAD_FEES_MAPPING[key] = upload_fee_int
 
             # Build metadata dict matching the old format
             LOCATION_METADATA[key] = {
                 "display_name": display_name,
-                "upload_fee": int(upload_fee) if upload_fee else None,
+                "upload_fee": upload_fee_int if upload_fee else None,
                 "sov": f"{sov}%",
                 "series": loc.get("series", ""),
                 "height": loc.get("height", ""),
