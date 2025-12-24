@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/ca
 import { Button } from "../../components/ui/button";
 import { FormField } from "../../components/ui/form-field";
 import { IconActionButton } from "../../components/ui/icon-action-button";
+import { LoadingEllipsis } from "../../components/ui/loading-ellipsis";
 import { Modal, ConfirmModal } from "../../components/ui/modal";
 import { SearchInput } from "../../components/ui/search-input";
 import { SoftCard } from "../../components/ui/soft-card";
@@ -999,7 +1000,7 @@ export function AdminPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {usersQuery.isLoading ? (
-              <div className="text-sm text-black/60 dark:text-white/65">Loading…</div>
+              <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {users.map((u) => {
@@ -1092,7 +1093,7 @@ export function AdminPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {companiesQuery.isLoading ? (
-              <div className="text-sm text-black/60 dark:text-white/65">Loading…</div>
+              <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {filteredCompanyList.map((company) => (
@@ -1264,7 +1265,7 @@ export function AdminPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {permissionSetsQuery.isLoading ? (
-              <div className="text-sm text-black/60 dark:text-white/65">Loading…</div>
+              <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {filteredPermissionSetList.map((set) => (
@@ -1351,7 +1352,7 @@ export function AdminPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {permissionsQuery.isLoading ? (
-              <div className="text-sm text-black/60 dark:text-white/65">Loading…</div>
+              <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
             ) : filteredPermissionList.length ? (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                 {filteredPermissionList.map((p) => {
@@ -1437,7 +1438,7 @@ export function AdminPage() {
         maxWidth="560px"
       >
         {userModalLoading ? (
-          <div className="text-sm text-black/60 dark:text-white/65">Loading user...</div>
+          <LoadingEllipsis text="Loading user" className="text-sm text-black/60 dark:text-white/65" />
         ) : userModalMode === "add" || selectedUser ? (
           <div className="space-y-3">
             {userModalMode === "edit" ? (
@@ -1713,7 +1714,7 @@ export function AdminPage() {
                     </div>
 
                     {permissionsQuery.isLoading ? (
-                      <div className="text-sm text-black/60 dark:text-white/65">Loading permissions...</div>
+                      <LoadingEllipsis text="Loading permissions" className="text-sm text-black/60 dark:text-white/65" />
                     ) : permissionList.length ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[168px] overflow-y-auto p-1">
                         {permissionList.map((perm) => {
@@ -1899,7 +1900,7 @@ export function AdminPage() {
                   </div>
 
                   {permissionSetsQuery.isLoading ? (
-                    <div className="text-sm text-black/60 dark:text-white/65">Loading permission sets...</div>
+                    <LoadingEllipsis text="Loading permission sets" className="text-sm text-black/60 dark:text-white/65" />
                   ) : permissionSetList.length ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[168px] overflow-y-auto p-1">
                       {permissionSetList.map((set) => {
@@ -1991,7 +1992,7 @@ export function AdminPage() {
                   </div>
 
                   {permissionsQuery.isLoading ? (
-                    <div className="text-sm text-black/60 dark:text-white/65">Loading permissions...</div>
+                    <LoadingEllipsis text="Loading permissions" className="text-sm text-black/60 dark:text-white/65" />
                   ) : permissionList.length ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[110px] overflow-y-auto p-1">
                       {permissionList.map((perm) => {
@@ -2324,7 +2325,7 @@ export function AdminPage() {
                   </div>
 
                   {permissionsQuery.isLoading ? (
-                    <div className="text-sm text-black/60 dark:text-white/65">Loading permissions...</div>
+                    <LoadingEllipsis text="Loading permissions" className="text-sm text-black/60 dark:text-white/65" />
                   ) : permissionList.length ? (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[168px] overflow-y-auto p-1">
                       {permissionList.map((perm) => {

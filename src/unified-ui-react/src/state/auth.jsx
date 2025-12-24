@@ -393,6 +393,7 @@ export function AuthProvider({ children }) {
       setPendingAccess(null);
       localStorage.removeItem("mmg_user");
       localStorage.removeItem("userData");
+      sessionStorage.removeItem("msSsoPending");
     }
   }
 

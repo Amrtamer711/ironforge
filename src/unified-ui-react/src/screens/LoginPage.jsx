@@ -5,6 +5,7 @@ import { Eye, EyeOff, Grid2X2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { FormField } from "../components/ui/form-field";
+import { LoadingEllipsis } from "../components/ui/loading-ellipsis";
 import { Logo } from "../components/Logo";
 import { useAuth } from "../state/auth";
 
@@ -20,6 +21,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("admin123");
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState("");
+  const [msLoading, setMsLoading] = useState(false);
 
   const [inviteToken, setInviteToken] = useState("");
   const [fullName, setFullName] = useState("");
@@ -42,13 +44,16 @@ export function LoginPage() {
   }
 
   async function onMicrosoft() {
+    if (msLoading) return;
     setError("");
     try {
+      setMsLoading(true);
       sessionStorage.setItem("postAuthRedirect", from || "/app/chat");
+      await new Promise((resolve) => requestAnimationFrame(resolve));
       await signInWithMicrosoft();
-      nav(from, { replace: true });
     } catch (err) {
       setError(err?.message || "SSO failed");
+      setMsLoading(false);
     }
   }
 
@@ -146,9 +151,23 @@ export function LoginPage() {
 
               <div className="h-px bg-black/5 dark:bg-white/10" />
 
-              <Button variant="secondary" size="lg" className="w-full justify-center gap-2" onClick={onMicrosoft}>
-                <Grid2X2 size={18} />
-                Sign in with Microsoft
+              <Button
+                variant="secondary"
+                size="lg"
+                className="w-full justify-center gap-2"
+                onClick={onMicrosoft}
+                disabled={msLoading}
+              >
+                {msLoading ? (
+                  <>
+                    <LoadingEllipsis text="Signing you in" />
+                  </>
+                ) : (
+                  <>
+                    <Grid2X2 size={18} />
+                    Sign in with Microsoft
+                  </>
+                )}
               </Button>
 
 

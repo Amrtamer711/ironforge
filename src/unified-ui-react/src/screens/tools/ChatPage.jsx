@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Download, ExternalLink, FileText, Paperclip, Send } from "lucide-react";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
+import { LoadingEllipsis } from "../../components/ui/loading-ellipsis";
 import * as chatApi from "../../api/chat";
 import * as filesApi from "../../api/files";
 import { getAuthToken } from "../../lib/token";
@@ -20,7 +21,6 @@ export function ChatPage() {
   const endRef = useRef(null);
   const abortRef = useRef(null);
   const stickToBottomRef = useRef(true);
-  const fileOrderRef = useRef(0);
 
   const historyQuery = useQuery({
     queryKey: ["chat", "history"],
@@ -169,55 +169,6 @@ export function ChatPage() {
             if (file.pdf_filename) return file;
             return { ...file, pdf_filename: pdfFilename };
           };
-          const addFileMessages = (files) => {
-            const groupId = assistantMsgId;
-            const fileItems = (files || [])
-              .filter(Boolean)
-              .map((file) => {
-                const decorated = decorateFile(file);
-                if (!decorated) return decorated;
-                fileOrderRef.current += 1;
-                return {
-                  ...decorated,
-                  file_order: fileOrderRef.current,
-                  group_id: groupId,
-                };
-              })
-              .filter(Boolean);
-            if (!fileItems.length) return;
-            const fileMessages = fileItems.map((file) => ({
-              id: crypto.randomUUID(),
-              role: "assistant",
-              content: "",
-              files: [file],
-              status: null,
-              group_id: groupId,
-              file_order: file.file_order,
-            }));
-            setMessages((prev) => {
-              const next = [...prev];
-              const idx = next.findIndex((mm) => mm.id === assistantMsgId);
-              if (idx === -1) return [...prev, ...fileMessages];
-              const current = next[idx];
-              const hasPayload = Boolean((current.content || "").trim()) || Boolean(current.files?.length);
-              if (!hasPayload) {
-                const [first, ...rest] = fileMessages;
-                if (first) {
-                  next[idx] = { ...first, id: current.id };
-                } else {
-                  next[idx] = { ...current, status: null, content: "", files: [] };
-                }
-                if (rest.length) next.splice(idx + 1, 0, ...rest);
-                return reorderFileGroup(next, groupId);
-              }
-              const lastIdx = next.reduce(
-                (acc, msg, index) => (msg.group_id === groupId ? index : acc),
-                idx
-              );
-              next.splice(lastIdx + 1, 0, ...fileMessages);
-              return reorderFileGroup(next, groupId);
-            });
-          };
           if (pdfFilename) {
             setMessages((prev) =>
               prev.map((mm) =>
@@ -280,19 +231,57 @@ export function ChatPage() {
 
           if (evt?.type === "files" && evt.files) {
             filesReceived = true;
-            addFileMessages(evt.files);
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId
+                  ? { ...mm, files: [...(mm.files || []), ...evt.files.map(decorateFile)] }
+                  : mm
+              )
+            );
+            if (!fullContent) {
+              const withComment = evt.files.find((f) => f.comment);
+              if (withComment?.comment) {
+                fullContent = withComment.comment;
+                setMessages((prev) =>
+                  prev.map((mm) =>
+                    mm.id === assistantMsgId ? { ...mm, status: null, content: fullContent } : mm
+                  )
+                );
+              }
+            }
             return;
           }
 
           if (evt?.type === "file" && (evt.file || evt.url)) {
+            const fileData = decorateFile(evt.file || evt);
             filesReceived = true;
-            addFileMessages([evt.file || evt]);
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId
+                  ? { ...mm, files: [...(mm.files || []), fileData] }
+                  : mm
+              )
+            );
+            if (!fullContent && fileData.comment) {
+              fullContent = fileData.comment;
+              setMessages((prev) =>
+                prev.map((mm) =>
+                  mm.id === assistantMsgId ? { ...mm, status: null, content: fullContent } : mm
+                )
+              );
+            }
             return;
           }
 
           if (evt?.files) {
             filesReceived = true;
-            addFileMessages(evt.files);
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId
+                  ? { ...mm, files: [...(mm.files || []), ...evt.files.map(decorateFile)] }
+                  : mm
+              )
+            );
             return;
           }
 
@@ -336,7 +325,10 @@ export function ChatPage() {
         <div ref={scrollerRef} className="h-full overflow-y-auto px-2">
           <div className="space-y-3">
             {!historyHydrated && historyQuery.isLoading ? (
-              <div className="text-sm text-black/60 dark:text-white/65">Loading conversation...</div>
+              <LoadingEllipsis
+                text="Loading conversation"
+                className="text-sm text-black/60 dark:text-white/65"
+              />
             ) : null}
             {messages.map((m) => (
               <Message key={m.id} msg={m} onMediaLoad={() => scrollToBottom("auto")} />
@@ -367,7 +359,7 @@ export function ChatPage() {
             <Paperclip size={18} />
           </Button>
 
-          <Textarea5 value={value} onChange={setValue} placeholder="Type your message..." onEnter={send} />
+          <Textarea5 value={value} onChange={setValue} placeholder="Type your message..." onEnter={send} disabled={streaming} />
 
           <Button size="icon" className="w-12 rounded-2xl" title="Send" disabled={!canSend} onClick={send}>
             <Send size={18} />
@@ -391,12 +383,6 @@ function Message({ msg, onMediaLoad }) {
     [msg.status, msg.content]
   );
   const fallbackStatus = useMemo(() => normalizeStatusText(msg.content || ""), [msg.content]);
-  const hideBody = useMemo(() => {
-    const content = (msg.content || "").trim();
-    if (!content) return true;
-    if (!msg.files?.length || msg.files.length <= 1) return false;
-    return msg.files.some((f) => (f.comment || "").trim() === content);
-  }, [msg.content, msg.files]);
   const nameCacheRef = useRef(new Map());
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
@@ -411,7 +397,7 @@ function Message({ msg, onMediaLoad }) {
       >
         {msg.status || isStatusContent ? (
           <StatusLine text={statusText || fallbackStatus} />
-        ) : hideBody ? null : (
+        ) : (
           <div dangerouslySetInnerHTML={{ __html: formatted }} />
         )}
 
@@ -430,9 +416,6 @@ function Message({ msg, onMediaLoad }) {
               const isImage = ["jpg", "jpeg", "png", "gif", "webp", "bmp"].includes(ext);
               const showActions = !isUser;
               const isPdf = ext === "pdf";
-              const isPptx = ext === "pptx";
-              const comment = f.comment || "";
-              const commentHtml = comment ? formatContent(comment) : "";
 
               if (isImage) {
                 return (
@@ -442,12 +425,6 @@ function Message({ msg, onMediaLoad }) {
                   >
                     {showActions ? (
                       <>
-                        {comment ? (
-                          <div
-                            className="mb-2 text-xs text-black/70 dark:text-white/70"
-                            dangerouslySetInnerHTML={{ __html: commentHtml }}
-                          />
-                        ) : null}
                         <a href={url} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-lg">
                           <img
                             src={url}
@@ -513,12 +490,6 @@ function Message({ msg, onMediaLoad }) {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      {comment ? (
-                        <div
-                          className="mb-1 text-xs text-black/70 dark:text-white/70"
-                          dangerouslySetInnerHTML={{ __html: commentHtml }}
-                        />
-                      ) : null}
                       <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-black/50 dark:text-white/60">
                         {isPdf ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 text-red-700 dark:text-red-300 px-2 py-0.5">
@@ -539,19 +510,17 @@ function Message({ msg, onMediaLoad }) {
                     </div>
                     {showActions ? (
                       <div className="flex items-center gap-2">
-                        {!isPptx ? (
-                          <Button
-                            asChild
-                            size="sm"
-                            variant="ghost"
-                            className="rounded-xl"
-                          >
-                            <a href={url} target="_blank" rel="noopener noreferrer">
-                              <ExternalLink size={14} className="mr-1" />
-                              Open
-                            </a>
-                          </Button>
-                        ) : null}
+                        <Button
+                          asChild
+                          size="sm"
+                          variant="ghost"
+                          className="rounded-xl"
+                        >
+                          <a href={url} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink size={14} className="mr-1" />
+                            Open
+                          </a>
+                        </Button>
                         <Button size="sm" variant="secondary" className="rounded-xl">
                           <span
                             role="link"
@@ -669,46 +638,6 @@ function getFileExtension(value) {
   return parts.pop().toLowerCase();
 }
 
-function getFileSortRank(file) {
-  const name =
-    file?.pdf_filename ||
-    file?.filename ||
-    file?.file_name ||
-    file?.name ||
-    file?.url ||
-    file?.file_url ||
-    "";
-  const ext = getFileExtension(name);
-  if (ext === "pptx" || ext === "ppt") return 0;
-  if (ext === "pdf") return 2;
-  return 1;
-}
-
-function reorderFileGroup(list, groupId) {
-  if (!groupId) return list;
-  const groupMessages = [];
-  let firstIndex = -1;
-  list.forEach((msg, idx) => {
-    if (msg.group_id === groupId) {
-      if (firstIndex === -1) firstIndex = idx;
-      groupMessages.push(msg);
-    }
-  });
-  if (groupMessages.length <= 1) return list;
-  const sorted = [...groupMessages].sort((a, b) => {
-    const rankA = getFileSortRank(a.files?.[0]);
-    const rankB = getFileSortRank(b.files?.[0]);
-    if (rankA !== rankB) return rankA - rankB;
-    const orderA = a.file_order ?? a.files?.[0]?.file_order ?? 0;
-    const orderB = b.file_order ?? b.files?.[0]?.file_order ?? 0;
-    return orderA - orderB;
-  });
-  const filtered = list.filter((msg) => msg.group_id !== groupId);
-  const insertAt = firstIndex === -1 ? filtered.length : firstIndex;
-  filtered.splice(insertAt, 0, ...sorted);
-  return filtered;
-}
-
 function getNameFromUrl(url) {
   if (!url) return "";
   try {
@@ -737,6 +666,7 @@ function isGenericFileName(name) {
 }
 
 function getFriendlyFileName(file, url, cache) {
+  console.log(file);
   const pdfFilename = file?.filename || "";
   const raw = pdfFilename || file?.filename || file?.title || "";
   const urlName = getNameFromUrl(url);

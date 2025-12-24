@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/ca
 import { Button } from "../../components/ui/button";
 import { FormField } from "../../components/ui/form-field";
 import { SoftCard } from "../../components/ui/soft-card";
+import { LoadingEllipsis } from "../../components/ui/loading-ellipsis";
 import * as mockupApi from "../../api/mockup";
 import { useAuth, hasPermission } from "../../state/auth";
 import { cn } from "../../lib/utils";
@@ -1587,7 +1588,9 @@ export function MockupPage() {
                     ))}
                   </select>
                   <div className="text-[11px] text-black/50 dark:text-white/60">
-                    {templatesQuery.isLoading ? "Loading templates..." : ""}
+                    {templatesQuery.isLoading ? (
+                      <LoadingEllipsis text="Loading templates" />
+                    ) : null}
                   </div>
                 </FormField>
               ) : null}
@@ -1771,7 +1774,7 @@ export function MockupPage() {
                           </div>
                           <div className="flex items-center gap-2">
                             {editingTemplateLoading ? (
-                              <span className="text-xs text-black/50 dark:text-white/60">Loading...</span>
+                              <LoadingEllipsis text="Loading" className="text-xs text-black/50 dark:text-white/60" />
                             ) : null}
                             <Button variant="ghost" size="sm" className="rounded-xl" onClick={stopEditTemplate}>
                               Stop editing
@@ -1807,7 +1810,7 @@ export function MockupPage() {
                         {templatesOpen ? (
                           <div className="mt-3 space-y-2">
                             {templatesQuery.isLoading ? (
-                              <div className="text-sm text-black/60 dark:text-white/65">Loading templates...</div>
+                              <LoadingEllipsis text="Loading templates" className="text-sm text-black/60 dark:text-white/65" />
                             ) : null}
                             {!templatesQuery.isLoading && (!templateOptions.length || !location) ? (
                               <div className="text-sm text-black/60 dark:text-white/65">

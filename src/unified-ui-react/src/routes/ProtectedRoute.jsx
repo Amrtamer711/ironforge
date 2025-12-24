@@ -2,6 +2,7 @@ import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../state/auth";
 import { AccessPending } from "../screens/AccessPending";
+import { LoadingEllipsis } from "../components/ui/loading-ellipsis";
 
 export function ProtectedRoute({ children }) {
   const { user, authReady, session, pendingAccess, logout } = useAuth();
@@ -12,7 +13,7 @@ export function ProtectedRoute({ children }) {
     return (
       <div className="min-h-screen grid place-items-center px-4">
         <div className="rounded-2xl bg-white/55 dark:bg-white/5 backdrop-blur-md shadow-soft ring-1 ring-black/5 dark:ring-white/10 px-5 py-4 text-sm">
-          Loading…
+          <LoadingEllipsis text="Loading" />
         </div>
       </div>
     );
@@ -33,7 +34,7 @@ export function ProtectedRoute({ children }) {
     return (
       <div className="min-h-screen grid place-items-center px-4">
         <div className="rounded-2xl bg-white/55 dark:bg-white/5 backdrop-blur-md shadow-soft ring-1 ring-black/5 dark:ring-white/10 px-5 py-4 text-sm">
-          Finalizing sign-in…
+          <LoadingEllipsis text="Finalizing sign-in" />
         </div>
       </div>
     );

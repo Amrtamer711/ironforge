@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/ca
 import { Button } from "../../components/ui/button";
 import { FormField } from "../../components/ui/form-field";
 import { SoftCard } from "../../components/ui/soft-card";
+import { LoadingEllipsis } from "../../components/ui/loading-ellipsis";
 
 export function ProposalsPage() {
   const qc = useQueryClient();
@@ -162,7 +163,7 @@ export function ProposalsPage() {
           </CardHeader>
           <CardContent>
             {historyQuery.isLoading ? (
-              <div className="text-sm text-black/60 dark:text-white/65">Loading…</div>
+              <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
             ) : (
               <div className="space-y-2">
                 {(proposals || []).map((p, idx) => {
