@@ -1,11 +1,14 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 
 import * as proposalsApi from "../../api/proposals";
 import * as mockupApi from "../../api/mockup";
+import * as adminApi from "../../api/admin";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
+import { FormField } from "../../components/ui/form-field";
+import { SoftCard } from "../../components/ui/soft-card";
 
 export function ProposalsPage() {
   const qc = useQueryClient();
@@ -23,6 +26,7 @@ export function ProposalsPage() {
   const [client, setClient] = useState("");
   const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
+  const [userNameById, setUserNameById] = useState({});
 
   const generateMutation = useMutation({
     mutationFn: (payload) => proposalsApi.generate(payload),
@@ -46,6 +50,49 @@ export function ProposalsPage() {
     return data?.locations || [];
   }, [locationsQuery.data]);
 
+  const userIds = useMemo(() => {
+    const ids = new Set();
+    (proposals || []).forEach((p) => {
+      const id = p.submitted_by || p.user_id;
+      if (id) ids.add(id);
+    });
+    return Array.from(ids);
+  }, [proposals]);
+
+  const missingUserIds = useMemo(
+    () => userIds.filter((id) => !userNameById[id]),
+    [userIds, userNameById]
+  );
+
+  useEffect(() => {
+    if (!missingUserIds.length) return;
+    let active = true;
+    (async () => {
+      const entries = await Promise.all(
+        missingUserIds.map(async (id) => {
+          try {
+            const data = await adminApi.getrbacUser(id);
+            const name = data?.name || data?.user?.name || data?.profile?.name || id;
+            return [id, name];
+          } catch {
+            return [id, id];
+          }
+        })
+      );
+      if (!active) return;
+      setUserNameById((prev) => {
+        const next = { ...prev };
+        entries.forEach(([id, name]) => {
+          if (!next[id]) next[id] = name;
+        });
+        return next;
+      });
+    })();
+    return () => {
+      active = false;
+    };
+  }, [missingUserIds]);
+
   return (
     <div className="h-full min-h-0 flex flex-col">
       <div className="flex-1 min-h-0 overflow-y-auto space-y-4 px-2 py-1">
@@ -55,15 +102,15 @@ export function ProposalsPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="Client">
+              <FormField label="Client">
                 <input
                   className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                   value={client}
                   onChange={(e) => setClient(e.target.value)}
                   placeholder="Client name"
                 />
-              </Field>
-              <Field label="Location">
+              </FormField>
+              <FormField label="Location">
                 <select
                   className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                   value={location}
@@ -76,17 +123,17 @@ export function ProposalsPage() {
                     </option>
                   ))}
                 </select>
-              </Field>
+              </FormField>
             </div>
 
-            <Field label="Notes / Requirements">
+            <FormField label="Notes / Requirements">
               <textarea
                 className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10 dark:focus:ring-white/15 min-h-[120px]"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Key specs, deadlines..."
               />
-            </Field>
+            </FormField>
 
             {generateMutation.isError ? (
               <div className="rounded-xl bg-red-50/70 text-red-700 px-4 py-2 text-sm dark:bg-red-500/10 dark:text-red-300">
@@ -118,27 +165,63 @@ export function ProposalsPage() {
               <div className="text-sm text-black/60 dark:text-white/65">Loading…</div>
             ) : (
               <div className="space-y-2">
-                {(proposals || []).map((p, idx) => (
-                  <div
-                    key={p.id || p.file_url || idx}
-                    className="rounded-2xl p-4 bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 shadow-soft"
-                  >
-                    <div className="text-sm font-semibold">{p.client || "Proposal"}</div>
-                    <div className="text-xs text-black/55 dark:text-white/60 mt-1">
-                      {(p.location || "").toString()} {p.created_at ? `• ${new Date(p.created_at).toLocaleString()}` : ""}
-                    </div>
-                    {p.file_url ? (
-                      <a
-                        href={p.file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex mt-2 text-xs underline opacity-80 hover:opacity-100"
-                      >
-                        Download
-                      </a>
-                    ) : null}
-                  </div>
-                ))}
+                {(proposals || []).map((p, idx) => {
+                  const clientName = p.client_name || p.client || "Proposal";
+                  const userId = p.submitted_by || p.user_id || "";
+                  const userName = userId ? userNameById[userId] || userId : "—";
+                  const generatedAt = p.date_generated || p.created_at;
+                  const packageType = p.package_type || "—";
+                  const locationText =
+                    p.locations || p.proposal_data?.locations_text || p.location || "—";
+                  const totalAmount =
+                    p.total_amount ||
+                    (p.total_amount_value != null
+                      ? `${p.currency || ""} ${Number(p.total_amount_value).toLocaleString()}`
+                      : "—");
+
+                  return (
+                    <SoftCard
+                      key={p.id || p.file_url || idx}
+                      className="p-3"
+                    >
+                      <div className="text-sm font-semibold">{clientName}</div>
+                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-black/65 dark:text-white/65">
+                        <div className="flex flex-wrap items-baseline gap-1">
+                          <span className="uppercase tracking-wide text-[10px] text-black/45 dark:text-white/50">User</span>
+                          <span className="font-semibold text-black/80 dark:text-white/85">{userName}</span>
+                        </div>
+                        <div className="flex flex-wrap items-baseline gap-1">
+                          <span className="uppercase tracking-wide text-[10px] text-black/45 dark:text-white/50">Generated</span>
+                          <span className="font-semibold text-black/80 dark:text-white/85">
+                            {generatedAt ? new Date(generatedAt).toLocaleString() : "—"}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-baseline gap-1">
+                          <span className="uppercase tracking-wide text-[10px] text-black/45 dark:text-white/50">Package Type</span>
+                          <span className="font-semibold text-black/80 dark:text-white/85">{packageType}</span>
+                        </div>
+                        <div className="flex flex-wrap items-baseline gap-1">
+                          <span className="uppercase tracking-wide text-[10px] text-black/45 dark:text-white/50">Total Amount</span>
+                          <span className="font-semibold text-black/80 dark:text-white/85">{totalAmount}</span>
+                        </div>
+                        <div className="flex flex-wrap items-baseline gap-1 sm:col-span-2">
+                          <span className="uppercase tracking-wide text-[10px] text-black/45 dark:text-white/50">Locations</span>
+                          <span className="font-semibold text-black/80 dark:text-white/85">{locationText}</span>
+                        </div>
+                      </div>
+                      {p.file_url ? (
+                        <a
+                          href={p.file_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex mt-2 text-[11px] underline opacity-80 hover:opacity-100"
+                        >
+                          Download
+                        </a>
+                      ) : null}
+                    </SoftCard>
+                  );
+                })}
                 {!proposals?.length ? (
                   <div className="text-sm text-black/60 dark:text-white/65">No proposals yet.</div>
                 ) : null}
@@ -148,14 +231,5 @@ export function ProposalsPage() {
         </Card>
       </div>
     </div>
-  );
-}
-
-function Field({ label, children }) {
-  return (
-    <label className="block space-y-1">
-      <div className="text-xs font-semibold text-black/60 dark:text-white/65">{label}</div>
-      {children}
-    </label>
   );
 }

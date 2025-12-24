@@ -11,11 +11,10 @@ export function Logo({ size = 128 }) {
         alt="Unified UI"
         className="shrink-0 filter invert dark:invert-0"
       />
-      <span className="font-semibold align-text-bottom tracking-tight">
+      <span className="font-semibold align-text-bottom tracking-tight hidden sm:inline-flex">
         Unified UI
       </span>
     </div>
   );
 }
-
 

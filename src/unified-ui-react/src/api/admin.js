@@ -12,6 +12,10 @@ export async function getUser(userId) {
   return apiRequest(`/api/admin/users/${userId}`);
 }
 
+export async function getrbacUser(userId) {
+  return apiRequest(`/api/rbac/user/${userId}`);
+}
+
 export async function getUserPermissions(userId) {
   return apiRequest(`/api/admin/users/${userId}/permissions`);
 }
@@ -56,20 +60,19 @@ export async function setUserPermissions(userId, permissions) {
 }
 
 export async function getPermissions() {
-  const data = await apiRequest("/api/rbac/permissions");
-  console.log(data);
+  const data = await apiRequest("/api/dev/permissions");
   return data;
 }
 
 export async function addPermission(value) {
-  return apiRequest("/api/rbac/permissions", {
+  return apiRequest("/api/dev/permissions/add", {
     method: "POST",
     body: JSON.stringify({ name: value }),
   });
 }
 
 export async function deletePermission(value) {
-  return apiRequest(`/api/admin/permissions/${encodeURIComponent(value)}`, {
+  return apiRequest(`/api/dev/permissions/${encodeURIComponent(value)}`, {
     method: "DELETE",
   });
 }
@@ -92,11 +95,11 @@ export async function createApiKey(payload) {
 }
 
 export async function getCompanies() {
-  return apiRequest("/api/admin/company");
+  return apiRequest("/api/dev/companies");
 }
 
 export async function createCompany(payload) {
-  return apiRequest("/api/admin/company", { method: "POST", body: JSON.stringify(payload) });
+  return apiRequest("/api/dev/companies/add", { method: "POST", body: JSON.stringify(payload) });
 }
 
 export async function updateCompany(code, payload) {
@@ -107,7 +110,7 @@ export async function updateCompany(code, payload) {
 }
 
 export async function deleteCompany(code) {
-  return apiRequest(`/api/admin/company/${encodeURIComponent(code)}`, { method: "DELETE" });
+  return apiRequest(`/api/dev/companies/${encodeURIComponent(code)}`, { method: "DELETE" });
 }
 
 export async function getPermissionSets() {
@@ -115,16 +118,16 @@ export async function getPermissionSets() {
 }
 
 export async function createPermissionSet(payload) {
-  return apiRequest("/api/admin/permission-sets", { method: "POST", body: JSON.stringify(payload) });
+  return apiRequest("/api/rbac/permission-sets", { method: "POST", body: JSON.stringify(payload) });
 }
 
 export async function updatePermissionSet(name, payload) {
-  return apiRequest(`/api/admin/permission-sets/${encodeURIComponent(name)}`, {
+  return apiRequest(`/api/rbac/permission-sets/${encodeURIComponent(name)}`, {
     method: "PUT",
     body: JSON.stringify(payload),
   });
 }
 
 export async function deletePermissionSet(name) {
-  return apiRequest(`/api/admin/permission-sets/${encodeURIComponent(name)}`, { method: "DELETE" });
+  return apiRequest(`/api/rbac/permission-sets/${encodeURIComponent(name)}`, { method: "DELETE" });
 }

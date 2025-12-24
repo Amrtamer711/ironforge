@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowRight, Play } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
+import { SoftCard } from "../components/ui/soft-card";
 import { Logo } from "../components/Logo";
 
 export function LandingPage() {
@@ -144,9 +145,9 @@ function Msg({ role, text, typing }) {
 
 function Feature({ title, desc }) {
   return (
-    <div className="rounded-2xl bg-white/55 dark:bg-white/5 backdrop-blur-md shadow-soft ring-1 ring-black/5 dark:ring-white/10 p-5">
+    <SoftCard className="bg-white/55 dark:bg-white/5 backdrop-blur-md p-5">
       <div className="text-sm font-semibold">{title}</div>
       <div className="mt-1 text-sm text-black/60 dark:text-white/65">{desc}</div>
-    </div>
+    </SoftCard>
   );
 }

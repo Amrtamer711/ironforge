@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
+import { FormField } from "../../components/ui/form-field";
+import { SoftCard } from "../../components/ui/soft-card";
 import * as mockupApi from "../../api/mockup";
 import { useAuth, hasPermission } from "../../state/auth";
 import { cn } from "../../lib/utils";
@@ -1521,8 +1523,8 @@ export function MockupPage() {
               <CardTitle>Mockup Generator</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Field label="Location">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <FormField label="Location">
                   <select
                     className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                     value={location}
@@ -1538,41 +1540,39 @@ export function MockupPage() {
                       </option>
                     ))}
                   </select>
-                </Field>
+                </FormField>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Time of Day">
-                    <select
-                      className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                      value={timeOfDay}
-                      onChange={(e) => setTimeOfDay(e.target.value)}
-                    >
-                      {TIME_OF_DAY.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
+                <FormField label="Time of Day">
+                  <select
+                    className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                    value={timeOfDay}
+                    onChange={(e) => setTimeOfDay(e.target.value)}
+                  >
+                    {TIME_OF_DAY.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
 
-                  <Field label="Billboard Finish">
-                    <select
-                      className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                      value={finish}
-                      onChange={(e) => setFinish(e.target.value)}
-                    >
-                      {FINISHES.map((opt) => (
-                        <option key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                </div>
+                <FormField label="Billboard Finish">
+                  <select
+                    className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                    value={finish}
+                    onChange={(e) => setFinish(e.target.value)}
+                  >
+                    {FINISHES.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
               </div>
 
               {location ? (
-                <Field label="Template (optional)">
+                <FormField label="Template (optional)">
                   <select
                     className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                     value={templateKey}
@@ -1589,7 +1589,7 @@ export function MockupPage() {
                   <div className="text-[11px] text-black/50 dark:text-white/60">
                     {templatesQuery.isLoading ? "Loading templates..." : ""}
                   </div>
-                </Field>
+                </FormField>
               ) : null}
 
               {selectedTemplate ? (
@@ -1624,7 +1624,7 @@ export function MockupPage() {
               ) : null}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Field label="Upload Creative/Ad Image">
+                <FormField label="Upload Creative/Ad Image">
                   {creativeFile ? (
                     <div
                       className={`flex items-center justify-between rounded-xl bg-black/5 dark:bg-white/10 px-3 py-2 text-sm ${creativeDragActive ? "ring-2 ring-black/20 dark:ring-white/30" : ""}`}
@@ -1654,16 +1654,16 @@ export function MockupPage() {
                       <div className="text-xs text-black/55 dark:text-white/60">JPG, PNG, WEBP, GIF up to 10MB</div>
                     </label>
                   )}
-                </Field>
+                </FormField>
 
-                <Field label="Or use AI prompt">
+                <FormField label="Or use AI prompt">
                   <textarea
                   className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10 dark:focus:ring-white/15 min-h-[80px]"
                     value={aiPrompt}
                     onChange={(e) => setAiPrompt(e.target.value)}
                     placeholder="Describe what you want to generate..."
                   />
-                </Field>
+                </FormField>
               </div>
 
               {generateError ? (
@@ -1716,7 +1716,7 @@ export function MockupPage() {
               <div className="space-y-4">
                     <div className="space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <Field label="Location">
+                        <FormField label="Location">
                           <select
                             className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                             value={location}
@@ -1732,9 +1732,9 @@ export function MockupPage() {
                               </option>
                             ))}
                           </select>
-                        </Field>
+                        </FormField>
 
-                        <Field label="Time of Day">
+                        <FormField label="Time of Day">
                           <select
                             className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                             value={timeOfDay}
@@ -1746,9 +1746,9 @@ export function MockupPage() {
                               </option>
                             ))}
                           </select>
-                        </Field>
+                        </FormField>
 
-                        <Field label="Billboard Finish">
+                        <FormField label="Billboard Finish">
                           <select
                             className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                             value={finish}
@@ -1760,7 +1760,7 @@ export function MockupPage() {
                               </option>
                             ))}
                           </select>
-                        </Field>
+                        </FormField>
                       </div>
 
                       {editingTemplate ? (
@@ -1865,7 +1865,7 @@ export function MockupPage() {
                         ) : null}
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <Field label="Upload Billboard Photo">
+                        <FormField label="Upload Billboard Photo">
                           {setupPhoto ? (
                             <div
                               className={`flex items-center justify-between rounded-xl bg-black/5 dark:bg-white/10 px-3 py-2 text-sm ${setupDragActive ? "ring-2 ring-black/20 dark:ring-white/30" : ""}`}
@@ -1901,8 +1901,8 @@ export function MockupPage() {
                               <div className="text-xs text-black/55 dark:text-white/60">JPG, PNG, WEBP up to 20MB</div>
                             </label>
                           )}
-                        </Field>
-                        <Field label="Frames JSON">
+                        </FormField>
+                        <FormField label="Frames JSON">
                           <textarea
                             className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10 dark:focus:ring-white/15 min-h-[80px] font-mono"
                             value={framesJson}
@@ -1931,12 +1931,12 @@ export function MockupPage() {
                               </button>
                             </div>
                           </div>
-                        </Field>
+                        </FormField>
                       </div>
 
                       {setupImageReady ? (
                         <>
-                          <div className="rounded-2xl bg-white/50 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 p-4 shadow-soft">
+                          <SoftCard className="bg-white/50 dark:bg-white/5 p-4">
                             <button
                               type="button"
                               className="flex w-full items-center justify-between gap-3 text-left"
@@ -1996,7 +1996,7 @@ export function MockupPage() {
                                 </Button>
                               </div>
                             ) : null}
-                          </div>
+                          </SoftCard>
 
                           {hasActiveFrame ? (
                             <div className="rounded-2xl bg-blue-50/70 dark:bg-blue-500/10 ring-1 ring-blue-500/20 p-4 shadow-soft">
@@ -2398,15 +2398,6 @@ function RangeField({ label, value, min, max, step = 1, suffix = "", helper, onC
       />
       {helper ? <div className="text-[11px] text-black/55 dark:text-white/60">{helper}</div> : null}
     </div>
-  );
-}
-
-function Field({ label, children }) {
-  return (
-    <label className="block space-y-1">
-      <div className="text-xs font-semibold text-black/60 dark:text-white/65">{label}</div>
-      {children}
-    </label>
   );
 }
 

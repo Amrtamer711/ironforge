@@ -298,7 +298,6 @@ const AdminUI = {
         [],//AdminAPI.getInvites().catch(() => []),
       ]);
 
-      console.log(profiles.profiles);
       AdminState.users = users.users;
       AdminState.profiles = profiles.profiles;
       AdminState.permissionSets = permissionSets;

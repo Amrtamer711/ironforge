@@ -1,8 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Copy, Pencil, Trash2, UserRoundX } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
+import { FormField } from "../../components/ui/form-field";
+import { IconActionButton } from "../../components/ui/icon-action-button";
+import { Modal, ConfirmModal } from "../../components/ui/modal";
+import { SearchInput } from "../../components/ui/search-input";
+import { SoftCard } from "../../components/ui/soft-card";
 import { adminApi } from "../../api";
 import { useAuth, canAccessAdmin } from "../../state/auth";
 import { cn } from "../../lib/utils";
@@ -11,6 +16,21 @@ const PAGE_SIZE = 20;
 
 function parsePermissions(text) {
   return text.split(/\n|,/).map((p) => p.trim()).filter(Boolean);
+}
+
+function parsePermissionParts(value) {
+  if (!value) return { module: "", service: "", action: "" };
+  const [module, service, action] = value.split(":");
+  return {
+    module: module?.trim() || "",
+    service: service?.trim() || "",
+    action: action?.trim() || "",
+  };
+}
+
+function buildPermissionValue({ module, service, action }) {
+  if (!module || !service || !action) return "";
+  return `${module}:${service}:${action}`;
 }
 
 function selectionLabel(count, singular, plural = `${singular}s`) {
@@ -25,6 +45,10 @@ export function AdminPage() {
   const [tab, setTab] = useState("users");
   const [q, setQ] = useState("");
   const [page, setPage] = useState(0);
+  const [profileSearch, setProfileSearch] = useState("");
+  const [companySearch, setCompanySearch] = useState("");
+  const [permissionSetSearch, setPermissionSetSearch] = useState("");
+  const [permissionSearch, setPermissionSearch] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
   const [userForm, setUserForm] = useState({
     name: "",
@@ -80,7 +104,16 @@ export function AdminPage() {
   const [savingPermissionSet, setSavingPermissionSet] = useState(false);
   const [permissionSetPermissionsOpen, setPermissionSetPermissionsOpen] = useState(false);
 
-  const [permissionModal, setPermissionModal] = useState({ open: false, mode: "add", value: "", original: "" });
+  const [permissionModal, setPermissionModal] = useState({
+    open: false,
+    mode: "add",
+    value: "",
+    original: "",
+    module: "",
+    service: "",
+    action: "",
+  });
+  const [permissionModalError, setPermissionModalError] = useState("");
   const [savingPermission, setSavingPermission] = useState(false);
   const [savingUser, setSavingUser] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -197,7 +230,17 @@ export function AdminPage() {
   }
 
   function openPermissionModal(mode = "add", value = "") {
-    setPermissionModal({ open: true, mode, value, original: value });
+    const parts = parsePermissionParts(value);
+    setPermissionModalError("");
+    setPermissionModal({
+      open: true,
+      mode,
+      value,
+      original: value,
+      module: parts.module,
+      service: parts.service,
+      action: parts.action,
+    });
   }
 
   async function selectUser(u) {
@@ -495,9 +538,20 @@ export function AdminPage() {
     }
   }
 
+  function updatePermissionModalField(field, nextValue) {
+    setPermissionModal((prev) => {
+      const updated = { ...prev, [field]: nextValue };
+      return { ...updated, value: buildPermissionValue(updated) };
+    });
+    setPermissionModalError("");
+  }
+
   async function savePermissionModal() {
-    const value = permissionModal.value.trim();
-    if (!value) return;
+    const value = buildPermissionValue(permissionModal);
+    if (!value) {
+      setPermissionModalError("Select module, service, and permission.");
+      return;
+    }
     setSavingPermission(true);
     try {
       if (permissionModal.mode === "add") {
@@ -506,11 +560,27 @@ export function AdminPage() {
         await adminApi.addPermission(value);
         await adminApi.deletePermission(permissionModal.original);
       } else {
-        setPermissionModal({ open: false, mode: "add", value: "", original: "" });
+        setPermissionModal({
+          open: false,
+          mode: "add",
+          value: "",
+          original: "",
+          module: "",
+          service: "",
+          action: "",
+        });
         return;
       }
       qc.invalidateQueries({ queryKey: ["admin", "permissions"] });
-      setPermissionModal({ open: false, mode: "add", value: "", original: "" });
+      setPermissionModal({
+        open: false,
+        mode: "add",
+        value: "",
+        original: "",
+        module: "",
+        service: "",
+        action: "",
+      });
     } catch {
       // ignore
     } finally {
@@ -525,7 +595,15 @@ export function AdminPage() {
     try {
       await adminApi.deletePermission(target);
       qc.invalidateQueries({ queryKey: ["admin", "permissions"] });
-      setPermissionModal({ open: false, mode: "add", value: "", original: "" });
+      setPermissionModal({
+        open: false,
+        mode: "add",
+        value: "",
+        original: "",
+        module: "",
+        service: "",
+        action: "",
+      });
     } catch {
       // ignore
     } finally {
@@ -550,8 +628,8 @@ export function AdminPage() {
       }
       if (confirmDelete.type === "user" && confirmDelete.payload) {
         if (
-          confirmDelete.payload === user?.id ||
-          confirmDelete.payload === user?.user_id
+          (user?.id && confirmDelete.payload === user.id) ||
+          (user?.user_id && confirmDelete.payload === user.user_id)
         ) {
           return;
         }
@@ -569,11 +647,78 @@ export function AdminPage() {
     const raw = profilesQuery.data?.profiles ?? profilesQuery.data;
     return Array.isArray(raw) ? raw : [];
   }, [profilesQuery.data]);
-  const permissionList = useMemo(() => {
+  const permissionTree = useMemo(() => {
     const raw = permissionsQuery.data?.permissions ?? permissionsQuery.data;
-    if (!Array.isArray(raw)) return [];
-    return raw.map((perm) => (typeof perm === "string" ? perm : perm?.name)).filter(Boolean);
+    const moduleMap = new Map();
+
+    const addPermission = (module, service, action) => {
+      if (!module || !service || !action) return;
+      if (!moduleMap.has(module)) moduleMap.set(module, new Map());
+      const serviceMap = moduleMap.get(module);
+      if (!serviceMap.has(service)) serviceMap.set(service, new Set());
+      serviceMap.get(service).add(action);
+    };
+
+    if (Array.isArray(raw)) {
+      raw
+        .map((perm) => (typeof perm === "string" ? perm : perm?.name))
+        .filter(Boolean)
+        .forEach((perm) => {
+          const parts = perm.split(":");
+          if (parts.length >= 3) {
+            addPermission(parts[0], parts[1], parts[2]);
+          }
+        });
+    } else if (raw && typeof raw === "object") {
+      Object.entries(raw).forEach(([module, services]) => {
+        if (!services || typeof services !== "object") return;
+        Object.entries(services).forEach(([service, actions]) => {
+          if (!Array.isArray(actions)) return;
+          actions.forEach((action) => addPermission(module, service, action));
+        });
+      });
+    }
+
+    const modules = Array.from(moduleMap.keys()).sort();
+    const servicesByModule = {};
+    const actionsByService = {};
+    const flat = [];
+    const allServices = new Set();
+    const allActions = new Set();
+
+    modules.forEach((module) => {
+      const services = Array.from(moduleMap.get(module).keys()).sort();
+      servicesByModule[module] = services;
+      services.forEach((service) => {
+        allServices.add(service);
+        const actions = Array.from(moduleMap.get(module).get(service)).sort();
+        actionsByService[`${module}:${service}`] = actions;
+        actions.forEach((action) => {
+          allActions.add(action);
+          flat.push(`${module}:${service}:${action}`);
+        });
+      });
+    });
+
+    return {
+      modules,
+      servicesByModule,
+      actionsByService,
+      flat,
+      allServices: Array.from(allServices).sort(),
+      allActions: Array.from(allActions).sort(),
+    };
   }, [permissionsQuery.data]);
+
+  const permissionList = useMemo(() => permissionTree.flat, [permissionTree]);
+  const permissionModuleOptions = permissionTree.modules;
+  const permissionServiceOptions = permissionModal.module
+    ? permissionTree.servicesByModule[permissionModal.module] || []
+    : permissionTree.allServices;
+  const permissionActionOptions =
+    permissionModal.module && permissionModal.service
+      ? permissionTree.actionsByService[`${permissionModal.module}:${permissionModal.service}`] || []
+      : permissionTree.allActions;
   const companyList = useMemo(() => {
     const raw = companiesQuery.data?.companies ?? companiesQuery.data;
     return Array.isArray(raw) ? raw : [];
@@ -586,6 +731,37 @@ export function AdminPage() {
     if (!Array.isArray(raw)) return [];
     return raw.map((set) => (typeof set === "string" ? { name: set } : set));
   }, [permissionSetsQuery.data]);
+  const filteredCompanyList = useMemo(() => {
+    const needle = companySearch.trim().toLowerCase();
+    if (!needle) return companyList;
+    return companyList.filter((company) => {
+      const s = `${company.name || ""} ${company.code || ""} ${company.country || ""} ${company.currency || ""} ${
+        company.timezone || ""
+      }`.toLowerCase();
+      return s.includes(needle);
+    });
+  }, [companyList, companySearch]);
+  const filteredProfileOptions = useMemo(() => {
+    const needle = profileSearch.trim().toLowerCase();
+    if (!needle) return profileOptions;
+    return profileOptions.filter((profile) => {
+      const s = `${profile.display_name || ""} ${profile.name || ""} ${profile.description || ""}`.toLowerCase();
+      return s.includes(needle);
+    });
+  }, [profileOptions, profileSearch]);
+  const filteredPermissionSetList = useMemo(() => {
+    const needle = permissionSetSearch.trim().toLowerCase();
+    if (!needle) return permissionSetList;
+    return permissionSetList.filter((set) => {
+      const s = `${set.display_name || ""} ${set.name || ""} ${set.description || ""}`.toLowerCase();
+      return s.includes(needle);
+    });
+  }, [permissionSetList, permissionSetSearch]);
+  const filteredPermissionList = useMemo(() => {
+    const needle = permissionSearch.trim().toLowerCase();
+    if (!needle) return permissionList;
+    return permissionList.filter((perm) => perm.toLowerCase().includes(needle));
+  }, [permissionList, permissionSearch]);
   const selectedProfilePermissions = useMemo(
     () => parsePermissions(profileForm.permissionsText),
     [profileForm.permissionsText]
@@ -656,11 +832,12 @@ export function AdminPage() {
     });
     return map;
   }, [companyList]);
+
   const isSelfUser = Boolean(
     selectedUser &&
-      (selectedUser.id === user?.id ||
-        selectedUser.user_id === user?.user_id ||
-        selectedUser.email === user?.email)
+      ((selectedUser.id && user?.id && selectedUser.id === user?.id) ||
+        (selectedUser.user_id && user?.user_id && selectedUser.user_id === user?.user_id) ||
+        (selectedUser.email && user?.email && selectedUser.email === user?.email))
   );
 
   function toggleProfilePermission(value) {
@@ -793,27 +970,30 @@ export function AdminPage() {
       <div className="flex-1 min-h-0 overflow-y-auto px-2 py-1 space-y-4">
       {tab === "users" ? (
         <Card className="flex-1 min-h-0">
-          <CardHeader className="flex flex-row items-start justify-between">
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <CardTitle>Users</CardTitle>
-            <div className="flex flex-col gap-2 md:flex-row md:items-center">
-              <Button variant="secondary" size="sm" className="rounded-xl self-end md:self-auto" onClick={openNewUserModal}>
+            <div className="flex w-full flex-col items-end gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <Button
+                variant="secondary"
+                className="rounded-2xl self-end sm:self-auto"
+                onClick={openNewUserModal}
+              >
                 Add user
               </Button>
-              <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center md:ml-auto">
-                <input
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                <SearchInput
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search users…"
-                  className="w-full md:w-[220px] rounded-2xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                  className="w-full sm:w-[220px]"
                 />
-                <div className="flex w-full justify-end gap-1 md:w-auto">
+                {/* <div className="flex w-full justify-end gap-1 md:w-auto">
                   <Button variant="ghost" size="sm" className="rounded-xl" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
                     Prev
                   </Button>
                   <Button variant="ghost" size="sm" className="rounded-xl" disabled={!hasNext} onClick={() => setPage((p) => p + 1)}>
                     Next
                   </Button>
-                </div>
+                </div> */}
               </div>
             </div>
           </CardHeader>
@@ -821,7 +1001,7 @@ export function AdminPage() {
             {usersQuery.isLoading ? (
               <div className="text-sm text-black/60 dark:text-white/65">Loading…</div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {users.map((u) => {
                   const profileLabels = Array.isArray(u.profiles)
                     ? u.profiles.map((p) => p?.display_name || p?.name || p).filter(Boolean)
@@ -832,38 +1012,44 @@ export function AdminPage() {
                       : profileLabels.join(", ")
                     : "—";
                   const isSelfCard = Boolean(
-                    u.id === user?.id || u.user_id === user?.user_id || u.email === user?.email
+                    (u.id && user?.id && u.id === user.id) ||
+                      (u.user_id && user?.user_id && u.user_id === user.user_id) ||
+                      (u.email && user?.email && u.email === user.email)
                   );
                   return (
-                    <div
+                    <SoftCard
                       key={u.id || u.user_id || u.email}
-                      className="rounded-2xl p-4 bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 shadow-soft space-y-2"
+                      className="p-4 space-y-2"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <div className="text-sm font-semibold">{u.name || "—"}</div>
                           <div className="text-xs text-black/55 dark:text-white/60">{u.email}</div>
                         </div>
-                        <div className="flex gap-2">
-                          <Button variant="secondary" size="sm" className="rounded-xl" onClick={() => selectUser(u)}>
-                            Edit
-                          </Button>
-                          <Button
+                        <div className="flex items-center gap-2">
+                          <IconActionButton
+                            onClick={() => selectUser(u)}
+                            title="Edit user"
+                            aria-label="Edit user"
+                          >
+                            <Pencil size={16} />
+                          </IconActionButton>
+                          <IconActionButton
                             variant="ghost"
-                            size="sm"
-                            className="rounded-xl"
                             onClick={() =>
                               setConfirmDelete({
                                 open: true,
                                 type: "user",
                                 payload: u.id || u.user_id,
-                                label: `Delete user "${u.email}"?`,
+                                label: `Deactivate user "${u.email}"?`,
                               })
                             }
                             disabled={isSelfCard}
+                            title={isSelfCard ? "You cannot deactivate yourself" : "Deactivate user"}
+                            aria-label="Deactivate user"
                           >
-                            Delete
-                          </Button>
+                            <UserRoundX size={16} />
+                          </IconActionButton>
                         </div>
                       </div>
                       <div className="text-xs text-black/55 dark:text-white/60">
@@ -875,7 +1061,7 @@ export function AdminPage() {
                           {u.company?.name || companyLookup.get(u.company?.code || u.company_code || u.company_id) || "—"}
                         </span>
                       </div>
-                    </div>
+                    </SoftCard>
                   );
                 })}
               </div>
@@ -887,35 +1073,48 @@ export function AdminPage() {
 
       {tab === "companies" ? (
         <Card>
-          <CardHeader className="flex flex-row items-start justify-between">
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <CardTitle>Companies</CardTitle>
-            <Button variant="secondary" className="rounded-2xl" onClick={() => openCompanyModal(null)}>
-              Add company
-            </Button>
+            <div className="flex w-full flex-col items-end gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <Button
+                variant="secondary"
+                className="rounded-2xl self-end sm:self-auto"
+                onClick={() => openCompanyModal(null)}
+              >
+                Add company
+              </Button>
+              <SearchInput
+                value={companySearch}
+                onChange={(e) => setCompanySearch(e.target.value)}
+                className="w-full sm:w-[220px]"
+              />
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {companiesQuery.isLoading ? (
               <div className="text-sm text-black/60 dark:text-white/65">Loading…</div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {companyList.map((company) => (
-                  <div
+                {filteredCompanyList.map((company) => (
+                  <SoftCard
                     key={company.code || company.id}
-                    className="rounded-2xl p-4 bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 shadow-soft space-y-2"
+                    className="p-4 space-y-2"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="text-sm font-semibold">{company.name || company.code}</div>
                         <div className="text-xs text-black/55 dark:text-white/60">{company.code || "—"}</div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button variant="secondary" size="sm" className="rounded-xl" onClick={() => openCompanyModal(company)}>
-                          Edit
-                        </Button>
-                        <Button
+                      <div className="flex items-center gap-2">
+                        <IconActionButton
+                          onClick={() => openCompanyModal(company)}
+                          title="Edit company"
+                          aria-label="Edit company"
+                        >
+                          <Pencil size={16} />
+                        </IconActionButton>
+                        <IconActionButton
                           variant="ghost"
-                          size="sm"
-                          className="rounded-xl"
                           onClick={() =>
                             setConfirmDelete({
                               open: true,
@@ -924,9 +1123,11 @@ export function AdminPage() {
                               label: `Delete company "${company.name || company.code}"?`,
                             })
                           }
+                          title="Delete company"
+                          aria-label="Delete company"
                         >
-                          Delete
-                        </Button>
+                          <Trash2 size={16} />
+                        </IconActionButton>
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2 text-xs text-black/55 dark:text-white/60">
@@ -939,10 +1140,12 @@ export function AdminPage() {
                       <span>• {company.isgroup ? "Group" : "Company"}</span>
                       <span>• {company.is_active === false ? "Inactive" : "Active"}</span>
                     </div>
-                  </div>
+                  </SoftCard>
                 ))}
-                {!companyList.length ? (
-                  <div className="text-sm text-black/60 dark:text-white/65">No companies available.</div>
+                {!filteredCompanyList.length ? (
+                  <div className="text-sm text-black/60 dark:text-white/65">
+                    {companySearch.trim() ? "No matching companies." : "No companies available."}
+                  </div>
                 ) : null}
               </div>
             )}
@@ -952,18 +1155,29 @@ export function AdminPage() {
 
       {tab === "profiles" ? (
         <Card>
-          <CardHeader className="flex flex-row items-start justify-between">
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <CardTitle>Profiles</CardTitle>
-            <Button variant="secondary" className="rounded-2xl" onClick={() => openProfileModal(null)}>
-              Add profile
-            </Button>
+            <div className="flex w-full flex-col items-end gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <Button
+                variant="secondary"
+                className="rounded-2xl self-end sm:self-auto"
+                onClick={() => openProfileModal(null)}
+              >
+                Add profile
+              </Button>
+              <SearchInput
+                value={profileSearch}
+                onChange={(e) => setProfileSearch(e.target.value)}
+                className="w-full sm:w-[220px]"
+              />
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {profileOptions.map((p) => (
-                <div
+              {filteredProfileOptions.map((p) => (
+                <SoftCard
                   key={p.name}
-                  className="rounded-2xl p-4 bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 shadow-soft space-y-1"
+                  className="p-4 space-y-1"
                 >
                   <div className="flex items-center justify-between">
                     <div>
@@ -971,28 +1185,24 @@ export function AdminPage() {
                       <div className="text-xs text-black/55 dark:text-white/60">{p.name}</div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        className="rounded-xl"
+                      <IconActionButton
                         onClick={() => duplicateProfile(p)}
+                        title="Duplicate profile"
+                        aria-label="Duplicate profile"
                       >
-                        Duplicate
-                      </Button>
+                        <Copy size={16} />
+                      </IconActionButton>
                       {!p.is_system ? (
                         <>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            className="rounded-xl"
+                          <IconActionButton
                             onClick={() => openProfileModal(p)}
+                            title="Edit profile"
+                            aria-label="Edit profile"
                           >
-                            Edit
-                          </Button>
-                          <Button
+                            <Pencil size={16} />
+                          </IconActionButton>
+                          <IconActionButton
                             variant="ghost"
-                            size="sm"
-                            className="rounded-xl"
                             onClick={() =>
                               setConfirmDelete({
                                 open: true,
@@ -1001,9 +1211,11 @@ export function AdminPage() {
                                 label: `Delete profile "${p.display_name || p.name}"?`,
                               })
                             }
+                            title="Delete profile"
+                            aria-label="Delete profile"
                           >
-                            Delete
-                          </Button>
+                            <Trash2 size={16} />
+                          </IconActionButton>
                         </>
                       ) : (
                         <span className="text-[11px] rounded-full px-2 py-0.5 bg-black/5 dark:bg-white/10">System</span>
@@ -1013,10 +1225,19 @@ export function AdminPage() {
                   <div className="text-xs text-black/55 dark:text-white/60">
                     {(p.permissions || []).length} permission{(p.permissions || []).length === 1 ? "" : "s"}
                   </div>
-                  {p.description ? <div className="text-xs text-black/60 dark:text-white/65">{p.description}</div> : null}
-                </div>
+                  {p.description ? (
+                    <div className="text-xs text-black/60 dark:text-white/65 truncate">
+                      {p.description}
+                    </div>
+                  ) : null}
+                </SoftCard>
               ))}
             </div>
+            {!filteredProfileOptions.length ? (
+              <div className="text-sm text-black/60 dark:text-white/65">
+                {profileSearch.trim() ? "No matching profiles." : "No profiles available."}
+              </div>
+            ) : null}
 
           </CardContent>
         </Card>
@@ -1024,48 +1245,55 @@ export function AdminPage() {
 
       {tab === "permission-sets" ? (
         <Card>
-          <CardHeader className="flex flex-row items-start justify-between">
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <CardTitle>Permission Sets</CardTitle>
-            <Button variant="secondary" className="rounded-2xl" onClick={() => openPermissionSetModal(null)}>
-              Add permission set
-            </Button>
+            <div className="flex w-full flex-col items-end gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <Button
+                variant="secondary"
+                className="rounded-2xl self-end sm:self-auto"
+                onClick={() => openPermissionSetModal(null)}
+              >
+                Add permission set
+              </Button>
+              <SearchInput
+                value={permissionSetSearch}
+                onChange={(e) => setPermissionSetSearch(e.target.value)}
+                className="w-full sm:w-[220px]"
+              />
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {permissionSetsQuery.isLoading ? (
               <div className="text-sm text-black/60 dark:text-white/65">Loading…</div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {permissionSetList.map((set) => (
-                  <div
+                {filteredPermissionSetList.map((set) => (
+                  <SoftCard
                     key={set.name}
-                    className="rounded-2xl p-4 bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 shadow-soft space-y-1"
+                    className="p-4 space-y-1"
                   >
                     <div className="flex items-center justify-between">
                       <div>
                         <div className="text-sm font-semibold">{set.display_name || set.name}</div>
                         <div className="text-xs text-black/55 dark:text-white/60">{set.name}</div>
                       </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="rounded-xl"
+                      <div className="flex items-center gap-2">
+                        <IconActionButton
                           onClick={() => duplicatePermissionSet(set)}
+                          title="Duplicate permission set"
+                          aria-label="Duplicate permission set"
                         >
-                          Duplicate
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          className="rounded-xl"
+                          <Copy size={16} />
+                        </IconActionButton>
+                        <IconActionButton
                           onClick={() => openPermissionSetModal(set)}
+                          title="Edit permission set"
+                          aria-label="Edit permission set"
                         >
-                          Edit
-                        </Button>
-                        <Button
+                          <Pencil size={16} />
+                        </IconActionButton>
+                        <IconActionButton
                           variant="ghost"
-                          size="sm"
-                          className="rounded-xl"
                           onClick={() =>
                             setConfirmDelete({
                               open: true,
@@ -1074,19 +1302,27 @@ export function AdminPage() {
                               label: `Delete permission set "${set.display_name || set.name}"?`,
                             })
                           }
+                          title="Delete permission set"
+                          aria-label="Delete permission set"
                         >
-                          Delete
-                        </Button>
+                          <Trash2 size={16} />
+                        </IconActionButton>
                       </div>
                     </div>
                     <div className="text-xs text-black/55 dark:text-white/60">
                       {(set.permissions || []).length} permission{(set.permissions || []).length === 1 ? "" : "s"}
                     </div>
-                    {set.description ? <div className="text-xs text-black/60 dark:text-white/65">{set.description}</div> : null}
-                  </div>
+                    {set.description ? (
+                      <div className="text-xs text-black/60 dark:text-white/65 truncate">
+                        {set.description}
+                      </div>
+                    ) : null}
+                  </SoftCard>
                 ))}
-                {!permissionSetList.length ? (
-                  <div className="text-sm text-black/60 dark:text-white/65">No permission sets available.</div>
+                {!filteredPermissionSetList.length ? (
+                  <div className="text-sm text-black/60 dark:text-white/65">
+                    {permissionSetSearch.trim() ? "No matching permission sets." : "No permission sets available."}
+                  </div>
                 ) : null}
               </div>
             )}
@@ -1096,27 +1332,88 @@ export function AdminPage() {
 
       {tab === "permissions" ? (
         <Card>
-          <CardHeader className="flex flex-row items-start justify-between">
+          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <CardTitle>Permissions</CardTitle>
-            <Button className="rounded-2xl" variant="secondary" onClick={() => openPermissionModal("add", "")}>
-              Add permission
-            </Button>
+            <div className="flex w-full flex-col items-end gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <Button
+                className="rounded-2xl self-end sm:self-auto"
+                variant="secondary"
+                onClick={() => openPermissionModal("add", "")}
+              >
+                Add permission
+              </Button>
+              <SearchInput
+                value={permissionSearch}
+                onChange={(e) => setPermissionSearch(e.target.value)}
+                className="w-full sm:w-[220px]"
+              />
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {permissionsQuery.isLoading ? (
               <div className="text-sm text-black/60 dark:text-white/65">Loading…</div>
+            ) : filteredPermissionList.length ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {filteredPermissionList.map((p) => {
+                  const parts = parsePermissionParts(p);
+                  return (
+                    <SoftCard
+                      key={p}
+                      className="p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="grid grid-cols-1 gap-1 text-sm">
+                          <div className="flex flex-wrap items-baseline gap-1">
+                            <span className="text-[10px] uppercase tracking-wide text-black/50 dark:text-white/60">
+                              Module
+                            </span>
+                            <span className="font-semibold text-black/85 dark:text-white/85">{parts.module}</span>
+                          </div>
+                          <div className="flex flex-wrap items-baseline gap-1">
+                            <span className="text-[10px] uppercase tracking-wide text-black/50 dark:text-white/60">
+                              Service
+                            </span>
+                            <span className="font-semibold text-black/85 dark:text-white/85">{parts.service}</span>
+                          </div>
+                          <div className="flex flex-wrap items-baseline gap-1">
+                            <span className="text-[10px] uppercase tracking-wide text-black/50 dark:text-white/60">
+                              Permission
+                            </span>
+                            <span className="font-semibold text-black/85 dark:text-white/85">{parts.action}</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <IconActionButton
+                            onClick={() => openPermissionModal("edit", p)}
+                            title="Edit permission"
+                            aria-label="Edit permission"
+                          >
+                            <Pencil size={16} />
+                          </IconActionButton>
+                          <IconActionButton
+                            variant="ghost"
+                            onClick={() =>
+                              setConfirmDelete({
+                                open: true,
+                                type: "permission",
+                                payload: p,
+                                label: `Delete permission "${p}"?`,
+                              })
+                            }
+                            title="Delete permission"
+                            aria-label="Delete permission"
+                          >
+                            <Trash2 size={16} />
+                          </IconActionButton>
+                        </div>
+                      </div>
+                    </SoftCard>
+                  );
+                })}
+              </div>
             ) : (
-              <div className="flex flex-wrap gap-2">
-                {permissionList.map((p) => (
-                  <span
-                    key={p}
-                    className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 cursor-pointer"
-                    onClick={() => openPermissionModal("edit", p)}
-                  >
-                    <span>{p}</span>
-                  </span>
-                ))}
-                {!permissionList.length ? <div className="text-sm text-black/60 dark:text-white/65">No permissions available.</div> : null}
+              <div className="text-sm text-black/60 dark:text-white/65">
+                {permissionSearch.trim() ? "No matching permissions." : "No permissions available."}
               </div>
             )}
           </CardContent>
@@ -1146,14 +1443,14 @@ export function AdminPage() {
             {userModalMode === "edit" ? (
               <div className="text-xs text-black/50 dark:text-white/55">Editing {selectedUser?.email}</div>
             ) : null}
-            <Field label="Name">
+            <FormField label="Name">
               <input
                 className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                 value={userForm.name}
                 onChange={(e) => setUserForm((f) => ({ ...f, name: e.target.value }))}
               />
-            </Field>
-            <Field label="Email">
+            </FormField>
+            <FormField label="Email">
               <input
                 className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                 value={userForm.email}
@@ -1161,26 +1458,26 @@ export function AdminPage() {
                 type="email"
                 disabled={userModalMode === "edit"}
               />
-            </Field>
+            </FormField>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="Company">
+              <FormField label="Company">
                 <select
                   className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                   value={userForm.company}
                   onChange={(e) => setUserForm((f) => ({ ...f, company: e.target.value }))}
                 >
                   <option value="">Select company</option>
-                  {companyList.map((company) => {
+                  {companyList.map((company, idx) => {
                     const value = company.code || company.id;
                     return (
-                      <option key={value} value={value}>
+                      <option key={`${value || "company"}-${idx}`} value={value || ""}>
                         {company.name || company.code || value}
                       </option>
                     );
                   })}
                 </select>
-              </Field>
-              <Field label="Status">
+              </FormField>
+              <FormField label="Status">
                 <select
                   className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                   value={userForm.is_active ? "active" : "inactive"}
@@ -1189,10 +1486,10 @@ export function AdminPage() {
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </select>
-              </Field>
+              </FormField>
             </div>
-            <Field label="Profiles">
-              <div className="rounded-2xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 p-4 shadow-soft">
+            <FormField label="Profiles">
+              <SoftCard className="p-4">
                 <button
                   type="button"
                   className="flex w-full items-center justify-between gap-3 text-left"
@@ -1215,7 +1512,7 @@ export function AdminPage() {
                 </button>
 
                 {userProfilesOpen ? (
-                  <div className="mt-3 space-y-3">
+                  <div className="mt-0 space-y-0">
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <div className="flex gap-2">
                         <Button
@@ -1276,10 +1573,10 @@ export function AdminPage() {
                     </div>
                   </div>
                 ) : null}
-              </div>
-            </Field>
-            <Field label="Permission Sets">
-              <div className="rounded-2xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 p-4 shadow-soft">
+              </SoftCard>
+            </FormField>
+            <FormField label="Permission Sets">
+              <SoftCard className="p-4">
                 <button
                   type="button"
                   className="flex w-full items-center justify-between gap-3 text-left"
@@ -1302,7 +1599,7 @@ export function AdminPage() {
                 </button>
 
                 {userPermissionSetsOpen ? (
-                  <div className="mt-3 space-y-3">
+                  <div className="mt-0 space-y-0">
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <div className="flex gap-2">
                         <Button
@@ -1365,10 +1662,10 @@ export function AdminPage() {
                     </div>
                   </div>
                 ) : null}
-              </div>
-            </Field>
-            <Field label="Permissions">
-              <div className="rounded-2xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 p-4 shadow-soft">
+              </SoftCard>
+            </FormField>
+            <FormField label="Permissions">
+              <SoftCard className="p-4">
                 <button
                   type="button"
                   className="flex w-full items-center justify-between gap-3 text-left"
@@ -1391,7 +1688,7 @@ export function AdminPage() {
                 </button>
 
                 {userPermissionsOpen ? (
-                  <div className="mt-3 space-y-3">
+                  <div className="mt-0 space-y-0">
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <div className="flex gap-2">
                         <Button
@@ -1475,8 +1772,8 @@ export function AdminPage() {
                     ) : null}
                   </div>
                 ) : null}
-              </div>
-            </Field>
+              </SoftCard>
+            </FormField>
             <div className="flex gap-2 justify-end">
               {userModalMode === "edit" ? (
                 <Button
@@ -1487,12 +1784,12 @@ export function AdminPage() {
                       open: true,
                       type: "user",
                       payload: selectedUser?.id || selectedUser?.user_id,
-                      label: `Delete user "${selectedUser?.email}"?`,
+                      label: `Deactivate user "${selectedUser?.email}"?`,
                     })
                   }
                   disabled={isSelfUser}
                 >
-                  Delete
+                  Deactivate
                 </Button>
               ) : (
                 <span />
@@ -1527,7 +1824,7 @@ export function AdminPage() {
       >
         <div className="space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Field label="Name">
+            <FormField label="Name">
               <input
                 className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                 value={profileForm.name}
@@ -1535,26 +1832,26 @@ export function AdminPage() {
                 placeholder="system_admin"
                 disabled={Boolean(editingProfile)}
               />
-            </Field>
-            <Field label="Display Name">
+            </FormField>
+            <FormField label="Display Name">
               <input
                 className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                 value={profileForm.display_name}
                 onChange={(e) => setProfileForm((f) => ({ ...f, display_name: e.target.value }))}
                 placeholder="System Admin"
               />
-            </Field>
+            </FormField>
           </div>
-          <Field label="Description">
+          <FormField label="Description">
             <input
               className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
               value={profileForm.description}
               onChange={(e) => setProfileForm((f) => ({ ...f, description: e.target.value }))}
               placeholder="What this profile can do"
             />
-          </Field>
-          <Field label="Permission Sets">
-            <div className="rounded-2xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 p-4 shadow-soft">
+          </FormField>
+          <FormField label="Permission Sets">
+            <SoftCard className="p-4">
               <button
                 type="button"
                 className="flex w-full items-center justify-between gap-3 text-left"
@@ -1577,7 +1874,7 @@ export function AdminPage() {
               </button>
 
               {profilePermissionSetsOpen ? (
-                <div className="mt-3 space-y-3">
+                <div className="mt-0 space-y-0">
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <div className="flex gap-2">
                       <Button
@@ -1643,10 +1940,10 @@ export function AdminPage() {
                   )}
                 </div>
               ) : null}
-            </div>
-          </Field>
-          <Field label="Permissions">
-            <div className="rounded-2xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 p-4 shadow-soft">
+            </SoftCard>
+          </FormField>
+          <FormField label="Permissions">
+            <SoftCard className="p-4">
               <button
                 type="button"
                 className="flex w-full items-center justify-between gap-3 text-left"
@@ -1669,7 +1966,7 @@ export function AdminPage() {
               </button>
 
               {profilePermissionsOpen ? (
-                <div className="mt-3 space-y-3">
+                <div className="mt-0 space-y-0">
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <div className="flex gap-2">
                       <Button
@@ -1751,8 +2048,8 @@ export function AdminPage() {
                   ) : null}
                 </div>
               ) : null}
-            </div>
-          </Field>
+            </SoftCard>
+          </FormField>
           <div className="flex items-center justify-between gap-2 pt-1">
             {editingProfile ? (
               <Button
@@ -1814,7 +2111,7 @@ export function AdminPage() {
       >
         <div className="space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Field label="Code">
+            <FormField label="Code">
               <input
                 className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                 value={companyForm.code}
@@ -1822,18 +2119,18 @@ export function AdminPage() {
                 placeholder="IF-001"
                 disabled={Boolean(editingCompany)}
               />
-            </Field>
-            <Field label="Name">
+            </FormField>
+            <FormField label="Name">
               <input
                 className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                 value={companyForm.name}
                 onChange={(e) => setCompanyForm((f) => ({ ...f, name: e.target.value }))}
                 placeholder="IronForge HQ"
               />
-            </Field>
+            </FormField>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Field label="Parent company">
+            <FormField label="Parent company">
               <select
                 className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                 value={companyForm.parent_id}
@@ -1842,45 +2139,45 @@ export function AdminPage() {
                 <option value="">None</option>
                 {companyList
                   .filter((company) => (company.code || company.id) !== companyForm.code)
-                  .map((company) => {
+                  .map((company, idx) => {
                     const value = company.code || company.id;
                     return (
-                      <option key={value} value={value}>
+                      <option key={`${value || "company"}-${idx}`} value={value || ""}>
                         {company.name || company.code || value}
                       </option>
                     );
                   })}
               </select>
-            </Field>
-            <Field label="Country">
+            </FormField>
+            <FormField label="Country">
               <input
                 className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                 value={companyForm.country}
                 onChange={(e) => setCompanyForm((f) => ({ ...f, country: e.target.value }))}
                 placeholder="US"
               />
-            </Field>
+            </FormField>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Field label="Currency">
+            <FormField label="Currency">
               <input
                 className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                 value={companyForm.currency}
                 onChange={(e) => setCompanyForm((f) => ({ ...f, currency: e.target.value }))}
                 placeholder="USD"
               />
-            </Field>
-            <Field label="Timezone">
+            </FormField>
+            <FormField label="Timezone">
               <input
                 className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                 value={companyForm.timezone}
                 onChange={(e) => setCompanyForm((f) => ({ ...f, timezone: e.target.value }))}
                 placeholder="America/New_York"
               />
-            </Field>
+            </FormField>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Field label="Type">
+            <FormField label="Type">
               <select
                 className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                 value={companyForm.isgroup ? "group" : "company"}
@@ -1889,8 +2186,8 @@ export function AdminPage() {
                 <option value="company">Company</option>
                 <option value="group">Group</option>
               </select>
-            </Field>
-            <Field label="Status">
+            </FormField>
+            <FormField label="Status">
               <select
                 className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                 value={companyForm.is_active ? "active" : "inactive"}
@@ -1899,7 +2196,7 @@ export function AdminPage() {
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </select>
-            </Field>
+            </FormField>
           </div>
           <div className="flex items-center justify-between gap-2 pt-1">
             {editingCompany ? (
@@ -1952,7 +2249,7 @@ export function AdminPage() {
       >
         <div className="space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Field label="Name">
+            <FormField label="Name">
               <input
                 className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                 value={permissionSetForm.name}
@@ -1960,26 +2257,26 @@ export function AdminPage() {
                 placeholder="sales_ops"
                 disabled={Boolean(editingPermissionSet)}
               />
-            </Field>
-            <Field label="Display Name">
+            </FormField>
+            <FormField label="Display Name">
               <input
                 className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                 value={permissionSetForm.display_name}
                 onChange={(e) => setPermissionSetForm((f) => ({ ...f, display_name: e.target.value }))}
                 placeholder="Sales Ops"
               />
-            </Field>
+            </FormField>
           </div>
-          <Field label="Description">
+          <FormField label="Description">
             <input
               className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
               value={permissionSetForm.description}
               onChange={(e) => setPermissionSetForm((f) => ({ ...f, description: e.target.value }))}
               placeholder="What this permission set grants"
             />
-          </Field>
-          <Field label="Permissions">
-            <div className="rounded-2xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 p-4 shadow-soft">
+          </FormField>
+          <FormField label="Permissions">
+            <SoftCard className="p-4">
               <button
                 type="button"
                 className="flex w-full items-center justify-between gap-3 text-left"
@@ -2002,7 +2299,7 @@ export function AdminPage() {
               </button>
 
               {permissionSetPermissionsOpen ? (
-                <div className="mt-3 space-y-3">
+                <div className="mt-0 space-y-0">
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <div className="flex gap-2">
                       <Button
@@ -2086,8 +2383,8 @@ export function AdminPage() {
                   ) : null}
                 </div>
               ) : null}
-            </div>
-          </Field>
+            </SoftCard>
+          </FormField>
           <div className="flex items-center justify-between gap-2 pt-1">
             {editingPermissionSet ? (
               <Button
@@ -2129,52 +2426,81 @@ export function AdminPage() {
 
       <Modal
         open={permissionModal.open}
-        onClose={() => setPermissionModal({ open: false, mode: "add", value: "", original: "" })}
+        onClose={() => {
+          setPermissionModal({
+            open: false,
+            mode: "add",
+            value: "",
+            original: "",
+            module: "",
+            service: "",
+            action: "",
+          });
+          setPermissionModalError("");
+        }}
         title={permissionModal.mode === "edit" ? "Edit permission" : "Add permission"}
         maxWidth="520px"
       >
         <div className="space-y-3">
-          <Field label="Permission">
-            <input
-              className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-              value={permissionModal.value}
-              onChange={(e) => setPermissionModal((m) => ({ ...m, value: e.target.value }))}
-              placeholder="module:resource:action"
-            />
-          </Field>
-          <div className="flex items-center justify-between gap-2">
-            {permissionModal.mode === "edit" ? (
-              <Button
-                variant="ghost"
-                className="rounded-2xl text-red-600 hover:text-red-700 dark:text-red-300"
-                onClick={() =>
-                  setConfirmDelete({
-                    open: true,
-                    type: "permission",
-                    payload: permissionModal.original || permissionModal.value,
-                    label: `Delete permission "${permissionModal.original || permissionModal.value}"?`,
-                  })
-                }
-                disabled={savingPermission}
-              >
-                Delete
-              </Button>
-            ) : (
-              <span />
-            )}
-            <div className="flex gap-2">
-              <Button
-                variant="ghost"
-                className="rounded-2xl"
-                onClick={() => setPermissionModal({ open: false, mode: "add", value: "", original: "" })}
-                disabled={savingPermission}
-              >
-                Cancel
-              </Button>
-              <Button className="rounded-2xl" onClick={savePermissionModal} disabled={savingPermission}>
-                {savingPermission ? "Saving..." : "Save"}
-              </Button>
+          <FormField label="Permission">
+            <div className="grid grid-cols-[1fr_auto_1fr_auto_1fr] items-center gap-2">
+              <div>
+                <input
+                  list="permission-module-options"
+                  className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                  value={permissionModal.module}
+                  onChange={(e) => updatePermissionModalField("module", e.target.value)}
+                  placeholder="module"
+                />
+                <datalist id="permission-module-options">
+                {permissionModuleOptions.map((opt, idx) => (
+                  <option key={`${opt}-${idx}`} value={opt} />
+                ))}
+                </datalist>
+              </div>
+              <span className="text-sm text-black/40 dark:text-white/40">:</span>
+              <div>
+                <input
+                  list="permission-service-options"
+                  className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                  value={permissionModal.service}
+                  onChange={(e) => updatePermissionModalField("service", e.target.value)}
+                  placeholder="service"
+                />
+                <datalist id="permission-service-options">
+                {permissionServiceOptions.map((opt, idx) => (
+                  <option key={`${opt}-${idx}`} value={opt} />
+                ))}
+                </datalist>
+              </div>
+              <span className="text-sm text-black/40 dark:text-white/40">:</span>
+              <div>
+                <input
+                  list="permission-action-options"
+                  className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                  value={permissionModal.action}
+                  onChange={(e) => updatePermissionModalField("action", e.target.value)}
+                  placeholder="permission"
+                />
+                <datalist id="permission-action-options">
+                {permissionActionOptions.map((opt, idx) => (
+                  <option key={`${opt}-${idx}`} value={opt} />
+                ))}
+                </datalist>
+              </div>
             </div>
+          </FormField>
+          {permissionModalError ? (
+            <div className="text-xs text-red-600 dark:text-red-300">{permissionModalError}</div>
+          ) : null}
+          <div className="flex justify-end">
+            <Button className="rounded-2xl" onClick={savePermissionModal} disabled={savingPermission}>
+              {savingPermission
+                ? "Saving..."
+                : permissionModal.mode === "edit"
+                  ? "Update Permission"
+                  : "Add Permission"}
+            </Button>
           </div>
         </div>
       </Modal>
@@ -2186,52 +2512,5 @@ export function AdminPage() {
         onConfirm={handleConfirmDelete}
       />
     </div>
-  );
-}
-
-function Field({ label, children }) {
-  return (
-    <label className="block space-y-1">
-      <div className="text-xs font-semibold text-black/60 dark:text-white/65">{label}</div>
-      {children}
-    </label>
-  );
-}
-
-function Modal({ open, onClose, title, children, maxWidth = "520px" }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 backdrop-blur-sm px-4 py-6 overflow-y-auto">
-      <div className="w-full" style={{ maxWidth }}>
-        <div className="rounded-2xl bg-white/90 dark:bg-neutral-900/95 shadow-2xl ring-1 ring-black/10 dark:ring-white/10 max-h-[85vh] flex flex-col">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-black/5 dark:border-white/10">
-            <div className="text-sm font-semibold">{title}</div>
-            <button className="text-black/60 dark:text-white/60 hover:opacity-100 opacity-70" onClick={onClose}>
-              ✕
-            </button>
-          </div>
-          <div className="p-4 overflow-y-auto">{children}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ConfirmModal({ open, onClose, onConfirm, message }) {
-  if (!open) return null;
-  return (
-    <Modal open={open} onClose={onClose} title="Confirm" maxWidth="420px">
-      <div className="space-y-4">
-        <div className="text-sm text-black/70 dark:text-white/70">{message || "Are you sure?"}</div>
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" className="rounded-2xl" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button className="rounded-2xl" onClick={onConfirm}>
-            Confirm
-          </Button>
-        </div>
-      </div>
-    </Modal>
   );
 }

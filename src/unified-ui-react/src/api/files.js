@@ -12,6 +12,10 @@ export async function uploadFile(file) {
 export function resolveFileUrl(file) {
   const base = runtimeConfig.API_BASE_URL || "";
 
+  if (file?.preview_url) {
+    return file.preview_url;
+  }
+
   if (file?.file_url) {
     // signed supabase URLs can be used directly
     if (file.file_url.startsWith("http")) return file.file_url;

@@ -4,6 +4,7 @@ import { Eye, EyeOff, Grid2X2 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
+import { FormField } from "../components/ui/form-field";
 import { Logo } from "../components/Logo";
 import { useAuth } from "../state/auth";
 
@@ -94,7 +95,7 @@ export function LoginPage() {
             <div className="space-y-3">
               
                 <form className="space-y-3" onSubmit={onSubmit}>
-                  <Field label="Email">
+                  <FormField label="Email" withGap={false} labelClassName="mb-1">
                     <input
                       className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10 dark:focus:ring-white/15"
                       type="email"
@@ -104,9 +105,9 @@ export function LoginPage() {
                       placeholder="you@email.com"
                       required
                     />
-                  </Field>
+                  </FormField>
 
-                  <Field label="Password">
+                  <FormField label="Password" withGap={false} labelClassName="mb-1">
                     <div className="relative">
                       <input
                         className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-4 py-2 pr-12 text-sm outline-none focus:ring-2 focus:ring-black/10 dark:focus:ring-white/15"
@@ -126,7 +127,7 @@ export function LoginPage() {
                         {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
-                  </Field>
+                  </FormField>
 
                   {error ? (
                     <div className="text-sm text-red-700 rounded-2xl px-4 py-2 bg-black/5 dark:bg-white/10">{error}</div>
@@ -160,14 +161,5 @@ export function LoginPage() {
         </Card>
       </div>
     </div>
-  );
-}
-
-function Field({ label, children }) {
-  return (
-    <label className="block">
-      <div className="text-xs font-semibold text-black/60 dark:text-white/65 mb-1">{label}</div>
-      {children}
-    </label>
   );
 }

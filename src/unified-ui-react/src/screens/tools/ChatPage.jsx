@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Paperclip, Send } from "lucide-react";
+import { Download, ExternalLink, FileText, Paperclip, Send } from "lucide-react";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import * as chatApi from "../../api/chat";
 import * as filesApi from "../../api/files";
+import { getAuthToken } from "../../lib/token";
 
 export function ChatPage() {
   const [conversationId, setConversationId] = useState(null);
@@ -15,8 +16,11 @@ export function ChatPage() {
   const [historyHydrated, setHistoryHydrated] = useState(false);
 
   const fileRef = useRef(null);
+  const scrollerRef = useRef(null);
   const endRef = useRef(null);
   const abortRef = useRef(null);
+  const stickToBottomRef = useRef(true);
+  const fileOrderRef = useRef(0);
 
   const historyQuery = useQuery({
     queryKey: ["chat", "history"],
@@ -44,7 +48,33 @@ export function ChatPage() {
     setHistoryHydrated(true);
   }, [historyQuery.data, historyQuery.isLoading, historyHydrated]);
 
-  useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [messages, streaming]);
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const updateStickiness = () => {
+      const threshold = 120;
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+      stickToBottomRef.current = atBottom;
+    };
+    updateStickiness();
+    el.addEventListener("scroll", updateStickiness, { passive: true });
+    return () => el.removeEventListener("scroll", updateStickiness);
+  }, []);
+
+  const scrollToBottom = React.useCallback((behavior = "smooth", force = false) => {
+    if (!force && !stickToBottomRef.current) return;
+    endRef.current?.scrollIntoView({ behavior, block: "end" });
+  }, []);
+
+  useEffect(() => {
+    const behavior = streaming ? "auto" : "smooth";
+    requestAnimationFrame(() => scrollToBottom(behavior));
+  }, [messages, streaming, scrollToBottom]);
+  useEffect(() => {
+    if (historyHydrated) {
+      requestAnimationFrame(() => scrollToBottom("auto", true));
+    }
+  }, [historyHydrated, scrollToBottom]);
   useEffect(() => () => abortRef.current?.abort?.(), []);
 
   async function send() {
@@ -59,7 +89,7 @@ export function ChatPage() {
         ? [{
             file_id: `local-${Date.now()}`,
             filename: pendingFile.name,
-            url: URL.createObjectURL(pendingFile),
+            preview_url: URL.createObjectURL(pendingFile),
           }]
         : [];
 
@@ -83,6 +113,8 @@ export function ChatPage() {
     setMessages((m) => [...m, userMsg, assistantMsg]);
     setValue("");
     setPendingFile(null);
+    stickToBottomRef.current = true;
+    requestAnimationFrame(() => scrollToBottom("auto", true));
 
     try {
       setStreaming(true);
@@ -104,11 +136,21 @@ export function ChatPage() {
         const resolved = {
           file_id: uploaded.file_id,
           filename: pendingFile.name,
+          file_url: uploaded.file_url || uploaded.url || "",
         };
-        const resolvedUrl = filesApi.resolveFileUrl(resolved);
         setMessages((prev) =>
           prev.map((mm) =>
-            mm.id === userMsgId ? { ...mm, files: [{ ...resolved, url: resolvedUrl }] } : mm
+            mm.id === userMsgId
+              ? {
+                  ...mm,
+                  files: [
+                    {
+                      ...resolved,
+                      preview_url: mm.files?.[0]?.preview_url || mm.files?.[0]?.url || "",
+                    },
+                  ],
+                }
+              : mm
           )
         );
       }
@@ -120,6 +162,69 @@ export function ChatPage() {
         fileIds,
         signal: ctrl.signal,
         onEvent: (evt) => {
+          const pdfFilename = evt?.result?.pdf_filename || evt?.pdf_filename;
+          const decorateFile = (file) => {
+            if (!file) return file;
+            if (!pdfFilename) return file;
+            if (file.pdf_filename) return file;
+            return { ...file, pdf_filename: pdfFilename };
+          };
+          const addFileMessages = (files) => {
+            const groupId = assistantMsgId;
+            const fileItems = (files || [])
+              .filter(Boolean)
+              .map((file) => {
+                const decorated = decorateFile(file);
+                if (!decorated) return decorated;
+                fileOrderRef.current += 1;
+                return {
+                  ...decorated,
+                  file_order: fileOrderRef.current,
+                  group_id: groupId,
+                };
+              })
+              .filter(Boolean);
+            if (!fileItems.length) return;
+            const fileMessages = fileItems.map((file) => ({
+              id: crypto.randomUUID(),
+              role: "assistant",
+              content: "",
+              files: [file],
+              status: null,
+              group_id: groupId,
+              file_order: file.file_order,
+            }));
+            setMessages((prev) => {
+              const next = [...prev];
+              const idx = next.findIndex((mm) => mm.id === assistantMsgId);
+              if (idx === -1) return [...prev, ...fileMessages];
+              const current = next[idx];
+              const hasPayload = Boolean((current.content || "").trim()) || Boolean(current.files?.length);
+              if (!hasPayload) {
+                const [first, ...rest] = fileMessages;
+                if (first) {
+                  next[idx] = { ...first, id: current.id };
+                } else {
+                  next[idx] = { ...current, status: null, content: "", files: [] };
+                }
+                if (rest.length) next.splice(idx + 1, 0, ...rest);
+                return reorderFileGroup(next, groupId);
+              }
+              const lastIdx = next.reduce(
+                (acc, msg, index) => (msg.group_id === groupId ? index : acc),
+                idx
+              );
+              next.splice(lastIdx + 1, 0, ...fileMessages);
+              return reorderFileGroup(next, groupId);
+            });
+          };
+          if (pdfFilename) {
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId && !mm.pdf_filename ? { ...mm, pdf_filename: pdfFilename } : mm
+              )
+            );
+          }
           // Mirrors old chat.js event types
           if (evt?.conversation_id) {
             setConversationId((prev) => prev || evt.conversation_id);
@@ -175,57 +280,19 @@ export function ChatPage() {
 
           if (evt?.type === "files" && evt.files) {
             filesReceived = true;
-            setMessages((prev) =>
-              prev.map((mm) =>
-                mm.id === assistantMsgId
-                  ? { ...mm, files: [...(mm.files || []), ...evt.files] }
-                  : mm
-              )
-            );
-            if (!fullContent) {
-              const withComment = evt.files.find((f) => f.comment);
-              if (withComment?.comment) {
-                fullContent = withComment.comment;
-                setMessages((prev) =>
-                  prev.map((mm) =>
-                    mm.id === assistantMsgId ? { ...mm, status: null, content: fullContent } : mm
-                  )
-                );
-              }
-            }
+            addFileMessages(evt.files);
             return;
           }
 
           if (evt?.type === "file" && (evt.file || evt.url)) {
-            const fileData = evt.file || evt;
             filesReceived = true;
-            setMessages((prev) =>
-              prev.map((mm) =>
-                mm.id === assistantMsgId
-                  ? { ...mm, files: [...(mm.files || []), fileData] }
-                  : mm
-              )
-            );
-            if (!fullContent && fileData.comment) {
-              fullContent = fileData.comment;
-              setMessages((prev) =>
-                prev.map((mm) =>
-                  mm.id === assistantMsgId ? { ...mm, status: null, content: fullContent } : mm
-                )
-              );
-            }
+            addFileMessages([evt.file || evt]);
             return;
           }
 
           if (evt?.files) {
             filesReceived = true;
-            setMessages((prev) =>
-              prev.map((mm) =>
-                mm.id === assistantMsgId
-                  ? { ...mm, files: [...(mm.files || []), ...evt.files] }
-                  : mm
-              )
-            );
+            addFileMessages(evt.files);
             return;
           }
 
@@ -266,13 +333,13 @@ export function ChatPage() {
   return (
     <div className="h-full flex flex-col gap-4 min-h-0">
       <Card className="p-4 overflow-hidden flex-1 min-h-0">
-        <div className="h-full overflow-y-auto pr-2">
+        <div ref={scrollerRef} className="h-full overflow-y-auto px-2">
           <div className="space-y-3">
             {!historyHydrated && historyQuery.isLoading ? (
               <div className="text-sm text-black/60 dark:text-white/65">Loading conversation...</div>
             ) : null}
             {messages.map((m) => (
-              <Message key={m.id} msg={m} />
+              <Message key={m.id} msg={m} onMediaLoad={() => scrollToBottom("auto")} />
             ))}
             <div ref={endRef} />
           </div>
@@ -300,7 +367,7 @@ export function ChatPage() {
             <Paperclip size={18} />
           </Button>
 
-          <Textarea5 value={value} onChange={setValue} placeholder="Type your message..." onEnter={send} disabled={streaming} />
+          <Textarea5 value={value} onChange={setValue} placeholder="Type your message..." onEnter={send} />
 
           <Button size="icon" className="w-12 rounded-2xl" title="Send" disabled={!canSend} onClick={send}>
             <Send size={18} />
@@ -315,9 +382,22 @@ export function ChatPage() {
   );
 }
 
-function Message({ msg }) {
+function Message({ msg, onMediaLoad }) {
   const isUser = msg.role === "user";
   const formatted = useMemo(() => formatContent(msg.content || ""), [msg.content]);
+  const statusText = useMemo(() => normalizeStatusText(msg.status || ""), [msg.status]);
+  const isStatusContent = useMemo(
+    () => !msg.status && isStatusOnlyContent(msg.content || ""),
+    [msg.status, msg.content]
+  );
+  const fallbackStatus = useMemo(() => normalizeStatusText(msg.content || ""), [msg.content]);
+  const hideBody = useMemo(() => {
+    const content = (msg.content || "").trim();
+    if (!content) return true;
+    if (!msg.files?.length || msg.files.length <= 1) return false;
+    return msg.files.some((f) => (f.comment || "").trim() === content);
+  }, [msg.content, msg.files]);
+  const nameCacheRef = useRef(new Map());
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
       <div
@@ -329,9 +409,9 @@ function Message({ msg }) {
             : "bg-white/70 dark:bg-white/10",
         ].join(" ")}
       >
-        {msg.status ? (
-          <span className="opacity-75">{msg.status}</span>
-        ) : (
+        {msg.status || isStatusContent ? (
+          <StatusLine text={statusText || fallbackStatus} />
+        ) : hideBody ? null : (
           <div dangerouslySetInnerHTML={{ __html: formatted }} />
         )}
 
@@ -340,33 +420,162 @@ function Message({ msg }) {
             {msg.files.map((f, i) => {
               const url = filesApi.resolveFileUrl(f);
               if (!url) return null;
-              const name = f.filename || f.name || "file";
-              const ext = name.split(".").pop()?.toLowerCase();
+              const resolvedPdfFilename = f.pdf_filename || msg.pdf_filename;
+              const displayName = getFriendlyFileName(
+                resolvedPdfFilename ? { ...f, pdf_filename: resolvedPdfFilename } : f,
+                url,
+                nameCacheRef.current
+              );
+              const ext = getFileExtension(displayName);
               const isImage = ["jpg", "jpeg", "png", "gif", "webp", "bmp"].includes(ext);
+              const showActions = !isUser;
+              const isPdf = ext === "pdf";
+              const isPptx = ext === "pptx";
+              const comment = f.comment || "";
+              const commentHtml = comment ? formatContent(comment) : "";
 
               if (isImage) {
                 return (
-                  <div key={f.file_id || url || i} className="overflow-hidden rounded-xl border border-black/5 dark:border-white/10">
-                    <img
-                      src={url}
-                      alt={name}
-                      className="max-h-64 w-full object-cover"
-                      loading="lazy"
-                    />
+                  <div
+                    key={f.file_id || url || i}
+                    className="rounded-xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 p-2"
+                  >
+                    {showActions ? (
+                      <>
+                        {comment ? (
+                          <div
+                            className="mb-2 text-xs text-black/70 dark:text-white/70"
+                            dangerouslySetInnerHTML={{ __html: commentHtml }}
+                          />
+                        ) : null}
+                        <a href={url} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-lg">
+                          <img
+                            src={url}
+                            alt={displayName}
+                            className="max-h-64 w-full object-cover"
+                            loading="lazy"
+                            onLoad={onMediaLoad}
+                          />
+                        </a>
+                        <div className="mt-2 flex items-center gap-2">
+                          <Button
+                            asChild
+                            size="sm"
+                            variant="ghost"
+                            className="rounded-xl"
+                          >
+                            <a href={url} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink size={14} className="mr-1" />
+                              Open
+                            </a>
+                          </Button>
+                          <Button size="sm" variant="secondary" className="rounded-xl">
+                            <span
+                              role="link"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                downloadFile(url, displayName);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  downloadFile(url, displayName);
+                                }
+                              }}
+                              className="inline-flex items-center"
+                            >
+                              <Download size={14} className="mr-1" />
+                              Download
+                            </span>
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="overflow-hidden rounded-lg">
+                        <img
+                          src={url}
+                          alt={displayName}
+                          className="max-h-64 w-full object-cover"
+                          loading="lazy"
+                          onLoad={onMediaLoad}
+                        />
+                      </div>
+                    )}
                   </div>
                 );
               }
 
               return (
-                <a
+                <div
                   key={f.file_id || url || i}
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block text-xs underline opacity-80 hover:opacity-100"
+                  className="rounded-xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3"
                 >
-                  {name}
-                </a>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      {comment ? (
+                        <div
+                          className="mb-1 text-xs text-black/70 dark:text-white/70"
+                          dangerouslySetInnerHTML={{ __html: commentHtml }}
+                        />
+                      ) : null}
+                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-black/50 dark:text-white/60">
+                        {isPdf ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 text-red-700 dark:text-red-300 px-2 py-0.5">
+                            <FileText size={12} />
+                            PDF
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5">
+                            {ext ? ext.toUpperCase() : "FILE"}
+                          </span>
+                        )}
+                      </div>
+                      {showActions ? (
+                        <div className="mt-1 text-[11px] font-semibold text-black/80 dark:text-white/85 truncate">
+                          {displayName}
+                        </div>
+                      ) : null}
+                    </div>
+                    {showActions ? (
+                      <div className="flex items-center gap-2">
+                        {!isPptx ? (
+                          <Button
+                            asChild
+                            size="sm"
+                            variant="ghost"
+                            className="rounded-xl"
+                          >
+                            <a href={url} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink size={14} className="mr-1" />
+                              Open
+                            </a>
+                          </Button>
+                        ) : null}
+                        <Button size="sm" variant="secondary" className="rounded-xl">
+                          <span
+                            role="link"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              downloadFile(url, displayName);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                downloadFile(url, displayName);
+                              }
+                            }}
+                            className="inline-flex items-center"
+                          >
+                            <Download size={14} className="mr-1" />
+                            Download
+                          </span>
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -410,6 +619,19 @@ function Textarea5({ value, onChange, placeholder, onEnter, disabled }) {
   );
 }
 
+function StatusLine({ text }) {
+  return (
+    <span className="inline-flex items-center gap-2 opacity-80">
+      <span>{text || "Thinking"}</span>
+      <span className="mmg-ellipsis" aria-hidden="true">
+        <span className="mmg-ellipsis-dot" style={{ animationDelay: "0ms" }} />
+        <span className="mmg-ellipsis-dot" style={{ animationDelay: "120ms" }} />
+        <span className="mmg-ellipsis-dot" style={{ animationDelay: "240ms" }} />
+      </span>
+    </span>
+  );
+}
+
 function normalizeHistoryMessage(msg) {
   return {
     id: msg.id || msg.message_id || crypto.randomUUID(),
@@ -418,6 +640,168 @@ function normalizeHistoryMessage(msg) {
     files: msg.files || msg.attachments || [],
     status: null,
   };
+}
+
+function normalizeStatusText(text) {
+  if (!text) return "";
+  return String(text)
+    .replace(/[⏳⌛]/g, "")
+    .replace(/[_*`]/g, "")
+    .replace(/\.+$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isStatusOnlyContent(content) {
+  const cleaned = normalizeStatusText(content);
+  if (!cleaned) return false;
+  if (cleaned === "Thinking") return true;
+  if (cleaned.startsWith("Processing")) return true;
+  if (cleaned.startsWith("Building Proposal")) return true;
+  return false;
+}
+
+function getFileExtension(value) {
+  if (!value) return "";
+  const cleaned = String(value).split("?")[0].split("#")[0];
+  const parts = cleaned.split(".");
+  if (parts.length <= 1) return "";
+  return parts.pop().toLowerCase();
+}
+
+function getFileSortRank(file) {
+  const name =
+    file?.pdf_filename ||
+    file?.filename ||
+    file?.file_name ||
+    file?.name ||
+    file?.url ||
+    file?.file_url ||
+    "";
+  const ext = getFileExtension(name);
+  if (ext === "pptx" || ext === "ppt") return 0;
+  if (ext === "pdf") return 2;
+  return 1;
+}
+
+function reorderFileGroup(list, groupId) {
+  if (!groupId) return list;
+  const groupMessages = [];
+  let firstIndex = -1;
+  list.forEach((msg, idx) => {
+    if (msg.group_id === groupId) {
+      if (firstIndex === -1) firstIndex = idx;
+      groupMessages.push(msg);
+    }
+  });
+  if (groupMessages.length <= 1) return list;
+  const sorted = [...groupMessages].sort((a, b) => {
+    const rankA = getFileSortRank(a.files?.[0]);
+    const rankB = getFileSortRank(b.files?.[0]);
+    if (rankA !== rankB) return rankA - rankB;
+    const orderA = a.file_order ?? a.files?.[0]?.file_order ?? 0;
+    const orderB = b.file_order ?? b.files?.[0]?.file_order ?? 0;
+    return orderA - orderB;
+  });
+  const filtered = list.filter((msg) => msg.group_id !== groupId);
+  const insertAt = firstIndex === -1 ? filtered.length : firstIndex;
+  filtered.splice(insertAt, 0, ...sorted);
+  return filtered;
+}
+
+function getNameFromUrl(url) {
+  if (!url) return "";
+  try {
+    const resolved = new URL(url, window.location.href);
+    const parts = resolved.pathname.split("/").filter(Boolean);
+    return parts.length ? decodeURIComponent(parts[parts.length - 1]) : "";
+  } catch {
+    const fallback = url.split("?")[0].split("#")[0];
+    const parts = fallback.split("/").filter(Boolean);
+    return parts.length ? decodeURIComponent(parts[parts.length - 1]) : "";
+  }
+}
+
+function isGenericFileName(name) {
+  if (!name) return true;
+  const lower = name.trim().toLowerCase();
+  if (!lower) return true;
+  if (lower === "file" || lower === "download") return true;
+  const base = lower.replace(/\.[^.]+$/, "");
+  if (base === "tmp" || base === "temp") return true;
+  if (/^[a-f0-9-]{16,}$/.test(base)) return true;
+  if (/^file[-_]?\d+$/.test(base)) return true;
+  if (/^(tmp|temp)/.test(base)) return true;
+  if (/^upload[-_]?.+$/.test(base)) return true;
+  return false;
+}
+
+function getFriendlyFileName(file, url, cache) {
+  const pdfFilename = file?.filename || "";
+  const raw = pdfFilename || file?.filename || file?.title || "";
+  const urlName = getNameFromUrl(url);
+  const key = file?.file_id || file?.id || url || raw;
+  let name = raw || urlName || "";
+  const ext = getFileExtension(name) || getFileExtension(urlName) || getFileExtension(url);
+
+  if (pdfFilename) {
+    const pdfExt = getFileExtension(name) || "pdf";
+    if (!name.toLowerCase().endsWith(`.${pdfExt}`)) {
+      name = `${name}.${pdfExt}`;
+    }
+    return name;
+  }
+
+  if (isGenericFileName(name)) {
+    if (ext === "pdf") {
+      name = `Proposal.pdf`;
+    } else if (ext) {
+      name = `Attachment.${ext}`;
+    } else {
+      name = "Attachment";
+    }
+  } else if (ext && !name.toLowerCase().endsWith(`.${ext}`)) {
+    name = `${name}.${ext}`;
+  }
+
+  return name || (ext ? `Attachment.${ext}` : "Attachment");
+}
+
+async function downloadFile(url, filename) {
+  try {
+    const token = getAuthToken();
+    const res = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    if (!res.ok) throw new Error("Download failed");
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+  } catch {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+}
+
+function formatDateTime(value) {
+  const date = value ? new Date(value) : new Date();
+  const safe = Number.isNaN(date.getTime()) ? new Date() : date;
+  const pad = (num) => String(num).padStart(2, "0");
+  const datePart = [safe.getFullYear(), pad(safe.getMonth() + 1), pad(safe.getDate())].join("-");
+  const timePart = [pad(safe.getHours()), pad(safe.getMinutes()), pad(safe.getSeconds())].join("");
+  return `${datePart}_${timePart}`;
 }
 
 function createGreeting() {
