@@ -83,8 +83,10 @@ async def load_workflows_from_db():
     """
     try:
         workflows = db.get_all_active_bo_workflows()
-        for workflow_id, workflow_data_json in workflows:
-            workflow_data = json.loads(workflow_data_json)
+        for workflow_id, workflow_data in workflows:
+            # Supabase returns JSONB as dict, SQLite returns as JSON string
+            if isinstance(workflow_data, str):
+                workflow_data = json.loads(workflow_data)
             approval_workflows[workflow_id] = workflow_data
         logger.info(f"[BO APPROVAL] Loaded {len(workflows)} active workflows from database")
     except Exception as e:

@@ -526,6 +526,11 @@
                 case 'pong':
                     // Heartbeat response
                     break;
+
+                case 'clear':
+                    // Server cleared logs - sync UI
+                    clearLogsUI();
+                    break;
             }
         }
 
@@ -741,14 +746,23 @@
             }
         };
 
-        // Clear button
+        // Clear button - clears logs permanently on server
         document.getElementById('btnClear').onclick = () => {
+            // Send clear command to server
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ action: 'clear' }));
+            }
+            // Also clear locally immediately for responsive UI
+            clearLogsUI();
+        };
+
+        function clearLogsUI() {
             logsContainer.querySelectorAll('.log-line').forEach(el => el.remove());
             logs = [];
             serviceCounts = { all: 0 };
             updateUI();
             emptyState.style.display = 'flex';
-        };
+        }
 
         // Copy button - copies all visible logs
         document.getElementById('btnCopy').onclick = async () => {

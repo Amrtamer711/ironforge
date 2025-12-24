@@ -614,10 +614,10 @@ def _fetch_locations_from_asset_management() -> list[dict]:
         return []
 
     try:
-        # Create short-lived service JWT
+        # Create short-lived service JWT (matching ServiceAuthClient format)
         payload = {
-            "sub": "sales-module",
-            "service": True,
+            "service": "sales-module",
+            "type": "service",
             "iat": datetime.now(timezone.utc),
             "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
         }

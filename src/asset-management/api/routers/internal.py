@@ -39,8 +39,8 @@ async def verify_service_token(
     Verify service-to-service JWT token.
 
     Tokens must be signed with INTER_SERVICE_SECRET and contain:
-    - sub: calling service name
-    - service: True
+    - service: calling service name (e.g., "sales-module")
+    - type: "service"
     - exp: expiration time
     """
     if not config.INTER_SERVICE_SECRET:
@@ -66,14 +66,21 @@ async def verify_service_token(
             algorithms=["HS256"],
         )
 
-        # Verify it's a service token
-        if not payload.get("service"):
+        # Verify it's a service token (matches ServiceAuthClient format)
+        if payload.get("type") != "service":
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Not a service token",
             )
 
-        service_name = payload.get("sub", "unknown")
+        # Get service name from 'service' key (ServiceAuthClient format)
+        service_name = payload.get("service", "unknown")
+        if not service_name or service_name == "unknown":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing service name in token",
+            )
+
         logger.debug(f"[INTERNAL] Authenticated service: {service_name}")
         return payload
 
@@ -97,7 +104,10 @@ async def verify_service_token(
 @router.get("/locations")
 def list_locations_internal(
     companies: list[str] = Query(default=None, description="Filter by company schemas"),
+    network_id: int | None = Query(default=None, description="Filter by network"),
+    type_id: int | None = Query(default=None, description="Filter by asset type"),
     active_only: bool = Query(default=True, description="Only return active locations"),
+    include_eligibility: bool = Query(default=False, description="Include eligibility info"),
     service: dict = Depends(verify_service_token),
 ) -> list[Location]:
     """
@@ -110,7 +120,7 @@ def list_locations_internal(
 
     Used by Sales-Module at startup to build location cache.
     """
-    caller = service.get("sub", "unknown")
+    caller = service.get("service", "unknown")
     logger.info(f"[INTERNAL] {caller} fetching locations (companies={companies}, active_only={active_only})")
 
     # If no companies specified, return all
@@ -119,7 +129,10 @@ def list_locations_internal(
     try:
         locations = _location_service.list_locations(
             companies=filter_companies,
+            network_id=network_id,
+            type_id=type_id,
             active_only=active_only,
+            include_eligibility=include_eligibility,
         )
         logger.info(f"[INTERNAL] Returning {len(locations)} locations to {caller}")
         return locations
@@ -141,7 +154,7 @@ def list_networks_internal(
 
     Used by other services for network lookups.
     """
-    caller = service.get("sub", "unknown")
+    caller = service.get("service", "unknown")
     logger.info(f"[INTERNAL] {caller} fetching networks (companies={companies})")
 
     filter_companies = companies or config.COMPANY_SCHEMAS
@@ -167,7 +180,7 @@ def internal_health_check(
 
     Used by other services to verify Asset-Management is available.
     """
-    caller = service.get("sub", "unknown")
+    caller = service.get("service", "unknown")
     return {
         "status": "healthy",
         "service": "asset-management",

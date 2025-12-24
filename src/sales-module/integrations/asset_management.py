@@ -166,6 +166,8 @@ class AssetManagementClient:
         """
         Get networks for given companies.
 
+        Uses internal endpoint for service-to-service communication.
+
         Args:
             companies: List of company schemas to query
             active_only: Only return active networks
@@ -175,9 +177,8 @@ class AssetManagementClient:
         """
         params = {
             "companies": companies,
-            "active_only": active_only,
         }
-        return await self._request("GET", "/api/networks", params=params) or []
+        return await self._request("GET", "/api/internal/networks", params=params) or []
 
     async def get_network(self, company: str, network_id: int) -> dict | None:
         """
@@ -227,7 +228,7 @@ class AssetManagementClient:
         if type_id is not None:
             params["type_id"] = type_id
 
-        return await self._request("GET", "/api/locations", params=params) or []
+        return await self._request("GET", "/api/internal/locations", params=params) or []
 
     async def get_location(
         self,

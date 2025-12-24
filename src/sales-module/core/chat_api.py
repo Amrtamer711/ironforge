@@ -371,6 +371,14 @@ async def stream_chat_message(
                     # Error occurred
                     yield f"data: {json.dumps({'type': 'error', 'error': event.get('error')})}\n\n"
 
+                elif event_type == "stream_delta":
+                    # Real-time streaming delta from LLM (token-by-token)
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': event.get('delta', ''), 'message_id': event.get('message_id'), 'parent_id': event.get('parent_id')})}\n\n"
+
+                elif event_type == "stream_complete":
+                    # Streaming complete - final message content
+                    yield f"data: {json.dumps({'type': 'stream_complete', 'message_id': event.get('message_id'), 'parent_id': event.get('parent_id'), 'content': event.get('content', '')})}\n\n"
+
             # Wait before polling again (only if not complete)
             if not request_complete:
                 await asyncio.sleep(poll_interval)

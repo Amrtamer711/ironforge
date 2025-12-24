@@ -490,6 +490,80 @@ class WebAdapter(ChannelAdapter):
             platform_message_id=message_id
         )
 
+    def push_stream_delta(
+        self,
+        user_id: str,
+        message_id: str,
+        delta: str,
+    ) -> None:
+        """
+        Push a streaming text delta event for real-time token-by-token display.
+
+        Args:
+            user_id: User session to push to
+            message_id: ID of the message being streamed
+            delta: Text chunk to append
+        """
+        session = self.get_session(user_id)
+        if not session:
+            return
+
+        req_id = current_request_id.get()
+        parent_id = current_parent_message_id.get()
+
+        session.events.append({
+            "type": "stream_delta",
+            "request_id": req_id,
+            "parent_id": parent_id,
+            "message_id": message_id,
+            "delta": delta,
+            "timestamp": datetime.now().isoformat(),
+        })
+
+    def push_stream_complete(
+        self,
+        user_id: str,
+        message_id: str,
+        full_content: str,
+    ) -> None:
+        """
+        Signal that streaming for a message is complete and provide full content.
+
+        Args:
+            user_id: User session to push to
+            message_id: ID of the streamed message
+            full_content: Complete message content
+        """
+        session = self.get_session(user_id)
+        if not session:
+            return
+
+        req_id = current_request_id.get()
+        parent_id = current_parent_message_id.get()
+
+        # Add the complete message to session.messages for persistence
+        timestamp = datetime.now().isoformat()
+        message_data = {
+            "id": message_id,
+            "role": "assistant",
+            "content": full_content,
+            "timestamp": timestamp,
+            "parent_id": parent_id,
+            "buttons": [],
+            "attachments": [],
+        }
+        session.messages.append(message_data)
+
+        # Push stream complete event
+        session.events.append({
+            "type": "stream_complete",
+            "request_id": req_id,
+            "parent_id": parent_id,
+            "message_id": message_id,
+            "content": full_content,
+            "timestamp": timestamp,
+        })
+
     async def update_message(
         self,
         channel_id: str,

@@ -276,6 +276,14 @@ class LogAggregator:
                 "services": dict(self.service_status),
             }
 
+    def clear_all(self):
+        """Clear all log buffers."""
+        with self._lock:
+            for service in self.buffers:
+                self.buffers[service].clear()
+        # Broadcast clear command to all clients
+        self._broadcast_clear()
+
     def set_event_loop(self, loop: asyncio.AbstractEventLoop):
         """Set the asyncio event loop for broadcasting."""
         self._loop = loop
@@ -322,6 +330,27 @@ class LogAggregator:
         except Exception:
             pass
 
+    def _broadcast_clear(self):
+        """Broadcast clear command to all clients."""
+        if not self._loop or not self.clients:
+            return
+
+        message = json.dumps({"type": "clear"})
+
+        async def send_to_all():
+            disconnected = set()
+            for client in self.clients.copy():
+                try:
+                    await client.send(message)
+                except Exception:
+                    disconnected.add(client)
+            self.clients -= disconnected
+
+        try:
+            asyncio.run_coroutine_threadsafe(send_to_all(), self._loop)
+        except Exception:
+            pass
+
 
 # Global log aggregator instance
 log_aggregator: Optional[LogAggregator] = None
@@ -349,11 +378,15 @@ async def websocket_handler(websocket):
 
         # Keep connection alive, handle any incoming messages
         async for message in websocket:
-            # Client can send commands like {"action": "clear", "service": "all"}
+            # Client can send commands like {"action": "clear"} or {"action": "ping"}
             try:
                 data = json.loads(message)
-                if data.get("action") == "ping":
+                action = data.get("action")
+                if action == "ping":
                     await websocket.send(json.dumps({"type": "pong"}))
+                elif action == "clear":
+                    # Clear all log buffers server-side
+                    log_aggregator.clear_all()
             except Exception:
                 pass
 

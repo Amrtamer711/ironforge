@@ -120,9 +120,10 @@ class RequestClassifier:
             result = self._map_classification(classification, [detected_file])
 
             # Cleanup tmp file after classification
-            # Note: _handle_booking_order_parse downloads the file again,
-            # so we can safely clean up here for all cases
-            if tmp_file:
+            # Note: Only cleanup for non-ARTWORK classifications
+            # ARTWORK files are needed by the mockup handler which runs after classification
+            # BO parsing downloads the file again, so it's safe to clean up for that case
+            if tmp_file and classification.get("classification") != "ARTWORK":
                 try:
                     Path(tmp_file).unlink(missing_ok=True)
                     logger.debug(f"[CLASSIFIER] Cleaned up tmp file: {tmp_file}")

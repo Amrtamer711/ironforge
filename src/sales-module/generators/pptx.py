@@ -1,4 +1,8 @@
+import asyncio
+import logging
+import os
 from datetime import datetime
+from pathlib import Path
 
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
@@ -7,6 +11,64 @@ from pptx.oxml.xmlchemy import OxmlElement
 from pptx.util import Inches, Pt
 
 import config
+
+logger = logging.getLogger("proposal-bot")
+
+# Static asset cache - use /data if writable, otherwise /tmp
+if os.path.exists("/data") and os.access("/data", os.W_OK):
+    STATIC_CACHE_DIR = Path("/data/static")
+else:
+    STATIC_CACHE_DIR = Path("/tmp/static")
+
+
+def _get_header_image_path() -> Path | None:
+    """
+    Get path to proposal header image (gradient bar).
+
+    Downloads from Supabase Storage (static bucket) if not cached.
+    Falls back to legacy local path.
+    """
+    # Check cache first
+    cached_path = STATIC_CACHE_DIR / "image.png"
+    if cached_path.exists():
+        return cached_path
+
+    # Legacy fallback
+    legacy_path = config.BASE_DIR / "image.png"
+    if legacy_path.exists():
+        return legacy_path
+
+    # Try downloading from Supabase Storage
+    try:
+        from integrations.storage.providers.supabase import SupabaseStorageProvider
+
+        storage = SupabaseStorageProvider()
+        STATIC_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Run async download - handle both sync and async contexts
+        async def _download():
+            return await storage.download("static", "image.png")
+
+        try:
+            loop = asyncio.get_running_loop()
+            # Already in async context - use nest_asyncio or thread
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                result = pool.submit(asyncio.run, _download()).result()
+        except RuntimeError:
+            # No running loop - safe to use asyncio.run
+            result = asyncio.run(_download())
+
+        if result.success and result.data:
+            cached_path.write_bytes(result.data)
+            logger.info("[PPTX] Downloaded header image from storage")
+            return cached_path
+        else:
+            logger.warning(f"[PPTX] Failed to download header image: {result.error}")
+    except Exception as e:
+        logger.warning(f"[PPTX] Could not download header image: {e}")
+
+    return None
 
 # Optional DM Guidelines URL - if set, the T&C text will include a hyperlink
 DM_GUIDELINES_URL = ""  # Set to URL like "https://dm.gov.ae/guidelines" to enable hyperlink
@@ -68,6 +130,7 @@ def add_location_text_with_colored_sov(paragraph, location_text: str, scale: flo
 
 
 def set_cell_border(cell, edges=("L", "R", "T", "B")) -> None:
+    logger.info(f"[PPTX:BORDER] Setting borders for edges: {edges}")
     tc = cell._tc
     tcPr = tc.get_or_add_tcPr()
 
@@ -76,6 +139,7 @@ def set_cell_border(cell, edges=("L", "R", "T", "B")) -> None:
         if existing is not None:
             tcPr.remove(existing)
 
+    borders_added = []
     for edge in edges:
         ln = OxmlElement(f"a:ln{edge}")
         ln.set("w", "25400")
@@ -105,6 +169,9 @@ def set_cell_border(cell, edges=("L", "R", "T", "B")) -> None:
         ln.append(round_join)
 
         tcPr.append(ln)
+        borders_added.append(edge)
+
+    logger.info(f"[PPTX:BORDER] Added borders: {borders_added}")
 
 
 def _calc_vat_and_total_for_rates(
@@ -324,8 +391,8 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     max_splits = max(len(v) if isinstance(v, list) else 1 for _, v in data[split_start_index:])
     cols = 1 + max_splits
 
-    image_path = config.BASE_DIR / "image.png"
-    if image_path.exists():
+    image_path = _get_header_image_path()
+    if image_path:
         slide.shapes.add_picture(str(image_path), left, top, width=table_width)
 
     row_height = int(Inches(0.9) * scale_y)
@@ -624,8 +691,8 @@ def create_combined_financial_proposal_slide(
     col1_width = int(Inches(4.0) * scale_x)
     location_col_width = int((table_width - col1_width) / num_locations)
 
-    image_path = config.BASE_DIR / "image.png"
-    if image_path.exists():
+    image_path = _get_header_image_path()
+    if image_path:
         slide.shapes.add_picture(str(image_path), left, top, width=table_width)
 
     row_height = int(Inches(0.9) * scale_y)

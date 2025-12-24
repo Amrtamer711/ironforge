@@ -191,7 +191,7 @@ class MockupCoordinator:
         request_params = {
             "uploaded_creatives": uploaded_creatives or [],
             "ai_prompts": ai_prompts or [],
-            "user_id": user_id
+            "user_id": user_id,  # Needed by followup strategy's can_handle
         }
 
         selected_strategy = None
@@ -218,9 +218,8 @@ class MockupCoordinator:
                 location_name=location_name,
                 time_of_day=time_of_day,
                 finish=finish,
-                user_id=user_id,
                 user_companies=self.user_companies,
-                **request_params
+                **request_params  # Includes user_id, uploaded_creatives, ai_prompts
             )
 
             self.logger.info(f"[COORDINATOR] Mockup generated successfully")

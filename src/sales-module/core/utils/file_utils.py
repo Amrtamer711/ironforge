@@ -228,19 +228,29 @@ async def download_file(file_info: dict[str, Any]) -> Path:
     Uses the unified channel abstraction layer for file downloads.
     Platform-agnostic: works with any channel adapter (Slack, Web, etc.)
     """
-    channel = config.get_channel_adapter()
+    # Import config locally to avoid circular import
+    import config as app_config
+    channel = app_config.get_channel_adapter()
     if not channel:
         raise RuntimeError("No channel adapter available")
 
-    logger.info(f"[DOWNLOAD] Downloading file: {file_info.get('name', 'unknown')}")
+    file_name = file_info.get('name', file_info.get('filename', 'unknown'))
+    file_id = file_info.get('file_id', 'no-id')
+    logger.info(f"[DOWNLOAD] Downloading file: {file_name} (file_id={file_id})")
 
     # Use channel adapter to download file
     file_path = await channel.download_file(file_info)
+
+    # Handle case where file couldn't be found/downloaded
+    if file_path is None:
+        logger.error(f"[DOWNLOAD] Failed to download file: {file_name} (file_id={file_id}) - file not found in storage")
+        raise FileNotFoundError(f"File not found: {file_name} (file_id={file_id})")
 
     # Verify file was written
     if file_path.exists():
         logger.info(f"[DOWNLOAD] File successfully written: {file_path} (size: {file_path.stat().st_size} bytes)")
     else:
         logger.error(f"[DOWNLOAD] File not found after write: {file_path}")
+        raise FileNotFoundError(f"File not found after download: {file_path}")
 
     return file_path

@@ -550,7 +550,8 @@ const Chat = {
     if (msgEl) {
       const bubble = msgEl.querySelector('.chat-msg-bubble');
       if (bubble) {
-        bubble.innerHTML = `<span class="chat-thinking"><span class="thinking-dots"></span>${message}</span>`;
+        const formatted = this.formatInline(message);
+        bubble.innerHTML = `<span class="chat-thinking"><span class="thinking-dots"></span>${formatted}</span>`;
       }
     }
   },
@@ -744,9 +745,9 @@ const Chat = {
       // Bold: **text** or __text__ (but NOT our internal placeholders like __INLINE_CODE_0__)
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/__(?!INLINE_CODE_|CODE_BLOCK_)(.+?)__/g, '<strong>$1</strong>')
-      // Italic: *text* or _text_ (but not within words for underscore)
+      // Italic: *text* or _text_
       .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
-      .replace(/(?<!\w)_(?!_)(.+?)(?<!_)_(?!\w)/g, '<em>$1</em>')
+      .replace(/(^|[\s>])_([^_]+)_($|[\s<.,!?])/g, '$1<em>$2</em>$3')
       // Strikethrough: ~~text~~
       .replace(/~~(.+?)~~/g, '<del>$1</del>')
       // Highlight/mark: ==text==

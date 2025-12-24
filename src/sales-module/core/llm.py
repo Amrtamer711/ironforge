@@ -694,6 +694,190 @@ async def handle_booking_order_edit_flow(channel: str, user_id: str, user_input:
         return f"❌ **Error processing your request:** {str(e)}\n\nPlease try again."
 
 
+async def _process_llm_streaming(
+    llm_client,
+    llm_messages: list,
+    all_tools: list,
+    channel: str,
+    user_id: str,
+    user_name: str | None,
+    status_ts: str | None,
+    channel_event: dict | None,
+    user_input: str,
+    has_files: bool,
+    history: list,
+    channel_adapter,
+    user_companies: list[str] | None,
+) -> None:
+    """
+    Process LLM response using streaming for real-time token display.
+
+    This function handles:
+    - Text responses: streams tokens to the WebAdapter for real-time display
+    - Tool calls: collects full arguments and dispatches to tool router
+    """
+    import uuid
+    import re
+
+    logger = config.logger
+    workflow = "general_chat"
+
+    # Generate message ID for this response
+    message_id = str(uuid.uuid4())
+
+    # Track streaming state
+    text_content = ""
+    tool_calls_data = {}  # item_id -> {name, arguments}
+    has_tool_call = False
+
+    try:
+        async for event in llm_client.stream_complete(
+            messages=llm_messages,
+            tools=all_tools,
+            tool_choice="auto",
+            cache_key="main-chat",
+            cache_retention="24h",
+            call_type="main_llm",
+            workflow=workflow,
+            user_id=user_name,
+            context=f"Channel: {channel}",
+            metadata={"has_files": has_files, "message_length": len(user_input)}
+        ):
+            event_type = event.get("type")
+
+            if event_type == "response.output_text.delta":
+                # Stream text delta to frontend
+                delta = event.get("delta", "")
+                if delta:
+                    text_content += delta
+                    channel_adapter.push_stream_delta(user_id, message_id, delta)
+
+            elif event_type == "response.output_text.done":
+                # Text streaming complete - we'll finalize after all events
+                pass
+
+            elif event_type == "response.output_item.added":
+                # New output item - check if it's a function call
+                item = event.get("item", {})
+                if item.get("type") == "function_call":
+                    has_tool_call = True
+                    item_id = item.get("id") or item.get("call_id")
+                    tool_calls_data[item_id] = {
+                        "name": item.get("name", ""),
+                        "arguments": "",
+                        "call_id": item.get("call_id", item_id),
+                    }
+
+            elif event_type == "response.function_call_arguments.delta":
+                # Accumulate function call arguments
+                item_id = event.get("item_id")
+                if item_id and item_id in tool_calls_data:
+                    tool_calls_data[item_id]["arguments"] += event.get("delta", "")
+
+            elif event_type == "response.function_call_arguments.done":
+                # Function call arguments complete
+                item_id = event.get("item_id")
+                if item_id and item_id in tool_calls_data:
+                    tool_calls_data[item_id]["name"] = event.get("name", tool_calls_data[item_id]["name"])
+                    tool_calls_data[item_id]["arguments"] = event.get("arguments", tool_calls_data[item_id]["arguments"])
+
+            elif event_type == "response.completed":
+                # Streaming complete
+                logger.info(f"[LLM:STREAM] Streaming complete for {user_id}")
+
+            elif event_type == "error" or event_type == "response.failed":
+                # Handle errors
+                error_msg = event.get("message") or event.get("error", {}).get("message", "Unknown error")
+                logger.error(f"[LLM:STREAM] Error: {error_msg}")
+                await channel_adapter.send_message(channel_id=channel, content=f"❌ **Error:** {error_msg}")
+                return
+
+        # Process results after streaming complete
+        if has_tool_call and tool_calls_data:
+            # Handle tool call
+            tool_data = list(tool_calls_data.values())[0]  # Get first tool call
+
+            from integrations.llm.base import ToolCall
+            import json as json_module
+
+            try:
+                args = json_module.loads(tool_data["arguments"])
+            except json_module.JSONDecodeError:
+                args = {}
+
+            tool_call = ToolCall(
+                id=tool_data["call_id"],
+                name=tool_data["name"],
+                arguments=args,
+            )
+
+            logger.info(f"[LLM:STREAM] Tool call: {tool_call.name}")
+
+            # Add assistant's tool call to history
+            try:
+                args_dict = tool_call.arguments
+                if tool_call.name == "get_separate_proposals":
+                    locations = [p.get("location", "unknown") for p in args_dict.get("proposals", [])]
+                    client = args_dict.get("client_name", "unknown")
+                    assistant_summary = f"[Generated separate proposals for {client}: {', '.join(locations)}]"
+                elif tool_call.name == "get_combined_proposal":
+                    locations = [p.get("location", "unknown") for p in args_dict.get("proposals", [])]
+                    client = args_dict.get("client_name", "unknown")
+                    assistant_summary = f"[Generated combined proposal for {client}: {', '.join(locations)}]"
+                elif tool_call.name == "generate_mockup":
+                    location = args_dict.get("location", "unknown")
+                    assistant_summary = f"[Generated mockup for {location}]"
+                elif tool_call.name == "parse_booking_order":
+                    assistant_summary = "[Parsed booking order]"
+                else:
+                    assistant_summary = f"[Called {tool_call.name}]"
+            except (KeyError, TypeError, AttributeError):
+                assistant_summary = f"[Called {tool_call.name}]"
+            history.append({"role": "assistant", "content": assistant_summary, "timestamp": datetime.now().isoformat()})
+
+            # Dispatch to tool router
+            from handlers.tool_router import handle_tool_call
+            await handle_tool_call(
+                tool_call=tool_call,
+                channel=channel,
+                user_id=user_id,
+                status_ts=status_ts,
+                channel_event=channel_event,
+                user_input=user_input,
+                download_file_func=download_file,
+                handle_booking_order_parse_func=_handle_booking_order_parse,
+                generate_mockup_queued_func=_generate_mockup_queued,
+                generate_ai_mockup_queued_func=_generate_ai_mockup_queued,
+                user_companies=user_companies,
+            )
+
+        elif text_content:
+            # Text response - finalize streaming
+            # Add to history
+            history.append({"role": "assistant", "content": text_content, "timestamp": datetime.now().isoformat()})
+
+            # Format the reply
+            formatted_reply = text_content
+            formatted_reply = formatted_reply.replace('\n- ', '\n• ')
+            formatted_reply = formatted_reply.replace('\n* ', '\n• ')
+            formatted_reply = re.sub(r'^(For .+:)$', r'**\1**', formatted_reply, flags=re.MULTILINE)
+            formatted_reply = re.sub(r'^([A-Z][A-Z\s]+:)$', r'**\1**', formatted_reply, flags=re.MULTILINE)
+
+            # Signal stream complete with full content
+            channel_adapter.push_stream_complete(user_id, message_id, formatted_reply)
+
+        else:
+            # No content and no tool calls
+            await channel_adapter.send_message(
+                channel_id=channel,
+                content="I can help with proposals or add locations. Say 'add location'."
+            )
+
+    except Exception as e:
+        logger.error(f"[LLM:STREAM] Streaming error: {e}", exc_info=True)
+        await channel_adapter.send_message(channel_id=channel, content=f"❌ **Error:** {str(e)}")
+
+
 async def main_llm_loop(
     channel: str,
     user_id: str,
@@ -1317,88 +1501,111 @@ async def main_llm_loop(
         # Determine workflow for cost tracking (will be updated based on tool call)
         workflow = "general_chat"
 
-        response = await llm_client.complete(
-            messages=llm_messages,
-            tools=all_tools,
-            tool_choice="auto",
-            store=config.IS_DEVELOPMENT,  # Store in OpenAI only in dev mode
-            # Prompt caching: system prompt is static, enable 24h extended cache
-            cache_key="main-chat",
-            cache_retention="24h",
-            call_type="main_llm",
-            workflow=workflow,
-            user_id=user_name,
-            context=f"Channel: {channel}",
-            metadata={"has_files": has_files, "message_length": len(user_input)}
-        )
+        # Check if we should use streaming (Web channel only)
+        # TODO: Re-enable after fixing tool call detection in streaming mode
+        use_streaming = False  # channel_adapter.channel_type == ChannelType.WEB
 
-        # Check if there are tool calls
-        if response.tool_calls:
-            tool_call = response.tool_calls[0]  # Get first tool call
-            logger.info(f"[LLM] Tool call: {tool_call.name}")
-
-            # Add assistant's tool call to history so model knows what it did
-            try:
-                args_dict = tool_call.arguments
-                if tool_call.name == "get_separate_proposals":
-                    locations = [p.get("location", "unknown") for p in args_dict.get("proposals", [])]
-                    client = args_dict.get("client_name", "unknown")
-                    assistant_summary = f"[Generated separate proposals for {client}: {', '.join(locations)}]"
-                elif tool_call.name == "get_combined_proposal":
-                    locations = [p.get("location", "unknown") for p in args_dict.get("proposals", [])]
-                    client = args_dict.get("client_name", "unknown")
-                    assistant_summary = f"[Generated combined proposal for {client}: {', '.join(locations)}]"
-                elif tool_call.name == "generate_mockup":
-                    location = args_dict.get("location", "unknown")
-                    assistant_summary = f"[Generated mockup for {location}]"
-                elif tool_call.name == "parse_booking_order":
-                    assistant_summary = "[Parsed booking order]"
-                else:
-                    assistant_summary = f"[Called {tool_call.name}]"
-            except (KeyError, TypeError, AttributeError):
-                assistant_summary = f"[Called {tool_call.name}]"
-            history.append({"role": "assistant", "content": assistant_summary, "timestamp": datetime.now().isoformat()})
-
-            # Dispatch to tool router
-            from handlers.tool_router import handle_tool_call
-            handled = await handle_tool_call(
-                tool_call=tool_call,
+        if use_streaming:
+            # Use streaming for Web UI - token-by-token display
+            await _process_llm_streaming(
+                llm_client=llm_client,
+                llm_messages=llm_messages,
+                all_tools=all_tools,
                 channel=channel,
                 user_id=user_id,
+                user_name=user_name,
                 status_ts=status_ts,
                 channel_event=channel_event,
                 user_input=user_input,
-                download_file_func=download_file,
-                handle_booking_order_parse_func=_handle_booking_order_parse,
-                generate_mockup_queued_func=_generate_mockup_queued,
-                generate_ai_mockup_queued_func=_generate_ai_mockup_queued,
+                has_files=has_files,
+                history=history,
+                channel_adapter=channel_adapter,
                 user_companies=user_companies,
             )
-            if handled:
-                user_history[user_id] = history[-10:]
-                return
-        elif response.content:
-            # Text response (no tool call)
-            reply = response.content
-            # Add assistant's text reply to history
-            history.append({"role": "assistant", "content": reply, "timestamp": datetime.now().isoformat()})
-            # Format any markdown-style text from the LLM
-            formatted_reply = reply
-            # Ensure bullet points are properly formatted
-            formatted_reply = formatted_reply.replace('\n- ', '\n• ')
-            formatted_reply = formatted_reply.replace('\n* ', '\n• ')
-            # Ensure headers are bolded
-            import re
-            formatted_reply = re.sub(r'^(For .+:)$', r'**\1**', formatted_reply, flags=re.MULTILINE)
-            formatted_reply = re.sub(r'^([A-Z][A-Z\s]+:)$', r'**\1**', formatted_reply, flags=re.MULTILINE)
-            # Delete status message before sending reply
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content=formatted_reply)
         else:
-            # No content and no tool calls
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content="I can help with proposals or add locations. Say 'add location'.")
-            return
+            # Non-streaming for Slack and other channels
+            response = await llm_client.complete(
+                messages=llm_messages,
+                tools=all_tools,
+                tool_choice="auto",
+                store=config.IS_DEVELOPMENT,  # Store in OpenAI only in dev mode
+                # Prompt caching: system prompt is static, enable 24h extended cache
+                cache_key="main-chat",
+                cache_retention="24h",
+                call_type="main_llm",
+                workflow=workflow,
+                user_id=user_name,
+                context=f"Channel: {channel}",
+                metadata={"has_files": has_files, "message_length": len(user_input)}
+            )
+
+            # Check if there are tool calls
+            if response.tool_calls:
+                tool_call = response.tool_calls[0]  # Get first tool call
+                logger.info(f"[LLM] Tool call: {tool_call.name}")
+
+                # Add assistant's tool call to history so model knows what it did
+                try:
+                    args_dict = tool_call.arguments
+                    if tool_call.name == "get_separate_proposals":
+                        locations = [p.get("location", "unknown") for p in args_dict.get("proposals", [])]
+                        client = args_dict.get("client_name", "unknown")
+                        assistant_summary = f"[Generated separate proposals for {client}: {', '.join(locations)}]"
+                    elif tool_call.name == "get_combined_proposal":
+                        locations = [p.get("location", "unknown") for p in args_dict.get("proposals", [])]
+                        client = args_dict.get("client_name", "unknown")
+                        assistant_summary = f"[Generated combined proposal for {client}: {', '.join(locations)}]"
+                    elif tool_call.name == "generate_mockup":
+                        location = args_dict.get("location", "unknown")
+                        assistant_summary = f"[Generated mockup for {location}]"
+                    elif tool_call.name == "parse_booking_order":
+                        assistant_summary = "[Parsed booking order]"
+                    else:
+                        assistant_summary = f"[Called {tool_call.name}]"
+                except (KeyError, TypeError, AttributeError):
+                    assistant_summary = f"[Called {tool_call.name}]"
+                history.append({"role": "assistant", "content": assistant_summary, "timestamp": datetime.now().isoformat()})
+
+                # Dispatch to tool router
+                from handlers.tool_router import handle_tool_call
+                handled = await handle_tool_call(
+                    tool_call=tool_call,
+                    channel=channel,
+                    user_id=user_id,
+                    status_ts=status_ts,
+                    channel_event=channel_event,
+                    user_input=user_input,
+                    download_file_func=download_file,
+                    handle_booking_order_parse_func=_handle_booking_order_parse,
+                    generate_mockup_queued_func=_generate_mockup_queued,
+                    generate_ai_mockup_queued_func=_generate_ai_mockup_queued,
+                    user_companies=user_companies,
+                )
+                if handled:
+                    user_history[user_id] = history[-10:]
+                    return
+            elif response.content:
+                # Text response (no tool call)
+                reply = response.content
+                # Add assistant's text reply to history
+                history.append({"role": "assistant", "content": reply, "timestamp": datetime.now().isoformat()})
+                # Format any markdown-style text from the LLM
+                formatted_reply = reply
+                # Ensure bullet points are properly formatted
+                formatted_reply = formatted_reply.replace('\n- ', '\n• ')
+                formatted_reply = formatted_reply.replace('\n* ', '\n• ')
+                # Ensure headers are bolded
+                import re
+                formatted_reply = re.sub(r'^(For .+:)$', r'**\1**', formatted_reply, flags=re.MULTILINE)
+                formatted_reply = re.sub(r'^([A-Z][A-Z\s]+:)$', r'**\1**', formatted_reply, flags=re.MULTILINE)
+                # Delete status message before sending reply
+                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                await channel_adapter.send_message(channel_id=channel, content=formatted_reply)
+            else:
+                # No content and no tool calls
+                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                await channel_adapter.send_message(channel_id=channel, content="I can help with proposals or add locations. Say 'add location'.")
+                return
 
         user_history[user_id] = history[-10:]
 

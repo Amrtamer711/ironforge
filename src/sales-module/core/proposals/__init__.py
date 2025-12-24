@@ -89,7 +89,9 @@ async def process_proposals(
     # Create module instances
     validator = ProposalValidator(user_companies)
     renderer = ProposalRenderer()
-    intro_outro = IntroOutroHandler(validator.available_locations)
+    # Await the available locations (async) before creating IntroOutroHandler
+    available_locations = await validator._get_available_locations()
+    intro_outro = IntroOutroHandler(available_locations)
     template_service = TemplateService(companies=user_companies)
     processor = ProposalProcessor(validator, renderer, intro_outro, template_service)
 
@@ -154,7 +156,11 @@ async def process_combined_package(
     # Create module instances
     validator = ProposalValidator(user_companies)
     renderer = ProposalRenderer()
-    intro_outro = IntroOutroHandler(validator.available_locations)
+    # Await the available locations (async) before creating IntroOutroHandler
+    # Use pre-fetched available_locations if provided, otherwise fetch async
+    if available_locations is None:
+        available_locations = await validator._get_available_locations()
+    intro_outro = IntroOutroHandler(available_locations)
     template_service = TemplateService(companies=user_companies)
     processor = ProposalProcessor(validator, renderer, intro_outro, template_service)
 
