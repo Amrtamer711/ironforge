@@ -19,9 +19,9 @@ import { cn } from "../lib/utils";
 import { modulesApi } from "../api";
 
 const TOOL_INFO = {
-  chat: { to: "/app/chat", label: "AI Chat", icon: MessageSquare },
-  mockup: { to: "/app/mockup", label: "Mockup Generator", icon: LayoutGrid },
-  proposals: { to: "/app/proposals", label: "Proposals", icon: PanelsTopLeft },
+  chat: { to: "/app/chat", label: "AI Chat Assistant", icon: MessageSquare },
+  mockup: { to: "/app/mockup", label: "Mockup Assistant", icon: LayoutGrid },
+  proposals: { to: "/app/proposals", label: "Proposal Assistant", icon: PanelsTopLeft },
   admin: { to: "/app/admin", label: "Admin", icon: Shield },
   settings: { to: "/app/settings", label: "Settings", icon: Settings },
 };
@@ -193,7 +193,7 @@ export function AppShell() {
           className={cn(
             "mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr] flex-1 min-h-0",
             "transition-[grid-template-columns] duration-500",
-            collapsed && "lg:grid-cols-[64px_1fr]"
+            collapsed && "lg:grid-cols-[64px_1fr] 2xl:grid-cols-[72px_1fr]"
           )}
         >
           <aside
@@ -231,7 +231,8 @@ export function AppShell() {
                     className={cn(
                       "mmg-nav-btn w-full flex items-center gap-3 rounded-2xl p-2 text-sm transition-colors mb-1.5 shadow-soft",
                       active ? "mmg-nav-btn-active" : "",
-                      "text-base"
+                      "text-base",
+                      collapsed && "lg:justify-center lg:gap-0"
                     )}
                   >
                     <span className="mmg-nav-icon h-8 w-8 shrink-0 rounded-2xl bg-black/4 dark:bg-white/8 flex items-center justify-center shadow-soft">

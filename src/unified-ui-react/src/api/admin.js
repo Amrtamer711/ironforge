@@ -64,10 +64,10 @@ export async function getPermissions() {
   return data;
 }
 
-export async function addPermission(value) {
+export async function addPermission(value, description) {
   return apiRequest("/api/dev/permissions/add", {
     method: "POST",
-    body: JSON.stringify({ name: value }),
+    body: JSON.stringify({ name: value, description }),
   });
 }
 

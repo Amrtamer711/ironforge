@@ -50,6 +50,11 @@ export function AdminPage() {
   const [companySearch, setCompanySearch] = useState("");
   const [permissionSetSearch, setPermissionSetSearch] = useState("");
   const [permissionSearch, setPermissionSearch] = useState("");
+  const [userCompanyFilter, setUserCompanyFilter] = useState("");
+  const [userProfileFilter, setUserProfileFilter] = useState("");
+  const [permissionModuleFilter, setPermissionModuleFilter] = useState("");
+  const [permissionServiceFilter, setPermissionServiceFilter] = useState("");
+  const [permissionActionFilter, setPermissionActionFilter] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
   const [userForm, setUserForm] = useState({
     name: "",
@@ -113,6 +118,8 @@ export function AdminPage() {
     module: "",
     service: "",
     action: "",
+    description: "",
+    originalDescription: "",
   });
   const [permissionModalError, setPermissionModalError] = useState("");
   const [savingPermission, setSavingPermission] = useState(false);
@@ -120,6 +127,7 @@ export function AdminPage() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [permissionsMessage, setPermissionsMessage] = useState("");
   const [confirmDelete, setConfirmDelete] = useState({ open: false, type: "", payload: null, label: "" });
+  const [localPermissionDescriptions, setLocalPermissionDescriptions] = useState({});
 
   if (!canAccessAdmin(user)) {
     return (
@@ -162,15 +170,23 @@ export function AdminPage() {
   const users = useMemo(() => {
     const list = usersQuery.data?.users || usersQuery.data || [];
     const needle = q.trim().toLowerCase();
-    if (!needle) return list;
     return list.filter((u) => {
       const profileName = Array.isArray(u.profiles)
         ? u.profiles.map((p) => p?.display_name || p?.name || p).filter(Boolean).join(" ")
         : u.profiles?.display_name || u.profiles?.name || u.profile || u.profile_name || "";
       const s = `${u.email || ""} ${u.name || ""} ${profileName}`.toLowerCase();
-      return s.includes(needle);
+      if (needle && !s.includes(needle)) return false;
+      const companyValue = u.company?.code || u.company_code || u.company_id || "";
+      if (userCompanyFilter && companyValue !== userCompanyFilter) return false;
+      if (userProfileFilter) {
+        const profileValues = Array.isArray(u.profiles)
+          ? u.profiles.map((p) => p?.name || p?.display_name || p).filter(Boolean)
+          : [u.profiles?.name || u.profiles?.display_name || u.profile || u.profile_name].filter(Boolean);
+        if (!profileValues.includes(userProfileFilter)) return false;
+      }
+      return true;
     });
-  }, [usersQuery.data, q]);
+  }, [usersQuery.data, q, userCompanyFilter, userProfileFilter]);
 
   const hasNext = useMemo(() => {
     const list = usersQuery.data?.users || usersQuery.data || [];
@@ -180,6 +196,15 @@ export function AdminPage() {
   useEffect(() => {
     setSelectedUser(null);
   }, [page]);
+
+  useEffect(() => {
+    setPermissionServiceFilter("");
+    setPermissionActionFilter("");
+  }, [permissionModuleFilter]);
+
+  useEffect(() => {
+    setPermissionActionFilter("");
+  }, [permissionServiceFilter]);
 
   function openProfileModal(profile) {
     setProfileIsSystem(Boolean(profile?.is_system));
@@ -232,6 +257,7 @@ export function AdminPage() {
 
   function openPermissionModal(mode = "add", value = "") {
     const parts = parsePermissionParts(value);
+    const desc = value ? mergedPermissionDescriptions[value] || "" : "";
     setPermissionModalError("");
     setPermissionModal({
       open: true,
@@ -241,6 +267,8 @@ export function AdminPage() {
       module: parts.module,
       service: parts.service,
       action: parts.action,
+      description: desc,
+      originalDescription: desc,
     });
   }
 
@@ -547,6 +575,20 @@ export function AdminPage() {
     setPermissionModalError("");
   }
 
+  function updateLocalPermissionDescription(name, desc) {
+    if (!name) return;
+    const trimmed = desc?.trim() || "";
+    setLocalPermissionDescriptions((prev) => {
+      const next = { ...prev };
+      if (trimmed) {
+        next[name] = trimmed;
+      } else {
+        delete next[name];
+      }
+      return next;
+    });
+  }
+
   async function savePermissionModal() {
     const value = buildPermissionValue(permissionModal);
     if (!value) {
@@ -555,11 +597,18 @@ export function AdminPage() {
     }
     setSavingPermission(true);
     try {
+      const desc = permissionModal.description?.trim() || "";
       if (permissionModal.mode === "add") {
-        await adminApi.addPermission(value);
+        await adminApi.addPermission(value, desc);
+        updateLocalPermissionDescription(value, desc);
       } else if (value !== permissionModal.original) {
-        await adminApi.addPermission(value);
+        await adminApi.addPermission(value, desc);
         await adminApi.deletePermission(permissionModal.original);
+        updateLocalPermissionDescription(permissionModal.original, "");
+        updateLocalPermissionDescription(value, desc);
+      } else if (desc !== permissionModal.originalDescription) {
+        await adminApi.addPermission(value, desc);
+        updateLocalPermissionDescription(value, desc);
       } else {
         setPermissionModal({
           open: false,
@@ -569,6 +618,8 @@ export function AdminPage() {
           module: "",
           service: "",
           action: "",
+          description: "",
+          originalDescription: "",
         });
         return;
       }
@@ -581,6 +632,8 @@ export function AdminPage() {
         module: "",
         service: "",
         action: "",
+        description: "",
+        originalDescription: "",
       });
     } catch {
       // ignore
@@ -595,6 +648,7 @@ export function AdminPage() {
     setSavingPermission(true);
     try {
       await adminApi.deletePermission(target);
+      updateLocalPermissionDescription(target, "");
       qc.invalidateQueries({ queryKey: ["admin", "permissions"] });
       setPermissionModal({
         open: false,
@@ -604,6 +658,8 @@ export function AdminPage() {
         module: "",
         service: "",
         action: "",
+        description: "",
+        originalDescription: "",
       });
     } catch {
       // ignore
@@ -651,6 +707,7 @@ export function AdminPage() {
   const permissionTree = useMemo(() => {
     const raw = permissionsQuery.data?.permissions ?? permissionsQuery.data;
     const moduleMap = new Map();
+    const descriptions = {};
 
     const addPermission = (module, service, action) => {
       if (!module || !service || !action) return;
@@ -661,15 +718,16 @@ export function AdminPage() {
     };
 
     if (Array.isArray(raw)) {
-      raw
-        .map((perm) => (typeof perm === "string" ? perm : perm?.name))
-        .filter(Boolean)
-        .forEach((perm) => {
-          const parts = perm.split(":");
-          if (parts.length >= 3) {
-            addPermission(parts[0], parts[1], parts[2]);
-          }
-        });
+      raw.forEach((perm) => {
+        const name = typeof perm === "string" ? perm : perm?.name;
+        const desc = typeof perm === "string" ? "" : perm?.description || "";
+        if (name && desc) descriptions[name] = desc;
+        if (!name) return;
+        const parts = name.split(":");
+        if (parts.length >= 3) {
+          addPermission(parts[0], parts[1], parts[2]);
+        }
+      });
     } else if (raw && typeof raw === "object") {
       Object.entries(raw).forEach(([module, services]) => {
         if (!services || typeof services !== "object") return;
@@ -708,10 +766,16 @@ export function AdminPage() {
       flat,
       allServices: Array.from(allServices).sort(),
       allActions: Array.from(allActions).sort(),
+      descriptions,
     };
   }, [permissionsQuery.data]);
 
   const permissionList = useMemo(() => permissionTree.flat, [permissionTree]);
+  const permissionDescriptions = permissionTree.descriptions || {};
+  const mergedPermissionDescriptions = useMemo(
+    () => ({ ...permissionDescriptions, ...localPermissionDescriptions }),
+    [permissionDescriptions, localPermissionDescriptions]
+  );
   const permissionModuleOptions = permissionTree.modules;
   const permissionServiceOptions = permissionModal.module
     ? permissionTree.servicesByModule[permissionModal.module] || []
@@ -719,6 +783,13 @@ export function AdminPage() {
   const permissionActionOptions =
     permissionModal.module && permissionModal.service
       ? permissionTree.actionsByService[`${permissionModal.module}:${permissionModal.service}`] || []
+      : permissionTree.allActions;
+  const permissionFilterServiceOptions = permissionModuleFilter
+    ? permissionTree.servicesByModule[permissionModuleFilter] || []
+    : permissionTree.allServices;
+  const permissionFilterActionOptions =
+    permissionModuleFilter && permissionServiceFilter
+      ? permissionTree.actionsByService[`${permissionModuleFilter}:${permissionServiceFilter}`] || []
       : permissionTree.allActions;
   const companyList = useMemo(() => {
     const raw = companiesQuery.data?.companies ?? companiesQuery.data;
@@ -760,9 +831,47 @@ export function AdminPage() {
   }, [permissionSetList, permissionSetSearch]);
   const filteredPermissionList = useMemo(() => {
     const needle = permissionSearch.trim().toLowerCase();
-    if (!needle) return permissionList;
-    return permissionList.filter((perm) => perm.toLowerCase().includes(needle));
-  }, [permissionList, permissionSearch]);
+    let list = permissionList;
+    if (permissionModuleFilter || permissionServiceFilter || permissionActionFilter) {
+      list = list.filter((perm) => {
+        const parts = parsePermissionParts(perm);
+        if (permissionModuleFilter && parts.module !== permissionModuleFilter) return false;
+        if (permissionServiceFilter && parts.service !== permissionServiceFilter) return false;
+        if (permissionActionFilter && parts.action !== permissionActionFilter) return false;
+        return true;
+      });
+    }
+    if (!needle) return list;
+    return list.filter((perm) => {
+      const desc = mergedPermissionDescriptions[perm] || "";
+      return `${perm} ${desc}`.toLowerCase().includes(needle);
+    });
+  }, [
+    permissionList,
+    permissionSearch,
+    mergedPermissionDescriptions,
+    permissionModuleFilter,
+    permissionServiceFilter,
+    permissionActionFilter,
+  ]);
+
+  const companyFilterOptions = useMemo(() => {
+    return companyList
+      .map((company) => ({
+        value: company.code || company.id || "",
+        label: company.name || company.code || company.id || "—",
+      }))
+      .filter((opt) => opt.value);
+  }, [companyList]);
+
+  const profileFilterOptions = useMemo(() => {
+    return profileOptions
+      .map((profile) => ({
+        value: profile.name || profile.display_name || "",
+        label: profile.display_name || profile.name || "—",
+      }))
+      .filter((opt) => opt.value);
+  }, [profileOptions]);
   const selectedProfilePermissions = useMemo(
     () => parsePermissions(profileForm.permissionsText),
     [profileForm.permissionsText]
@@ -971,31 +1080,55 @@ export function AdminPage() {
       <div className="flex-1 min-h-0 overflow-y-auto px-2 py-1 space-y-4">
       {tab === "users" ? (
         <Card className="flex-1 min-h-0">
-          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <CardTitle>Users</CardTitle>
-            <div className="flex w-full flex-col items-end gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <CardHeader className="space-y-2">
+            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+              <CardTitle>Users</CardTitle>
+              <SearchInput
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                className="w-full sm:w-[220px] sm:justify-self-end"
+              />
+              {/* <div className="flex w-full justify-end gap-1 md:w-auto">
+                <Button variant="ghost" size="sm" className="rounded-xl" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                  Prev
+                </Button>
+                <Button variant="ghost" size="sm" className="rounded-xl" disabled={!hasNext} onClick={() => setPage((p) => p + 1)}>
+                  Next
+                </Button>
+              </div> */}
               <Button
                 variant="secondary"
-                className="rounded-2xl self-end sm:self-auto"
+                className="rounded-2xl"
                 onClick={openNewUserModal}
               >
                 Add user
               </Button>
-              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-                <SearchInput
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  className="w-full sm:w-[220px]"
-                />
-                {/* <div className="flex w-full justify-end gap-1 md:w-auto">
-                  <Button variant="ghost" size="sm" className="rounded-xl" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
-                    Prev
-                  </Button>
-                  <Button variant="ghost" size="sm" className="rounded-xl" disabled={!hasNext} onClick={() => setPage((p) => p + 1)}>
-                    Next
-                  </Button>
-                </div> */}
-              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                value={userCompanyFilter}
+                onChange={(e) => setUserCompanyFilter(e.target.value)}
+              >
+                <option value="">All companies</option>
+                {companyFilterOptions.map((opt, idx) => (
+                  <option key={`${opt.value}-${idx}`} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                value={userProfileFilter}
+                onChange={(e) => setUserProfileFilter(e.target.value)}
+              >
+                <option value="">All profiles</option>
+                {profileFilterOptions.map((opt, idx) => (
+                  <option key={`${opt.value}-${idx}`} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1024,8 +1157,8 @@ export function AdminPage() {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div>
-                          <div className="text-sm font-semibold">{u.name || "—"}</div>
-                          <div className="text-xs text-black/55 dark:text-white/60">{u.email}</div>
+                          <div className="text-base font-semibold">{u.name || "—"}</div>
+                          <div className="text-sm text-black/55 dark:text-white/60">{u.email}</div>
                         </div>
                         <div className="flex items-center gap-2">
                           <IconActionButton
@@ -1053,10 +1186,10 @@ export function AdminPage() {
                           </IconActionButton>
                         </div>
                       </div>
-                      <div className="text-xs text-black/55 dark:text-white/60">
+                      <div className="text-sm text-black/55 dark:text-white/60">
                         Profiles: <span className="font-semibold">{profileText}</span>
                       </div>
-                      <div className="text-xs text-black/55 dark:text-white/60">
+                      <div className="text-sm text-black/55 dark:text-white/60">
                         Company:{" "}
                         <span className="font-semibold">
                           {u.company?.name || companyLookup.get(u.company?.code || u.company_code || u.company_id) || "—"}
@@ -1074,21 +1207,21 @@ export function AdminPage() {
 
       {tab === "companies" ? (
         <Card>
-          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <CardTitle>Companies</CardTitle>
-            <div className="flex w-full flex-col items-end gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <CardHeader className="space-y-2">
+            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+              <CardTitle>Companies</CardTitle>
+              <SearchInput
+                value={companySearch}
+                onChange={(e) => setCompanySearch(e.target.value)}
+                className="w-full sm:w-[220px] sm:justify-self-end"
+              />
               <Button
                 variant="secondary"
-                className="rounded-2xl self-end sm:self-auto"
+                className="rounded-2xl"
                 onClick={() => openCompanyModal(null)}
               >
                 Add company
               </Button>
-              <SearchInput
-                value={companySearch}
-                onChange={(e) => setCompanySearch(e.target.value)}
-                className="w-full sm:w-[220px]"
-              />
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1103,8 +1236,8 @@ export function AdminPage() {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <div className="text-sm font-semibold">{company.name || company.code}</div>
-                        <div className="text-xs text-black/55 dark:text-white/60">{company.code || "—"}</div>
+                        <div className="text-base font-semibold">{company.name || company.code}</div>
+                        <div className="text-sm text-black/55 dark:text-white/60">{company.code || "—"}</div>
                       </div>
                       <div className="flex items-center gap-2">
                         <IconActionButton
@@ -1131,12 +1264,12 @@ export function AdminPage() {
                         </IconActionButton>
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-2 text-xs text-black/55 dark:text-white/60">
+                    <div className="flex flex-wrap gap-2 text-sm text-black/55 dark:text-white/60">
                       {company.country ? <span>{company.country}</span> : null}
                       {company.currency ? <span>• {company.currency}</span> : null}
                       {company.timezone ? <span>• {company.timezone}</span> : null}
                     </div>
-                    <div className="flex flex-wrap gap-2 text-xs text-black/55 dark:text-white/60">
+                    <div className="flex flex-wrap gap-2 text-sm text-black/55 dark:text-white/60">
                       <span>Parent: {companyLookup.get(company.parent_id) || "—"}</span>
                       <span>• {company.isgroup ? "Group" : "Company"}</span>
                       <span>• {company.is_active === false ? "Inactive" : "Active"}</span>
@@ -1156,21 +1289,21 @@ export function AdminPage() {
 
       {tab === "profiles" ? (
         <Card>
-          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <CardTitle>Profiles</CardTitle>
-            <div className="flex w-full flex-col items-end gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <CardHeader className="space-y-2">
+            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+              <CardTitle>Profiles</CardTitle>
+              <SearchInput
+                value={profileSearch}
+                onChange={(e) => setProfileSearch(e.target.value)}
+                className="w-full sm:w-[220px] sm:justify-self-end"
+              />
               <Button
                 variant="secondary"
-                className="rounded-2xl self-end sm:self-auto"
+                className="rounded-2xl"
                 onClick={() => openProfileModal(null)}
               >
                 Add profile
               </Button>
-              <SearchInput
-                value={profileSearch}
-                onChange={(e) => setProfileSearch(e.target.value)}
-                className="w-full sm:w-[220px]"
-              />
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1182,8 +1315,8 @@ export function AdminPage() {
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <div className="text-sm font-semibold">{p.display_name || p.name}</div>
-                      <div className="text-xs text-black/55 dark:text-white/60">{p.name}</div>
+                      <div className="text-base font-semibold">{p.display_name || p.name}</div>
+                      <div className="text-sm text-black/55 dark:text-white/60">{p.name}</div>
                     </div>
                     <div className="flex items-center gap-2">
                       <IconActionButton
@@ -1219,15 +1352,15 @@ export function AdminPage() {
                           </IconActionButton>
                         </>
                       ) : (
-                        <span className="text-[11px] rounded-full px-2 py-0.5 bg-black/5 dark:bg-white/10">System</span>
+                        <span className="text-xs rounded-full px-2 py-0.5 bg-black/5 dark:bg-white/10">System</span>
                       )}
                     </div>
                   </div>
-                  <div className="text-xs text-black/55 dark:text-white/60">
+                  <div className="text-sm text-black/55 dark:text-white/60">
                     {(p.permissions || []).length} permission{(p.permissions || []).length === 1 ? "" : "s"}
                   </div>
                   {p.description ? (
-                    <div className="text-xs text-black/60 dark:text-white/65 truncate">
+                    <div className="text-sm text-black/60 dark:text-white/65 truncate">
                       {p.description}
                     </div>
                   ) : null}
@@ -1246,21 +1379,21 @@ export function AdminPage() {
 
       {tab === "permission-sets" ? (
         <Card>
-          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <CardTitle>Permission Sets</CardTitle>
-            <div className="flex w-full flex-col items-end gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <CardHeader className="space-y-2">
+            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+              <CardTitle>Permission Sets</CardTitle>
+              <SearchInput
+                value={permissionSetSearch}
+                onChange={(e) => setPermissionSetSearch(e.target.value)}
+                className="w-full sm:w-[220px] sm:justify-self-end"
+              />
               <Button
                 variant="secondary"
-                className="rounded-2xl self-end sm:self-auto"
+                className="rounded-2xl"
                 onClick={() => openPermissionSetModal(null)}
               >
                 Add permission set
               </Button>
-              <SearchInput
-                value={permissionSetSearch}
-                onChange={(e) => setPermissionSetSearch(e.target.value)}
-                className="w-full sm:w-[220px]"
-              />
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1275,8 +1408,8 @@ export function AdminPage() {
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="text-sm font-semibold">{set.display_name || set.name}</div>
-                        <div className="text-xs text-black/55 dark:text-white/60">{set.name}</div>
+                      <div className="text-base font-semibold">{set.display_name || set.name}</div>
+                      <div className="text-sm text-black/55 dark:text-white/60">{set.name}</div>
                       </div>
                       <div className="flex items-center gap-2">
                         <IconActionButton
@@ -1310,11 +1443,11 @@ export function AdminPage() {
                         </IconActionButton>
                       </div>
                     </div>
-                    <div className="text-xs text-black/55 dark:text-white/60">
+                    <div className="text-sm text-black/55 dark:text-white/60">
                       {(set.permissions || []).length} permission{(set.permissions || []).length === 1 ? "" : "s"}
                     </div>
                     {set.description ? (
-                      <div className="text-xs text-black/60 dark:text-white/65 truncate">
+                      <div className="text-sm text-black/60 dark:text-white/65 truncate">
                         {set.description}
                       </div>
                     ) : null}
@@ -1333,21 +1466,59 @@ export function AdminPage() {
 
       {tab === "permissions" ? (
         <Card>
-          <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <CardTitle>Permissions</CardTitle>
-            <div className="flex w-full flex-col items-end gap-2 sm:w-auto sm:flex-row sm:items-center">
+          <CardHeader className="space-y-2">
+            <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+              <CardTitle>Permissions</CardTitle>
+              <SearchInput
+                value={permissionSearch}
+                onChange={(e) => setPermissionSearch(e.target.value)}
+                className="w-full sm:w-[220px] sm:justify-self-end"
+              />
               <Button
-                className="rounded-2xl self-end sm:self-auto"
+                className="rounded-2xl"
                 variant="secondary"
                 onClick={() => openPermissionModal("add", "")}
               >
                 Add permission
               </Button>
-              <SearchInput
-                value={permissionSearch}
-                onChange={(e) => setPermissionSearch(e.target.value)}
-                className="w-full sm:w-[220px]"
-              />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <select
+                className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                value={permissionModuleFilter}
+                onChange={(e) => setPermissionModuleFilter(e.target.value)}
+              >
+                <option value="">All modules</option>
+                {permissionModuleOptions.map((opt, idx) => (
+                  <option key={`${opt}-${idx}`} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                value={permissionServiceFilter}
+                onChange={(e) => setPermissionServiceFilter(e.target.value)}
+              >
+                <option value="">All services</option>
+                {permissionFilterServiceOptions.map((opt, idx) => (
+                  <option key={`${opt}-${idx}`} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                value={permissionActionFilter}
+                onChange={(e) => setPermissionActionFilter(e.target.value)}
+              >
+                <option value="">All permissions</option>
+                {permissionFilterActionOptions.map((opt, idx) => (
+                  <option key={`${opt}-${idx}`} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -1357,6 +1528,7 @@ export function AdminPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                 {filteredPermissionList.map((p) => {
                   const parts = parsePermissionParts(p);
+                  const description = mergedPermissionDescriptions[p];
                   return (
                     <SoftCard
                       key={p}
@@ -1365,19 +1537,19 @@ export function AdminPage() {
                       <div className="flex items-start justify-between gap-2">
                         <div className="grid grid-cols-1 gap-1 text-sm">
                           <div className="flex flex-wrap items-baseline gap-1">
-                            <span className="text-[10px] uppercase tracking-wide text-black/50 dark:text-white/60">
+                            <span className="text-[11px] uppercase tracking-wide text-black/50 dark:text-white/60">
                               Module
                             </span>
                             <span className="font-semibold text-black/85 dark:text-white/85">{parts.module}</span>
                           </div>
                           <div className="flex flex-wrap items-baseline gap-1">
-                            <span className="text-[10px] uppercase tracking-wide text-black/50 dark:text-white/60">
+                            <span className="text-[11px] uppercase tracking-wide text-black/50 dark:text-white/60">
                               Service
                             </span>
                             <span className="font-semibold text-black/85 dark:text-white/85">{parts.service}</span>
                           </div>
                           <div className="flex flex-wrap items-baseline gap-1">
-                            <span className="text-[10px] uppercase tracking-wide text-black/50 dark:text-white/60">
+                            <span className="text-[11px] uppercase tracking-wide text-black/50 dark:text-white/60">
                               Permission
                             </span>
                             <span className="font-semibold text-black/85 dark:text-white/85">{parts.action}</span>
@@ -1408,6 +1580,11 @@ export function AdminPage() {
                           </IconActionButton>
                         </div>
                       </div>
+                      {description ? (
+                        <div className="mt-2 text-sm text-black/60 dark:text-white/65 truncate">
+                          {description}
+                        </div>
+                      ) : null}
                     </SoftCard>
                   );
                 })}
@@ -2436,6 +2613,8 @@ export function AdminPage() {
             module: "",
             service: "",
             action: "",
+            description: "",
+            originalDescription: "",
           });
           setPermissionModalError("");
         }}
@@ -2490,6 +2669,14 @@ export function AdminPage() {
                 </datalist>
               </div>
             </div>
+          </FormField>
+          <FormField label="Description">
+            <input
+              className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+              value={permissionModal.description}
+              onChange={(e) => updatePermissionModalField("description", e.target.value)}
+              placeholder="Short description"
+            />
           </FormField>
           {permissionModalError ? (
             <div className="text-xs text-red-600 dark:text-red-300">{permissionModalError}</div>

@@ -535,6 +535,8 @@ export function MockupPage() {
     setEditingTemplateLoading(false);
     setSetupMessage("");
     setSetupError("");
+    setTimeOfDay("all");
+    setFinish("all");
     currentPointsRef.current = [];
     allFramesRef.current = [];
     clearActiveSelection();
@@ -1782,91 +1784,89 @@ export function MockupPage() {
                           </div>
                         </div>
                       ) : null}
-                      <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 p-4 shadow-soft">
-                        <button
-                          type="button"
-                          className="flex w-full items-center justify-between gap-3 text-left"
-                          onClick={() => setTemplatesOpen((prev) => !prev)}
-                          aria-expanded={templatesOpen}
-                        >
-                          <div>
-                            <div className="text-sm font-semibold text-black/80 dark:text-white/85">
-                              Existing templates
-                            </div>
-                            <div className="text-xs text-black/55 dark:text-white/60">
-                              {location
-                                ? `${templateOptions.length} template${templateOptions.length === 1 ? "" : "s"}`
-                                : "Select a location to load templates."}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-black/50 dark:text-white/55">
-                            <span>{templatesOpen ? "Hide" : "Show"}</span>
-                            <ChevronDown
-                              size={16}
-                              className={cn("transition-transform", templatesOpen && "rotate-180")}
-                            />
-                          </div>
-                        </button>
-                        {templatesOpen ? (
-                          <div className="mt-3 space-y-2">
-                            {templatesQuery.isLoading ? (
-                              <LoadingEllipsis text="Loading templates" className="text-sm text-black/60 dark:text-white/65" />
-                            ) : null}
-                            {!templatesQuery.isLoading && (!templateOptions.length || !location) ? (
-                              <div className="text-sm text-black/60 dark:text-white/65">
-                                No templates for this selection.
+                      {!editingTemplate ? (
+                        <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 p-4 shadow-soft">
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between gap-3 text-left"
+                            onClick={() => setTemplatesOpen((prev) => !prev)}
+                            aria-expanded={templatesOpen}
+                          >
+                            <div>
+                              <div className="text-sm font-semibold text-black/80 dark:text-white/85">
+                                Existing templates
                               </div>
-                            ) : null}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                              {templateOptions.map((t) => {
-                                const isEditing =
-                                  editingTemplate?.photo === t.photo &&
-                                  editingTemplate?.time_of_day === t.time_of_day &&
-                                  editingTemplate?.finish === t.finish;
-                                return (
-                                  <div
-                                    key={`${t.photo}-${t.time_of_day}-${t.finish}`}
-                                    className={`rounded-xl border border-black/5 dark:border-white/10 bg-white/60 dark:bg-white/5 p-3 text-sm space-y-2 ${isEditing ? "ring-2 ring-black/20 dark:ring-white/30" : ""}`}
-                                  >
-                                    <div className="overflow-hidden rounded-lg border border-black/5 dark:border-white/10 bg-black/5">
-                                      <img
-                                        src={mockupApi.getTemplatePhotoUrl(location, t.photo)}
-                                        alt={t.photo}
-                                        className="w-full h-32 object-cover"
-                                        loading="lazy"
-                                      />
-                                    </div>
-                                    <div className="font-semibold truncate">{t.photo}</div>
-                                    <div className="text-xs text-black/55 dark:text-white/60">
-                                      {t.time_of_day}/{t.finish} - {t.frame_count} frame
-                                      {t.frame_count > 1 ? "s" : ""}
-                                    </div>
-                                    <div className="flex gap-2">
-                                      <Button
-                                        variant="secondary"
-                                        size="sm"
-                                        className="rounded-xl"
-                                        onClick={() => startEditTemplate(t)}
-                                        disabled={editingTemplateLoading}
-                                      >
-                                        Edit
-                                      </Button>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="rounded-xl"
-                                        onClick={() => deleteTemplate(t.photo)}
-                                      >
-                                        Delete
-                                      </Button>
-                                    </div>
-                                  </div>
-                                );
-                              })}
+                              <div className="text-xs text-black/55 dark:text-white/60">
+                                {location
+                                  ? `${templateOptions.length} template${templateOptions.length === 1 ? "" : "s"}`
+                                  : "Select a location to load templates."}
+                              </div>
                             </div>
-                          </div>
-                        ) : null}
-                      </div>
+                            <div className="flex items-center gap-2 text-xs text-black/50 dark:text-white/55">
+                              <span>{templatesOpen ? "Hide" : "Show"}</span>
+                              <ChevronDown
+                                size={16}
+                                className={cn("transition-transform", templatesOpen && "rotate-180")}
+                              />
+                            </div>
+                          </button>
+                          {templatesOpen ? (
+                            <div className="mt-3 space-y-2">
+                              {templatesQuery.isLoading ? (
+                                <LoadingEllipsis text="Loading templates" className="text-sm text-black/60 dark:text-white/65" />
+                              ) : null}
+                              {!templatesQuery.isLoading && (!templateOptions.length || !location) ? (
+                                <div className="text-sm text-black/60 dark:text-white/65">
+                                  No templates for this selection.
+                                </div>
+                              ) : null}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                {templateOptions.map((t) => {
+                                  return (
+                                    <div
+                                      key={`${t.photo}-${t.time_of_day}-${t.finish}`}
+                                      className="rounded-xl border border-black/5 dark:border-white/10 bg-white/60 dark:bg-white/5 p-3 text-sm space-y-2"
+                                    >
+                                      <div className="overflow-hidden rounded-lg border border-black/5 dark:border-white/10 bg-black/5">
+                                        <img
+                                          src={mockupApi.getTemplatePhotoUrl(location, t.photo)}
+                                          alt={t.photo}
+                                          className="w-full h-32 object-cover"
+                                          loading="lazy"
+                                        />
+                                      </div>
+                                      <div className="font-semibold truncate">{t.photo}</div>
+                                      <div className="text-xs text-black/55 dark:text-white/60">
+                                        {t.time_of_day}/{t.finish} - {t.frame_count} frame
+                                        {t.frame_count > 1 ? "s" : ""}
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <Button
+                                          variant="secondary"
+                                          size="sm"
+                                          className="rounded-xl"
+                                          onClick={() => startEditTemplate(t)}
+                                          disabled={editingTemplateLoading}
+                                        >
+                                          Edit
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="rounded-xl"
+                                          onClick={() => deleteTemplate(t.photo)}
+                                        >
+                                          Delete
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <FormField label="Upload Billboard Photo">
                           {setupPhoto ? (

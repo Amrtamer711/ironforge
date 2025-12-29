@@ -185,28 +185,28 @@ export function ProposalsPage() {
                       key={p.id || p.file_url || idx}
                       className="p-3"
                     >
-                      <div className="text-sm font-semibold">{clientName}</div>
-                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-black/65 dark:text-white/65">
+                      <div className="text-base font-semibold">{clientName}</div>
+                      <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs text-black/65 dark:text-white/65">
                         <div className="flex flex-wrap items-baseline gap-1">
-                          <span className="uppercase tracking-wide text-[10px] text-black/45 dark:text-white/50">User</span>
+                          <span className="uppercase tracking-wide text-[11px] text-black/45 dark:text-white/50">User</span>
                           <span className="font-semibold text-black/80 dark:text-white/85">{userName}</span>
                         </div>
                         <div className="flex flex-wrap items-baseline gap-1">
-                          <span className="uppercase tracking-wide text-[10px] text-black/45 dark:text-white/50">Generated</span>
+                          <span className="uppercase tracking-wide text-[11px] text-black/45 dark:text-white/50">Generated</span>
                           <span className="font-semibold text-black/80 dark:text-white/85">
                             {generatedAt ? new Date(generatedAt).toLocaleString() : "—"}
                           </span>
                         </div>
                         <div className="flex flex-wrap items-baseline gap-1">
-                          <span className="uppercase tracking-wide text-[10px] text-black/45 dark:text-white/50">Package Type</span>
+                          <span className="uppercase tracking-wide text-[11px] text-black/45 dark:text-white/50">Package Type</span>
                           <span className="font-semibold text-black/80 dark:text-white/85">{packageType}</span>
                         </div>
                         <div className="flex flex-wrap items-baseline gap-1">
-                          <span className="uppercase tracking-wide text-[10px] text-black/45 dark:text-white/50">Total Amount</span>
+                          <span className="uppercase tracking-wide text-[11px] text-black/45 dark:text-white/50">Total Amount</span>
                           <span className="font-semibold text-black/80 dark:text-white/85">{totalAmount}</span>
                         </div>
                         <div className="flex flex-wrap items-baseline gap-1 sm:col-span-2">
-                          <span className="uppercase tracking-wide text-[10px] text-black/45 dark:text-white/50">Locations</span>
+                          <span className="uppercase tracking-wide text-[11px] text-black/45 dark:text-white/50">Locations</span>
                           <span className="font-semibold text-black/80 dark:text-white/85">{locationText}</span>
                         </div>
                       </div>
@@ -215,7 +215,7 @@ export function ProposalsPage() {
                           href={p.file_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex mt-2 text-[11px] underline opacity-80 hover:opacity-100"
+                          className="inline-flex mt-2 text-xs underline opacity-80 hover:opacity-100"
                         >
                           Download
                         </a>
