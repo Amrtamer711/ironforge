@@ -1,14 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
-import { FormField } from "../../components/ui/form-field";
-import { SoftCard } from "../../components/ui/soft-card";
-import { LoadingEllipsis } from "../../components/ui/loading-ellipsis";
 import * as mockupApi from "../../api/mockup";
 import { useAuth, hasPermission } from "../../state/auth";
-import { cn } from "../../lib/utils";
+import { normalizeFrameConfig } from "../../lib/utils";
+import * as GenerateTabModule from "./mockup/GenerateTab";
+import * as SetupTabModule from "./mockup/SetupTab";
+import * as HistoryTabModule from "./mockup/HistoryTab";
 
 const TIME_OF_DAY = [
   { value: "all", label: "All (Default)" },
@@ -63,10 +61,6 @@ const LIGHT_LABELS = LIGHT_DIRECTIONS.reduce((acc, item) => {
   return acc;
 }, {});
 
-function normalizeFrameConfig(config) {
-  return { ...DEFAULT_FRAME_CONFIG, ...(config || {}) };
-}
-
 function getRangeBackground(value, min, max) {
   const percent = ((value - min) / (max - min)) * 100;
   return `linear-gradient(to right, rgb(var(--brand-accent, 102 126 234)) ${percent}%, rgba(0, 0, 0, 0.1) ${percent}%)`;
@@ -80,17 +74,9 @@ export function MockupPage() {
   const [location, setLocation] = useState("");
   const [timeOfDay, setTimeOfDay] = useState("all");
   const [finish, setFinish] = useState("all");
-
   const [templateKey, setTemplateKey] = useState("");
-  const [selectedTemplate, setSelectedTemplate] = useState(null);
-  const [generateConfigEnabled, setGenerateConfigEnabled] = useState(false);
-  const [genFrameConfig, setGenFrameConfig] = useState(DEFAULT_FRAME_CONFIG);
 
-  const [aiPrompt, setAiPrompt] = useState("");
-  const [creativeFile, setCreativeFile] = useState(null);
-  const [resultUrl, setResultUrl] = useState("");
-  const [generating, setGenerating] = useState(false);
-  const [generateError, setGenerateError] = useState("");
+  const prevModeRef = useRef(mode);
 
   const [setupPhoto, setSetupPhoto] = useState(null);
   const [setupSaving, setSetupSaving] = useState(false);
@@ -98,6 +84,7 @@ export function MockupPage() {
   const [setupError, setSetupError] = useState("");
   const [framesJson, setFramesJson] = useState("[]");
   const [framesJsonDirty, setFramesJsonDirty] = useState(false);
+  const [templateThumbs, setTemplateThumbs] = useState({});
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [editingTemplateLoading, setEditingTemplateLoading] = useState(false);
   const [setupDragActive, setSetupDragActive] = useState(false);
@@ -129,6 +116,7 @@ export function MockupPage() {
   const testPreviewUrlRef = useRef("");
   const testPreviewCacheRef = useRef(new Map());
   const testCreativeFilesRef = useRef({});
+  const templateThumbsRef = useRef({});
   const greenscreenFrameRef = useRef(false);
 
   const currentPointsRef = useRef([]);
@@ -184,18 +172,21 @@ export function MockupPage() {
 
   useEffect(() => {
     return () => {
-      if (resultUrl) URL.revokeObjectURL(resultUrl);
       testPreviewCacheRef.current.forEach((entry) => {
         if (entry?.url) URL.revokeObjectURL(entry.url);
       });
       testPreviewCacheRef.current.clear();
       if (testPreviewUrlRef.current) URL.revokeObjectURL(testPreviewUrlRef.current);
     };
-  }, [resultUrl]);
+  }, []);
 
   useEffect(() => {
     testCreativeFilesRef.current = testCreativeFiles;
   }, [testCreativeFiles]);
+
+  useEffect(() => {
+    templateThumbsRef.current = templateThumbs;
+  }, [templateThumbs]);
 
   const locationOptions = useMemo(() => {
     const data = locationsQuery.data;
@@ -209,41 +200,89 @@ export function MockupPage() {
     return data?.templates || [];
   }, [templatesQuery.data]);
 
-  const templateMap = useMemo(() => {
-    const map = new Map();
-    templateOptions.forEach((t) => {
-      map.set(getTemplateKey(t), t);
+  const historyEnabled = mode === "history";
+
+  useEffect(() => {
+    if (prevModeRef.current !== mode) {
+      setLocation("");
+      setTimeOfDay("all");
+      setFinish("all");
+      setTemplateKey("");
+      if (prevModeRef.current === "setup" && editingTemplate) {
+        stopEditTemplate();
+      }
+    }
+    prevModeRef.current = mode;
+  }, [editingTemplate, mode]);
+
+  useEffect(() => {
+    setTemplateThumbs((prev) => {
+      const allowed = new Set(templateOptions.map((t) => getTemplateKey(t)));
+      const next = {};
+      Object.entries(prev).forEach(([key, url]) => {
+        if (allowed.has(key)) {
+          next[key] = url;
+        } else if (url) {
+          URL.revokeObjectURL(url);
+        }
+      });
+      return next;
     });
-    return map;
   }, [templateOptions]);
 
-  const canGenerate = location && (creativeFile || aiPrompt.trim()) && !generating;
+  useEffect(() => {
+    let active = true;
+    if (!location || !templateOptions.length) return () => {};
+    const missing = templateOptions.filter((t) => !templateThumbsRef.current[getTemplateKey(t)]);
+    if (!missing.length) return () => {};
+
+    (async () => {
+      for (const t of missing) {
+        let url = "";
+        try {
+          url = await mockupApi.getTemplatePhotoBlobUrl(location, t.photo, {
+            timeOfDay: t.time_of_day || timeOfDay,
+            finish: t.finish || finish,
+          });
+        } catch {
+          url = "";
+        }
+        if (!active) {
+          if (url) URL.revokeObjectURL(url);
+          return;
+        }
+        if (url) {
+          const key = getTemplateKey(t);
+          setTemplateThumbs((prev) => {
+            if (prev[key]) {
+              URL.revokeObjectURL(url);
+              return prev;
+            }
+            return { ...prev, [key]: url };
+          });
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [location, templateOptions, timeOfDay, finish]);
+
+  useEffect(() => {
+    return () => {
+      Object.values(templateThumbsRef.current).forEach((url) => {
+        if (url) URL.revokeObjectURL(url);
+      });
+    };
+  }, []);
+
   const canDetectGreenscreen = Boolean(previewImgRef.current);
   const hasActiveFrame = currentPoints.length === 4 || activeFrameIndex >= 0;
   const activeFrameKey =
     activeFrameIndex >= 0 ? `frame-${activeFrameIndex}` : currentPoints.length === 4 ? "current" : null;
   const activeTestCreativeFile = activeFrameKey ? testCreativeFiles[activeFrameKey] : null;
   const zoomPercent = Math.round(zoom * 100);
-
-  useEffect(() => {
-    if (!templateKey) {
-      setSelectedTemplate(null);
-      setGenerateConfigEnabled(false);
-      setGenFrameConfig(DEFAULT_FRAME_CONFIG);
-      return;
-    }
-
-    const template = templateMap.get(templateKey);
-    if (!template) {
-      setSelectedTemplate(null);
-      setGenerateConfigEnabled(false);
-      setGenFrameConfig(DEFAULT_FRAME_CONFIG);
-      return;
-    }
-
-    setSelectedTemplate(template);
-    setGenFrameConfig(normalizeFrameConfig(template.config));
-  }, [templateKey, templateMap]);
 
   useEffect(() => {
     if (!activeFrameKey) {
@@ -279,47 +318,6 @@ export function MockupPage() {
     const payload = buildFramesPayload();
     setFramesJson(payload.length ? JSON.stringify(payload, null, 2) : "[]");
   }, [currentPoints, frameCount, setupFrameConfig, framesJsonDirty]);
-
-  useEffect(() => {
-    if (templateKey) setTemplateKey("");
-  }, [timeOfDay, finish]);
-
-  async function onGenerate() {
-    if (!canGenerate) return;
-    setGenerateError("");
-    setResultUrl("");
-
-    try {
-      setGenerating(true);
-      const formData = new FormData();
-      formData.append("location_key", location);
-
-      if (selectedTemplate) {
-        formData.append("time_of_day", selectedTemplate.time_of_day || timeOfDay || "all");
-        formData.append("finish", selectedTemplate.finish || finish || "all");
-        formData.append("specific_photo", selectedTemplate.photo);
-        formData.append("frame_config", JSON.stringify(genFrameConfig));
-      } else {
-        formData.append("time_of_day", timeOfDay || "all");
-        formData.append("finish", finish || "all");
-      }
-
-      if (aiPrompt.trim()) {
-        formData.append("ai_prompt", aiPrompt.trim());
-      } else if (creativeFile) {
-        formData.append("creative", creativeFile);
-      }
-
-      const blob = await mockupApi.generateMockup(formData);
-      const url = URL.createObjectURL(blob);
-      if (resultUrl) URL.revokeObjectURL(resultUrl);
-      setResultUrl(url);
-    } catch (err) {
-      setGenerateError(err?.message || "Failed to generate mockup");
-    } finally {
-      setGenerating(false);
-    }
-  }
 
   async function saveSetup() {
     setSetupMessage("");
@@ -487,7 +485,7 @@ export function MockupPage() {
             rawConfig = null;
           }
         }
-        const config = normalizeFrameConfig(rawConfig);
+        const config = normalizeFrameConfig(rawConfig, DEFAULT_FRAME_CONFIG);
         return { points, config, source: "existing" };
       })
       .filter(Boolean);
@@ -505,8 +503,17 @@ export function MockupPage() {
       if (template.time_of_day) setTimeOfDay(template.time_of_day);
       if (template.finish) setFinish(template.finish);
 
-      const photoUrl = mockupApi.getTemplatePhotoUrl(location, template.photo);
-      await loadImageFromUrl(photoUrl, { resetFrames: false });
+      const photoBlob = await mockupApi.getTemplatePhotoBlob(location, template.photo, {
+        timeOfDay: template.time_of_day || timeOfDay,
+        finish: template.finish || finish,
+      });
+      if (!photoBlob) throw new Error("Failed to load template image");
+      const photoUrl = URL.createObjectURL(photoBlob);
+      try {
+        await loadImageFromUrl(photoUrl, { resetFrames: false });
+      } finally {
+        URL.revokeObjectURL(photoUrl);
+      }
 
       const frames = extractFramesFromTemplate(template);
       allFramesRef.current = frames;
@@ -519,9 +526,7 @@ export function MockupPage() {
       setFramesJsonDirty(false);
       drawPreview();
 
-      const response = await fetch(photoUrl);
-      const blob = await response.blob();
-      const file = new File([blob], template.photo, { type: blob.type || "image/jpeg" });
+      const file = new File([photoBlob], template.photo, { type: photoBlob.type || "image/jpeg" });
       setSetupPhoto(file);
     } catch (err) {
       setSetupError(err?.message || "Failed to load template for editing");
@@ -834,7 +839,7 @@ export function MockupPage() {
     setActiveFrameIndex(index);
     const frame = allFramesRef.current[index];
     if (frame?.config) {
-      setSetupFrameConfig(normalizeFrameConfig(frame.config));
+      setSetupFrameConfig(normalizeFrameConfig(frame.config, DEFAULT_FRAME_CONFIG));
     }
     setFrameSettingsOpen(true);
     setFramesJsonDirty(false);
@@ -1337,7 +1342,7 @@ export function MockupPage() {
       }
       return {
         points: normalizedPoints,
-        config: normalizeFrameConfig(config),
+        config: normalizeFrameConfig(config, DEFAULT_FRAME_CONFIG),
         source: "json",
       };
     });
@@ -1518,711 +1523,136 @@ export function MockupPage() {
               Setup
             </Button>
           ) : null}
+          <Button
+            variant={mode === "history" ? "default" : "ghost"}
+            onClick={() => setMode("history")}
+            className="rounded-2xl"
+          >
+            History
+          </Button>
         </div>
 
-        {mode === "generate" ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>Mockup Generator</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <FormField label="Location">
-                  <select
-                    className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                    value={location}
-                    onChange={(e) => {
-                      setLocation(e.target.value);
-                      setTemplateKey("");
-                    }}
-                  >
-                    <option value="">Select a location...</option>
-                    {locationOptions.map((loc) => (
-                      <option key={loc.key} value={loc.key}>
-                        {loc.name}
-                      </option>
-                    ))}
-                  </select>
-                </FormField>
+        <div className={mode === "generate" ? "block" : "hidden"} aria-hidden={mode !== "generate"}>
+          <GenerateTabModule.GeneratePanel
+            location={location}
+            setLocation={setLocation}
+            templateKey={templateKey}
+            setTemplateKey={setTemplateKey}
+            locationOptions={locationOptions}
+            locationsQuery={locationsQuery}
+            timeOfDay={timeOfDay}
+            setTimeOfDay={setTimeOfDay}
+            finish={finish}
+            setFinish={setFinish}
+            timeOfDayOptions={TIME_OF_DAY}
+            finishOptions={FINISHES}
+            templateOptions={templateOptions}
+            templatesQuery={templatesQuery}
+            templateThumbs={templateThumbs}
+            getTemplateKey={getTemplateKey}
+            defaultFrameConfig={DEFAULT_FRAME_CONFIG}
+            creativeDragActive={creativeDragActive}
+            handleCreativeDragOver={handleCreativeDragOver}
+            handleCreativeDragLeave={handleCreativeDragLeave}
+            handleCreativeDrop={handleCreativeDrop}
+          />
+        </div>
 
-                <FormField label="Time of Day">
-                  <select
-                    className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                    value={timeOfDay}
-                    onChange={(e) => setTimeOfDay(e.target.value)}
-                  >
-                    {TIME_OF_DAY.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </FormField>
+        {mode === "setup" ? (
+          <SetupTabModule.SetupTab
+            location={location}
+            setLocation={setLocation}
+            setTemplateKey={setTemplateKey}
+            locationOptions={locationOptions}
+            locationsQuery={locationsQuery}
+            timeOfDay={timeOfDay}
+            setTimeOfDay={setTimeOfDay}
+            finish={finish}
+            setFinish={setFinish}
+            timeOfDayOptions={TIME_OF_DAY}
+            finishOptions={FINISHES}
+            editingTemplate={editingTemplate}
+            editingTemplateLoading={editingTemplateLoading}
+            stopEditTemplate={stopEditTemplate}
+            templatesOpen={templatesOpen}
+            setTemplatesOpen={setTemplatesOpen}
+            templateOptions={templateOptions}
+            templatesQuery={templatesQuery}
+            templateThumbs={templateThumbs}
+            getTemplateKey={getTemplateKey}
+            startEditTemplate={startEditTemplate}
+            deleteTemplate={deleteTemplate}
+            setupPhoto={setupPhoto}
+            setSetupPhoto={setSetupPhoto}
+            handleSetupPhoto={handleSetupPhoto}
+            handleSetupDragOver={handleSetupDragOver}
+            handleSetupDragLeave={handleSetupDragLeave}
+            handleSetupDrop={handleSetupDrop}
+            setupDragActive={setupDragActive}
+            handleSetupPhotoClear={handleSetupPhotoClear}
+            framesJson={framesJson}
+            setFramesJson={setFramesJson}
+            setFramesJsonDirty={setFramesJsonDirty}
+            applyFramesJsonToCanvas={applyFramesJsonToCanvas}
+            buildFramesPayload={buildFramesPayload}
+            setupImageReady={setupImageReady}
+            greenscreenOpen={greenscreenOpen}
+            setGreenscreenOpen={setGreenscreenOpen}
+            greenscreenColor={greenscreenColor}
+            setGreenscreenColor={setGreenscreenColor}
+            colorTolerance={colorTolerance}
+            setColorTolerance={setColorTolerance}
+            RangeField={RangeField}
+            handleGreenscreenDetect={handleGreenscreenDetect}
+            canDetectGreenscreen={canDetectGreenscreen}
+            hasActiveFrame={hasActiveFrame}
+            frameSettingsOpen={frameSettingsOpen}
+            setFrameSettingsOpen={setFrameSettingsOpen}
+            setupFrameConfig={setupFrameConfig}
+            handleSetupFrameConfigChange={handleSetupFrameConfigChange}
+            FrameConfigControls={FrameConfigControls}
+            previewOpen={previewOpen}
+            setPreviewOpen={setPreviewOpen}
+            testPreviewMode={testPreviewMode}
+            setTestPreviewMode={setTestPreviewMode}
+            testPreviewImgRef={testPreviewImgRef}
+            testPreviewUrlRef={testPreviewUrlRef}
+            previewImgRef={previewImgRef}
+            drawPreview={drawPreview}
+            activeTestCreativeFile={activeTestCreativeFile}
+            updateTestCreativeForActive={updateTestCreativeForActive}
+            generateTestPreview={generateTestPreview}
+            testPreviewing={testPreviewing}
+            activeFrameIndex={activeFrameIndex}
+            canvasRef={canvasRef}
+            canvasWidth={CANVAS_WIDTH}
+            canvasHeight={CANVAS_HEIGHT}
+            handleCanvasPointerDown={handleCanvasPointerDown}
+            handleCanvasPointerMove={handleCanvasPointerMove}
+            handleCanvasPointerUp={handleCanvasPointerUp}
+            handleCanvasWheel={handleCanvasWheel}
+            setupHint={setupHint}
+            handleZoomOut={handleZoomOut}
+            handleZoomIn={handleZoomIn}
+            handleFitToScreen={handleFitToScreen}
+            zoomPercent={zoomPercent}
+            pixelUpscale={pixelUpscale}
+            setPixelUpscale={setPixelUpscale}
+            setupError={setupError}
+            setupMessage={setupMessage}
+            addFrame={addFrame}
+            resetCurrentFrame={resetCurrentFrame}
+            saveSetup={saveSetup}
+            setupSaving={setupSaving}
+            clearAllFrames={clearAllFrames}
+            currentPoints={currentPoints}
+            frameCount={frameCount}
+          />
+        ) : null}
 
-                <FormField label="Billboard Finish">
-                  <select
-                    className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                    value={finish}
-                    onChange={(e) => setFinish(e.target.value)}
-                  >
-                    {FINISHES.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </FormField>
-              </div>
-
-              {location ? (
-                <FormField label="Template (optional)">
-                  <select
-                    className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                    value={templateKey}
-                    onChange={(e) => setTemplateKey(e.target.value)}
-                    disabled={templatesQuery.isLoading}
-                  >
-                    <option value="">Random template</option>
-                    {templateOptions.map((t) => (
-                      <option key={getTemplateKey(t)} value={getTemplateKey(t)}>
-                        {t.photo} ({t.time_of_day}/{t.finish}, {t.frame_count} frame{t.frame_count > 1 ? "s" : ""})
-                      </option>
-                    ))}
-                  </select>
-                  <div className="text-[11px] text-black/50 dark:text-white/60">
-                    {templatesQuery.isLoading ? (
-                      <LoadingEllipsis text="Loading templates" />
-                    ) : null}
-                  </div>
-                </FormField>
-              ) : null}
-
-              {selectedTemplate ? (
-                <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 p-4 space-y-3">
-                  <label className="flex items-start gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={generateConfigEnabled}
-                      onChange={(e) => setGenerateConfigEnabled(e.target.checked)}
-                    />
-                    <span>
-                      <span className="font-semibold">Customize Frame Configuration</span>
-                      <span className="block text-xs text-black/55 dark:text-white/60">
-                        Enable to tweak lighting, blur, and other settings.
-                      </span>
-                    </span>
-                  </label>
-
-                  {generateConfigEnabled ? (
-                    <FrameConfigControls
-                      config={genFrameConfig}
-                      onChange={(key, value) =>
-                        setGenFrameConfig((prev) => ({
-                          ...prev,
-                          [key]: value,
-                        }))
-                      }
-                    />
-                  ) : null}
-                </div>
-              ) : null}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <FormField label="Upload Creative/Ad Image">
-                  {creativeFile ? (
-                    <div
-                      className={`flex items-center justify-between rounded-xl bg-black/5 dark:bg-white/10 px-3 py-2 text-sm ${creativeDragActive ? "ring-2 ring-black/20 dark:ring-white/30" : ""}`}
-                      onDragOver={handleCreativeDragOver}
-                      onDragLeave={handleCreativeDragLeave}
-                      onDrop={handleCreativeDrop}
-                    >
-                      <div className="truncate">{creativeFile.name}</div>
-                      <button className="opacity-70 hover:opacity-100" onClick={() => setCreativeFile(null)}>
-                        x
-                      </button>
-                    </div>
-                  ) : (
-                    <label
-                      className={`block cursor-pointer rounded-xl border border-dashed border-black/10 dark:border-white/15 px-4 py-5 text-center text-sm bg-white/50 dark:bg-white/5 ${creativeDragActive ? "ring-2 ring-black/20 dark:ring-white/30" : ""}`}
-                      onDragOver={handleCreativeDragOver}
-                      onDragLeave={handleCreativeDragLeave}
-                      onDrop={handleCreativeDrop}
-                    >
-                      <input
-                        type="file"
-                        className="hidden"
-                        accept="image/jpeg,image/png,image/webp,image/gif"
-                        onChange={(e) => setCreativeFile(e.target.files?.[0] || null)}
-                      />
-                      <div className="font-semibold mb-1">Click to upload/ Drag and Drop an Image</div>
-                      <div className="text-xs text-black/55 dark:text-white/60">JPG, PNG, WEBP, GIF up to 10MB</div>
-                    </label>
-                  )}
-                </FormField>
-
-                <FormField label="Or use AI prompt">
-                  <textarea
-                  className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10 dark:focus:ring-white/15 min-h-[80px]"
-                    value={aiPrompt}
-                    onChange={(e) => setAiPrompt(e.target.value)}
-                    placeholder="Describe what you want to generate..."
-                  />
-                </FormField>
-              </div>
-
-              {generateError ? (
-                <div className="rounded-xl bg-red-50/70 text-red-700 px-4 py-2 text-sm dark:bg-red-500/10 dark:text-red-300">
-                  {generateError}
-                </div>
-              ) : null}
-
-              <div className="flex items-center gap-3">
-                <Button className="rounded-2xl" onClick={onGenerate} disabled={!canGenerate}>
-                  {generating ? "Generating..." : "Generate"}
-                </Button>
-                <div className="text-xs text-black/55 dark:text-white/60">Location + (creative or prompt) required</div>
-              </div>
-
-              <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 p-4">
-                {!resultUrl && !generating ? (
-                  <div className="text-sm text-black/60 dark:text-white/65">Result will appear here</div>
-                ) : null}
-                {generating ? (
-                  <div className="text-sm text-black/60 dark:text-white/65">Processing mockup...</div>
-                ) : null}
-                {resultUrl ? (
-                  <div className="space-y-3">
-                    <img
-                      src={resultUrl}
-                      alt="Generated mockup"
-                      className="w-full rounded-xl border border-black/5 dark:border-white/10"
-                    />
-                    <div className="flex gap-2">
-                      <a
-                        href={resultUrl}
-                        download={`mockup_${location || "result"}.jpg`}
-                        className="inline-flex items-center justify-center rounded-2xl bg-black text-white px-4 py-2 text-sm dark:bg-white dark:text-black"
-                      >
-                        Download
-                      </a>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle>Mockup Setup</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-4">
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <FormField label="Location">
-                          <select
-                            className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                            value={location}
-                            onChange={(e) => {
-                              setLocation(e.target.value);
-                              setTemplateKey("");
-                            }}
-                          >
-                            <option value="">Select a location...</option>
-                            {locationOptions.map((loc) => (
-                              <option key={loc.key} value={loc.key}>
-                                {loc.name}
-                              </option>
-                            ))}
-                          </select>
-                        </FormField>
-
-                        <FormField label="Time of Day">
-                          <select
-                            className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                            value={timeOfDay}
-                            onChange={(e) => setTimeOfDay(e.target.value)}
-                          >
-                            {TIME_OF_DAY.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        </FormField>
-
-                        <FormField label="Billboard Finish">
-                          <select
-                            className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                            value={finish}
-                            onChange={(e) => setFinish(e.target.value)}
-                          >
-                            {FINISHES.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {opt.label}
-                              </option>
-                            ))}
-                          </select>
-                        </FormField>
-                      </div>
-
-                      {editingTemplate ? (
-                        <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/50 dark:bg-white/5 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
-                          <div className="text-sm">
-                            <span className="font-semibold">Editing template:</span>{" "}
-                            {editingTemplate.photo} ({editingTemplate.time_of_day}/{editingTemplate.finish})
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {editingTemplateLoading ? (
-                              <LoadingEllipsis text="Loading" className="text-xs text-black/50 dark:text-white/60" />
-                            ) : null}
-                            <Button variant="ghost" size="sm" className="rounded-xl" onClick={stopEditTemplate}>
-                              Stop editing
-                            </Button>
-                          </div>
-                        </div>
-                      ) : null}
-                      {!editingTemplate ? (
-                        <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 p-4 shadow-soft">
-                          <button
-                            type="button"
-                            className="flex w-full items-center justify-between gap-3 text-left"
-                            onClick={() => setTemplatesOpen((prev) => !prev)}
-                            aria-expanded={templatesOpen}
-                          >
-                            <div>
-                              <div className="text-sm font-semibold text-black/80 dark:text-white/85">
-                                Existing templates
-                              </div>
-                              <div className="text-xs text-black/55 dark:text-white/60">
-                                {location
-                                  ? `${templateOptions.length} template${templateOptions.length === 1 ? "" : "s"}`
-                                  : "Select a location to load templates."}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-black/50 dark:text-white/55">
-                              <span>{templatesOpen ? "Hide" : "Show"}</span>
-                              <ChevronDown
-                                size={16}
-                                className={cn("transition-transform", templatesOpen && "rotate-180")}
-                              />
-                            </div>
-                          </button>
-                          {templatesOpen ? (
-                            <div className="mt-3 space-y-2">
-                              {templatesQuery.isLoading ? (
-                                <LoadingEllipsis text="Loading templates" className="text-sm text-black/60 dark:text-white/65" />
-                              ) : null}
-                              {!templatesQuery.isLoading && (!templateOptions.length || !location) ? (
-                                <div className="text-sm text-black/60 dark:text-white/65">
-                                  No templates for this selection.
-                                </div>
-                              ) : null}
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                {templateOptions.map((t) => {
-                                  return (
-                                    <div
-                                      key={`${t.photo}-${t.time_of_day}-${t.finish}`}
-                                      className="rounded-xl border border-black/5 dark:border-white/10 bg-white/60 dark:bg-white/5 p-3 text-sm space-y-2"
-                                    >
-                                      <div className="overflow-hidden rounded-lg border border-black/5 dark:border-white/10 bg-black/5">
-                                        <img
-                                          src={mockupApi.getTemplatePhotoUrl(location, t.photo)}
-                                          alt={t.photo}
-                                          className="w-full h-32 object-cover"
-                                          loading="lazy"
-                                        />
-                                      </div>
-                                      <div className="font-semibold truncate">{t.photo}</div>
-                                      <div className="text-xs text-black/55 dark:text-white/60">
-                                        {t.time_of_day}/{t.finish} - {t.frame_count} frame
-                                        {t.frame_count > 1 ? "s" : ""}
-                                      </div>
-                                      <div className="flex gap-2">
-                                        <Button
-                                          variant="secondary"
-                                          size="sm"
-                                          className="rounded-xl"
-                                          onClick={() => startEditTemplate(t)}
-                                          disabled={editingTemplateLoading}
-                                        >
-                                          Edit
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          className="rounded-xl"
-                                          onClick={() => deleteTemplate(t.photo)}
-                                        >
-                                          Delete
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <FormField label="Upload Billboard Photo">
-                          {setupPhoto ? (
-                            <div
-                              className={`flex items-center justify-between rounded-xl bg-black/5 dark:bg-white/10 px-3 py-2 text-sm ${setupDragActive ? "ring-2 ring-black/20 dark:ring-white/30" : ""}`}
-                              onDragOver={handleSetupDragOver}
-                              onDragLeave={handleSetupDragLeave}
-                              onDrop={handleSetupDrop}
-                            >
-                              <div className="truncate">{setupPhoto.name}</div>
-                              <button className="opacity-70 hover:opacity-100" onClick={handleSetupPhotoClear}>
-                                x
-                              </button>
-                            </div>
-                          ) : (
-                            <label
-                              className={`block cursor-pointer rounded-xl border border-dashed border-black/10 dark:border-white/15 px-4 py-5 text-center text-sm bg-white/50 dark:bg-white/5 ${setupDragActive ? "ring-2 ring-black/20 dark:ring-white/30" : ""}`}
-                              onDragOver={handleSetupDragOver}
-                              onDragLeave={handleSetupDragLeave}
-                              onDrop={handleSetupDrop}
-                            >
-                              <input
-                                type="file"
-                                className="hidden"
-                                accept="image/jpeg,image/png,image/webp"
-                                onChange={(e) => {
-                                  const file = e.target.files?.[0];
-                                  if (file) {
-                                    setSetupPhoto(file);
-                                    handleSetupPhoto(file);
-                                  }
-                                }}
-                              />
-                              <div className="font-semibold mb-1">Click to upload/ Drag and Drop an Image</div>
-                              <div className="text-xs text-black/55 dark:text-white/60">JPG, PNG, WEBP up to 20MB</div>
-                            </label>
-                          )}
-                        </FormField>
-                        <FormField label="Frames JSON">
-                          <textarea
-                            className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10 dark:focus:ring-white/15 min-h-[80px] font-mono"
-                            value={framesJson}
-                            onChange={(e) => {
-                              setFramesJson(e.target.value);
-                              setFramesJsonDirty(true);
-                            }}
-                            placeholder='[{"points":[0,0,0,0],"config":{"brightness":100}}]'
-                          />
-                          <div className="flex items-center justify-between text-[11px] text-black/50 dark:text-white/60">
-                            <span>Auto-filled from canvas. Edit to override.</span>
-                            <div className="flex items-center gap-3">
-                              <button type="button" className="text-xs underline" onClick={applyFramesJsonToCanvas}>
-                                Apply to canvas
-                              </button>
-                              <button
-                                type="button"
-                                className="text-xs underline"
-                                onClick={() => {
-                                  setFramesJsonDirty(false);
-                                  const payload = buildFramesPayload();
-                                  setFramesJson(payload.length ? JSON.stringify(payload, null, 2) : "[]");
-                                }}
-                              >
-                                Sync from canvas
-                              </button>
-                            </div>
-                          </div>
-                        </FormField>
-                      </div>
-
-                      {setupImageReady ? (
-                        <>
-                          <SoftCard className="bg-white/50 dark:bg-white/5 p-4">
-                            <button
-                              type="button"
-                              className="flex w-full items-center justify-between gap-3 text-left"
-                              onClick={() => setGreenscreenOpen((prev) => !prev)}
-                              aria-expanded={greenscreenOpen}
-                            >
-                              <div>
-                                <div className="text-sm font-semibold text-black/80 dark:text-white/85">
-                                  Green Screen Detection
-                                </div>
-                                <div className="text-xs text-black/55 dark:text-white/60">
-                                  Detect billboard frame using chroma key.
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2 text-xs text-black/50 dark:text-white/55">
-                                <span>{greenscreenOpen ? "Hide" : "Edit"}</span>
-                                <ChevronDown
-                                  size={16}
-                                  className={cn("transition-transform", greenscreenOpen && "rotate-180")}
-                                />
-                              </div>
-                            </button>
-
-                            {greenscreenOpen ? (
-                              <div className="mt-3 space-y-3">
-                                <div className="flex items-center gap-3">
-                                  <input
-                                    type="color"
-                                    value={greenscreenColor}
-                                    onChange={(e) => setGreenscreenColor(e.target.value.toUpperCase())}
-                                    className="h-10 w-16 rounded-lg border border-black/10 dark:border-white/20"
-                                  />
-                                  <input
-                                    type="text"
-                                    value={greenscreenColor}
-                                    onChange={(e) => setGreenscreenColor(e.target.value.toUpperCase())}
-                                    className="flex-1 rounded-xl bg-white/70 dark:bg-white/10 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none font-mono"
-                                  />
-                                </div>
-                                <div className="text-xs text-black/55 dark:text-white/60">
-                                  Tip: Shift+click to pick a color. Shift+drag or middle mouse pans.
-                                </div>
-                                <RangeField
-                                  label="Color Tolerance"
-                                  value={colorTolerance}
-                                  min={10}
-                                  max={100}
-                                  onChange={(val) => setColorTolerance(val)}
-                                  helper="Lower is stricter, higher is more forgiving."
-                                />
-                                <Button
-                                  className="rounded-2xl w-full"
-                                  onClick={handleGreenscreenDetect}
-                                  disabled={!canDetectGreenscreen}
-                                >
-                                  Detect Green Screen Now
-                                </Button>
-                              </div>
-                            ) : null}
-                          </SoftCard>
-
-                          {hasActiveFrame ? (
-                            <div className="rounded-2xl bg-blue-50/70 dark:bg-blue-500/10 ring-1 ring-blue-500/20 p-4 shadow-soft">
-                              <button
-                                type="button"
-                                className="flex w-full items-center justify-between gap-3 text-left"
-                                onClick={() => setFrameSettingsOpen((prev) => !prev)}
-                                aria-expanded={frameSettingsOpen}
-                              >
-                                <div>
-                                  <div className="text-sm font-semibold text-blue-900 dark:text-blue-100">
-                                    Current Frame Settings
-                                  </div>
-                                  <div className="text-xs text-blue-800 dark:text-blue-200">
-                                    Adjust the current frame appearance.
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-blue-800 dark:text-blue-200">
-                                  <span>{frameSettingsOpen ? "Hide" : "Edit"}</span>
-                                  <ChevronDown
-                                    size={16}
-                                    className={cn("transition-transform", frameSettingsOpen && "rotate-180")}
-                                  />
-                                </div>
-                              </button>
-                              {frameSettingsOpen ? (
-                                <div className="mt-3 space-y-3">
-                                  <FrameConfigControls
-                                    config={setupFrameConfig}
-                                    onChange={handleSetupFrameConfigChange}
-                                  />
-                                  <div className="text-xs text-blue-800 dark:text-blue-200">
-                                    Settings apply to the current frame only.
-                                  </div>
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : null}
-
-                          {hasActiveFrame ? (
-                            <div className="rounded-2xl bg-blue-50/70 dark:bg-blue-500/10 ring-1 ring-blue-500/20 p-4 shadow-soft">
-                              <button
-                                type="button"
-                                className="flex w-full items-center justify-between gap-3 text-left"
-                                onClick={() => setPreviewOpen((prev) => !prev)}
-                                aria-expanded={previewOpen}
-                              >
-                                <div>
-                                  <div className="text-sm font-semibold text-blue-900 dark:text-blue-100">
-                                    Test Preview Mode
-                                  </div>
-                                  <div className="text-xs text-blue-800 dark:text-blue-200">
-                                    Preview creative on the current frame before saving.
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-blue-800 dark:text-blue-200">
-                                  <span>{previewOpen ? "Hide" : "Edit"}</span>
-                                  <ChevronDown
-                                    size={16}
-                                    className={cn("transition-transform", previewOpen && "rotate-180")}
-                                  />
-                                </div>
-                              </button>
-                              {previewOpen ? (
-                                <div className="mt-3 space-y-2">
-                                  <label className="flex items-center gap-3 text-sm">
-                                    <input
-                                      type="checkbox"
-                                      checked={testPreviewMode}
-                                      onChange={(e) => {
-                                    setTestPreviewMode(e.target.checked);
-                                    if (!e.target.checked) {
-                                      testPreviewImgRef.current = null;
-                                      testPreviewUrlRef.current = "";
-                                      drawPreview();
-                                    }
-                                  }}
-                                />
-                                    <span className="font-semibold text-blue-900 dark:text-blue-100">
-                                      Enable preview
-                                    </span>
-                                  </label>
-                                  {testPreviewMode ? (
-                                    <div className="space-y-2">
-                                      <label className="block text-xs font-semibold text-blue-900 dark:text-blue-100">
-                                        Upload Test Creative
-                                      </label>
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={(e) => updateTestCreativeForActive(e.target.files?.[0] || null)}
-                                    className="w-full text-sm"
-                                  />
-                                  {activeTestCreativeFile ? (
-                                    <div className="text-[11px] text-blue-800 dark:text-blue-200">
-                                      Selected: {activeTestCreativeFile.name}
-                                    </div>
-                                  ) : null}
-                                  <Button
-                                    className="rounded-2xl w-full"
-                                    onClick={generateTestPreview}
-                                    disabled={
-                                      !activeTestCreativeFile || !setupPhoto || !hasActiveFrame || testPreviewing
-                                    }
-                                  >
-                                    {testPreviewing ? "Generating..." : "Generate Test Preview"}
-                                  </Button>
-                                  {activeFrameIndex >= 0 ? (
-                                    <div className="text-[11px] text-blue-800 dark:text-blue-200">
-                                      Preview applies to frame {activeFrameIndex + 1}.
-                                    </div>
-                                  ) : null}
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : null}
-                            </div>
-                          ) : null}
-                        </>
-                      ) : null}
-                    </div>
-                    {setupImageReady ? (
-                      <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 p-3 space-y-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="h-8 px-3"
-                              onClick={handleZoomOut}
-                              disabled={!previewImgRef.current}
-                            >
-                              -
-                            </Button>
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              className="h-8 px-3"
-                              onClick={handleZoomIn}
-                              disabled={!previewImgRef.current}
-                            >
-                              +
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={handleFitToScreen}
-                              disabled={!previewImgRef.current}
-                            >
-                              Fit
-                            </Button>
-                            <span className="text-xs text-black/60 dark:text-white/60">{zoomPercent}%</span>
-                          </div>
-                          <label className="flex items-center gap-2 text-xs text-black/70 dark:text-white/70">
-                            <input
-                              type="checkbox"
-                              checked={pixelUpscale}
-                              onChange={(e) => setPixelUpscale(e.target.checked)}
-                            />
-                            Pixel Upscale
-                          </label>
-                        </div>
-                        <canvas
-                          ref={canvasRef}
-                          width={CANVAS_WIDTH}
-                          height={CANVAS_HEIGHT}
-                          className="w-full h-auto rounded-xl border border-black/10 dark:border-white/10 bg-white"
-                          onPointerDown={handleCanvasPointerDown}
-                          onPointerMove={handleCanvasPointerMove}
-                          onPointerUp={handleCanvasPointerUp}
-                          onPointerLeave={handleCanvasPointerUp}
-                          onWheel={handleCanvasWheel}
-                          style={{ touchAction: "none" }}
-                        />
-                        <div className="text-xs text-black/60 dark:text-white/60">{setupHint}</div>
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-black/5 dark:bg-white/10 px-4 py-3 text-sm text-black/60 dark:text-white/65">
-                        Upload a billboard photo or pick an existing template to enable the canvas tools.
-                      </div>
-                    )}
-                  </div>
-
-                  {setupError ? (
-                    <div className="rounded-xl bg-red-50/70 text-red-700 px-4 py-2 text-sm dark:bg-red-500/10 dark:text-red-300">
-                      {setupError}
-                    </div>
-                  ) : null}
-                  {setupMessage ? (
-                    <div className="rounded-xl bg-green-50/70 text-green-700 px-4 py-2 text-sm dark:bg-green-500/10 dark:text-green-200">
-                      {setupMessage}
-                    </div>
-                  ) : null}
-
-                  <div className="flex flex-wrap gap-2">
-                    <Button className="rounded-2xl" onClick={addFrame} disabled={currentPoints.length !== 4}>
-                      Add Frame
-                    </Button>
-                    <Button variant="secondary" className="rounded-2xl" onClick={resetCurrentFrame}>
-                      Reset Current Frame
-                    </Button>
-                    <Button
-                      className="rounded-2xl"
-                      onClick={saveSetup}
-                      disabled={setupSaving || !location || !setupPhoto}
-                    >
-                      {setupSaving ? "Saving..." : editingTemplate ? "Save Changes" : "Save All Frames"}
-                    </Button>
-                    <Button variant="ghost" className="rounded-2xl" onClick={() => clearAllFrames(false)}>
-                      Clear All Frames
-                    </Button>
-                  </div>
-
-                  {frameCount ? (
-                    <div className="rounded-xl bg-blue-50/70 text-blue-900 px-3 py-2 text-sm dark:bg-blue-500/10 dark:text-blue-100">
-                      Frames configured: {frameCount}
-                    </div>
-                  ) : null}
-
-                  
-            </CardContent>
-          </Card>
-        )}
+        <div className={mode === "history" ? "block" : "hidden"} aria-hidden={mode !== "history"}>
+          <HistoryTabModule.HistoryPanel enabled={historyEnabled} />
+        </div>
       </div>
     </div>
   );
@@ -2399,7 +1829,7 @@ function RangeField({ label, value, min, max, step = 1, suffix = "", helper, onC
         style={{ background: getRangeBackground(value, min, max) }}
         className="w-full accent-black"
       />
-      {helper ? <div className="text-[11px] text-black/55 dark:text-white/60">{helper}</div> : null}
+      {helper ? <div className="text-xs text-black/55 dark:text-white/60">{helper}</div> : null}
     </div>
   );
 }

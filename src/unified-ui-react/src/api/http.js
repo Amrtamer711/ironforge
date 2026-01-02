@@ -16,11 +16,12 @@ async function resolveAuthToken() {
 }
 
 export async function apiRequest(path, options = {}) {
-  const url = `${runtimeConfig.API_BASE_URL}${path}`;
-  const headers = new Headers(options.headers || {});
+  const { baseUrl, ...fetchOptions } = options;
+  const url = `${baseUrl ?? runtimeConfig.API_BASE_URL}${path}`;
+  const headers = new Headers(fetchOptions.headers || {});
 
   // Don't force JSON header for FormData
-  const isFormData = options.body instanceof FormData;
+  const isFormData = fetchOptions.body instanceof FormData;
   if (!isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
@@ -30,7 +31,7 @@ export async function apiRequest(path, options = {}) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(url, { ...fetchOptions, headers });
 
   // old behavior: auto logout on 401
   if (res.status === 401) {
@@ -58,14 +59,15 @@ export async function apiRequest(path, options = {}) {
 }
 
 export async function apiBlob(path, options = {}) {
-  const url = `${runtimeConfig.API_BASE_URL}${path}`;
-  const headers = new Headers(options.headers || {});
+  const { baseUrl, ...fetchOptions } = options;
+  const url = `${baseUrl ?? runtimeConfig.API_BASE_URL}${path}`;
+  const headers = new Headers(fetchOptions.headers || {});
   const token = await resolveAuthToken();
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(url, { ...fetchOptions, headers });
 
   if (res.status === 401) {
     clearAuthToken();

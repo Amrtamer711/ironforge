@@ -1,10 +1,11 @@
 import React from "react";
+import { createPortal } from "react-dom";
 import { Button } from "./button";
 
 export function Modal({ open, onClose, title, children, maxWidth = "520px" }) {
   if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 backdrop-blur-sm px-4 py-6 overflow-y-auto">
+  const content = (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-sm px-4 py-6 overflow-y-auto">
       <div className="w-full" style={{ maxWidth }}>
         <div className="rounded-2xl bg-white/90 dark:bg-neutral-900/95 shadow-2xl ring-1 ring-black/10 dark:ring-white/10 max-h-[85vh] flex flex-col">
           <div className="flex items-center justify-between px-4 py-2 border-b border-black/5 dark:border-white/10">
@@ -18,6 +19,8 @@ export function Modal({ open, onClose, title, children, maxWidth = "520px" }) {
       </div>
     </div>
   );
+  if (typeof document === "undefined") return content;
+  return createPortal(content, document.body);
 }
 
 export function ConfirmModal({ open, onClose, onConfirm, message }) {

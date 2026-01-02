@@ -9,6 +9,8 @@ import { ChatPage } from "../screens/tools/ChatPage";
 import { MockupPage } from "../screens/tools/MockupPage";
 import { ProposalsPage } from "../screens/tools/ProposalsPage";
 import { AdminPage } from "../screens/tools/AdminPage";
+import { NotificationsPage } from "../screens/tools/NotificationsPage";
+// import { CostDashboardPage } from "../screens/tools/CostDashboardPage";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { SettingsPage } from "../screens/tools/SettingsPage";
 export function AppRoutes() {
@@ -22,6 +24,10 @@ export function AppRoutes() {
         <Route path="chat" element={<ChatPage />} />
         <Route path="mockup" element={<MockupPage />} />
         <Route path="proposals" element={<ProposalsPage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
+        {/*
+        <Route path="costs" element={<CostDashboardPage />} />
+        */}
         <Route path="admin" element={<AdminPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>

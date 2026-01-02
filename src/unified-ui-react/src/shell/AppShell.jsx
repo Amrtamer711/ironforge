@@ -6,6 +6,8 @@ import { LayoutGrid, MessageSquare, PanelsTopLeft, Shield, Menu, LogOut, Setting
 import { Logo } from "../components/Logo";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { Button } from "../components/ui/button";
+import { NotificationsBell } from "../components/ui/notifications-bell";
+import { NotificationsToastStack } from "../components/ui/notification-toast";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,7 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
-import { useAuth, canAccessAdmin } from "../state/auth";
+import { useAuth, canAccessAdmin, hasPermission } from "../state/auth";
 import { cn } from "../lib/utils";
 import { modulesApi } from "../api";
 
@@ -22,14 +24,19 @@ const TOOL_INFO = {
   chat: { to: "/app/chat", label: "AI Chat Assistant", icon: MessageSquare },
   mockup: { to: "/app/mockup", label: "Mockup Assistant", icon: LayoutGrid },
   proposals: { to: "/app/proposals", label: "Proposal Assistant", icon: PanelsTopLeft },
+  // costs: { to: "/app/costs", label: "AI Costs", icon: BarChart3 },
   admin: { to: "/app/admin", label: "Admin", icon: Shield },
   settings: { to: "/app/settings", label: "Settings", icon: Settings },
 };
+
+const TOOL_ORDER = ["chat", "mockup", "proposals", "admin", "settings"];
 
 function pageTitle(pathname) {
   if (pathname.includes("/app/chat")) return "AI Chat";
   if (pathname.includes("/app/mockup")) return "Mockup Studio";
   if (pathname.includes("/app/proposals")) return "Sales Proposals";
+  if (pathname.includes("/app/notifications")) return "Notifications";
+  // if (pathname.includes("/app/costs")) return "AI Costs";
   if (pathname.includes("/app/admin")) return "Admin Panel";
   if (pathname.includes("/app/settings")) return "Settings";
   return "Workspace";
@@ -58,31 +65,34 @@ function fallbackModules(user) {
 function buildNavItems(modulesData, user) {
   const modules = modulesData?.modules?.length ? modulesData.modules : fallbackModules(user);
   const sorted = [...(modules || [])].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-  const seen = new Set();
-  const items = [];
+  const allowed = new Set();
 
   sorted.forEach((mod) => {
     (mod.tools || []).forEach((tool) => {
-      const info = TOOL_INFO[tool];
-      if (info && !seen.has(info.to)) {
-        seen.add(info.to);
-        items.push(info);
-      }
+      allowed.add(tool === "ai_costs" ? "costs" : tool);
     });
   });
 
-  if (canAccessAdmin(user) && !seen.has(TOOL_INFO.admin.to)) {
-    const settingsIndex = items.findIndex((i) => i.to === TOOL_INFO.settings.to);
-    if (settingsIndex >= 0) {
-      items.splice(settingsIndex, 0, TOOL_INFO.admin);
-    } else {
-      items.push(TOOL_INFO.admin);
-    }
+  if (canAccessAdmin(user)) {
+    allowed.add("admin");
   }
 
-  if (!seen.has(TOOL_INFO.settings.to)) {
-    items.push(TOOL_INFO.settings);
-  }
+  // if (hasPermission(user, "core:ai_costs:read") || canAccessAdmin(user)) {
+  //   allowed.add("costs");
+  // }
+
+  allowed.add("settings");
+
+  const items = [];
+  const seen = new Set();
+  TOOL_ORDER.forEach((tool) => {
+    if (!allowed.has(tool)) return;
+    const info = TOOL_INFO[tool];
+    if (info && !seen.has(info.to)) {
+      seen.add(info.to);
+      items.push(info);
+    }
+  });
 
   return items;
 }
@@ -139,6 +149,8 @@ export function AppShell() {
                   <Menu size={18} />
                 </Button>
 
+                <NotificationsBell />
+
                 <ThemeToggle />
 
                 <DropdownMenu>
@@ -161,7 +173,7 @@ export function AppShell() {
                     <DropdownMenuLabel>
                       <div className="flex items-center justify-between gap-3">
                         <span className="truncate">{user?.email}</span>
-                        <span className="text-[11px] rounded-full px-2 py-0.5 bg-black/5 dark:bg-white/10">
+                        <span className="text-xs rounded-full px-2 py-0.5 bg-black/5 dark:bg-white/10">
                           {(user?.roles || []).join(" | ")}
                         </span>
                       </div>
@@ -187,6 +199,8 @@ export function AppShell() {
           </div>
         </div>
       </header>
+
+      <NotificationsToastStack />
 
       <div className="w-full px-6 lg:px-10 pb-4 flex-1 flex overflow-hidden">
         <div

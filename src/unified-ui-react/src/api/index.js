@@ -8,3 +8,5 @@ export * as proposalsApi from "./proposals";
 export * as adminApi from "./admin";
 export * as templateApi from "./template";
 export * as boApi from "./bo";
+export * as costsApi from "./costs";
+export * as notificationsApi from "./notifications";

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Download, ExternalLink, FileText, Paperclip, Send } from "lucide-react";
+import { ExternalLink, Download , FileText, Paperclip, Send } from "lucide-react";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { LoadingEllipsis } from "../../components/ui/loading-ellipsis";
@@ -359,7 +359,7 @@ export function ChatPage() {
             <Paperclip size={18} />
           </Button>
 
-          <Textarea5 value={value} onChange={setValue} placeholder="Type your message..." onEnter={send} disabled={streaming} />
+          <Textarea5 value={value} onChange={setValue} placeholder="Type your message..." onEnter={send} />
 
           <Button size="icon" className="w-12 rounded-2xl" title="Send" disabled={!canSend} onClick={send}>
             <Send size={18} />
@@ -388,7 +388,7 @@ function Message({ msg, onMediaLoad }) {
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
       <div
         className={[
-          "max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-soft",
+          "max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-soft break-words",
           "ring-1 ring-black/5 dark:ring-white/10 backdrop-blur-xs",
           isUser
             ? "bg-black text-white dark:bg-white dark:text-black"
@@ -490,7 +490,7 @@ function Message({ msg, onMediaLoad }) {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide text-black/50 dark:text-white/60">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-black/50 dark:text-white/60">
                         {isPdf ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 text-red-700 dark:text-red-300 px-2 py-0.5">
                             <FileText size={12} />
@@ -503,7 +503,7 @@ function Message({ msg, onMediaLoad }) {
                         )}
                       </div>
                       {showActions ? (
-                        <div className="mt-1 text-[11px] font-semibold text-black/80 dark:text-white/85 truncate">
+                        <div className="mt-1 text-xs font-semibold text-black/80 dark:text-white/85 truncate">
                           {displayName}
                         </div>
                       ) : null}
@@ -666,7 +666,6 @@ function isGenericFileName(name) {
 }
 
 function getFriendlyFileName(file, url, cache) {
-  console.log(file);
   const pdfFilename = file?.filename || "";
   const raw = pdfFilename || file?.filename || file?.title || "";
   const urlName = getNameFromUrl(url);

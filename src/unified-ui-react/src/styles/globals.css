@@ -469,3 +469,10 @@ body[data-brand-theme] .mmg-nav-btn-active .mmg-nav-icon {
   color: rgb(var(--brand-on-primary));
   box-shadow: 0 12px 22px rgb(var(--brand-accent) / 0.35);
 }
+
+.mmg-line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

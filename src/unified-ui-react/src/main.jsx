@@ -8,6 +8,7 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import "./styles/globals.css";
 import { AppRoutes } from "./routes/AppRoutes";
 import { AuthProvider } from "./state/auth";
+import { NotificationsProvider } from "./state/notifications";
 
 const BRAND_KEY = "mmg-brand-theme";
 
@@ -31,9 +32,11 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <BrowserRouter>
-            <AppRoutes />
-          </BrowserRouter>
+          <NotificationsProvider>
+            <BrowserRouter>
+              <AppRoutes />
+            </BrowserRouter>
+          </NotificationsProvider>
         </AuthProvider>
       </QueryClientProvider>
     </ThemeProvider>
