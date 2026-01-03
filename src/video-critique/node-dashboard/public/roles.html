@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Role Management - Video Critique Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    body {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .glass-card {
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+    }
+
+    .glass-card:hover {
+      background: rgba(255, 255, 255, 0.15);
+      transform: translateY(-2px);
+      transition: all 0.3s ease;
+    }
+
+    .section-card {
+      background: rgba(255, 255, 255, 0.95);
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      transition: all 0.3s ease;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-secondary {
+      background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+      transition: all 0.3s ease;
+    }
+
+    .btn-secondary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(245, 87, 108, 0.4);
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      transition: all 0.3s ease;
+    }
+
+    .btn-success:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(79, 172, 254, 0.4);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+      transition: all 0.3s ease;
+    }
+
+    .btn-danger:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(250, 112, 154, 0.4);
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(5px);
+    }
+
+    .modal.active {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal-content {
+      background: white;
+      border-radius: 16px;
+      padding: 2rem;
+      max-width: 600px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateY(-50px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    .table-row {
+      transition: all 0.2s ease;
+    }
+
+    .table-row:hover {
+      background-color: rgba(102, 126, 234, 0.05);
+      transform: scale(1.01);
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .badge-active {
+      background-color: #10b981;
+      color: white;
+    }
+
+    .badge-inactive {
+      background-color: #ef4444;
+      color: white;
+    }
+
+    .tab-button {
+      padding: 0.75rem 1.5rem;
+      border-radius: 8px;
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+
+    .tab-button.active {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .tab-button:not(.active) {
+      background: rgba(255, 255, 255, 0.7);
+      color: #667eea;
+    }
+
+    .tab-button:not(.active):hover {
+      background: rgba(255, 255, 255, 0.9);
+    }
+
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 1rem 1.5rem;
+      border-radius: 8px;
+      color: white;
+      z-index: 2000;
+      animation: slideInRight 0.3s ease;
+      max-width: 400px;
+    }
+
+    @keyframes slideInRight {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    .notification.success {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    }
+
+    .notification.error {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    }
+
+    .loading {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 3px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 1s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body class="p-6">
+  <!-- Header -->
+  <header class="glass-card rounded-2xl p-6 mb-6">
+    <div class="flex justify-between items-center">
+      <div class="flex items-center gap-4">
+        <a href="/" class="text-white hover:text-blue-200 transition-colors">
+          <i class="fas fa-arrow-left text-2xl"></i>
+        </a>
+        <div>
+          <h1 class="text-3xl font-bold text-white mb-1">
+            <i class="fas fa-users-cog mr-2"></i>Role Management
+          </h1>
+          <p class="text-white text-opacity-80">Manage users, roles, and permissions</p>
+        </div>
+      </div>
+      <div class="text-white text-right">
+        <p class="font-semibold" id="userName">Loading...</p>
+        <button onclick="logout()" class="text-sm text-white text-opacity-80 hover:text-opacity-100 transition-colors">
+          <i class="fas fa-sign-out-alt mr-1"></i>Logout
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Tab Navigation -->
+  <div class="glass-card rounded-2xl p-4 mb-6">
+    <div class="flex flex-wrap gap-3">
+      <button class="tab-button active" onclick="switchTab('videographers')">
+        <i class="fas fa-video mr-2"></i>Videographers
+      </button>
+      <button class="tab-button" onclick="switchTab('salespeople')">
+        <i class="fas fa-users mr-2"></i>Sales People
+      </button>
+      <button class="tab-button" onclick="switchTab('locations')">
+        <i class="fas fa-map-marker-alt mr-2"></i>Locations
+      </button>
+      <button class="tab-button" onclick="switchTab('single-roles')">
+        <i class="fas fa-user-tie mr-2"></i>Key Roles
+      </button>
+      <button class="tab-button" onclick="switchTab('admins')">
+        <i class="fas fa-user-shield mr-2"></i>Admins
+      </button>
+      <button class="tab-button" onclick="switchTab('permissions')">
+        <i class="fas fa-lock mr-2"></i>Permissions
+      </button>
+    </div>
+  </div>
+
+  <!-- Loading State -->
+  <div id="loadingState" class="text-center py-12">
+    <div class="loading mx-auto mb-4"></div>
+    <p class="text-white text-lg">Loading configuration...</p>
+  </div>
+
+  <!-- Videographers Section -->
+  <div id="videographers-section" class="tab-content" style="display:none;">
+    <div class="section-card p-6">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-2xl font-bold text-gray-800">
+          <i class="fas fa-video mr-2 text-purple-600"></i>Videographers
+        </h2>
+        <button onclick="openVideographerModal()" class="btn-primary text-white px-6 py-3 rounded-lg font-semibold">
+          <i class="fas fa-plus mr-2"></i>Add Videographer
+        </button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>
+            <tr class="border-b-2 border-gray-200">
+              <th class="text-left p-4 font-semibold text-gray-700">Name</th>
+              <th class="text-left p-4 font-semibold text-gray-700">Email</th>
+              <th class="text-left p-4 font-semibold text-gray-700">Slack User ID</th>
+              <th class="text-left p-4 font-semibold text-gray-700">Slack Channel ID</th>
+              <th class="text-center p-4 font-semibold text-gray-700">Status</th>
+              <th class="text-center p-4 font-semibold text-gray-700">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="videographersTable">
+            <!-- Populated by JavaScript -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sales People Section -->
+  <div id="salespeople-section" class="tab-content" style="display:none;">
+    <div class="section-card p-6">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-2xl font-bold text-gray-800">
+          <i class="fas fa-users mr-2 text-purple-600"></i>Sales People
+        </h2>
+        <button onclick="openSalespersonModal()" class="btn-primary text-white px-6 py-3 rounded-lg font-semibold">
+          <i class="fas fa-plus mr-2"></i>Add Salesperson
+        </button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>
+            <tr class="border-b-2 border-gray-200">
+              <th class="text-left p-4 font-semibold text-gray-700">Name</th>
+              <th class="text-left p-4 font-semibold text-gray-700">Email</th>
+              <th class="text-left p-4 font-semibold text-gray-700">Slack User ID</th>
+              <th class="text-left p-4 font-semibold text-gray-700">Slack Channel ID</th>
+              <th class="text-center p-4 font-semibold text-gray-700">Status</th>
+              <th class="text-center p-4 font-semibold text-gray-700">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="salespeopleTable">
+            <!-- Populated by JavaScript -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Locations Section -->
+  <div id="locations-section" class="tab-content" style="display:none;">
+    <div class="section-card p-6">
+      <div class="flex justify-between items-center mb-6">
+        <h2 class="text-2xl font-bold text-gray-800">
+          <i class="fas fa-map-marker-alt mr-2 text-purple-600"></i>Location Mappings
+        </h2>
+        <button onclick="openLocationModal()" class="btn-primary text-white px-6 py-3 rounded-lg font-semibold">
+          <i class="fas fa-plus mr-2"></i>Add Location
+        </button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>
+            <tr class="border-b-2 border-gray-200">
+              <th class="text-left p-4 font-semibold text-gray-700">Location</th>
+              <th class="text-left p-4 font-semibold text-gray-700">Assigned Videographer</th>
+              <th class="text-center p-4 font-semibold text-gray-700">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="locationsTable">
+            <!-- Populated by JavaScript -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Single Roles Section -->
+  <div id="single-roles-section" class="tab-content" style="display:none;">
+    <div class="space-y-6">
+      <!-- Reviewer -->
+      <div class="section-card p-6">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">
+          <i class="fas fa-user-check mr-2 text-purple-600"></i>Reviewer
+        </h2>
+        <div id="reviewerInfo" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Populated by JavaScript -->
+        </div>
+        <button onclick="openSingleRoleModal('reviewer')" class="btn-secondary text-white px-6 py-2 rounded-lg font-semibold mt-4">
+          <i class="fas fa-edit mr-2"></i>Edit Reviewer
+        </button>
+      </div>
+
+      <!-- HOD -->
+      <div class="section-card p-6">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">
+          <i class="fas fa-user-tie mr-2 text-purple-600"></i>Head of Department (HOD)
+        </h2>
+        <div id="hodInfo" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Populated by JavaScript -->
+        </div>
+        <button onclick="openSingleRoleModal('hod')" class="btn-secondary text-white px-6 py-2 rounded-lg font-semibold mt-4">
+          <i class="fas fa-edit mr-2"></i>Edit HOD
+        </button>
+      </div>
+
+      <!-- Head of Sales -->
+      <div class="section-card p-6">
+        <h2 class="text-2xl font-bold text-gray-800 mb-4">
+          <i class="fas fa-user-crown mr-2 text-purple-600"></i>Head of Sales
+        </h2>
+        <div id="hosInfo" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Populated by JavaScript -->
+        </div>
+        <button onclick="openSingleRoleModal('head_of_sales')" class="btn-secondary text-white px-6 py-2 rounded-lg font-semibold mt-4">
+          <i class="fas fa-edit mr-2"></i>Edit Head of Sales
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admins Section -->
+  <div id="admins-section" class="tab-content" style="display:none;">
+    <div class="space-y-6">
+      <!-- Super Admins -->
+      <div class="section-card p-6">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-2xl font-bold text-gray-800">
+            <i class="fas fa-user-shield mr-2 text-purple-600"></i>Super Admins
+          </h2>
+          <button onclick="openAdminModal('super_admin')" class="btn-primary text-white px-6 py-3 rounded-lg font-semibold">
+            <i class="fas fa-plus mr-2"></i>Add Super Admin
+          </button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="border-b-2 border-gray-200">
+                <th class="text-left p-4 font-semibold text-gray-700">Name</th>
+                <th class="text-left p-4 font-semibold text-gray-700">Email</th>
+                <th class="text-left p-4 font-semibold text-gray-700">Slack User ID</th>
+                <th class="text-left p-4 font-semibold text-gray-700">Slack Channel ID</th>
+                <th class="text-center p-4 font-semibold text-gray-700">Status</th>
+                <th class="text-center p-4 font-semibold text-gray-700">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="superAdminsTable">
+              <!-- Populated by JavaScript -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Admins -->
+      <div class="section-card p-6">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-2xl font-bold text-gray-800">
+            <i class="fas fa-user-cog mr-2 text-purple-600"></i>Admins
+          </h2>
+          <button onclick="openAdminModal('admin')" class="btn-primary text-white px-6 py-3 rounded-lg font-semibold">
+            <i class="fas fa-plus mr-2"></i>Add Admin
+          </button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="border-b-2 border-gray-200">
+                <th class="text-left p-4 font-semibold text-gray-700">Name</th>
+                <th class="text-left p-4 font-semibold text-gray-700">Email</th>
+                <th class="text-left p-4 font-semibold text-gray-700">Slack User ID</th>
+                <th class="text-left p-4 font-semibold text-gray-700">Slack Channel ID</th>
+                <th class="text-center p-4 font-semibold text-gray-700">Status</th>
+                <th class="text-center p-4 font-semibold text-gray-700">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="adminsTable">
+              <!-- Populated by JavaScript -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Permissions Section -->
+  <div id="permissions-section" class="tab-content" style="display:none;">
+    <div class="section-card p-6">
+      <h2 class="text-2xl font-bold text-gray-800 mb-6">
+        <i class="fas fa-lock mr-2 text-purple-600"></i>Permission Management
+      </h2>
+      <p class="text-gray-600 mb-4">
+        <i class="fas fa-info-circle mr-2"></i>
+        Manage role-based permissions and action access controls. This is an advanced feature.
+      </p>
+      <div id="permissionsContent">
+        <!-- Populated by JavaScript -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Modals -->
+  <!-- User Modal (Videographer/Salesperson/Admin) -->
+  <div id="userModal" class="modal">
+    <div class="modal-content">
+      <div class="flex justify-between items-center mb-6">
+        <h3 class="text-2xl font-bold text-gray-800" id="modalTitle">Add User</h3>
+        <button onclick="closeModal('userModal')" class="text-gray-500 hover:text-gray-700 text-2xl">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <form id="userForm" onsubmit="saveUser(event)">
+        <input type="hidden" id="userType">
+        <input type="hidden" id="userOldName">
+
+        <div class="mb-4">
+          <label class="block text-gray-700 font-semibold mb-2">Name *</label>
+          <input type="text" id="userName" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-gray-700 font-semibold mb-2">Email *</label>
+          <input type="email" id="userEmail" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-gray-700 font-semibold mb-2">Slack User ID *</label>
+          <input type="text" id="userSlackUserId" required placeholder="U..." class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+          <p class="text-sm text-gray-500 mt-1">Should start with 'U'</p>
+        </div>
+
+        <div class="mb-4">
+          <label class="block text-gray-700 font-semibold mb-2">Slack Channel ID *</label>
+          <input type="text" id="userSlackChannelId" required placeholder="D..." class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+          <p class="text-sm text-gray-500 mt-1">Should start with 'D'</p>
+        </div>
+
+        <div class="mb-6">
+          <label class="flex items-center">
+            <input type="checkbox" id="userActive" checked class="mr-2 w-5 h-5">
+            <span class="text-gray-700 font-semibold">Active</span>
+          </label>
+        </div>
+
+        <div class="flex gap-3">
+          <button type="submit" class="btn-success text-white px-6 py-3 rounded-lg font-semibold flex-1">
+            <i class="fas fa-save mr-2"></i>Save
+          </button>
+          <button type="button" onclick="closeModal('userModal')" class="bg-gray-300 text-gray-700 px-6 py-3 rounded-lg font-semibold">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Location Modal -->
+  <div id="locationModal" class="modal">
+    <div class="modal-content">
+      <div class="flex justify-between items-center mb-6">
+        <h3 class="text-2xl font-bold text-gray-800" id="locationModalTitle">Add Location</h3>
+        <button onclick="closeModal('locationModal')" class="text-gray-500 hover:text-gray-700 text-2xl">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <form id="locationForm" onsubmit="saveLocation(event)">
+        <input type="hidden" id="locationOldName">
+
+        <div class="mb-4">
+          <label class="block text-gray-700 font-semibold mb-2">Location Name *</label>
+          <input type="text" id="locationName" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+        </div>
+
+        <div class="mb-6">
+          <label class="block text-gray-700 font-semibold mb-2">Assigned Videographer *</label>
+          <select id="locationVideographer" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500">
+            <option value="">Select Videographer</option>
+            <!-- Populated by JavaScript -->
+          </select>
+        </div>
+
+        <div class="flex gap-3">
+          <button type="submit" class="btn-success text-white px-6 py-3 rounded-lg font-semibold flex-1">
+            <i class="fas fa-save mr-2"></i>Save
+          </button>
+          <button type="button" onclick="closeModal('locationModal')" class="bg-gray-300 text-gray-700 px-6 py-3 rounded-lg font-semibold">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="roles.js"></script>
+</body>
+</html>

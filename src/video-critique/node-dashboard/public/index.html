@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Critique Dashboard</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            font-family: 'Inter', sans-serif;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            min-height: 100vh;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        .stat-card:hover {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%);
+            transform: scale(1.02);
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .logo-container {
+            background: white;
+            padding: 8px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .pulse-dot {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: .5;
+            }
+        }
+
+        .loading-spinner {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid #667eea;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(99, 102, 241, 0.6);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(99, 102, 241, 0.9);
+        }
+
+        /* Ensure scrollbars are always visible on modal sections */
+        .modal-section-scroll::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        .modal-section-scroll::-webkit-scrollbar-thumb {
+            background: rgba(99, 102, 241, 0.7);
+        }
+
+        select, input {
+            background: rgba(255, 255, 255, 0.05) !important;
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+            color: white !important;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: rgba(99, 102, 241, 0.5) !important;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        .videographer-card {
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            cursor: pointer;
+        }
+
+        .videographer-card:hover {
+            transform: scale(1.02);
+            box-shadow: 0 8px 32px 0 rgba(34, 197, 94, 0.2);
+        }
+
+        /* Modal animations */
+        #videographerModal {
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        #videographerModal.closing {
+            animation: fadeOut 0.3s ease-out;
+        }
+
+        #videographerModal > div {
+            animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        #videographerModal.closing > div {
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeOut {
+            from {
+                opacity: 1;
+            }
+            to {
+                opacity: 0;
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(100px) scale(0.9);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translateY(0) scale(1);
+                opacity: 1;
+            }
+            to {
+                transform: translateY(100px) scale(0.9);
+                opacity: 0;
+            }
+        }
+
+        .task-card {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(168, 85, 247, 0.05) 100%);
+            border-left: 3px solid rgba(99, 102, 241, 0.5);
+        }
+
+        .version-timeline {
+            position: relative;
+            padding-left: 20px;
+        }
+
+        .version-timeline::before {
+            content: '';
+            position: absolute;
+            left: 6px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: linear-gradient(to bottom, rgba(99, 102, 241, 0.5), rgba(168, 85, 247, 0.5));
+        }
+    </style>
+</head>
+<body class="text-white">
+    <!-- Login Screen -->
+    <div id="loginScreen" class="fixed inset-0 flex items-center justify-center" style="display: none;">
+        <div class="glass-card p-8 rounded-2xl w-full max-w-md mx-4">
+            <div class="text-center mb-8">
+                <div class="w-32 h-32 logo-container mx-auto mb-4">
+                    <img src="logo.png" alt="Logo" class="w-full h-full object-contain">
+                </div>
+                <h1 class="text-3xl font-bold gradient-text mb-2">Video Critique Dashboard</h1>
+                <p class="text-gray-400">Enter your password to continue</p>
+            </div>
+
+            <form onsubmit="handleLogin(event)" class="space-y-6">
+                <div>
+                    <label for="passwordInput" class="block text-sm font-medium text-gray-300 mb-2">
+                        <i class="fas fa-lock mr-2"></i>Password
+                    </label>
+                    <input
+                        type="password"
+                        id="passwordInput"
+                        class="w-full px-4 py-3 rounded-lg transition-all"
+                        placeholder="Enter your password"
+                        required
+                        autofocus
+                    />
+                </div>
+
+                <div id="loginError" class="text-red-400 text-sm text-center" style="display: none;"></div>
+
+                <button
+                    type="submit"
+                    id="loginButton"
+                    class="w-full px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg font-semibold hover:from-indigo-600 hover:to-purple-700 transition-all transform hover:scale-105 shadow-lg"
+                >
+                    <i class="fas fa-sign-in-alt mr-2"></i>Login
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div id="mainDashboard" style="display: none;">
+        <!-- Header -->
+        <header class="glass-card mb-8 sticky top-0 z-50">
+            <div class="container mx-auto px-6 py-4">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-20 h-20 logo-container">
+                            <img src="logo.png" alt="Logo" class="w-full h-full object-contain">
+                        </div>
+                        <div>
+                            <h1 class="text-2xl font-bold gradient-text">Video Critique Dashboard</h1>
+                            <p class="text-sm text-gray-400">Welcome, <span id="userName">User</span></p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div class="flex items-center space-x-2">
+                            <span class="w-2 h-2 bg-green-500 rounded-full pulse-dot"></span>
+                            <span class="text-sm text-gray-300">Live</span>
+                        </div>
+                        <a href="/roles.html" class="px-4 py-2 bg-purple-500 bg-opacity-20 hover:bg-opacity-30 rounded-lg transition-all text-sm">
+                            <i class="fas fa-users-cog mr-2"></i>Role Management
+                        </a>
+                        <button onclick="handleLogout()" class="px-4 py-2 bg-red-500 bg-opacity-20 hover:bg-opacity-30 rounded-lg transition-all text-sm">
+                            <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <div class="container mx-auto px-6 pb-12">
+        <!-- Filters -->
+        <div class="glass-card p-6 mb-8 rounded-2xl">
+            <div class="flex flex-wrap items-center gap-4">
+                <div class="flex-1">
+                    <label class="block text-sm font-medium text-gray-300 mb-2">
+                        <i class="fas fa-calendar-alt mr-2"></i>Date Range
+                    </label>
+                    <button id="dateRangeButton" onclick="openDateRangeModal()" class="w-full px-6 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg font-semibold hover:from-indigo-600 hover:to-purple-700 transition-all transform hover:scale-105 shadow-lg text-left flex items-center justify-between">
+                        <span id="dateRangeText">October 2025</span>
+                        <i class="fas fa-calendar-alt ml-2"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Loading State -->
+        <div id="loadingState" class="text-center py-20">
+            <div class="loading-spinner mx-auto mb-4"></div>
+            <p class="text-gray-400">Loading dashboard data...</p>
+        </div>
+
+        <!-- Main Dashboard Content -->
+        <div id="dashboardContent" style="display: none;">
+            <!-- Pie Charts Row - Two Side by Side -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <!-- Completion Pie Chart -->
+                <div class="glass-card p-6 rounded-2xl">
+                    <h3 class="text-xl font-semibold mb-4 flex items-center">
+                        <i class="fas fa-chart-pie mr-3 text-indigo-400"></i>
+                        Completion Overview
+                    </h3>
+                    <div class="chart-container">
+                        <canvas id="completionChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Started Tasks Completion Chart -->
+                <div class="glass-card p-6 rounded-2xl">
+                    <h3 class="text-xl font-semibold mb-4 flex items-center">
+                        <i class="fas fa-chart-pie mr-3 text-purple-400"></i>
+                        Started Tasks Completion
+                    </h3>
+                    <div class="chart-container">
+                        <canvas id="statusChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Stats - Row 1 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-6">
+                <div class="stat-card p-6 rounded-2xl transition-all cursor-pointer hover:scale-105" onclick="showStatDetails('total_created')">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-blue-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-tasks text-blue-400 text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold" id="totalTasksCreated">0</span>
+                    </div>
+                    <p class="text-gray-400 text-sm">Total Tasks Created</p>
+                </div>
+
+                <div class="stat-card p-6 rounded-2xl transition-all cursor-pointer hover:scale-105" onclick="showStatDetails('total_assigned')">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-indigo-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-clipboard-list text-indigo-400 text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold" id="totalTasksAssigned">0</span>
+                    </div>
+                    <p class="text-gray-400 text-sm">Total Tasks Currently Assigned</p>
+                </div>
+
+                <div class="stat-card p-6 rounded-2xl transition-all cursor-pointer hover:scale-105" onclick="showVersionDetails()">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-purple-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-upload text-purple-400 text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold" id="totalVersionsUploaded">0</span>
+                    </div>
+                    <p class="text-gray-400 text-sm">Total Versions Uploaded</p>
+                </div>
+
+                <div class="stat-card p-6 rounded-2xl transition-all cursor-pointer hover:scale-105" onclick="showStatDetails('total_started')">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-cyan-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-play-circle text-cyan-400 text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold" id="totalTasksStarted">0</span>
+                    </div>
+                    <p class="text-gray-400 text-sm">Total Tasks That Have Started</p>
+                </div>
+
+                <div class="stat-card p-6 rounded-2xl transition-all cursor-pointer hover:scale-105" onclick="showStatDetails('total_late')">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-red-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-exclamation-triangle text-red-400 text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold" id="totalLateTasks">0</span>
+                    </div>
+                    <p class="text-gray-400 text-sm">Total Late Tasks</p>
+                </div>
+
+                <div class="stat-card p-6 rounded-2xl transition-all cursor-pointer hover:scale-105" onclick="showStatDetails('completed')">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-green-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-check-circle text-green-400 text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold" id="completedTasks">0</span>
+                    </div>
+                    <p class="text-gray-400 text-sm">Completed Tasks</p>
+                </div>
+            </div>
+
+            <!-- Quick Stats - Row 2 -->
+            <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-8">
+                <div class="stat-card p-6 rounded-2xl transition-all cursor-pointer hover:scale-105" onclick="showStatDetails('pending_hod')">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-yellow-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-user-clock text-yellow-400 text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold" id="pendingHOD">0</span>
+                    </div>
+                    <p class="text-gray-400 text-sm">Pending Videos Waiting For HOD</p>
+                </div>
+
+                <div class="stat-card p-6 rounded-2xl transition-all cursor-pointer hover:scale-105" onclick="showStatDetails('pending_hos')">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-blue-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-user-tie text-blue-400 text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold" id="pendingHOS">0</span>
+                    </div>
+                    <p class="text-gray-400 text-sm">Pending Videos Waiting For HOS</p>
+                </div>
+
+                <div class="stat-card p-6 rounded-2xl transition-all cursor-pointer hover:scale-105" onclick="showStatDetails('rejected_hod')">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-red-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-times-circle text-red-400 text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold" id="rejectedByHOD">0</span>
+                    </div>
+                    <p class="text-gray-400 text-sm">Total Videos Rejected by HOD</p>
+                </div>
+
+                <div class="stat-card p-6 rounded-2xl transition-all cursor-pointer hover:scale-105" onclick="showStatDetails('rejected_hos')">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-orange-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-undo text-orange-400 text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold" id="rejectedByHOS">0</span>
+                    </div>
+                    <p class="text-gray-400 text-sm">Total Videos Rejected by HOS</p>
+                </div>
+
+                <div class="stat-card p-6 rounded-2xl transition-all cursor-pointer" onclick="showStatDetails('upload_ratio')">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-teal-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-chart-line text-teal-400 text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold" id="uploadToCompletedRatio">0</span>
+                    </div>
+                    <p class="text-gray-400 text-sm">Upload to Completed Task Ratio</p>
+                </div>
+
+                <div class="stat-card p-6 rounded-2xl transition-all cursor-pointer hover:scale-105" onclick="showStatDetails('acceptance_rate')">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="w-12 h-12 bg-emerald-500 bg-opacity-20 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-percentage text-emerald-400 text-xl"></i>
+                        </div>
+                        <span class="text-3xl font-bold" id="acceptanceRate">0%</span>
+                    </div>
+                    <p class="text-gray-400 text-sm">Acceptance Rate</p>
+                </div>
+            </div>
+
+            <!-- Bar Chart Row - Full Width -->
+            <div class="glass-card p-6 rounded-2xl mb-8">
+                <h3 class="text-xl font-semibold mb-4 flex items-center">
+                    <i class="fas fa-chart-bar mr-3 text-blue-400"></i>
+                    Status Breakdown
+                </h3>
+                <div class="chart-container">
+                    <canvas id="statusBarChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Reviewer Performance (Hidden for Head of Design) -->
+            <div id="reviewerSection" class="glass-card p-6 rounded-2xl mb-8">
+                <h3 class="text-xl font-semibold mb-6 flex items-center">
+                    <i class="fas fa-user-check mr-3 text-green-400"></i>
+                    Reviewer Performance
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-6">
+                    <div class="text-center p-4 bg-white bg-opacity-5 rounded-lg cursor-pointer transition-all hover:bg-opacity-10" onclick="showReviewerDetails('response_time')">
+                        <p class="text-3xl font-bold text-green-400" id="avgResponseTime">0 hrs</p>
+                        <p class="text-sm text-gray-300 mt-2">Avg Response Time</p>
+                    </div>
+                    <div class="text-center p-4 bg-white bg-opacity-5 rounded-lg cursor-pointer transition-all hover:bg-opacity-10" onclick="showReviewerDetails('videos_handled')">
+                        <p class="text-3xl font-bold text-blue-400" id="reviewerHandled">0</p>
+                        <p class="text-sm text-gray-300 mt-2">Videos Handled</p>
+                    </div>
+                    <div class="text-center p-4 bg-white bg-opacity-5 rounded-lg cursor-pointer transition-all hover:bg-opacity-10" onclick="showReviewerDetails('accepted')">
+                        <p class="text-3xl font-bold text-purple-400" id="reviewerAccepted">0</p>
+                        <p class="text-sm text-gray-300 mt-2">Accepted</p>
+                    </div>
+                    <div class="text-center p-4 bg-white bg-opacity-5 rounded-lg cursor-pointer transition-all hover:bg-opacity-10" onclick="showReviewerDetails('pending_reviews')">
+                        <p class="text-3xl font-bold text-orange-400" id="pendingReviews">0</p>
+                        <p class="text-sm text-gray-300 mt-2">Pending Reviews</p>
+                    </div>
+                    <div class="text-center p-4 bg-white bg-opacity-5 rounded-lg cursor-pointer transition-all hover:bg-opacity-10" onclick="showReviewerDetails('success_rate')">
+                        <p class="text-3xl font-bold text-yellow-400" id="handledPercent">0%</p>
+                        <p class="text-sm text-gray-300 mt-2">Success Rate</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Videographers Performance -->
+            <div class="glass-card p-6 rounded-2xl">
+                <h3 class="text-xl font-semibold mb-6 flex items-center">
+                    <i class="fas fa-users mr-3 text-indigo-400"></i>
+                    Videographer Performance
+                </h3>
+                <div id="videographersList" class="space-y-4">
+                    <!-- Dynamically populated -->
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+    <!-- End Main Dashboard -->
+
+    <!-- Videographer Details Modal -->
+    <div id="videographerModal" class="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4" onclick="closeModal(event)">
+        <div class="glass-card rounded-2xl w-full max-w-[95vw] max-h-[90vh] overflow-hidden transform transition-all flex flex-col" onclick="event.stopPropagation()">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between p-6 border-b border-gray-700">
+                <div class="flex items-center space-x-4">
+                    <div id="modalAvatar" class="w-16 h-16 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center">
+                        <span id="modalInitial" class="text-2xl font-bold"></span>
+                    </div>
+                    <div>
+                        <h3 id="modalTitle" class="text-2xl font-bold gradient-text"></h3>
+                        <p id="modalSubtitle" class="text-sm text-gray-400"></p>
+                    </div>
+                </div>
+                <button onclick="closeVideographerModal()" class="text-gray-400 hover:text-white transition-colors p-2">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+
+            <!-- Modal Stats Summary - Top -->
+            <div id="modalStats" class="p-8 border-b border-gray-700 bg-white bg-opacity-5">
+                <!-- Stats will be inserted here -->
+            </div>
+
+            <!-- Horizontal Scroll Container -->
+            <div class="relative flex-1 overflow-hidden" style="max-height: 600px;">
+                <!-- Scrollable Sections Container -->
+                <div id="modalScrollContainer" class="flex snap-x snap-mandatory scroll-smooth overflow-x-auto h-full">
+                    <!-- Section 1: Detailed Stats & Charts -->
+                    <div class="min-w-full snap-start flex-shrink-0 overflow-y-scroll" style="max-height: 600px;">
+                        <div class="p-6">
+                        <div class="max-w-6xl mx-auto">
+                            <h4 class="text-2xl font-semibold mb-6 text-center gradient-text">
+                                <i class="fas fa-chart-line mr-2"></i>
+                                Performance Overview
+                            </h4>
+
+                            <!-- Detailed Stats Grid -->
+                            <div id="modalDetailedStats" class="mb-8">
+                                <!-- Will be populated by JS -->
+                            </div>
+
+                            <!-- Status Distribution Chart -->
+                            <div class="glass-card p-6 rounded-xl">
+                                <h5 class="text-lg font-semibold mb-4 text-center text-gray-200">
+                                    <i class="fas fa-chart-bar mr-2 text-purple-400"></i>
+                                    Status Distribution
+                                </h5>
+                                <div style="position: relative; height: 400px;">
+                                    <canvas id="modalDistributionChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                        </div>
+                    </div>
+
+                    <!-- Section 2: Version History -->
+                    <div class="min-w-full snap-start flex-shrink-0 overflow-y-scroll" style="max-height: 600px;">
+                        <div class="p-6">
+                        <div class="max-w-6xl mx-auto">
+                            <h4 class="text-2xl font-semibold mb-6 text-center gradient-text">
+                                <i class="fas fa-history mr-2"></i>
+                                Complete Version History
+                            </h4>
+                            <div id="modalVersionHistory">
+                                <!-- Will be populated by JS -->
+                            </div>
+                        </div>
+                        </div>
+                    </div>
+
+                    <!-- Section 3: Failure Analysis -->
+                    <div class="min-w-full snap-start flex-shrink-0 overflow-y-scroll" style="max-height: 600px;">
+                        <div class="p-6">
+                        <div class="max-w-6xl mx-auto">
+                            <h4 class="text-2xl font-semibold mb-6 text-center gradient-text">
+                                <i class="fas fa-exclamation-circle mr-2"></i>
+                                Failure Distribution Analysis
+                            </h4>
+                            <div id="modalFailureAnalysis">
+                                <!-- Will be populated by JS -->
+                            </div>
+                        </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Navigation Arrows -->
+                <button onclick="scrollSections(-1)" class="absolute left-4 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-3 rounded-full transition-all">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <button onclick="scrollSections(1)" class="absolute right-4 top-1/2 transform -translate-y-1/2 bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-3 rounded-full transition-all">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Date Range Picker Modal -->
+    <div id="dateRangeModal" class="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4" onclick="closeDateRangeModal(event)">
+        <div class="glass-card rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden transform transition-all" onclick="event.stopPropagation()">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between p-6 border-b border-gray-700">
+                <h3 class="text-2xl font-bold gradient-text">Select Date Range</h3>
+                <button onclick="closeDateRangeModal()" class="text-gray-400 hover:text-white transition-colors p-2">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+
+            <!-- Mode Selector -->
+            <div class="p-6 border-b border-gray-700">
+                <div class="grid grid-cols-3 gap-4">
+                    <button onclick="switchDateMode('month')" id="monthModeBtn" class="date-mode-btn px-6 py-3 rounded-lg font-semibold transition-all bg-indigo-500 text-white">
+                        <i class="fas fa-calendar mr-2"></i>Month
+                    </button>
+                    <button onclick="switchDateMode('year')" id="yearModeBtn" class="date-mode-btn px-6 py-3 rounded-lg font-semibold transition-all bg-gray-700 text-gray-300 hover:bg-gray-600">
+                        <i class="fas fa-calendar-alt mr-2"></i>Year
+                    </button>
+                    <button onclick="switchDateMode('range')" id="rangeModeBtn" class="date-mode-btn px-6 py-3 rounded-lg font-semibold transition-all bg-gray-700 text-gray-300 hover:bg-gray-600">
+                        <i class="fas fa-calendar-week mr-2"></i>Range
+                    </button>
+                </div>
+            </div>
+
+            <!-- Calendar Content -->
+            <div class="p-6 overflow-y-auto max-h-[60vh]" id="calendarContent">
+                <!-- Calendar will be rendered here -->
+            </div>
+
+            <!-- Footer Actions -->
+            <div class="p-6 border-t border-gray-700 flex justify-end gap-4">
+                <button onclick="closeDateRangeModal()" class="px-6 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg font-semibold transition-all">
+                    Cancel
+                </button>
+                <button onclick="applyDateRange()" class="px-6 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg font-semibold hover:from-indigo-600 hover:to-purple-700 transition-all">
+                    Apply
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Details Modal (for showing tasks/versions) -->
+    <div id="detailsModal" class="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4" onclick="closeDetailsModal(event)">
+        <div class="glass-card rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden transform transition-all" onclick="event.stopPropagation()">
+            <!-- Modal Header -->
+            <div class="flex items-center justify-between p-6 border-b border-gray-700">
+                <h3 id="detailsModalTitle" class="text-2xl font-bold gradient-text">Details</h3>
+                <button onclick="closeDetailsModal()" class="text-gray-400 hover:text-white transition-colors p-2">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+
+            <!-- Modal Content -->
+            <div class="p-6 overflow-y-auto max-h-[75vh]" id="detailsModalContent">
+                <!-- Content will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js?v=1761108010"></script>
+</body>
+</html>
