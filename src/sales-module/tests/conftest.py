@@ -18,7 +18,7 @@ import pytest
 os.environ["ENVIRONMENT"] = "test"
 os.environ["DB_BACKEND"] = "sqlite"
 os.environ["AUTH_PROVIDER"] = "static"
-os.environ["RBAC_PROVIDER"] = "static"
+os.environ["RBAC_PROVIDER"] = "database"
 
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient

@@ -25,6 +25,13 @@ python-multipart==0.0.6
 # When installing standalone: pip install -e ../shared/crm-security[fastapi]
 # crm-security  # Installed via requirements-dev.txt or PYTHONPATH
 
+# CRM Cache SDK
+# When installing standalone: pip install -e ../shared/crm-cache[redis]
+# crm-cache  # Installed via requirements-dev.txt or PYTHONPATH
+
+# Redis (for distributed caching)
+redis>=5.0.0
+
 # Development & Testing
 pytest==8.0.0
 pytest-asyncio==0.23.3

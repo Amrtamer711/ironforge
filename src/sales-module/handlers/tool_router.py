@@ -7,6 +7,7 @@ from datetime import datetime
 
 import config
 from core.proposals import process_proposals  # ✅ Using new modular API
+from core.workflow_context import WorkflowContext
 from db.cache import pending_location_additions
 from db.database import db
 from integrations.llm import ToolCall
@@ -44,6 +45,7 @@ def _validate_company_access(user_companies: list[str] | None) -> tuple[bool, st
 def _validate_location_access(
     location_key: str,
     user_companies: list[str],
+    workflow_ctx: WorkflowContext | None = None,
 ) -> tuple[bool, str, str | None]:
     """
     Validate that a specific location belongs to user's accessible companies.
@@ -51,22 +53,41 @@ def _validate_location_access(
     Security: Prevents users from accessing locations outside their assigned companies,
     even if they know the location key.
 
+    Performance: If workflow_ctx is provided, uses O(1) in-memory lookup.
+    Falls back to database query if context not available.
+
     Args:
         location_key: The location key to validate
         user_companies: List of company schemas user can access
+        workflow_ctx: Optional pre-loaded context for O(1) lookups
 
     Returns:
         Tuple of (is_valid, error_message, company_schema)
         company_schema is the schema where the location was found (if valid)
     """
-    location = db.get_location_by_key(location_key, user_companies)
+    location = None
+
+    # Try O(1) lookup from workflow context first (if available)
+    if workflow_ctx is not None:
+        location = workflow_ctx.get_location(location_key)
+        if location:
+            logger.debug(f"[TOOL_ROUTER] Location '{location_key}' found in workflow context (O(1))")
+
+    # Fallback to database query if not in context
+    if location is None:
+        location = db.get_location_by_key(location_key, user_companies)
+        if location:
+            logger.debug(f"[TOOL_ROUTER] Location '{location_key}' found via DB query (fallback)")
+
     if location is None:
         return False, (
             f"❌ **Location Not Found**\n\n"
             f"Location `{location_key}` was not found in your accessible companies. "
             f"Use 'list locations' to see available locations."
         ), None
-    return True, "", location.get("company_schema")
+    # Handle both field names: Asset-Management returns 'company', internal code uses 'company_schema'
+    company_schema = location.get("company_schema") or location.get("company")
+    return True, "", company_schema
 
 
 async def handle_tool_call(
@@ -81,6 +102,7 @@ async def handle_tool_call(
     generate_mockup_queued_func=None,
     generate_ai_mockup_queued_func=None,
     user_companies: list = None,
+    workflow_ctx: WorkflowContext | None = None,
 ):
     """
     Main tool router - dispatches function calls to appropriate handlers.
@@ -99,6 +121,7 @@ async def handle_tool_call(
         generate_mockup_queued_func: Function for queued mockup generation
         generate_ai_mockup_queued_func: Function for queued AI mockup generation
         user_companies: List of company schemas user can access (for data filtering)
+        workflow_ctx: Optional pre-loaded context for O(1) location lookups
 
     Returns:
         True if handled as function call, False otherwise
@@ -136,10 +159,11 @@ async def handle_tool_call(
             return True
 
         # Validate all requested locations belong to user's companies
+        # Uses O(1) lookup from workflow context if available
         for proposal in proposals_data:
             location_key = proposal.get("location", "").strip().lower().replace(" ", "_")
             if location_key:
-                is_valid, loc_error, _ = _validate_location_access(location_key, user_companies)
+                is_valid, loc_error, _ = _validate_location_access(location_key, user_companies, workflow_ctx)
                 if not is_valid:
                     await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
                     await channel_adapter.send_message(channel_id=channel, content=loc_error)
@@ -190,10 +214,11 @@ async def handle_tool_call(
             return True
 
         # Validate all requested locations belong to user's companies
+        # Uses O(1) lookup from workflow context if available
         for proposal in proposals_data:
             location_key = proposal.get("location", "").strip().lower().replace(" ", "_")
             if location_key:
-                is_valid, loc_error, _ = _validate_location_access(location_key, user_companies)
+                is_valid, loc_error, _ = _validate_location_access(location_key, user_companies, workflow_ctx)
                 if not is_valid:
                     await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
                     await channel_adapter.send_message(channel_id=channel, content=loc_error)
@@ -223,13 +248,13 @@ async def handle_tool_call(
 
             if result.get("is_combined"):
                 logger.info(f"[RESULT] Combined package - PDF: {result.get('pdf_filename')}")
-                await channel_adapter.upload_file(channel_id=channel, file_path=result["pdf_path"], title=result["pdf_filename"], comment=f"📦 **Combined Package Proposal**\n📍 Locations: {result['locations']}")
+                await channel_adapter.upload_file(channel_id=channel, file_path=result["pdf_path"], filename=result["pdf_filename"], title=result["pdf_filename"], comment=f"📦 **Combined Package Proposal**\n📍 Locations: {result['locations']}")
                 try: os.unlink(result["pdf_path"])  # type: ignore
                 except OSError as cleanup_err: logger.debug(f"[RESULT] Failed to cleanup combined PDF: {cleanup_err}")
             elif result.get("is_single"):
                 logger.info(f"[RESULT] Single proposal - Location: {result.get('location')}")
-                await channel_adapter.upload_file(channel_id=channel, file_path=result["pptx_path"], title=result["pptx_filename"], comment=f"📊 **PowerPoint Proposal**\n📍 Location: {result['location']}")
-                await channel_adapter.upload_file(channel_id=channel, file_path=result["pdf_path"], title=result["pdf_filename"], comment=f"📄 **PDF Proposal**\n📍 Location: {result['location']}")
+                await channel_adapter.upload_file(channel_id=channel, file_path=result["pptx_path"], filename=result["pptx_filename"], title=result["pptx_filename"], comment=f"📊 **PowerPoint Proposal**\n📍 Location: {result['location']}")
+                await channel_adapter.upload_file(channel_id=channel, file_path=result["pdf_path"], filename=result["pdf_filename"], title=result["pdf_filename"], comment=f"📄 **PDF Proposal**\n📍 Location: {result['location']}")
                 try:
                     os.unlink(result["pptx_path"])  # type: ignore
                     os.unlink(result["pdf_path"])  # type: ignore
@@ -238,8 +263,8 @@ async def handle_tool_call(
             else:
                 logger.info(f"[RESULT] Multiple separate proposals - Count: {len(result.get('individual_files', []))}")
                 for f in result["individual_files"]:
-                    await channel_adapter.upload_file(channel_id=channel, file_path=f["path"], title=f["filename"], comment=f"📊 **PowerPoint Proposal**\n📍 Location: {f['location']}")
-                await channel_adapter.upload_file(channel_id=channel, file_path=result["merged_pdf_path"], title=result["merged_pdf_filename"], comment=f"📄 **Combined PDF**\n📍 All Locations: {result['locations']}")
+                    await channel_adapter.upload_file(channel_id=channel, file_path=f["path"], filename=f["filename"], title=f["filename"], comment=f"📊 **PowerPoint Proposal**\n📍 Location: {f['location']}")
+                await channel_adapter.upload_file(channel_id=channel, file_path=result["merged_pdf_path"], filename=result["merged_pdf_filename"], title=result["merged_pdf_filename"], comment=f"📄 **Combined PDF**\n📍 All Locations: {result['locations']}")
                 try:
                     for f in result["individual_files"]: os.unlink(f["path"])  # type: ignore
                     os.unlink(result["merged_pdf_path"])  # type: ignore
@@ -864,10 +889,12 @@ async def handle_tool_call(
             return True
 
         # Validate the requested location belongs to user's companies
+        # Uses O(1) lookup from workflow context if available
         location_name = args.get("location", "").strip()
+        company_hint = None
         if location_name:
             location_key = location_name.lower().replace(" ", "_")
-            is_valid, loc_error, _ = _validate_location_access(location_key, user_companies)
+            is_valid, loc_error, company_hint = _validate_location_access(location_key, user_companies, workflow_ctx)
             if not is_valid:
                 await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
                 await channel_adapter.send_message(channel_id=channel, content=loc_error)
@@ -887,6 +914,7 @@ async def handle_tool_call(
             download_file_func=download_file_func,
             generate_mockup_queued_func=generate_mockup_queued_func,
             generate_ai_mockup_queued_func=generate_ai_mockup_queued_func,
+            company_hint=company_hint,
         )
 
     return True

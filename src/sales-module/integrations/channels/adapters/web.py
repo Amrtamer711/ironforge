@@ -33,7 +33,7 @@ current_parent_message_id: contextvars.ContextVar[str | None] = contextvars.Cont
     'web_parent_message_id', default=None
 )
 
-from ..base import (
+from crm_channels import (
     Attachment,
     Button,
     ChannelAdapter,

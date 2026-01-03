@@ -14,11 +14,12 @@ from typing import Any
 import aiohttp
 from slack_sdk.web.async_client import AsyncWebClient
 
-from ..base import (
+from crm_channels import (
     Attachment,
     Button,
     ButtonStyle,
     ChannelAdapter,
+    ChannelFormatter,
     ChannelType,
     FieldType,
     FileUpload,
@@ -28,7 +29,6 @@ from ..base import (
     ModalField,
     User,
 )
-from ..formatting import ChannelFormatter
 
 logger = logging.getLogger("proposal-bot")
 

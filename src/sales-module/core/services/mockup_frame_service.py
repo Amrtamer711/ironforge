@@ -104,24 +104,69 @@ class MockupFrameService:
             self.companies = companies
         self.logger = _get_logger()
 
-    async def get_all_frames(self, location_key: str) -> tuple[list[dict], str | None]:
+    async def get_all_frames(
+        self,
+        location_key: str,
+        company_hint: str | None = None,
+    ) -> tuple[list[dict], str | None]:
         """
         Get all mockup frames for a location across all companies.
 
+        Uses global cache to avoid redundant API calls. Cache TTL is 5 minutes.
+        If company_hint is provided, tries that company first for O(1) lookup.
+        Falls back to searching all companies if hint fails.
+
         Args:
             location_key: Location identifier (e.g., "dubai_mall")
+            company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
             Tuple of (list of frame dicts, company that had the frames)
         """
-        self.logger.info(f"[MOCKUP_FRAME_SERVICE] Getting all frames for {location_key}")
+        normalized_key = location_key.lower().strip()
 
+        # Check cache first - prioritize company_hint
+        companies_to_check = []
+        if company_hint and company_hint in self.companies:
+            companies_to_check.append(company_hint)
+        companies_to_check.extend([c for c in self.companies if c != company_hint])
+
+        for company in companies_to_check:
+            if not _frame_cache.is_stale(company):
+                cached = _frame_cache.get_frames(company, normalized_key)
+                if cached is not None:
+                    self.logger.info(
+                        f"[MOCKUP_FRAME_SERVICE] Cache hit: {len(cached)} frames for {location_key} in {company}"
+                    )
+                    return cached, company
+
+        self.logger.info(f"[MOCKUP_FRAME_SERVICE] Cache miss, fetching frames for {location_key}")
+
+        # Try company_hint first if provided (O(1) lookup from WorkflowContext)
+        if company_hint and company_hint in self.companies:
+            try:
+                frames = await asset_mgmt_client.get_mockup_frames(company_hint, location_key)
+                if frames:
+                    # Cache the result
+                    await _frame_cache.refresh(company_hint, normalized_key, frames)
+                    self.logger.info(
+                        f"[MOCKUP_FRAME_SERVICE] Found {len(frames)} frames in {company_hint} (direct hit, cached)"
+                    )
+                    return frames, company_hint
+            except Exception as e:
+                self.logger.debug(f"[MOCKUP_FRAME_SERVICE] No frames in hinted company {company_hint}: {e}")
+
+        # Fallback: search all companies (skip hint if already tried)
         for company in self.companies:
+            if company == company_hint:
+                continue  # Already tried this one
             try:
                 frames = await asset_mgmt_client.get_mockup_frames(company, location_key)
                 if frames:
+                    # Cache the result
+                    await _frame_cache.refresh(company, normalized_key, frames)
                     self.logger.info(
-                        f"[MOCKUP_FRAME_SERVICE] Found {len(frames)} frames in {company}"
+                        f"[MOCKUP_FRAME_SERVICE] Found {len(frames)} frames in {company} (cached)"
                     )
                     return frames, company
             except Exception as e:
@@ -131,12 +176,17 @@ class MockupFrameService:
         self.logger.info(f"[MOCKUP_FRAME_SERVICE] No frames found for {location_key}")
         return [], None
 
-    async def list_variations(self, location_key: str) -> dict[str, list[str]]:
+    async def list_variations(
+        self,
+        location_key: str,
+        company_hint: str | None = None,
+    ) -> dict[str, list[str]]:
         """
         List available mockup variations for a location.
 
         Args:
             location_key: Location identifier
+            company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
             Dict mapping time_of_day to list of finishes, e.g.:
@@ -145,7 +195,7 @@ class MockupFrameService:
         self.logger.info(f"[MOCKUP_FRAME_SERVICE] Listing variations for {location_key}")
 
         try:
-            frames, _ = await self.get_all_frames(location_key)
+            frames, _ = await self.get_all_frames(location_key, company_hint=company_hint)
             variations: dict[str, list[str]] = {}
 
             for frame in frames:
@@ -168,6 +218,7 @@ class MockupFrameService:
         location_key: str,
         time_of_day: str = "day",
         finish: str = "gold",
+        company_hint: str | None = None,
     ) -> list[str]:
         """
         List available photos for a location/time/finish combination.
@@ -176,12 +227,13 @@ class MockupFrameService:
             location_key: Location identifier
             time_of_day: "day" or "night"
             finish: "gold", "silver", or "black"
+            company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
             List of photo filenames
         """
         try:
-            frames, _ = await self.get_all_frames(location_key)
+            frames, _ = await self.get_all_frames(location_key, company_hint=company_hint)
             photos = []
 
             for frame in frames:
@@ -201,15 +253,19 @@ class MockupFrameService:
         time_of_day: str = "day",
         finish: str = "gold",
         photo_filename: str | None = None,
+        company_hint: str | None = None,
     ) -> list[dict] | None:
         """
         Get frame data for a specific location/photo combination.
+
+        If company_hint is provided, tries that company first for O(1) lookup.
 
         Args:
             location_key: Location identifier
             time_of_day: "day" or "night"
             finish: "gold", "silver", or "black"
             photo_filename: Specific photo (optional, returns first match if None)
+            company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
             List of frame dicts with "points" and optional "config", or None if not found
@@ -219,7 +275,26 @@ class MockupFrameService:
             + (f"/{photo_filename}" if photo_filename else "")
         )
 
+        # Try company_hint first if provided (O(1) lookup from WorkflowContext)
+        if company_hint and company_hint in self.companies:
+            try:
+                frame_data = await asset_mgmt_client.get_mockup_frame(
+                    company_hint,
+                    location_key,
+                    time_of_day,
+                    finish,
+                    photo_filename,
+                )
+                if frame_data and "frames_data" in frame_data:
+                    self.logger.debug(f"[MOCKUP_FRAME_SERVICE] Frame found in {company_hint} (direct hit)")
+                    return frame_data["frames_data"]
+            except Exception as e:
+                self.logger.debug(f"[MOCKUP_FRAME_SERVICE] No frame in hinted company {company_hint}: {e}")
+
+        # Fallback: search all companies
         for company in self.companies:
+            if company == company_hint:
+                continue
             try:
                 frame_data = await asset_mgmt_client.get_mockup_frame(
                     company,
@@ -243,6 +318,7 @@ class MockupFrameService:
         time_of_day: str = "day",
         finish: str = "gold",
         photo_filename: str | None = None,
+        company_hint: str | None = None,
     ) -> dict | None:
         """
         Get mockup config for a specific location/photo.
@@ -252,11 +328,30 @@ class MockupFrameService:
             time_of_day: "day" or "night"
             finish: "gold", "silver", or "black"
             photo_filename: Specific photo (optional)
+            company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
             Config dict or None
         """
+        # Try company_hint first if provided
+        if company_hint and company_hint in self.companies:
+            try:
+                frame_data = await asset_mgmt_client.get_mockup_frame(
+                    company_hint,
+                    location_key,
+                    time_of_day,
+                    finish,
+                    photo_filename,
+                )
+                if frame_data and frame_data.get("config"):
+                    return frame_data["config"]
+            except Exception as e:
+                self.logger.debug(f"[MOCKUP_FRAME_SERVICE] No config in hinted company {company_hint}: {e}")
+
+        # Fallback: search all companies
         for company in self.companies:
+            if company == company_hint:
+                continue
             try:
                 frame_data = await asset_mgmt_client.get_mockup_frame(
                     company,
@@ -280,15 +375,19 @@ class MockupFrameService:
         time_of_day: str,
         finish: str,
         photo_filename: str,
+        company_hint: str | None = None,
     ) -> Path | None:
         """
         Download mockup background photo to a temporary file.
+
+        If company_hint is provided, tries that company first for O(1) lookup.
 
         Args:
             location_key: Location identifier
             time_of_day: "day" or "night"
             finish: "gold", "silver", or "black"
             photo_filename: Photo filename
+            company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
             Path to temp file or None if download failed
@@ -297,7 +396,32 @@ class MockupFrameService:
             f"[MOCKUP_FRAME_SERVICE] Downloading photo: {location_key}/{time_of_day}/{finish}/{photo_filename}"
         )
 
+        # Try company_hint first if provided (O(1) lookup from WorkflowContext)
+        if company_hint and company_hint in self.companies:
+            try:
+                data = await asset_mgmt_client.get_mockup_photo(
+                    company_hint,
+                    location_key,
+                    time_of_day,
+                    finish,
+                    photo_filename,
+                )
+
+                if data:
+                    suffix = Path(photo_filename).suffix or ".jpg"
+                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                    temp_file.write(data)
+                    temp_file.close()
+
+                    self.logger.info(f"[MOCKUP_FRAME_SERVICE] Photo saved to: {temp_file.name} (direct hit)")
+                    return Path(temp_file.name)
+            except Exception as e:
+                self.logger.debug(f"[MOCKUP_FRAME_SERVICE] No photo in hinted company {company_hint}: {e}")
+
+        # Fallback: search all companies
         for company in self.companies:
+            if company == company_hint:
+                continue
             try:
                 data = await asset_mgmt_client.get_mockup_photo(
                     company,
@@ -329,6 +453,7 @@ class MockupFrameService:
         location_key: str,
         time_of_day: str = "all",
         finish: str = "all",
+        company_hint: str | None = None,
     ) -> tuple[str, str, str, Path] | None:
         """
         Get a random photo for a location that has frame data.
@@ -337,6 +462,7 @@ class MockupFrameService:
             location_key: Location identifier
             time_of_day: "day", "night", or "all" for random
             finish: "gold", "silver", "black", or "all" for random
+            company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
             Tuple of (photo_filename, time_of_day, finish, photo_path) or None
@@ -347,7 +473,7 @@ class MockupFrameService:
         )
 
         try:
-            frames, _ = await self.get_all_frames(location_key)
+            frames, found_company = await self.get_all_frames(location_key, company_hint=company_hint)
             if not frames:
                 self.logger.warning(f"[MOCKUP_FRAME_SERVICE] No frames found for {location_key}")
                 return None
@@ -379,9 +505,10 @@ class MockupFrameService:
             # Pick random
             photo_filename, selected_tod, selected_finish = random.choice(matching)
 
-            # Download the photo
+            # Download the photo (use found_company as hint since we know it has frames)
             photo_path = await self.download_photo(
-                location_key, selected_tod, selected_finish, photo_filename
+                location_key, selected_tod, selected_finish, photo_filename,
+                company_hint=found_company,
             )
 
             if not photo_path:
@@ -396,25 +523,35 @@ class MockupFrameService:
             self.logger.error(f"[MOCKUP_FRAME_SERVICE] Error getting random photo: {e}")
             return None
 
-    async def has_mockup_frames(self, location_key: str) -> bool:
+    async def has_mockup_frames(
+        self,
+        location_key: str,
+        company_hint: str | None = None,
+    ) -> bool:
         """
         Check if a location has any mockup frames available.
 
         Args:
             location_key: Location identifier
+            company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
             True if at least one mockup frame exists
         """
-        frames, _ = await self.get_all_frames(location_key)
+        frames, _ = await self.get_all_frames(location_key, company_hint=company_hint)
         return len(frames) > 0
 
-    async def is_portrait(self, location_key: str) -> bool:
+    async def is_portrait(
+        self,
+        location_key: str,
+        company_hint: str | None = None,
+    ) -> bool:
         """
         Check if a location has portrait orientation based on frame dimensions.
 
         Args:
             location_key: Location identifier
+            company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
             True if height > width (portrait), False otherwise
@@ -422,7 +559,7 @@ class MockupFrameService:
         import math
 
         try:
-            frames, _ = await self.get_all_frames(location_key)
+            frames, _ = await self.get_all_frames(location_key, company_hint=company_hint)
             if not frames:
                 return False
 
@@ -478,16 +615,20 @@ async def get_mockup_frame_service(
 
 
 async def has_mockup_frames(
-    location_key: str, companies: list[str] | str = "backlite_dubai"
+    location_key: str,
+    companies: list[str] | str = "backlite_dubai",
+    company_hint: str | None = None,
 ) -> bool:
     """Check if location has mockup frames."""
     service = MockupFrameService(companies=companies)
-    return await service.has_mockup_frames(location_key)
+    return await service.has_mockup_frames(location_key, company_hint=company_hint)
 
 
 async def is_portrait_location(
-    location_key: str, companies: list[str] | str = "backlite_dubai"
+    location_key: str,
+    companies: list[str] | str = "backlite_dubai",
+    company_hint: str | None = None,
 ) -> bool:
     """Check if location has portrait orientation."""
     service = MockupFrameService(companies=companies)
-    return await service.is_portrait(location_key)
+    return await service.is_portrait(location_key, company_hint=company_hint)

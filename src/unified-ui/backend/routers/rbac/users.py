@@ -18,7 +18,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.middleware.auth import AuthUser, require_auth, require_profile
-from backend.routers.rbac.models import UpdateUserRequest
+from backend.routers.rbac.models import AssignUserProfileRequest, UpdateUserRequest
 from backend.services.rbac_service import get_user_rbac_data, invalidate_rbac_cache
 from backend.services.supabase_client import get_supabase
 
@@ -364,7 +364,163 @@ async def reactivate_user(
 
 
 # =============================================================================
-# 6. GET /audit-log - server.js:3573-3625
+# 6. PUT /users/:userId/profile - Assign profile to user
+# =============================================================================
+
+@router.put("/users/{user_id}/profile")
+async def assign_user_profile(
+    user_id: str,
+    request: AssignUserProfileRequest,
+    user: AuthUser = Depends(require_profile("system_admin")),
+) -> dict[str, Any]:
+    """
+    Assign a profile to a user by profile name.
+    """
+    logger.info(f"[UI RBAC API] Assigning profile '{request.profile_name}' to user {user_id}")
+
+    supabase = get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        # Get profile ID by name
+        profile_response = (
+            supabase.table("profiles")
+            .select("id, name, display_name")
+            .eq("name", request.profile_name)
+            .single()
+            .execute()
+        )
+
+        if not profile_response.data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Profile '{request.profile_name}' not found"
+            )
+
+        profile = profile_response.data
+
+        # Update user's profile
+        response = (
+            supabase.table("users")
+            .update({"profile_id": profile["id"]})
+            .eq("id", user_id)
+            .select("*, profiles(id, name, display_name)")
+            .single()
+            .execute()
+        )
+
+        if not response.data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Clear RBAC cache
+        invalidate_rbac_cache(user_id)
+
+        return {
+            "success": True,
+            "user": response.data,
+            "profile": profile
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[UI RBAC API] Error assigning profile: {e}")
+        raise HTTPException(status_code=500, detail="Failed to assign profile")
+
+
+# =============================================================================
+# 7. GET /users/:userId/permissions - Get user's permissions
+# =============================================================================
+
+@router.get("/users/{user_id}/permissions")
+async def get_user_permissions(
+    user_id: str,
+    user: AuthUser = Depends(require_profile("system_admin")),
+) -> dict[str, Any]:
+    """
+    Get all permissions for a user (from profile + permission sets).
+    """
+    logger.info(f"[UI RBAC API] Getting permissions for user {user_id}")
+
+    supabase = get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        # Get user with profile
+        user_response = (
+            supabase.table("users")
+            .select("id, email, name, profile_id, profiles(id, name, display_name)")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+
+        if not user_response.data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        user_data = user_response.data
+        profile = user_data.get("profiles")
+
+        # Get permissions from profile
+        permissions: list[str] = []
+        if profile and profile.get("id"):
+            perms_response = (
+                supabase.table("profile_permissions")
+                .select("permission")
+                .eq("profile_id", profile["id"])
+                .execute()
+            )
+            if perms_response.data:
+                permissions = [p["permission"] for p in perms_response.data]
+
+        # Get permission sets and their permissions
+        user_perm_sets = (
+            supabase.table("user_permission_sets")
+            .select("permission_sets(id, name, display_name)")
+            .eq("user_id", user_id)
+            .execute()
+        )
+
+        permission_sets = []
+        if user_perm_sets.data:
+            for ups in user_perm_sets.data:
+                ps = ups.get("permission_sets")
+                if ps:
+                    permission_sets.append(ps)
+                    # Get permissions from this set
+                    ps_perms = (
+                        supabase.table("permission_set_permissions")
+                        .select("permission")
+                        .eq("permission_set_id", ps["id"])
+                        .execute()
+                    )
+                    if ps_perms.data:
+                        permissions.extend([p["permission"] for p in ps_perms.data])
+
+        # Deduplicate
+        permissions = list(set(permissions))
+
+        return {
+            "user_id": user_id,
+            "email": user_data.get("email"),
+            "name": user_data.get("name"),
+            "profile": profile.get("name") if profile else None,
+            "profile_display_name": profile.get("display_name") if profile else None,
+            "permissions": sorted(permissions),
+            "permission_sets": [ps.get("name") for ps in permission_sets],
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[UI RBAC API] Error getting user permissions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get user permissions")
+
+
+# =============================================================================
+# 8. GET /audit-log - server.js:3573-3625
 # =============================================================================
 
 @router.get("/audit-log")

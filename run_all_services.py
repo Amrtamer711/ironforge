@@ -580,12 +580,17 @@ class ServiceProcess:
         env["PORT"] = str(self.port)
         env["ENVIRONMENT"] = self.env
         env["PYTHONUNBUFFERED"] = "1"  # Force unbuffered output for real-time logs
+        # Always output DEBUG logs when using logs panel - frontend filters what to display
+        # Override any LOG_LEVEL from .env so debug toggle works
+        if self.use_log_aggregator:
+            env["LOG_LEVEL"] = "DEBUG"
         env.update(self.extra_env)
 
         # Add shared modules to PYTHONPATH for local development
-        # This allows importing crm_security without pip install
+        # This allows importing crm_security and crm_cache without pip install
         shared_paths = [
             str(ROOT_DIR / "src" / "shared" / "crm-security"),
+            str(ROOT_DIR / "src" / "shared" / "crm-cache"),
         ]
         existing_pythonpath = env.get("PYTHONPATH", "")
         if existing_pythonpath:

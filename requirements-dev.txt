@@ -11,9 +11,12 @@
 # =============================================================================
 
 # =============================================================================
-# SHARED PACKAGE (must be installed first - path is from project root)
+# SHARED PACKAGES (must be installed first - path is from project root)
 # =============================================================================
 -e src/shared/crm-security[fastapi]
+-e src/shared/crm-llm[google]
+-e src/shared/crm-channels
+-e src/shared/crm-cache[redis]
 
 # =============================================================================
 # SERVICE DEPENDENCIES (uses --no-deps to skip the crm-security already installed)

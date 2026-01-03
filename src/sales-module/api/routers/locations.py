@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from crm_security import AuthUser, require_auth_user as require_auth
-from core.services import AssetService
+from core.services.asset_service import get_asset_service
 
 
 router = APIRouter(prefix="/api/locations", tags=["locations"])
@@ -83,8 +83,8 @@ async def get_available_locations(
                 detail="You don't have access to any company data. Please contact your administrator."
             )
 
-        # Initialize AssetService
-        asset_service = AssetService()
+        # Get singleton AssetService (shared cache)
+        asset_service = get_asset_service()
 
         # Get all locations for user's companies (async)
         all_locations = await asset_service.get_locations_for_companies(user.companies)
@@ -153,8 +153,8 @@ async def get_location_by_key(
                 detail="You don't have access to any company data."
             )
 
-        # Initialize AssetService
-        asset_service = AssetService()
+        # Get singleton AssetService (shared cache)
+        asset_service = get_asset_service()
 
         # Validate user has access
         has_access, error = await asset_service.validate_location_access(

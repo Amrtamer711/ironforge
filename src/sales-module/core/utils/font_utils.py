@@ -12,8 +12,16 @@ from pathlib import Path
 
 logger = logging.getLogger("proposal-bot")
 
-# Local font cache directory
-FONT_CACHE_DIR = Path("/data/fonts")
+# Local font cache directory - use /data on Render, temp dir locally
+def _get_font_cache_dir() -> Path:
+    """Get writable font cache directory."""
+    if Path("/data").exists() and os.access("/data", os.W_OK):
+        return Path("/data/fonts")
+    # Fallback to temp directory for local development
+    import tempfile
+    return Path(tempfile.gettempdir()) / "crm-fonts"
+
+FONT_CACHE_DIR = _get_font_cache_dir()
 
 
 async def download_fonts_from_storage() -> bool:

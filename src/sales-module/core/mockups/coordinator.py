@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import config
-from core.services import AssetService
+from core.services.asset_service import get_asset_service
 from core.utils import match_location_key
 
 from .strategies.ai import AIMockupStrategy
@@ -38,7 +38,8 @@ class MockupCoordinator:
         self,
         user_companies: list[str],
         generate_mockup_func: Callable,
-        generate_ai_mockup_func: Callable
+        generate_ai_mockup_func: Callable,
+        company_hint: str | None = None,
     ):
         """
         Initialize coordinator with dependencies.
@@ -47,22 +48,24 @@ class MockupCoordinator:
             user_companies: List of company schemas user can access
             generate_mockup_func: Function to generate mockup from creatives
             generate_ai_mockup_func: Function to generate AI creative and mockup
+            company_hint: Optional company to try first for O(1) asset lookups
         """
         self.user_companies = user_companies
         self.generate_mockup_func = generate_mockup_func
         self.generate_ai_mockup_func = generate_ai_mockup_func
+        self.company_hint = company_hint
         self.logger = config.logger
 
-        # Initialize components (lazy-load locations)
-        self.asset_service = AssetService()
+        # Initialize components (lazy-load locations) - use singleton for shared cache
+        self.asset_service = get_asset_service()
         self._available_locations: list[dict[str, Any]] | None = None
-        self.validator = MockupValidator(user_companies)
+        self.validator = MockupValidator(user_companies, company_hint=company_hint)
 
         # Initialize strategies
         self.strategies = [
-            UploadMockupStrategy(self.validator, generate_mockup_func),
-            AIMockupStrategy(self.validator, generate_ai_mockup_func),
-            FollowupMockupStrategy(self.validator, generate_mockup_func),
+            UploadMockupStrategy(self.validator, generate_mockup_func, company_hint=company_hint),
+            AIMockupStrategy(self.validator, generate_ai_mockup_func, company_hint=company_hint),
+            FollowupMockupStrategy(self.validator, generate_mockup_func, company_hint=company_hint),
         ]
 
     async def _get_available_locations(self) -> list[dict[str, Any]]:

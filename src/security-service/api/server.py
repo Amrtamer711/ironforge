@@ -15,6 +15,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 from crm_security import TrustedUserMiddleware as SharedTrustedUserMiddleware
+from crm_cache import get_cache, close_cache
 import config
 from api.routers import (
     health_router,
@@ -117,7 +118,15 @@ async def lifespan(app: FastAPI):
     """Manage startup and shutdown events."""
     logger.info(f"[STARTUP] Security Service starting (env={config.settings.ENVIRONMENT})")
     config.settings.log_config()
+
+    # Initialize cache (Redis or memory fallback)
+    cache = get_cache()
+    logger.info(f"[CACHE] Initialized cache backend")
+
     yield
+
+    # Cleanup cache on shutdown
+    await close_cache()
     logger.info("[SHUTDOWN] Security Service shutting down")
 
 

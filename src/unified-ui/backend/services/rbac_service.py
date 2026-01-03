@@ -12,8 +12,14 @@ RBAC (Role-Based Access Control) service for unified-ui.
 3. Teams & Hierarchy (team-based access, manager sees subordinates)
 4. Record Sharing (share specific records with users/teams)
 5. Company Access (for data filtering in proposal-bot)
+
+Caching:
+- Uses Redis via crm_cache for distributed caching
+- Falls back to in-memory dict if Redis unavailable
+- TTL: 30 seconds (RBAC_CACHE_TTL_SECONDS from settings)
 """
 
+import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -25,11 +31,122 @@ from backend.services.supabase_client import get_supabase
 logger = logging.getLogger("unified-ui")
 
 # =============================================================================
-# RBAC CACHE - server.js:519-546
+# RBAC CACHE - Redis-backed with in-memory fallback
 # =============================================================================
 
-# RBAC cache: {user_id: {"data": RBACContext, "ts": timestamp}}
-_rbac_cache: dict[str, dict[str, Any]] = {}
+# Cache backend (lazy initialized)
+_cache_backend = None
+_cache_initialized = False
+
+# Fallback in-memory cache if Redis unavailable
+_rbac_cache_fallback: dict[str, dict[str, Any]] = {}
+
+
+def _get_cache():
+    """Get the cache backend (lazy initialization)."""
+    global _cache_backend, _cache_initialized
+
+    if _cache_backend is not None:
+        return _cache_backend
+
+    if _cache_initialized:
+        return None
+
+    _cache_initialized = True
+
+    try:
+        from crm_cache import get_cache
+        _cache_backend = get_cache()
+        logger.info("[RBAC CACHE] Redis cache backend initialized")
+        return _cache_backend
+    except ImportError:
+        logger.warning("[RBAC CACHE] crm_cache not installed, using in-memory fallback")
+        return None
+    except Exception as e:
+        logger.warning(f"[RBAC CACHE] Failed to initialize Redis cache: {e}, using in-memory fallback")
+        return None
+
+
+def _run_async(coro):
+    """Run async code from sync context."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(asyncio.run, coro).result()
+    else:
+        return asyncio.run(coro)
+
+
+async def _cache_get(key: str) -> Any | None:
+    """Get value from cache."""
+    cache = _get_cache()
+    if not cache:
+        # Fallback to in-memory
+        cached = _rbac_cache_fallback.get(key)
+        if cached:
+            settings = get_settings()
+            cache_age = (datetime.utcnow() - cached["ts"]).total_seconds()
+            if cache_age < settings.RBAC_CACHE_TTL_SECONDS:
+                return cached["data"]
+            else:
+                del _rbac_cache_fallback[key]
+        return None
+
+    try:
+        return await cache.get(key)
+    except Exception as e:
+        logger.debug(f"[RBAC CACHE] Get error: {e}")
+        return None
+
+
+async def _cache_set(key: str, value: Any, ttl: int = 30) -> None:
+    """Set value in cache."""
+    cache = _get_cache()
+    if not cache:
+        # Fallback to in-memory
+        _rbac_cache_fallback[key] = {"data": value, "ts": datetime.utcnow()}
+        return
+
+    try:
+        await cache.set(key, value, ttl=ttl)
+    except Exception as e:
+        logger.debug(f"[RBAC CACHE] Set error: {e}")
+
+
+async def _cache_delete(key: str) -> None:
+    """Delete value from cache."""
+    cache = _get_cache()
+    if not cache:
+        # Fallback to in-memory
+        if key in _rbac_cache_fallback:
+            del _rbac_cache_fallback[key]
+        return
+
+    try:
+        await cache.delete(key)
+    except Exception as e:
+        logger.debug(f"[RBAC CACHE] Delete error: {e}")
+
+
+async def _cache_delete_pattern(pattern: str) -> int:
+    """Delete all keys matching pattern."""
+    cache = _get_cache()
+    if not cache:
+        # Fallback: clear all in-memory cache (can't do pattern matching)
+        count = len(_rbac_cache_fallback)
+        _rbac_cache_fallback.clear()
+        return count
+
+    try:
+        return await cache.delete_pattern(pattern)
+    except Exception as e:
+        logger.debug(f"[RBAC CACHE] Delete pattern error: {e}")
+        return 0
 
 
 def invalidate_rbac_cache(user_id: str) -> None:
@@ -37,8 +154,9 @@ def invalidate_rbac_cache(user_id: str) -> None:
     Invalidate RBAC cache for a user.
     Mirrors server.js:524-529 (invalidateRBACCache)
     """
-    if user_id and user_id in _rbac_cache:
-        del _rbac_cache[user_id]
+    if user_id:
+        cache_key = f"rbac:user:{user_id}"
+        _run_async(_cache_delete(cache_key))
         logger.info(f"[RBAC CACHE] Invalidated cache for user {user_id}")
 
 
@@ -48,8 +166,8 @@ def invalidate_rbac_cache_for_users(user_ids: list[str]) -> None:
     Mirrors server.js:531-539 (invalidateRBACCacheForUsers)
     """
     for user_id in user_ids or []:
-        if user_id in _rbac_cache:
-            del _rbac_cache[user_id]
+        cache_key = f"rbac:user:{user_id}"
+        _run_async(_cache_delete(cache_key))
     if user_ids:
         logger.info(f"[RBAC CACHE] Invalidated cache for {len(user_ids)} users")
 
@@ -59,9 +177,8 @@ def clear_all_rbac_cache() -> None:
     Clear all RBAC cache (use sparingly - for global permission changes).
     Mirrors server.js:541-546 (clearAllRBACCache)
     """
-    count = len(_rbac_cache)
-    _rbac_cache.clear()
-    logger.info(f"[RBAC CACHE] Cleared all {count} cached entries")
+    count = _run_async(_cache_delete_pattern("rbac:user:*"))
+    logger.info(f"[RBAC CACHE] Cleared all cached entries (pattern match count: {count})")
 
 
 # =============================================================================
@@ -183,6 +300,60 @@ class RBACContext:
 # HELPER FUNCTIONS
 # =============================================================================
 
+
+def _dict_to_rbac_context(data: dict[str, Any]) -> RBACContext:
+    """Convert cached dict back to RBACContext object."""
+    return RBACContext(
+        profile=data.get("profile", "sales_user"),
+        permissions=data.get("permissions", []),
+        permission_sets=[
+            PermissionSetInfo(
+                id=ps.get("id"),
+                name=ps.get("name"),
+                expires_at=ps.get("expiresAt") or ps.get("expires_at"),
+            )
+            for ps in data.get("permissionSets", data.get("permission_sets", []))
+        ],
+        teams=[
+            TeamInfo(
+                id=t.get("id"),
+                name=t.get("name"),
+                display_name=t.get("displayName") or t.get("display_name"),
+                role=t.get("role"),
+                parent_team_id=t.get("parentTeamId") or t.get("parent_team_id"),
+            )
+            for t in data.get("teams", [])
+        ],
+        manager_id=data.get("managerId") or data.get("manager_id"),
+        subordinate_ids=data.get("subordinateIds", data.get("subordinate_ids", [])),
+        sharing_rules=[
+            SharingRuleInfo(
+                id=r.get("id"),
+                name=r.get("name"),
+                object_type=r.get("objectType") or r.get("object_type"),
+                share_from_type=r.get("shareFromType") or r.get("share_from_type"),
+                share_from_id=r.get("shareFromId") or r.get("share_from_id"),
+                access_level=r.get("accessLevel") or r.get("access_level"),
+            )
+            for r in data.get("sharingRules", data.get("sharing_rules", []))
+        ],
+        shared_records={
+            obj_type: [
+                SharedRecordInfo(
+                    record_id=sr.get("recordId") or sr.get("record_id"),
+                    access_level=sr.get("accessLevel") or sr.get("access_level"),
+                    shared_by=sr.get("sharedBy") or sr.get("shared_by"),
+                    reason=sr.get("reason"),
+                )
+                for sr in shares
+            ]
+            for obj_type, shares in data.get("sharedRecords", data.get("shared_records", {})).items()
+        },
+        shared_from_user_ids=data.get("sharedFromUserIds", data.get("shared_from_user_ids", [])),
+        companies=data.get("companies", []),
+    )
+
+
 async def get_user_record_shares(
     user_id: str, team_ids: list[int]
 ) -> list[dict[str, Any]]:
@@ -264,12 +435,14 @@ async def get_user_rbac_data(user_id: str, use_cache: bool = True) -> RBACContex
             subordinate_ids=[],
         )
 
-    # Check cache - mirrors server.js:570-578
-    if use_cache and user_id in _rbac_cache:
-        cached = _rbac_cache[user_id]
-        cache_age = (datetime.utcnow() - cached["ts"]).total_seconds()
-        if cache_age < settings.RBAC_CACHE_TTL_SECONDS:
-            return cached["data"]
+    # Check cache (Redis or in-memory fallback)
+    cache_key = f"rbac:user:{user_id}"
+    if use_cache:
+        cached = await _cache_get(cache_key)
+        if cached is not None:
+            logger.debug(f"[RBAC CACHE] Hit for user {user_id}")
+            # Reconstruct RBACContext from cached dict
+            return _dict_to_rbac_context(cached)
 
     try:
         # =====================================================================
@@ -547,11 +720,9 @@ async def get_user_rbac_data(user_id: str, use_cache: bool = True) -> RBACContex
             companies=companies,
         )
 
-        # Cache the result
-        _rbac_cache[user_id] = {
-            "data": rbac_context,
-            "ts": datetime.utcnow(),
-        }
+        # Cache the result (Redis or in-memory fallback)
+        await _cache_set(cache_key, rbac_context.to_dict(), ttl=settings.RBAC_CACHE_TTL_SECONDS)
+        logger.debug(f"[RBAC CACHE] Cached RBAC for user {user_id}")
 
         return rbac_context
 

@@ -109,6 +109,14 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
+# Quiet down noisy third-party loggers
+for _logger_name in [
+    "httpx", "httpcore", "httpcore.http2", "httpcore.connection",
+    "urllib3", "hpack", "hpack.hpack", "hpack.table",
+    "openai", "openai._base_client",
+]:
+    logging.getLogger(_logger_name).setLevel(logging.WARNING)
+
 
 def get_logger(name: str) -> logging.Logger:
     """Get a logger with the given name."""

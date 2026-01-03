@@ -58,6 +58,11 @@ class ProposalProcessor:
         self.template_service = template_service
         self.logger = config.logger
 
+        # Request-scoped cache for extracted intro/outro slides
+        # Avoids re-extracting pages from the same PDF within a single request
+        # Maps: pdf_name -> (intro_pdf_path, outro_pdf_path)
+        self._extracted_slides_cache: dict[str, tuple[str, str]] = {}
+
     @staticmethod
     def _generate_timestamp_code() -> str:
         """
@@ -145,19 +150,37 @@ class ProposalProcessor:
             self.logger.info(f"[PROCESSOR] No pre-made PDF mapping for series '{series}'")
 
         # Try to download pre-made PDF from storage
+        # Extract company_hint from metadata for O(1) lookup
+        metadata = intro_outro_info.get('metadata', {})
+        company_hint = metadata.get('company_schema') or metadata.get('company')
+
         if pdf_name:
-            pdf_temp_path = await self.template_service.download_intro_outro_to_temp(pdf_name)
+            # Check cache first for extracted slides
+            if pdf_name in self._extracted_slides_cache:
+                cached_intro, cached_outro = self._extracted_slides_cache[pdf_name]
+                if os.path.exists(cached_intro) and os.path.exists(cached_outro):
+                    self.logger.info(f"[PROCESSOR] Cache hit for extracted slides: {pdf_name}")
+                    return cached_intro, cached_outro
+                else:
+                    # Cached files were deleted, remove from cache
+                    del self._extracted_slides_cache[pdf_name]
+
+            pdf_temp_path = await self.template_service.download_intro_outro_to_temp(
+                pdf_name, company_hint=company_hint
+            )
             if pdf_temp_path:
                 self.logger.info(f"[PROCESSOR] PRE-MADE PDF FOUND: {pdf_name}")
                 intro_pdf = self._extract_pages_from_pdf(pdf_temp_path, [0])
                 reader = PdfReader(pdf_temp_path)
                 last_page = len(reader.pages) - 1
                 outro_pdf = self._extract_pages_from_pdf(pdf_temp_path, [last_page])
-                # Clean up the temp PDF
+                # Clean up the temp PDF (but keep extracted pages)
                 try:
                     os.unlink(pdf_temp_path)
                 except OSError:
                     pass
+                # Cache the extracted slides
+                self._extracted_slides_cache[pdf_name] = (intro_pdf, outro_pdf)
                 return intro_pdf, outro_pdf
             else:
                 self.logger.info(f"[PROCESSOR] PRE-MADE PDF NOT FOUND: {pdf_name}")
@@ -165,8 +188,10 @@ class ProposalProcessor:
         # Fall back to PowerPoint extraction
         self.logger.info("[PROCESSOR] FALLING BACK to PowerPoint extraction")
 
-        # Download template from storage
-        template_path = await self.template_service.download_to_temp(location_key)
+        # Download template from storage (company_hint already extracted above)
+        template_path = await self.template_service.download_to_temp(
+            location_key, company_hint=company_hint
+        )
         if not template_path:
             # Last resort: try the path from intro_outro_info
             template_path = intro_outro_info.get('template_path')
@@ -269,7 +294,10 @@ class ProposalProcessor:
         async def process_single(idx: int, proposal: dict) -> dict:
             # Download template from storage
             location_key = proposal.get("location", "").lower().strip()
-            template_path = await self.template_service.download_to_temp(location_key)
+            company_hint = proposal.get("company_schema")  # O(1) lookup from validator
+            template_path = await self.template_service.download_to_temp(
+                location_key, company_hint=company_hint
+            )
             if not template_path:
                 raise FileNotFoundError(f"Template not found for {location_key}")
 
@@ -483,7 +511,6 @@ class ProposalProcessor:
             return {"success": False, "errors": errors}
 
         loop = asyncio.get_event_loop()
-        pdf_files = []
 
         # Get intro/outro info
         intro_outro_info = self.intro_outro_handler.get_intro_outro_location(validated_proposals)
@@ -501,17 +528,25 @@ class ProposalProcessor:
             else:
                 self.logger.info(f"[PROCESSOR] Skipping duplicate deck for '{location_key}'")
 
-        # Process each unique location
-        for idx, proposal in enumerate(unique_proposals_for_deck):
+        # Process each unique location (in parallel)
+        total_proposals = len(unique_proposals_for_deck)
+
+        async def process_combined_single(idx: int, proposal: dict) -> dict:
+            """Process a single proposal for combined package."""
             # Download template from storage
             location_key = proposal.get("location", "").lower().strip()
-            template_path = await self.template_service.download_to_temp(location_key)
+            company_hint = proposal.get("company_schema")  # O(1) lookup from validator
+            template_path = await self.template_service.download_to_temp(
+                location_key, company_hint=company_hint
+            )
             if not template_path:
-                return {"success": False, "error": f"Template not found for {location_key}"}
+                raise FileNotFoundError(f"Template not found for {location_key}")
+
+            total_combined_result = None
 
             # Last location gets the combined financial slide
-            if idx == len(unique_proposals_for_deck) - 1:
-                pptx_path, total_combined = await loop.run_in_executor(
+            if idx == total_proposals - 1:
+                pptx_path, total_combined_result = await loop.run_in_executor(
                     None,
                     self.renderer.create_combined_proposal_with_template,
                     str(template_path),
@@ -528,7 +563,6 @@ class ProposalProcessor:
                     pass
             else:
                 pptx_path = str(template_path)
-                total_combined = None
                 # Note: template_path will be cleaned up after PDF conversion
 
             # Determine which slides to remove
@@ -541,20 +575,37 @@ class ProposalProcessor:
                 remove_last = False
                 if idx == 0:
                     remove_last = True
-                elif idx < len(unique_proposals_for_deck) - 1:
+                elif idx < total_proposals - 1:
                     remove_first = True
                     remove_last = True
                 else:
                     remove_first = True
 
             pdf_path = await remove_slides_and_convert_to_pdf(pptx_path, remove_first, remove_last)
-            pdf_files.append(pdf_path)
 
             # Clean up temp PPTX/template
             try:
                 os.unlink(pptx_path)
             except OSError as e:
                 self.logger.warning(f"[PROCESSOR] Failed to cleanup temp file: {e}")
+
+            return {"pdf_path": pdf_path, "total_combined": total_combined_result, "idx": idx}
+
+        # Process all in parallel
+        tasks = [process_combined_single(idx, p) for idx, p in enumerate(unique_proposals_for_deck)]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Check for errors
+        for idx, result in enumerate(results):
+            if isinstance(result, Exception):
+                return {"success": False, "error": f"Error processing proposal {idx + 1}: {str(result)}"}
+
+        # Sort by original index and extract PDFs
+        sorted_results = sorted(results, key=lambda x: x["idx"])
+        pdf_files = [r["pdf_path"] for r in sorted_results]
+
+        # Get total_combined from the last proposal's result
+        total_combined = sorted_results[-1]["total_combined"] if sorted_results else None
 
         # Add intro/outro slides
         if intro_outro_info:

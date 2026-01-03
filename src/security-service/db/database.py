@@ -338,6 +338,11 @@ class _DatabaseNamespace:
     def get_full_user_context(self, user_id: str) -> dict[str, Any] | None:
         return self._backend.get_full_user_context(user_id)
 
+    def invalidate_user_cache(self, user_id: str) -> None:
+        """Invalidate cached user context (call on permission/team changes)."""
+        if hasattr(self._backend, "invalidate_user_cache"):
+            self._backend.invalidate_user_cache(user_id)
+
 
 # Create the singleton database interface
 db = _DatabaseNamespace(_backend)

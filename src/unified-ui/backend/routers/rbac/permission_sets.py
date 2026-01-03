@@ -77,6 +77,50 @@ async def list_permission_sets(
 
 
 # =============================================================================
+# 1b. GET /permission-sets/:id - Get single permission set
+# =============================================================================
+
+@router.get("/permission-sets/{set_id}")
+async def get_permission_set(
+    set_id: int,
+    user: AuthUser = Depends(require_profile("system_admin")),
+) -> dict[str, Any]:
+    """
+    Get a single permission set by ID.
+    """
+    logger.info(f"[UI RBAC API] Getting permission set: {set_id}")
+
+    supabase = get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        response = (
+            supabase.table("permission_sets")
+            .select("*, permission_set_permissions(permission)")
+            .eq("id", set_id)
+            .single()
+            .execute()
+        )
+
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Permission set not found")
+
+        perm_set = {k: v for k, v in response.data.items() if k != "permission_set_permissions"}
+        perm_set["permissions"] = [
+            p["permission"] for p in (response.data.get("permission_set_permissions") or [])
+        ]
+
+        return perm_set
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[UI RBAC API] Error getting permission set: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get permission set")
+
+
+# =============================================================================
 # 2. POST /permission-sets - server.js:2606-2640
 # =============================================================================
 

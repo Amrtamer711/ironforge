@@ -29,6 +29,21 @@ python-jose[cryptography]>=3.3.0
 # When installing standalone: pip install -e ../shared/crm-security[fastapi]
 # crm-security  # Installed via requirements-dev.txt or PYTHONPATH
 
+# CRM LLM SDK
+# When installing standalone: pip install -e ../shared/crm-llm[google]
+# crm-llm  # Installed via requirements-dev.txt or PYTHONPATH
+
+# CRM Channels SDK
+# When installing standalone: pip install -e ../shared/crm-channels
+# crm-channels  # Installed via requirements-dev.txt or PYTHONPATH
+
+# CRM Cache SDK
+# When installing standalone: pip install -e ../shared/crm-cache[redis]
+# crm-cache  # Installed via requirements-dev.txt or PYTHONPATH
+
+# Redis (for distributed caching)
+redis>=5.0.0
+
 # Development & Testing (install with: pip install -r requirements.txt)
 pytest==8.0.0
 pytest-asyncio==0.23.3

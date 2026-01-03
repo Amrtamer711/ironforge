@@ -19,8 +19,8 @@ import json
 import logging
 from typing import Any
 
+from crm_llm import CostInfo
 from db.database import db
-from integrations.llm.base import CostInfo
 
 logger = logging.getLogger("proposal-bot")
 

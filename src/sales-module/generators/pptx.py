@@ -130,7 +130,6 @@ def add_location_text_with_colored_sov(paragraph, location_text: str, scale: flo
 
 
 def set_cell_border(cell, edges=("L", "R", "T", "B")) -> None:
-    logger.info(f"[PPTX:BORDER] Setting borders for edges: {edges}")
     tc = cell._tc
     tcPr = tc.get_or_add_tcPr()
 
@@ -169,9 +168,6 @@ def set_cell_border(cell, edges=("L", "R", "T", "B")) -> None:
         ln.append(round_join)
 
         tcPr.append(ln)
-        borders_added.append(edge)
-
-    logger.info(f"[PPTX:BORDER] Added borders: {borders_added}")
 
 
 def _calc_vat_and_total_for_rates(

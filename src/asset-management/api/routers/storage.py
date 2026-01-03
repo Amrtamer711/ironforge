@@ -337,6 +337,8 @@ async def get_intro_outro_pdf(company: str, pdf_name: str) -> dict[str, Any]:
     """
     Download intro/outro PDF.
 
+    Storage structure: templates/{company}/intro_outro/{pdf_name}.pdf
+
     Args:
         company: Company schema
         pdf_name: PDF name (e.g., "landmark_series", "rest")
@@ -344,14 +346,14 @@ async def get_intro_outro_pdf(company: str, pdf_name: str) -> dict[str, Any]:
     Returns:
         Base64-encoded PDF data
     """
-    logger.info(f"[STORAGE] Getting intro/outro PDF: {pdf_name}")
+    logger.info(f"[STORAGE] Getting intro/outro PDF: {company}/{pdf_name}")
 
     try:
         storage = _get_storage_client()
         bucket = storage.from_("templates")
 
-        # Look for PDF in intro_outro folder
-        storage_key = f"intro_outro/{pdf_name}.pdf"
+        # Look for PDF in company's intro_outro folder
+        storage_key = f"{company}/intro_outro/{pdf_name}.pdf"
 
         data = bucket.download(storage_key)
         if not data:
@@ -366,7 +368,7 @@ async def get_intro_outro_pdf(company: str, pdf_name: str) -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-        logger.debug(f"[STORAGE] Intro/outro PDF not found: {pdf_name}")
+        logger.debug(f"[STORAGE] Intro/outro PDF not found: {company}/{pdf_name} - {e}")
         raise HTTPException(status_code=404, detail="PDF not found")
 
 

@@ -6,6 +6,7 @@ Templates are stored in Asset-Management because they are location-specific asse
 """
 
 import asyncio
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -103,6 +104,16 @@ class TemplateService:
 
         self.logger = _get_logger()
 
+        # Request-scoped cache for downloaded templates
+        # Avoids re-downloading the same template within a single request
+        # Maps: location_key -> temp file path
+        self._downloaded_templates: dict[str, str] = {}
+
+        # Request-scoped cache for downloaded intro/outro PDFs
+        # Avoids re-downloading the same PDF within a single request
+        # Maps: pdf_name -> temp file path
+        self._downloaded_intro_outro: dict[str, str] = {}
+
     async def _discover_templates_for_company(self, company: str) -> dict[str, dict[str, Any]]:
         """
         Discover templates from Asset-Management API for a single company.
@@ -189,21 +200,40 @@ class TemplateService:
 
         return False, None
 
-    async def download(self, location_key: str) -> tuple[bytes | None, str | None]:
+    async def download(
+        self,
+        location_key: str,
+        company_hint: str | None = None,
+    ) -> tuple[bytes | None, str | None]:
         """
         Download template file contents from Asset-Management.
 
-        Searches across all companies.
+        If company_hint is provided, tries that company first for O(1) lookup.
+        Falls back to searching all companies if hint fails.
 
         Args:
             location_key: Location identifier
+            company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
             Tuple of (file_bytes, company_that_had_it) or (None, None) if not found
         """
         self.logger.info(f"[TEMPLATE_SERVICE] Downloading template: {location_key}")
 
+        # Try company_hint first if provided (O(1) lookup from WorkflowContext)
+        if company_hint and company_hint in self.companies:
+            try:
+                data = await asset_mgmt_client.get_template(company_hint, location_key)
+                if data:
+                    self.logger.info(f"[TEMPLATE_SERVICE] Downloaded template from {company_hint}: {location_key} (direct hit)")
+                    return data, company_hint
+            except Exception as e:
+                self.logger.debug(f"[TEMPLATE_SERVICE] Template not in hinted company {company_hint}: {e}")
+
+        # Fallback: search all companies (skip the hint if we already tried it)
         for company in self.companies:
+            if company == company_hint:
+                continue  # Already tried this one
             try:
                 data = await asset_mgmt_client.get_template(company, location_key)
                 if data:
@@ -216,18 +246,41 @@ class TemplateService:
         self.logger.warning(f"[TEMPLATE_SERVICE] Template not found in any company: {location_key}")
         return None, None
 
-    async def download_to_temp(self, location_key: str, suffix: str = ".pptx") -> str | None:
+    async def download_to_temp(
+        self,
+        location_key: str,
+        suffix: str = ".pptx",
+        company_hint: str | None = None,
+    ) -> str | None:
         """
         Download template to a temporary file.
+
+        Uses request-scoped cache to avoid re-downloading the same template
+        multiple times within a single request (e.g., combined proposals).
 
         Args:
             location_key: Location identifier
             suffix: File extension for temp file
+            company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
             Path to temp file or None if download failed
         """
-        data, _ = await self.download(location_key)
+        normalized_key = location_key.lower().strip()
+
+        # Check request-scoped cache first
+        if normalized_key in self._downloaded_templates:
+            cached_path = self._downloaded_templates[normalized_key]
+            # Verify file still exists (might have been deleted by parallel task)
+            if os.path.exists(cached_path):
+                self.logger.info(f"[TEMPLATE_SERVICE] Cache hit for template: {location_key} -> {cached_path}")
+                return cached_path
+            else:
+                # File was deleted, remove from cache and re-download
+                self.logger.debug(f"[TEMPLATE_SERVICE] Cached file deleted, re-downloading: {location_key}")
+                del self._downloaded_templates[normalized_key]
+
+        data, _ = await self.download(location_key, company_hint=company_hint)
         if not data:
             return None
 
@@ -236,22 +289,44 @@ class TemplateService:
         temp_file.write(data)
         temp_file.close()
 
+        # Cache the path for subsequent requests within this instance
+        self._downloaded_templates[normalized_key] = temp_file.name
+
         self.logger.info(f"[TEMPLATE_SERVICE] Template saved to: {temp_file.name}")
         return temp_file.name
 
-    async def get_intro_outro_pdf(self, pdf_name: str) -> tuple[bytes | None, str | None]:
+    async def get_intro_outro_pdf(
+        self,
+        pdf_name: str,
+        company_hint: str | None = None,
+    ) -> tuple[bytes | None, str | None]:
         """
         Download an intro/outro PDF from Asset-Management storage.
 
-        Searches across all companies.
+        If company_hint is provided, tries that company first for O(1) lookup.
+        Falls back to searching all companies if hint fails.
 
         Args:
             pdf_name: Name of PDF (e.g., "landmark_series", "rest", "digital_icons")
+            company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
             Tuple of (pdf_bytes, company) or (None, None) if not found
         """
+        # Try company_hint first if provided (O(1) lookup from WorkflowContext)
+        if company_hint and company_hint in self.companies:
+            try:
+                data = await asset_mgmt_client.get_intro_outro_pdf(company_hint, pdf_name)
+                if data:
+                    self.logger.info(f"[TEMPLATE_SERVICE] Downloaded intro/outro PDF from {company_hint}: {pdf_name} (direct hit)")
+                    return data, company_hint
+            except Exception as e:
+                self.logger.debug(f"[TEMPLATE_SERVICE] Intro/outro PDF not in hinted company {company_hint}: {e}")
+
+        # Fallback: search all companies (skip the hint if we already tried it)
         for company in self.companies:
+            if company == company_hint:
+                continue  # Already tried this one
             try:
                 data = await asset_mgmt_client.get_intro_outro_pdf(company, pdf_name)
                 if data:
@@ -263,17 +338,37 @@ class TemplateService:
         self.logger.debug(f"[TEMPLATE_SERVICE] Intro/outro PDF not found: {pdf_name}")
         return None, None
 
-    async def download_intro_outro_to_temp(self, pdf_name: str) -> str | None:
+    async def download_intro_outro_to_temp(
+        self,
+        pdf_name: str,
+        company_hint: str | None = None,
+    ) -> str | None:
         """
         Download intro/outro PDF to a temporary file.
 
+        Uses request-scoped cache to avoid re-downloading the same PDF
+        multiple times within a single request (e.g., combined proposals).
+
         Args:
             pdf_name: Name of PDF (e.g., "landmark_series", "rest")
+            company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
             Path to temp file or None if not found
         """
-        data, _ = await self.get_intro_outro_pdf(pdf_name)
+        # Check request-scoped cache first
+        if pdf_name in self._downloaded_intro_outro:
+            cached_path = self._downloaded_intro_outro[pdf_name]
+            # Verify file still exists (might have been deleted by parallel task)
+            if os.path.exists(cached_path):
+                self.logger.info(f"[TEMPLATE_SERVICE] Cache hit for intro/outro PDF: {pdf_name} -> {cached_path}")
+                return cached_path
+            else:
+                # File was deleted, remove from cache and re-download
+                self.logger.debug(f"[TEMPLATE_SERVICE] Cached PDF deleted, re-downloading: {pdf_name}")
+                del self._downloaded_intro_outro[pdf_name]
+
+        data, _ = await self.get_intro_outro_pdf(pdf_name, company_hint=company_hint)
         if not data:
             return None
 
@@ -281,6 +376,10 @@ class TemplateService:
         temp_file.write(data)
         temp_file.close()
 
+        # Cache the path for subsequent requests within this instance
+        self._downloaded_intro_outro[pdf_name] = temp_file.name
+
+        self.logger.info(f"[TEMPLATE_SERVICE] Intro/outro PDF saved to: {temp_file.name}")
         return temp_file.name
 
     async def upload(

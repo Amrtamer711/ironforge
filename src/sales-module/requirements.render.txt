@@ -32,3 +32,15 @@ python-jose[cryptography]>=3.3.0
 
 # CRM Security SDK (git install for production)
 crm-security[fastapi] @ git+https://gitlab.com/mmg-global/ironforge.git@main#subdirectory=src/shared/crm-security
+
+# CRM LLM SDK (git install for production)
+crm-llm[google] @ git+https://gitlab.com/mmg-global/ironforge.git@main#subdirectory=src/shared/crm-llm
+
+# CRM Channels SDK (git install for production)
+crm-channels @ git+https://gitlab.com/mmg-global/ironforge.git@main#subdirectory=src/shared/crm-channels
+
+# CRM Cache SDK (git install for production)
+crm-cache[redis] @ git+https://gitlab.com/mmg-global/ironforge.git@main#subdirectory=src/shared/crm-cache
+
+# Redis (for distributed caching)
+redis>=5.0.0

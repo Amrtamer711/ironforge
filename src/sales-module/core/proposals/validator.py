@@ -7,8 +7,8 @@ Validates proposal data before processing.
 from typing import Any
 
 import config
-from core.services import AssetService
-from core.utils import match_location_key
+from core.services.asset_service import get_asset_service
+from core.utils import match_location_key, get_location_metadata
 
 
 class ProposalValidator:
@@ -30,17 +30,45 @@ class ProposalValidator:
             user_companies: List of company schemas user has access to
         """
         self.user_companies = user_companies
-        self.asset_service = AssetService()
+        self.asset_service = get_asset_service()  # Use singleton for shared cache
         self._available_locations: list[dict[str, Any]] | None = None
+        # O(1) lookup index for location metadata: {location_key_lower: metadata}
+        self._location_index: dict[str, dict[str, Any]] | None = None
         self.logger = config.logger
 
     async def _get_available_locations(self) -> list[dict[str, Any]]:
-        """Lazy-load available locations (async)."""
+        """Lazy-load available locations and build O(1) lookup index (async)."""
         if self._available_locations is None:
             self._available_locations = await self.asset_service.get_locations_for_companies(
                 self.user_companies
             )
+            # Build O(1) lookup index by location_key
+            self._location_index = {}
+            for loc in self._available_locations:
+                key = loc.get("location_key", "").lower().strip()
+                if key:
+                    self._location_index[key] = loc
+                    # Also index by display_name for fuzzy matching
+                    display_name = loc.get("display_name", "").lower().strip()
+                    if display_name and display_name not in self._location_index:
+                        self._location_index[display_name] = loc
+            self.logger.debug(f"[VALIDATOR] Built location index with {len(self._location_index)} entries")
         return self._available_locations
+
+    def get_location_metadata_fast(self, location_key: str) -> dict[str, Any] | None:
+        """
+        Get location metadata with O(1) lookup using pre-built index.
+
+        Args:
+            location_key: Location key or display name
+
+        Returns:
+            Location metadata dict or None if not found
+        """
+        if self._location_index is None:
+            return None
+        normalized = location_key.lower().strip()
+        return self._location_index.get(normalized)
 
     async def validate_proposals(
         self,
@@ -103,6 +131,11 @@ class ProposalValidator:
 
             self.logger.info(f"[VALIDATOR] Matched '{location}' to '{matched_key}'")
 
+            # Get full location metadata using O(1) index lookup
+            # Note: Asset-Management returns 'company' field, but internally we use 'company_schema'
+            location_metadata = self.get_location_metadata_fast(matched_key) or {}
+            company_schema = location_metadata.get("company_schema") or location_metadata.get("company")
+
             # Validate duration/rate alignment (for separate proposals)
             if net_rates and len(durations) != len(net_rates):
                 errors.append(
@@ -125,6 +158,7 @@ class ProposalValidator:
                 "durations": durations,
                 "spots": int(spots),
                 "filename": mapping[matched_key],
+                "company_schema": company_schema,  # For O(1) template lookup
             }
 
             # Add optional fields

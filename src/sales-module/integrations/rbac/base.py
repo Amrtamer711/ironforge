@@ -289,21 +289,6 @@ class RBACContext:
         return bool(set(self.user_team_ids) & set(other_teams))
 
 
-# =============================================================================
-# MODULE REGISTRY INTEGRATION
-# =============================================================================
-
-def get_default_permissions() -> list[Permission]:
-    """
-    Get all permissions from registered modules.
-
-    Returns:
-        Combined list of all permissions from all registered modules.
-    """
-    from integrations.rbac.modules import get_all_permissions
-    return get_all_permissions()
-
-
 class RBACProvider(ABC):
     """
     Abstract base class for RBAC providers.

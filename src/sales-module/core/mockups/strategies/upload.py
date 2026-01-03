@@ -29,7 +29,8 @@ class UploadMockupStrategy(MockupStrategy):
     def __init__(
         self,
         validator: Any,  # MockupValidator
-        generate_mockup_func: Callable
+        generate_mockup_func: Callable,
+        company_hint: str | None = None,
     ):
         """
         Initialize upload strategy.
@@ -37,9 +38,11 @@ class UploadMockupStrategy(MockupStrategy):
         Args:
             validator: MockupValidator instance
             generate_mockup_func: Function to generate mockup from creatives
+            company_hint: Optional company to try first for O(1) asset lookups
         """
         self.validator = validator
         self.generate_mockup_func = generate_mockup_func
+        self.company_hint = company_hint
         self.logger = config.logger
 
     def can_handle(self, **kwargs) -> bool:
@@ -111,6 +114,7 @@ class UploadMockupStrategy(MockupStrategy):
                 time_of_day=time_of_day,
                 finish=finish,
                 company_schemas=user_companies,
+                company_hint=self.company_hint,
             )
 
             if not result_path:

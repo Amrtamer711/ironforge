@@ -28,12 +28,11 @@ import base64
 import json
 import logging
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
 from typing import Any
 
 from openai import AsyncOpenAI
 
-from integrations.llm.base import (
+from crm_llm.base import (
     CostInfo,
     FileReference,
     ImageResponse,
@@ -48,7 +47,7 @@ from integrations.llm.base import (
     ToolDefinition,
 )
 
-logger = logging.getLogger("proposal-bot")
+logger = logging.getLogger("crm-llm")
 
 # ============================================================================
 # PRICING (per 1M tokens)
@@ -535,7 +534,6 @@ class OpenAIProvider(LLMProvider):
                             if hasattr(content_item, "text"):
                                 content = content_item.text
                     elif item.type == "function_call":
-                        import json
                         tool_calls.append(
                             ToolCall(
                                 id=getattr(item, "call_id", ""),

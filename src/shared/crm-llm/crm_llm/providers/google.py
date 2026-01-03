@@ -18,7 +18,7 @@ import base64
 import logging
 from typing import Any
 
-from integrations.llm.base import (
+from crm_llm.base import (
     CostInfo,
     FileReference,
     ImageResponse,
@@ -33,7 +33,7 @@ from integrations.llm.base import (
     ToolDefinition,
 )
 
-logger = logging.getLogger("proposal-bot")
+logger = logging.getLogger("crm-llm")
 
 # ============================================================================
 # PRICING

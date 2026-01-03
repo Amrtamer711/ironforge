@@ -23,7 +23,6 @@ from crm_security import SecurityHeadersMiddleware, TrustedUserMiddleware
 
 # Import routers
 from api.routers import (
-    admin_router,
     auth_router,
     chat_router,
     costs_router,
@@ -37,12 +36,11 @@ from api.routers import (
     slack_router,
 )
 from app_settings import settings
-from core.utils.font_utils import install_custom_fonts
+from core.utils.font_utils import ensure_fonts_available
 from core.utils.logging import get_logger, logging_middleware_helper
 from core.utils.time import get_uae_time
 
-# Install custom fonts on startup
-install_custom_fonts()
+# Note: Custom fonts are loaded in lifespan handler (async download from Supabase)
 
 # Load location templates
 config.refresh_templates()
@@ -162,8 +160,16 @@ async def lifespan(app: FastAPI):
     cleanup_task = asyncio.create_task(periodic_cleanup())
     logger.info("[STARTUP] Started background cleanup task")
 
+    # Initialize cache (Redis or memory fallback)
+    from core.utils.cache import get_cache, close_cache
+    cache = get_cache()
+    logger.info("[CACHE] Initialized cache backend")
+
     # Initialize storage (for Supabase/S3 bucket setup)
     await initialize_storage()
+
+    # Download and install custom fonts from Supabase Storage
+    await ensure_fonts_available()
 
     # Load active workflows from database to restore state after restart
     from workflows import bo_approval
@@ -177,6 +183,10 @@ async def lifespan(app: FastAPI):
         await cleanup_task
     except asyncio.CancelledError:
         logger.info("[SHUTDOWN] Background cleanup task cancelled")
+
+    # Close cache connection
+    await close_cache()
+    logger.info("[SHUTDOWN] Cache connection closed")
 
 
 # Create FastAPI app with dev auth docs (if enabled)
@@ -276,6 +286,5 @@ app.include_router(chat_router)
 app.include_router(auth_router)
 app.include_router(proposals_router)
 app.include_router(files_router)
-app.include_router(admin_router)
 app.include_router(modules_router)
 app.include_router(internal_router)

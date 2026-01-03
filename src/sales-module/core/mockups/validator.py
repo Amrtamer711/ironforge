@@ -22,14 +22,16 @@ class MockupValidator:
     - Validate mockup history for follow-up requests
     """
 
-    def __init__(self, user_companies: list[str]):
+    def __init__(self, user_companies: list[str], company_hint: str | None = None):
         """
         Initialize validator with user's company access.
 
         Args:
             user_companies: List of company schemas user has access to
+            company_hint: Optional company to try first for O(1) asset lookups
         """
         self.user_companies = user_companies
+        self.company_hint = company_hint
         self.logger = config.logger
         # Single service that searches all companies
         self._service = MockupFrameService(companies=user_companies)
@@ -49,7 +51,9 @@ class MockupValidator:
             - is_valid: True if location has mockups
             - error_message: Error message if invalid, None otherwise
         """
-        variations = await self._service.list_variations(location_key)
+        variations = await self._service.list_variations(
+            location_key, company_hint=self.company_hint
+        )
         if variations:
             return True, None
 
@@ -171,6 +175,9 @@ class MockupValidator:
     ) -> int | None:
         """Get the number of frames for a specific location configuration.
 
+        Optimized to use a single get_all_frames() call (which is cached)
+        and filter locally instead of making multiple API calls.
+
         Args:
             location_key: The location key to look up
             time_of_day: Filter by time of day ("day", "night", "all")
@@ -179,25 +186,29 @@ class MockupValidator:
         Returns:
             Number of frames, or None if location not found or no mockups configured
         """
-        variations = await self._service.list_variations(location_key)
-        if not variations:
+        # Single API call (cached after first fetch)
+        frames, _ = await self._service.get_all_frames(
+            location_key, company_hint=self.company_hint
+        )
+        if not frames:
             return None
 
-        # Get the first available variation that matches time_of_day/finish
-        for tod, finish_list in variations.items():
-            if time_of_day != "all" and tod != time_of_day:
+        # Filter locally to find matching frame
+        for frame in frames:
+            frame_tod = frame.get("time_of_day", "day")
+            frame_finish = frame.get("finish", "gold")
+
+            # Check time_of_day filter
+            if time_of_day != "all" and frame_tod != time_of_day:
                 continue
 
-            for fin in finish_list:
-                if finish != "all" and fin != finish:
-                    continue
+            # Check finish filter
+            if finish != "all" and frame_finish != finish:
+                continue
 
-                # Get photos for this time_of_day/finish combination
-                photos = await self._service.list_photos(location_key, tod, fin)
-                if photos:
-                    # Get frames for first photo
-                    frames_data = await self._service.get_frames(location_key, tod, fin, photos[0])
-                    if frames_data:
-                        return len(frames_data)
+            # Found a matching frame - return its frame count
+            frames_data = frame.get("frames_data", [])
+            if frames_data:
+                return len(frames_data)
 
         return None

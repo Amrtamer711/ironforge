@@ -41,6 +41,9 @@ setup_logging(
         "urllib3": "WARNING",
         "asyncio": "WARNING",
         "uvicorn.access": "WARNING",
+        "openai": "WARNING",  # Suppress verbose OpenAI SDK request logging
+        "openai._base_client": "WARNING",
+        "hpack": "WARNING",  # HTTP/2 header encoding spam
     }
 )
 

@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "local"  # 'local', 'development', 'production'
     HOST: str = "0.0.0.0"
     PORT: int = 8002
-    DEBUG: bool = False
+    LOG_LEVEL: str = "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
 
     # ==========================================================================
     # SERVICE IDENTIFICATION
@@ -202,6 +202,20 @@ settings = get_settings()
 
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
+# Configure root logger
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO),
+    format=LOG_FORMAT,
+)
+
+# Quiet down noisy third-party loggers
+for _logger_name in [
+    "httpx", "httpcore", "httpcore.http2", "httpcore.connection",
+    "urllib3", "hpack", "hpack.hpack", "hpack.table",
+    "openai", "openai._base_client",
+]:
+    logging.getLogger(_logger_name).setLevel(logging.WARNING)
+
 
 def get_logger(name: str) -> logging.Logger:
     """Get a configured logger instance."""
@@ -210,5 +224,5 @@ def get_logger(name: str) -> logging.Logger:
         handler = logging.StreamHandler()
         handler.setFormatter(logging.Formatter(LOG_FORMAT))
         log.addHandler(handler)
-        log.setLevel(logging.DEBUG if settings.DEBUG else logging.INFO)
+        log.setLevel(getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO))
     return log

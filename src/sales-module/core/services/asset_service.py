@@ -70,6 +70,9 @@ class AssetService:
         """
         Get all locations accessible to given companies.
 
+        Uses per-company caching for maximum cache sharing across users.
+        If User A caches company_a, User B with [company_a, company_b] reuses that cache.
+
         Returns locations in format:
         [
             {
@@ -94,17 +97,38 @@ class AssetService:
         if not companies:
             return []
 
-        # Check cache
-        cache_key = self._cache_key("locations", *sorted(companies))
-        if cache_key in self._cache:
-            logger.debug(f"[ASSET SERVICE] Cache hit for locations: {companies}")
-            return self._cache[cache_key]
+        all_locations = []
+        companies_to_fetch = []
 
-        # Fetch from Asset-Management API
-        locations = await self._client.get_locations(companies)
-        self._cache[cache_key] = locations
-        logger.debug(f"[ASSET SERVICE] Fetched {len(locations)} locations from API")
-        return locations
+        # Check which companies are already cached (per-company caching)
+        for company in companies:
+            cache_key = self._cache_key("locations_co", company)
+            if cache_key in self._cache:
+                logger.debug(f"[ASSET SERVICE] Cache hit for company: {company}")
+                all_locations.extend(self._cache[cache_key])
+            else:
+                companies_to_fetch.append(company)
+
+        # Fetch missing companies from API (batch call)
+        if companies_to_fetch:
+            logger.debug(f"[ASSET SERVICE] Fetching locations for: {companies_to_fetch}")
+            fetched = await self._client.get_locations(companies_to_fetch)
+
+            # Group by company and cache individually
+            by_company: dict[str, list[dict[str, Any]]] = {c: [] for c in companies_to_fetch}
+            for loc in fetched:
+                company = loc.get("company_schema") or loc.get("company")
+                if company in by_company:
+                    by_company[company].append(loc)
+
+            # Cache each company separately
+            for company, locs in by_company.items():
+                cache_key = self._cache_key("locations_co", company)
+                self._cache[cache_key] = locs
+                all_locations.extend(locs)
+                logger.debug(f"[ASSET SERVICE] Cached {len(locs)} locations for {company}")
+
+        return all_locations
 
     async def get_location_by_key(
         self,
@@ -326,6 +350,13 @@ class AssetService:
         for key in keys_to_remove:
             del self._cache[key]
         logger.debug(f"[ASSET SERVICE] Invalidated {len(keys_to_remove)} cache entries for {location_key}")
+
+    def invalidate_company(self, company: str):
+        """Invalidate all cache entries for a specific company."""
+        cache_key = self._cache_key("locations_co", company)
+        if cache_key in self._cache:
+            del self._cache[cache_key]
+            logger.debug(f"[ASSET SERVICE] Invalidated cache for company: {company}")
 
 
 # Singleton instance

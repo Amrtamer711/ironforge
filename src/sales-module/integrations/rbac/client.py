@@ -13,7 +13,6 @@ Enterprise RBAC with 4 levels:
 """
 
 import logging
-import os
 from typing import Optional
 
 from integrations.rbac.base import (
@@ -76,22 +75,13 @@ class RBACClient:
         Create an RBACClient using configuration from environment.
 
         Args:
-            provider_name: Which provider to use ("database" or "static").
-                          If None, uses RBAC_PROVIDER env var or defaults to "static".
+            provider_name: Provider to use (only "database" supported).
 
         Returns:
             Configured RBACClient instance
         """
-        provider_name = provider_name or os.getenv("RBAC_PROVIDER", "static")
-
-        if provider_name == "database":
-            from integrations.rbac.providers.database import DatabaseRBACProvider
-            provider = DatabaseRBACProvider()
-        else:
-            from integrations.rbac.providers.static import StaticRBACProvider
-            provider = StaticRBACProvider()
-
-        return cls(provider)
+        from integrations.rbac.providers.database import DatabaseRBACProvider
+        return cls(DatabaseRBACProvider())
 
     @property
     def provider(self) -> RBACProvider:

@@ -128,3 +128,7 @@ class UpdateUserRequest(BaseModel):
     is_active: bool | None = None
     profile_id: int | None = None
     profile_name: str | None = None
+
+
+class AssignUserProfileRequest(BaseModel):
+    profile_name: str

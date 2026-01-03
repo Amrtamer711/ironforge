@@ -10,7 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from fastapi.responses import FileResponse, HTMLResponse, Response
 
 import config
-from core.services import AssetService
+from core.services.asset_service import get_asset_service
 from core.services.mockup_frame_service import MockupFrameService
 from core.utils import sanitize_path_component  # ✅ Use shared utility (removed duplicate)
 from crm_security import require_permission_user as require_permission, AuthUser
@@ -120,8 +120,8 @@ async def save_mockup_frame(
             except json.JSONDecodeError:
                 raise HTTPException(status_code=400, detail="Invalid config JSON")
 
-        # Validate location exists and user has access (using AssetService)
-        asset_service = AssetService()
+        # Validate location exists and user has access (using singleton AssetService)
+        asset_service = get_asset_service()
         has_access, error_msg = await asset_service.validate_location_access(location_key, user.companies)
         if not has_access:
             raise HTTPException(status_code=403, detail=error_msg or f"Location '{location_key}' not found or not accessible")
@@ -515,6 +515,7 @@ async def generate_mockup_api(
             raise HTTPException(status_code=400, detail="Either ai_prompt or creative file must be provided")
 
         # Generate mockup (pass as list) with time_of_day, finish, specific_photo, and config override
+        # Pass company_hint for O(1) asset lookup (we already know which company owns this location)
         result_path, photo_used = await mockup_generator.generate_mockup_async(
             location_key,
             [creative_path],
@@ -523,6 +524,7 @@ async def generate_mockup_api(
             specific_photo=specific_photo,
             config_override=config_dict,
             company_schemas=user.companies,
+            company_hint=company_schema,
         )
 
         if not result_path or not photo_used:

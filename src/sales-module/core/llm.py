@@ -15,12 +15,13 @@ from db.cache import (
     pending_location_additions,
     user_history,
 )
-from integrations.channels.base import ChannelType
+from integrations.channels import ChannelType
 from integrations.llm.prompts.bo_editing import get_bo_edit_prompt
 from integrations.llm.prompts.chat import get_main_system_prompt
 from integrations.llm.schemas.bo_editing import get_bo_edit_response_schema
 from core.utils.task_queue import mockup_queue
 from workflows.bo_parser import BookingOrderParser
+from core.workflow_context import WorkflowContext
 
 
 async def _generate_mockup_queued(
@@ -31,6 +32,7 @@ async def _generate_mockup_queued(
     specific_photo: str = None,
     config_override: dict = None,
     company_schemas: list = None,
+    company_hint: str = None,
 ):
     """
     Wrapper function for mockup generation that runs through the task queue.
@@ -44,6 +46,7 @@ async def _generate_mockup_queued(
         specific_photo: Optional specific photo to use
         config_override: Optional config override
         company_schemas: List of company schemas to search for mockup data
+        company_hint: Optional company to try first for O(1) asset lookups
 
     Returns:
         Tuple of (result_path, metadata)
@@ -66,6 +69,7 @@ async def _generate_mockup_queued(
                 specific_photo=specific_photo,
                 config_override=config_override,
                 company_schemas=company_schemas,
+                company_hint=company_hint,
             )
             logger.info(f"[QUEUE] Mockup generation completed for {location_key}")
             cleanup_memory(context="mockup_queue", aggressive=False, log_stats=False)
@@ -85,6 +89,7 @@ async def _generate_ai_mockup_queued(
     finish: str,
     user_id: str | None = None,
     company_schemas: list = None,
+    company_hint: str = None,
 ):
     """
     Wrapper for AI mockup generation (AI creative generation + mockup) through the queue.
@@ -98,6 +103,7 @@ async def _generate_ai_mockup_queued(
         finish: Finish type
         user_id: Optional Slack user ID for cost tracking
         company_schemas: List of company schemas to search for mockup data
+        company_hint: Optional company to try first for O(1) asset lookups
 
     Returns:
         Tuple of (result_path, ai_creative_paths)
@@ -140,6 +146,7 @@ async def _generate_ai_mockup_queued(
                 time_of_day=time_of_day,
                 finish=finish,
                 company_schemas=company_schemas,
+                company_hint=company_hint,
             )
 
             if not result_path:
@@ -708,6 +715,7 @@ async def _process_llm_streaming(
     history: list,
     channel_adapter,
     user_companies: list[str] | None,
+    workflow_ctx: WorkflowContext | None = None,
 ) -> None:
     """
     Process LLM response using streaming for real-time token display.
@@ -797,7 +805,7 @@ async def _process_llm_streaming(
             # Handle tool call
             tool_data = list(tool_calls_data.values())[0]  # Get first tool call
 
-            from integrations.llm.base import ToolCall
+            from integrations.llm import ToolCall
             import json as json_module
 
             try:
@@ -849,6 +857,7 @@ async def _process_llm_streaming(
                 generate_mockup_queued_func=_generate_mockup_queued,
                 generate_ai_mockup_queued_func=_generate_ai_mockup_queued,
                 user_companies=user_companies,
+                workflow_ctx=workflow_ctx,
             )
 
         elif text_content:
@@ -1263,10 +1272,26 @@ async def main_llm_loop(
     static_locations = []
     digital_locations = []
 
+    # Create workflow context for request-scoped caching
+    # This avoids redundant DB queries when validating locations in tool handlers
+    # Each location in the context includes its company_schema for O(1) eligibility checks
+    workflow_ctx = None
+
     if user_companies:
-        # Get locations filtered by user's company access
-        from db.database import db
-        company_locations = db.get_locations_for_companies(user_companies)
+        # Get locations from Asset-Management (single source of truth)
+        # AssetService is a singleton with TTL cache - subsequent calls get cache hits
+        from core.services.asset_service import get_asset_service
+        asset_service = get_asset_service()
+        company_locations = await asset_service.get_locations_for_companies(user_companies)
+
+        # Create workflow context with pre-loaded locations
+        # Location dict includes company_schema, so we know location->company mapping
+        workflow_ctx = WorkflowContext.create(
+            user_id=user_id,
+            user_companies=user_companies,
+            locations_list=company_locations,
+        )
+        logger.debug(f"[LLM] Created WorkflowContext with {len(company_locations)} locations")
 
         # Debug logging for company access
         logger.info(f"[LLM] User companies: {user_companies}")
@@ -1276,7 +1301,8 @@ async def main_llm_loop(
             key = loc.get('location_key', loc.get('key', ''))
             display_name = loc.get('display_name', key)
             display_type = loc.get('display_type', '').lower()
-            company = loc.get('company_schema', 'unknown')
+            # Handle both field names: Asset-Management returns 'company', internal uses 'company_schema'
+            company = loc.get('company_schema') or loc.get('company') or 'unknown'
 
             if display_type == 'static':
                 static_locations.append(f"{display_name} ({key}) [{company}]")
@@ -1521,6 +1547,7 @@ async def main_llm_loop(
                 history=history,
                 channel_adapter=channel_adapter,
                 user_companies=user_companies,
+                workflow_ctx=workflow_ctx,
             )
         else:
             # Non-streaming for Slack and other channels
@@ -1580,6 +1607,7 @@ async def main_llm_loop(
                     generate_mockup_queued_func=_generate_mockup_queued,
                     generate_ai_mockup_queued_func=_generate_ai_mockup_queued,
                     user_companies=user_companies,
+                    workflow_ctx=workflow_ctx,
                 )
                 if handled:
                     user_history[user_id] = history[-10:]

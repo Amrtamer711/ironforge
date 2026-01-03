@@ -6,14 +6,11 @@ manages multiple channel adapters and provides a unified interface.
 """
 
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
-from .base import ChannelAdapter
+from crm_channels.base import ChannelAdapter
 
-if TYPE_CHECKING:
-    pass
-
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("crm-channels")
 
 # Global router instance
 _router: Optional["ChannelRouter"] = None

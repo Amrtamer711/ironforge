@@ -1,18 +1,39 @@
 """
-Unified LLM Client.
+Sales Module LLM Client.
 
-Provides a single interface to interact with any LLM provider.
-Handles cost tracking automatically.
+Thin wrapper around crm-llm that adds:
+- from_config() factory method using sales-module config
+- for_images() factory method for image generation
+- Automatic cost tracking to database via cost_tracker
+
+Usage:
+    from integrations.llm import LLMClient
+
+    # Initialize with default OpenAI provider (reads from config)
+    client = LLMClient.from_config()
+
+    # For image generation (uses IMAGE_PROVIDER config)
+    client = LLMClient.for_images()
+
+    # Simple completion
+    response = await client.complete([
+        LLMMessage.system("You are a helpful assistant."),
+        LLMMessage.user("Hello!")
+    ])
+    print(response.content)
 """
 
 import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from integrations.llm.base import (
+# Import everything from crm-llm
+from crm_llm import LLMClient as BaseLLMClient
+from crm_llm import (
     ContentPart,
     CostInfo,
     FileReference,
+    GoogleProvider,
     ImageResponse,
     JSONSchema,
     LLMMessage,
@@ -24,57 +45,19 @@ from integrations.llm.base import (
     ToolCall,
     ToolDefinition,
 )
-from integrations.llm.providers.google import GoogleProvider
-from integrations.llm.providers.openai import OpenAIProvider
 
 logger = logging.getLogger("proposal-bot")
 
 
-class LLMClient:
+class LLMClient(BaseLLMClient):
     """
-    Unified LLM client that abstracts provider-specific implementations.
+    Sales-module LLM client with config integration and cost tracking.
 
-    Usage:
-        from integrations.llm import LLMClient
-
-        # Initialize with default OpenAI provider
-        client = LLMClient.from_config()
-
-        # Simple completion
-        response = await client.complete([
-            LLMMessage.system("You are a helpful assistant."),
-            LLMMessage.user("Hello!")
-        ])
-        print(response.content)
-
-        # Structured output with JSON schema
-        response = await client.complete(
-            messages=[LLMMessage.system("Extract data...")],
-            json_schema=JSONSchema(
-                name="extraction",
-                schema={"type": "object", "properties": {...}}
-            )
-        )
-
-        # With file attachment
-        file_ref = await client.upload_file("/path/to/file.pdf")
-        response = await client.complete([
-            LLMMessage.user([
-                ContentPart.file(file_ref.file_id),
-                ContentPart.text("Analyze this document")
-            ])
-        ])
-        await client.delete_file(file_ref)
+    Extends crm-llm's LLMClient with:
+    - from_config(): Create client from sales-module config
+    - for_images(): Create client for image generation
+    - Automatic cost tracking to database
     """
-
-    def __init__(self, provider: LLMProvider):
-        """
-        Initialize the LLM client with a provider.
-
-        Args:
-            provider: The LLM provider implementation to use
-        """
-        self._provider = provider
 
     @classmethod
     def from_config(cls, provider_name: str | None = None) -> "LLMClient":
@@ -89,6 +72,7 @@ class LLMClient:
             Configured LLMClient instance
         """
         import config
+        from crm_llm import OpenAIProvider
 
         # Determine which provider to use
         provider_name = provider_name or getattr(config, "LLM_PROVIDER", "openai")
@@ -97,8 +81,6 @@ class LLMClient:
             api_key = getattr(config, "GOOGLE_API_KEY", None)
             if not api_key:
                 raise ValueError("GOOGLE_API_KEY not configured")
-
-            # Google: fixed models per task type
             provider = GoogleProvider(api_key=api_key)
         else:
             # OpenAI: fixed models per task type
@@ -127,15 +109,9 @@ class LLMClient:
 
         return cls.from_config(provider_name)
 
-    @property
-    def provider(self) -> LLMProvider:
-        """Access the underlying provider."""
-        return self._provider
-
-    @property
-    def provider_name(self) -> str:
-        """Get the name of the current provider."""
-        return self._provider.name
+    # =========================================================================
+    # Override methods to add cost tracking
+    # =========================================================================
 
     async def complete(
         self,
@@ -148,7 +124,6 @@ class LLMClient:
         temperature: float | None = None,
         max_tokens: int | None = None,
         store: bool = False,
-        # Prompt caching parameters (OpenAI-specific)
         cache_key: str | None = None,
         cache_retention: str | None = None,
         # Cost tracking parameters
@@ -159,31 +134,7 @@ class LLMClient:
         context: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> LLMResponse:
-        """
-        Generate a completion from the LLM.
-
-        Args:
-            messages: List of messages in the conversation
-            model: Model to use (uses provider default if not set)
-            tools: List of ToolDefinition objects for function calling
-            tool_choice: Tool choice mode ("auto", "none", "required")
-            json_schema: JSON schema for structured output
-            reasoning: Reasoning effort level (LOW, MEDIUM, HIGH)
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens to generate
-            store: Whether to store the response
-            cache_key: Prompt cache routing key (OpenAI: e.g., "proposal-system")
-            cache_retention: Cache retention policy (OpenAI: "in_memory" or "24h")
-            track_cost: Whether to track API costs (default True)
-            call_type: Type of call for cost tracking
-            user_id: User ID/name for cost tracking
-            workflow: Workflow name for cost tracking
-            context: Additional context for cost tracking
-            metadata: Additional metadata for cost tracking
-
-        Returns:
-            LLMResponse with content, usage, and optional tool_calls
-        """
+        """Generate a completion from the LLM with automatic cost tracking."""
         response = await self._provider.complete(
             messages=messages,
             model=model,
@@ -199,9 +150,9 @@ class LLMClient:
         )
 
         # Track cost if enabled and we have usage data
-        if track_cost and response.usage:
-            self._track_completion_cost(
-                response=response,
+        if track_cost and response.cost:
+            self._track_cost(
+                cost=response.cost,
                 call_type=call_type,
                 user_id=user_id,
                 workflow=workflow,
@@ -220,7 +171,6 @@ class LLMClient:
         reasoning: ReasoningEffort | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
-        # Prompt caching parameters (OpenAI-specific)
         cache_key: str | None = None,
         cache_retention: str | None = None,
         # Cost tracking parameters
@@ -231,39 +181,7 @@ class LLMClient:
         context: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        """
-        Stream a completion from the LLM, yielding events as they arrive.
-
-        Yields semantic events from the provider:
-        - {"type": "response.created", "response_id": str}
-        - {"type": "response.output_text.delta", "delta": str, ...}
-        - {"type": "response.output_text.done", "text": str, ...}
-        - {"type": "response.function_call_arguments.delta", ...}
-        - {"type": "response.function_call_arguments.done", ...}
-        - {"type": "response.completed", "usage": TokenUsage, "cost": CostInfo}
-        - {"type": "error", "message": str}
-
-        Args:
-            messages: List of messages in the conversation
-            model: Model to use (uses provider default if not set)
-            tools: List of ToolDefinition objects for function calling
-            tool_choice: Tool choice mode ("auto", "none", "required")
-            reasoning: Reasoning effort level (LOW, MEDIUM, HIGH)
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens to generate
-            cache_key: Prompt cache routing key (OpenAI: e.g., "proposal-system")
-            cache_retention: Cache retention policy (OpenAI: "in_memory" or "24h")
-            track_cost: Whether to track API costs (default True)
-            call_type: Type of call for cost tracking
-            user_id: User ID/name for cost tracking
-            workflow: Workflow name for cost tracking
-            context: Additional context for cost tracking
-            metadata: Additional metadata for cost tracking
-
-        Yields:
-            Event dicts with semantic information about the streaming response
-        """
-        # Try to use streaming, fall back to non-streaming if not supported
+        """Stream a completion from the LLM with automatic cost tracking."""
         try:
             async for event in self._provider.stream_complete(
                 messages=messages,
@@ -277,21 +195,15 @@ class LLMClient:
                 cache_retention=cache_retention,
             ):
                 # Track cost on completion event
-                if event.get("type") == "response.completed" and track_cost and event.get("usage"):
-                    try:
-                        from integrations.llm import cost_tracker
-
-                        if event.get("cost"):
-                            cost_tracker.track_cost(
-                                cost=event["cost"],
-                                call_type=call_type,
-                                user_id=user_id,
-                                workflow=workflow,
-                                context=context,
-                                metadata=metadata,
-                            )
-                    except Exception as e:
-                        logger.warning(f"[LLM] Failed to track streaming cost: {e}")
+                if event.get("type") == "response.completed" and track_cost and event.get("cost"):
+                    self._track_cost(
+                        cost=event["cost"],
+                        call_type=call_type,
+                        user_id=user_id,
+                        workflow=workflow,
+                        context=context,
+                        metadata=metadata,
+                    )
 
                 yield event
 
@@ -345,27 +257,7 @@ class LLMClient:
         context: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> ImageResponse:
-        """
-        Generate an image from a text prompt.
-
-        Unified interface - providers handle quality/orientation internally:
-        - OpenAI (gpt-image-1): quality=low/medium/high, orientation→size
-        - Google (gemini-3-pro): quality→resolution (1K/2K/4K), orientation→aspect_ratio
-
-        Args:
-            prompt: Text description of the image
-            quality: "low", "medium", or "high"
-            orientation: "portrait" or "landscape"
-            n: Number of images to generate
-            track_cost: Whether to track API costs
-            user_id: User ID/name for cost tracking
-            workflow: Workflow name for cost tracking
-            context: Additional context for cost tracking
-            metadata: Additional metadata for cost tracking
-
-        Returns:
-            ImageResponse with generated image bytes
-        """
+        """Generate an image from a text prompt with automatic cost tracking."""
         response = await self._provider.generate_image(
             prompt=prompt,
             quality=quality,
@@ -374,10 +266,10 @@ class LLMClient:
         )
 
         # Track cost if enabled
-        if track_cost:
-            self._track_image_cost(
-                response=response,
-                n=n,
+        if track_cost and response.cost:
+            self._track_cost(
+                cost=response.cost,
+                call_type="image_generation",
                 user_id=user_id,
                 workflow=workflow,
                 context=context,
@@ -386,86 +278,29 @@ class LLMClient:
 
         return response
 
-    async def upload_file(
+    def _track_cost(
         self,
-        file_path: str,
-        purpose: str = "user_data",
-    ) -> FileReference:
-        """
-        Upload a file for use in completions.
-
-        Args:
-            file_path: Path to the file to upload
-            purpose: Purpose of the file upload
-
-        Returns:
-            FileReference with the file ID
-        """
-        return await self._provider.upload_file(file_path, purpose)
-
-    async def delete_file(self, file_ref: FileReference) -> bool:
-        """
-        Delete a previously uploaded file.
-
-        Args:
-            file_ref: Reference to the file to delete
-
-        Returns:
-            True if deleted successfully
-        """
-        return await self._provider.delete_file(file_ref)
-
-    def _track_completion_cost(
-        self,
-        response: LLMResponse,
+        cost: CostInfo,
         call_type: str,
         user_id: str | None,
         workflow: str | None,
         context: str | None,
         metadata: dict[str, Any] | None,
     ) -> None:
-        """Track cost for a completion call."""
+        """Track cost using sales-module's cost_tracker."""
         try:
             from integrations.llm import cost_tracker
 
-            # Use the CostInfo from the response (calculated by provider)
-            if response.cost:
-                cost_tracker.track_cost(
-                    cost=response.cost,
-                    call_type=call_type,
-                    user_id=user_id,
-                    workflow=workflow,
-                    context=context,
-                    metadata=metadata,
-                )
+            cost_tracker.track_cost(
+                cost=cost,
+                call_type=call_type,
+                user_id=user_id,
+                workflow=workflow,
+                context=context,
+                metadata=metadata,
+            )
         except Exception as e:
-            logger.warning(f"[LLM] Failed to track completion cost: {e}")
-
-    def _track_image_cost(
-        self,
-        response: ImageResponse,
-        n: int,
-        user_id: str | None,
-        workflow: str | None,
-        context: str | None,
-        metadata: dict[str, Any] | None,
-    ) -> None:
-        """Track cost for an image generation call."""
-        try:
-            from integrations.llm import cost_tracker
-
-            # Use the CostInfo from the response (calculated by provider)
-            if response.cost:
-                cost_tracker.track_cost(
-                    cost=response.cost,
-                    call_type="image_generation",
-                    user_id=user_id,
-                    workflow=workflow,
-                    context=context,
-                    metadata=metadata,
-                )
-        except Exception as e:
-            logger.warning(f"[LLM] Failed to track image cost: {e}")
+            logger.warning(f"[LLM] Failed to track cost: {e}")
 
 
 # Re-export commonly used types for convenience

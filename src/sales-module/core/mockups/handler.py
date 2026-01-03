@@ -29,6 +29,7 @@ async def handle_mockup_generation(
     download_file_func: Callable = None,
     generate_mockup_queued_func: Callable = None,
     generate_ai_mockup_queued_func: Callable = None,
+    company_hint: str | None = None,
 ) -> bool:
     """
     Handle mockup generation request from chat channels.
@@ -53,6 +54,7 @@ async def handle_mockup_generation(
         download_file_func: Function to download files (channel-agnostic)
         generate_mockup_queued_func: Function for queued mockup generation
         generate_ai_mockup_queued_func: Function for queued AI mockup generation
+        company_hint: Optional company to try first for O(1) asset lookups
 
     Returns:
         True when handled (success or error)
@@ -76,7 +78,8 @@ async def handle_mockup_generation(
     coordinator = MockupCoordinator(
         user_companies=user_companies,
         generate_mockup_func=generate_mockup_queued_func,
-        generate_ai_mockup_func=generate_ai_mockup_queued_func
+        generate_ai_mockup_func=generate_ai_mockup_queued_func,
+        company_hint=company_hint,
     )
 
     # Generate mockup (coordinator handles all modes: upload/AI/followup)

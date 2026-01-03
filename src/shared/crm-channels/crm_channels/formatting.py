@@ -7,7 +7,7 @@ converted to any platform's native format.
 
 import re
 
-from .base import MessageFormat
+from crm_channels.base import MessageFormat
 
 
 class ChannelFormatter:
@@ -29,7 +29,7 @@ class ChannelFormatter:
         - `code` -> `code` (same)
         - [link](url) -> <url|link>
         - # Header -> *Header*
-        - - bullet -> • bullet
+        - - bullet -> * bullet
         """
         if not text:
             return text
@@ -67,8 +67,8 @@ class ChannelFormatter:
         # Convert headers: # Header -> *Header*
         text = re.sub(r'^#{1,6}\s+(.+)$', r'*\1*', text, flags=re.MULTILINE)
 
-        # Convert bullet points: - item or * item -> • item
-        text = re.sub(r'^[\-\*]\s+', '• ', text, flags=re.MULTILINE)
+        # Convert bullet points: - item or * item -> * item
+        text = re.sub(r'^[\-\*]\s+', '* ', text, flags=re.MULTILINE)
 
         # Convert numbered lists: 1. item -> 1. item (keep as-is)
 

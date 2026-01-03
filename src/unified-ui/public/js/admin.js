@@ -39,26 +39,21 @@ const AdminState = {
 // =============================================================================
 
 const AdminAPI = {
-  // Dashboard
-  async getDashboard() {
-    return await API.fetch('/api/admin/dashboard');
-  },
-
-  // =================== USERS ===================
+  // =================== USERS (unified-ui /api/admin/users) ===================
   async getUsers(limit = 100, offset = 0) {
     return await API.fetch(`/api/admin/users?limit=${limit}&offset=${offset}`);
   },
 
   async getUser(userId) {
-    return await API.fetch(`/api/admin/users/${userId}`);
+    return await API.fetch(`/api/rbac/users/${userId}`);
   },
 
   async getUserPermissions(userId) {
-    return await API.fetch(`/api/admin/users/${userId}/permissions`);
+    return await API.fetch(`/api/rbac/users/${userId}/permissions`);
   },
 
   async createUser(userData) {
-    return await API.fetch('/api/admin/users', {
+    return await API.fetch('/api/admin/users/create', {
       method: 'POST',
       body: JSON.stringify(userData),
     });
@@ -66,163 +61,164 @@ const AdminAPI = {
 
   async updateUser(userId, userData) {
     return await API.fetch(`/api/admin/users/${userId}`, {
-      method: 'PUT',
+      method: 'PATCH',
       body: JSON.stringify(userData),
     });
   },
 
   async deleteUser(userId) {
-    await API.fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+    await API.fetch(`/api/admin/users/${userId}/deactivate`, { method: 'POST' });
   },
 
   async assignUserProfile(userId, profileName) {
-    return await API.fetch(`/api/admin/users/${userId}/profile?profile_name=${profileName}`, {
+    return await API.fetch(`/api/rbac/users/${userId}/profile`, {
       method: 'PUT',
+      body: JSON.stringify({ profile_name: profileName }),
     });
   },
 
   async setUserManager(userId, managerId) {
-    const params = managerId ? `?manager_id=${managerId}` : '';
-    return await API.fetch(`/api/admin/users/${userId}/manager${params}`, {
+    return await API.fetch(`/api/rbac/users/${userId}/manager`, {
       method: 'PUT',
+      body: JSON.stringify({ manager_id: managerId }),
     });
   },
 
-  // =================== PROFILES ===================
+  // =================== PROFILES (/api/rbac/profiles) ===================
   async getProfiles() {
-    return await API.fetch('/api/admin/profiles');
+    return await API.fetch('/api/rbac/profiles');
   },
 
   async getProfile(profileName) {
-    return await API.fetch(`/api/admin/profiles/${profileName}`);
+    return await API.fetch(`/api/rbac/profiles/${profileName}`);
   },
 
   async createProfile(profileData) {
-    return await API.fetch('/api/admin/profiles', {
+    return await API.fetch('/api/rbac/profiles', {
       method: 'POST',
       body: JSON.stringify(profileData),
     });
   },
 
   async updateProfile(profileName, profileData) {
-    return await API.fetch(`/api/admin/profiles/${profileName}`, {
+    return await API.fetch(`/api/rbac/profiles/${profileName}`, {
       method: 'PUT',
       body: JSON.stringify(profileData),
     });
   },
 
   async deleteProfile(profileName) {
-    await API.fetch(`/api/admin/profiles/${profileName}`, { method: 'DELETE' });
+    await API.fetch(`/api/rbac/profiles/${profileName}`, { method: 'DELETE' });
   },
 
-  // =================== PERMISSION SETS ===================
+  // =================== PERMISSION SETS (/api/rbac/permission-sets) ===================
   async getPermissionSets() {
-    return await API.fetch('/api/admin/permission-sets');
+    return await API.fetch('/api/rbac/permission-sets');
   },
 
   async getPermissionSet(psName) {
-    return await API.fetch(`/api/admin/permission-sets/${psName}`);
+    return await API.fetch(`/api/rbac/permission-sets/${psName}`);
   },
 
   async createPermissionSet(psData) {
-    return await API.fetch('/api/admin/permission-sets', {
+    return await API.fetch('/api/rbac/permission-sets', {
       method: 'POST',
       body: JSON.stringify(psData),
     });
   },
 
   async updatePermissionSet(psName, psData) {
-    return await API.fetch(`/api/admin/permission-sets/${psName}`, {
+    return await API.fetch(`/api/rbac/permission-sets/${psName}`, {
       method: 'PUT',
       body: JSON.stringify(psData),
     });
   },
 
   async deletePermissionSet(psName) {
-    await API.fetch(`/api/admin/permission-sets/${psName}`, { method: 'DELETE' });
+    await API.fetch(`/api/rbac/permission-sets/${psName}`, { method: 'DELETE' });
   },
 
   async assignUserPermissionSet(userId, psName, expiresAt = null) {
-    return await API.fetch(`/api/admin/users/${userId}/permission-sets/${psName}`, {
+    return await API.fetch(`/api/rbac/users/${userId}/permission-sets/${psName}`, {
       method: 'POST',
       body: JSON.stringify({ expires_at: expiresAt }),
     });
   },
 
   async revokeUserPermissionSet(userId, psName) {
-    await API.fetch(`/api/admin/users/${userId}/permission-sets/${psName}`, {
+    await API.fetch(`/api/rbac/users/${userId}/permission-sets/${psName}`, {
       method: 'DELETE',
     });
   },
 
-  // =================== TEAMS ===================
+  // =================== TEAMS (/api/rbac/teams) ===================
   async getTeams() {
-    return await API.fetch('/api/admin/teams');
+    return await API.fetch('/api/rbac/teams');
   },
 
   async getTeam(teamId) {
-    return await API.fetch(`/api/admin/teams/${teamId}`);
+    return await API.fetch(`/api/rbac/teams/${teamId}`);
   },
 
   async createTeam(teamData) {
-    return await API.fetch('/api/admin/teams', {
+    return await API.fetch('/api/rbac/teams', {
       method: 'POST',
       body: JSON.stringify(teamData),
     });
   },
 
   async updateTeam(teamId, teamData) {
-    return await API.fetch(`/api/admin/teams/${teamId}`, {
+    return await API.fetch(`/api/rbac/teams/${teamId}`, {
       method: 'PUT',
       body: JSON.stringify(teamData),
     });
   },
 
   async deleteTeam(teamId) {
-    await API.fetch(`/api/admin/teams/${teamId}`, { method: 'DELETE' });
+    await API.fetch(`/api/rbac/teams/${teamId}`, { method: 'DELETE' });
   },
 
   async getTeamMembers(teamId) {
-    return await API.fetch(`/api/admin/teams/${teamId}/members`);
+    return await API.fetch(`/api/rbac/teams/${teamId}/members`);
   },
 
   async addTeamMember(teamId, userId, role = 'member') {
-    return await API.fetch(`/api/admin/teams/${teamId}/members`, {
+    return await API.fetch(`/api/rbac/teams/${teamId}/members`, {
       method: 'POST',
       body: JSON.stringify({ user_id: userId, role }),
     });
   },
 
   async removeTeamMember(teamId, userId) {
-    await API.fetch(`/api/admin/teams/${teamId}/members/${userId}`, {
+    await API.fetch(`/api/rbac/teams/${teamId}/members/${userId}`, {
       method: 'DELETE',
     });
   },
 
-  // =================== SHARING RULES ===================
+  // =================== SHARING RULES (/api/rbac/sharing-rules) ===================
   async getSharingRules(objectType = null) {
     const params = objectType ? `?object_type=${objectType}` : '';
-    return await API.fetch(`/api/admin/sharing-rules${params}`);
+    return await API.fetch(`/api/rbac/sharing-rules${params}`);
   },
 
   async createSharingRule(ruleData) {
-    return await API.fetch('/api/admin/sharing-rules', {
+    return await API.fetch('/api/rbac/sharing-rules', {
       method: 'POST',
       body: JSON.stringify(ruleData),
     });
   },
 
   async deleteSharingRule(ruleId) {
-    await API.fetch(`/api/admin/sharing-rules/${ruleId}`, { method: 'DELETE' });
+    await API.fetch(`/api/rbac/sharing-rules/${ruleId}`, { method: 'DELETE' });
   },
 
-  // =================== PERMISSIONS ===================
+  // =================== PERMISSIONS (/api/rbac/permissions) ===================
   async getPermissions() {
-    return await API.fetch('/api/admin/permissions');
+    return await API.fetch('/api/rbac/permissions');
   },
 
   async getPermissionsGrouped() {
-    return await API.fetch('/api/admin/permissions/grouped');
+    return await API.fetch('/api/rbac/permissions/grouped');
   },
 
   // =================== INVITES ===================
@@ -241,28 +237,28 @@ const AdminAPI = {
     await API.fetch(`/api/base/auth/invites/${tokenId}`, { method: 'DELETE' });
   },
 
-  // =================== API KEYS ===================
+  // =================== API KEYS (/api/security/api-keys) ===================
   async getApiKeys(includeInactive = false) {
-    return await API.fetch(`/api/admin/api-keys?include_inactive=${includeInactive}`);
+    return await API.fetch(`/api/security/api-keys?include_inactive=${includeInactive}`);
   },
 
   async createApiKey(keyData) {
-    return await API.fetch('/api/admin/api-keys', {
+    return await API.fetch('/api/security/api-keys', {
       method: 'POST',
       body: JSON.stringify(keyData),
     });
   },
 
   async rotateApiKey(keyId) {
-    return await API.fetch(`/api/admin/api-keys/${keyId}/rotate`, { method: 'POST' });
+    return await API.fetch(`/api/security/api-keys/${keyId}/rotate`, { method: 'POST' });
   },
 
   async deleteApiKey(keyId) {
-    await API.fetch(`/api/admin/api-keys/${keyId}`, { method: 'DELETE' });
+    await API.fetch(`/api/security/api-keys/${keyId}`, { method: 'DELETE' });
   },
 
   async deactivateApiKey(keyId) {
-    return await API.fetch(`/api/admin/api-keys/${keyId}/deactivate`, { method: 'POST' });
+    return await API.fetch(`/api/security/api-keys/${keyId}/deactivate`, { method: 'POST' });
   },
 };
 

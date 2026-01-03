@@ -42,6 +42,13 @@ PyJWT>=2.8.0
 # When installing standalone: pip install -e ../shared/crm-security[fastapi]
 # crm-security  # Installed via requirements-dev.txt or PYTHONPATH
 
+# CRM Cache SDK
+# When installing standalone: pip install -e ../shared/crm-cache[redis]
+# crm-cache  # Installed via requirements-dev.txt or PYTHONPATH
+
+# Redis (for distributed caching)
+redis>=5.0.0
+
 # =============================================================================
 # DEV TOOLS (for dev panel)
 # =============================================================================

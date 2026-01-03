@@ -30,7 +30,8 @@ class AIMockupStrategy(MockupStrategy):
     def __init__(
         self,
         validator: Any,  # MockupValidator
-        generate_ai_mockup_func: Callable
+        generate_ai_mockup_func: Callable,
+        company_hint: str | None = None,
     ):
         """
         Initialize AI strategy.
@@ -38,9 +39,11 @@ class AIMockupStrategy(MockupStrategy):
         Args:
             validator: MockupValidator instance
             generate_ai_mockup_func: Function to generate AI creative and mockup
+            company_hint: Optional company to try first for O(1) asset lookups
         """
         self.validator = validator
         self.generate_ai_mockup_func = generate_ai_mockup_func
+        self.company_hint = company_hint
         self.logger = config.logger
 
     def can_handle(self, **kwargs) -> bool:
@@ -121,6 +124,7 @@ class AIMockupStrategy(MockupStrategy):
                 finish=finish,
                 user_id=user_id,
                 company_schemas=user_companies,
+                company_hint=self.company_hint,
             )
 
             if not result_path:

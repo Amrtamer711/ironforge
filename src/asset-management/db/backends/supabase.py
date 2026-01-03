@@ -5,9 +5,11 @@ This backend uses Supabase for cloud-hosted PostgreSQL storage with
 multi-schema support for company isolation.
 """
 
+import asyncio
 import json
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any
 
@@ -15,6 +17,29 @@ from config import COMPANY_SCHEMAS, SUPABASE_URL, SUPABASE_SERVICE_KEY
 from db.base import DatabaseBackend
 
 logger = logging.getLogger("asset-management")
+
+# Cache TTLs (in seconds)
+NETWORK_CACHE_TTL = 1800  # 30 minutes for networks (rarely change)
+LOCATION_CACHE_TTL = 600  # 10 minutes for locations
+ASSET_TYPE_CACHE_TTL = 1800  # 30 minutes for asset types
+PACKAGE_CACHE_TTL = 900  # 15 minutes for packages
+FRAME_CACHE_TTL = 600  # 10 minutes for frames
+NETWORK_ASSET_CACHE_TTL = 600  # 10 minutes for network assets
+
+
+def _run_async(coro):
+    """Run async code from sync context."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(asyncio.run, coro).result()
+    else:
+        return asyncio.run(coro)
 
 
 class SupabaseOperationError(Exception):
@@ -33,6 +58,8 @@ class SupabaseBackend(DatabaseBackend):
     def __init__(self):
         """Initialize Supabase backend using config values."""
         self._client = None
+        self._cache = None
+        self._cache_initialized = False
 
         # Use config values which derive from service-specific env vars
         self._url = SUPABASE_URL
@@ -43,6 +70,92 @@ class SupabaseBackend(DatabaseBackend):
                 "[SUPABASE] Credentials not configured. "
                 "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables."
             )
+
+    # ========== CACHE METHODS ==========
+
+    def _get_cache(self):
+        """Get the cache backend (lazy initialization)."""
+        if self._cache is not None:
+            return self._cache
+
+        if self._cache_initialized:
+            return None
+
+        self._cache_initialized = True
+
+        try:
+            from crm_cache import get_cache
+            self._cache = get_cache()
+            logger.info("[CACHE] Cache backend initialized for asset-management")
+            return self._cache
+        except ImportError:
+            logger.warning("[CACHE] crm_cache not installed, caching disabled")
+            return None
+        except Exception as e:
+            logger.warning(f"[CACHE] Failed to initialize cache: {e}")
+            return None
+
+    async def _cache_get(self, key: str) -> Any | None:
+        """Get value from cache."""
+        cache = self._get_cache()
+        if not cache:
+            return None
+        try:
+            return await cache.get(key)
+        except Exception as e:
+            logger.debug(f"[CACHE] Get error: {e}")
+            return None
+
+    async def _cache_set(self, key: str, value: Any, ttl: int = 300) -> None:
+        """Set value in cache."""
+        cache = self._get_cache()
+        if not cache:
+            return
+        try:
+            await cache.set(key, value, ttl=ttl)
+        except Exception as e:
+            logger.debug(f"[CACHE] Set error: {e}")
+
+    async def _cache_delete(self, key: str) -> None:
+        """Delete a specific cache key."""
+        cache = self._get_cache()
+        if not cache:
+            return
+        try:
+            await cache.delete(key)
+        except Exception as e:
+            logger.debug(f"[CACHE] Delete error: {e}")
+
+    async def _cache_delete_pattern(self, pattern: str) -> int:
+        """Delete all keys matching pattern."""
+        cache = self._get_cache()
+        if not cache:
+            return 0
+        try:
+            return await cache.delete_pattern(pattern)
+        except Exception as e:
+            logger.debug(f"[CACHE] Delete pattern error: {e}")
+            return 0
+
+    def invalidate_asset_caches(self, schemas: list[str] | None = None) -> None:
+        """Invalidate all asset-related caches."""
+        _run_async(self._cache_delete_pattern("networks:*"))
+        _run_async(self._cache_delete_pattern("network:*"))
+        _run_async(self._cache_delete_pattern("network_key:*"))
+        _run_async(self._cache_delete_pattern("locations:*"))
+        _run_async(self._cache_delete_pattern("location:*"))
+        _run_async(self._cache_delete_pattern("location_id:*"))
+        _run_async(self._cache_delete_pattern("asset_types:*"))
+        _run_async(self._cache_delete_pattern("asset_type:*"))
+        _run_async(self._cache_delete_pattern("packages:*"))
+        _run_async(self._cache_delete_pattern("frames:*"))
+        logger.info("[CACHE] Invalidated asset caches")
+
+    def invalidate_frames_cache(self, location_key: str, company_schema: str) -> None:
+        """Invalidate frames cache for a specific location."""
+        cache_key = f"frames:{location_key.lower()}:{company_schema}"
+        _run_async(self._cache_delete_pattern(cache_key))
+        logger.debug(f"[CACHE] Invalidated frames cache for {location_key}")
 
     @property
     def name(self) -> str:
@@ -105,7 +218,7 @@ class SupabaseBackend(DatabaseBackend):
         select: str = "*",
     ) -> tuple[dict | None, str | None, str]:
         """
-        Search for a record across all company schemas with access control.
+        Search for a record across all company schemas IN PARALLEL with access control.
 
         Args:
             table: Table name to query
@@ -121,27 +234,38 @@ class SupabaseBackend(DatabaseBackend):
         """
         client = self._get_client()
 
-        for schema in COMPANY_SCHEMAS:
+        def search_schema(schema: str) -> tuple[str, Any]:
+            """Search a single schema, return (schema, data) tuple."""
             try:
                 query = client.schema(schema).table(table).select(select)
                 for col, val in filters.items():
                     query = query.eq(col, val)
                 response = query.execute()
-
                 if response.data:
-                    if schema in user_companies:
-                        result = response.data[0] if len(response.data) == 1 else response.data
-                        if isinstance(result, dict):
-                            result["company_schema"] = schema
-                        elif isinstance(result, list):
-                            for item in result:
-                                item["company_schema"] = schema
-                        return (result, schema, "found")
-                    else:
-                        return (None, schema, "access_denied")
+                    return (schema, response.data[0] if len(response.data) == 1 else response.data)
+                return (schema, None)
             except Exception as e:
                 logger.debug(f"[SUPABASE] Error searching {schema}.{table}: {e}")
-                continue
+                return (schema, None)
+
+        # Search all schemas in parallel
+        with ThreadPoolExecutor(max_workers=len(COMPANY_SCHEMAS)) as executor:
+            results = list(executor.map(search_schema, COMPANY_SCHEMAS))
+
+        # Find first match and check access
+        for schema, data in results:
+            if data:
+                if schema in user_companies:
+                    # Add company_schema to the result
+                    if isinstance(data, dict):
+                        data["company_schema"] = schema
+                    elif isinstance(data, list):
+                        for item in data:
+                            item["company_schema"] = schema
+                    return (data, schema, "found")
+                else:
+                    # Found but user can't access
+                    return (None, schema, "access_denied")
 
         return (None, None, "not_found")
 
@@ -156,7 +280,7 @@ class SupabaseBackend(DatabaseBackend):
         offset: int | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Query a table across multiple company schemas and aggregate results.
+        Query a table across multiple company schemas IN PARALLEL and aggregate results.
 
         Args:
             table: Table name to query
@@ -171,9 +295,9 @@ class SupabaseBackend(DatabaseBackend):
             List of records from all schemas, each with 'company_schema' field
         """
         client = self._get_client()
-        all_results = []
 
-        for schema in company_schemas:
+        def query_single_schema(schema: str) -> list[dict[str, Any]]:
+            """Query a single schema, return list of records with company_schema added."""
             try:
                 query = client.schema(schema).table(table).select(select)
 
@@ -196,12 +320,18 @@ class SupabaseBackend(DatabaseBackend):
                 if response.data:
                     for record in response.data:
                         record["company_schema"] = schema
-                        all_results.append(record)
+                    return response.data
+                return []
             except Exception as e:
                 logger.error(f"[SUPABASE] Error querying {schema}.{table}: {e}")
-                continue
+                return []
 
-        return all_results
+        # Query all schemas in parallel
+        with ThreadPoolExecutor(max_workers=len(company_schemas)) as executor:
+            results = list(executor.map(query_single_schema, company_schemas))
+
+        # Flatten results
+        return [record for schema_results in results for record in schema_results]
 
     # =========================================================================
     # NETWORKS
@@ -232,6 +362,10 @@ class SupabaseBackend(DatabaseBackend):
             if response.data:
                 result = response.data[0]
                 result["company_schema"] = company_schema
+
+                # Invalidate networks cache
+                _run_async(self._cache_delete_pattern(f"networks:*{company_schema}*"))
+
                 return result
             return None
         except Exception as e:
@@ -243,11 +377,24 @@ class SupabaseBackend(DatabaseBackend):
         network_id: int,
         company_schemas: list[str],
     ) -> dict[str, Any] | None:
+        """Get a network by ID (cached)."""
+        cache_key = f"network:{network_id}:{','.join(sorted(company_schemas))}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Network cache hit: {network_id}")
+            return cached
+
         result, _, status = self._find_in_schemas(
             "networks",
             {"id": network_id, "is_active": True},
             company_schemas,
         )
+
+        if status == "found" and result:
+            _run_async(self._cache_set(cache_key, result, ttl=NETWORK_CACHE_TTL))
+
         return result if status == "found" else None
 
     def get_network_by_key(
@@ -255,11 +402,24 @@ class SupabaseBackend(DatabaseBackend):
         network_key: str,
         company_schemas: list[str],
     ) -> dict[str, Any] | None:
+        """Get a network by key (cached)."""
+        cache_key = f"network_key:{network_key}:{','.join(sorted(company_schemas))}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Network by key cache hit: {network_key}")
+            return cached
+
         result, _, status = self._find_in_schemas(
             "networks",
             {"network_key": network_key, "is_active": True},
             company_schemas,
         )
+
+        if status == "found" and result:
+            _run_async(self._cache_set(cache_key, result, ttl=NETWORK_CACHE_TTL))
+
         return result if status == "found" else None
 
     def list_networks(
@@ -269,6 +429,16 @@ class SupabaseBackend(DatabaseBackend):
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
+        # Create cache key
+        cache_key = f"networks:{','.join(sorted(company_schemas))}:active={not include_inactive}"
+
+        # Try cache first (only for default pagination)
+        if offset == 0 and limit >= 100:
+            cached = _run_async(self._cache_get(cache_key))
+            if cached is not None:
+                logger.debug(f"[CACHE] Networks cache hit ({len(cached)} networks)")
+                return cached
+
         filters = {} if include_inactive else {"is_active": True}
         results = self._query_schemas(
             "networks",
@@ -278,6 +448,12 @@ class SupabaseBackend(DatabaseBackend):
             limit=limit,
             offset=offset,
         )
+
+        # Cache the result (only for default pagination)
+        if offset == 0 and limit >= 100:
+            _run_async(self._cache_set(cache_key, results, ttl=NETWORK_CACHE_TTL))
+            logger.debug(f"[CACHE] Cached {len(results)} networks")
+
         return results
 
     def update_network(
@@ -302,6 +478,12 @@ class SupabaseBackend(DatabaseBackend):
             if response.data:
                 result = response.data[0]
                 result["company_schema"] = company_schema
+
+                # Invalidate network caches
+                _run_async(self._cache_delete_pattern(f"network:{network_id}:*"))
+                _run_async(self._cache_delete_pattern(f"network_key:*"))
+                _run_async(self._cache_delete_pattern(f"networks:*{company_schema}*"))
+
                 return result
             return None
         except Exception as e:
@@ -332,7 +514,16 @@ class SupabaseBackend(DatabaseBackend):
                     .eq("id", network_id)
                     .execute()
                 )
-            return len(response.data) > 0 if response.data else False
+
+            success = len(response.data) > 0 if response.data else False
+
+            if success:
+                # Invalidate network caches
+                _run_async(self._cache_delete_pattern(f"network:{network_id}:*"))
+                _run_async(self._cache_delete_pattern(f"network_key:*"))
+                _run_async(self._cache_delete_pattern(f"networks:*{company_schema}*"))
+
+            return success
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to delete network: {e}")
             return False
@@ -370,6 +561,10 @@ class SupabaseBackend(DatabaseBackend):
             if response.data:
                 result = response.data[0]
                 result["company_schema"] = company_schema
+
+                # Invalidate asset types cache
+                _run_async(self._cache_delete_pattern(f"asset_types:*{company_schema}*"))
+
                 return result
             return None
         except Exception as e:
@@ -381,16 +576,28 @@ class SupabaseBackend(DatabaseBackend):
         type_id: int,
         company_schemas: list[str],
     ) -> dict[str, Any] | None:
+        """Get an asset type by ID (cached)."""
+        cache_key = f"asset_type:{type_id}:{','.join(sorted(company_schemas))}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Asset type cache hit: {type_id}")
+            return cached
+
         result, schema, status = self._find_in_schemas(
             "asset_types",
             {"id": type_id, "is_active": True},
             company_schemas,
         )
         if status == "found" and result:
-            # Fetch network name
+            # Fetch network name (also cached)
             network = self.get_network(result.get("network_id"), [schema])
             if network:
                 result["network_name"] = network.get("name")
+            # Cache the enriched result
+            _run_async(self._cache_set(cache_key, result, ttl=ASSET_TYPE_CACHE_TTL))
+
         return result if status == "found" else None
 
     def list_asset_types(
@@ -401,6 +608,17 @@ class SupabaseBackend(DatabaseBackend):
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
+        # Create cache key
+        network_filter = f":network={network_id}" if network_id else ""
+        cache_key = f"asset_types:{','.join(sorted(company_schemas))}:active={not include_inactive}{network_filter}"
+
+        # Try cache first (only for default pagination)
+        if offset == 0 and limit >= 100:
+            cached = _run_async(self._cache_get(cache_key))
+            if cached is not None:
+                logger.debug(f"[CACHE] Asset types cache hit ({len(cached)} types)")
+                return cached
+
         filters = {} if include_inactive else {"is_active": True}
         if network_id is not None:
             filters["network_id"] = network_id
@@ -414,11 +632,23 @@ class SupabaseBackend(DatabaseBackend):
             offset=offset,
         )
 
-        # Enrich with network names
+        # Enrich with network names - optimized with pre-fetched networks
+        # Pre-fetch all networks to avoid N+1 queries
+        networks_by_schema = {}
         for r in results:
-            network = self.get_network(r.get("network_id"), [r.get("company_schema")])
+            schema = r.get("company_schema")
+            if schema not in networks_by_schema:
+                networks_by_schema[schema] = {
+                    n.get("id"): n for n in self.list_networks([schema])
+                }
+            network = networks_by_schema[schema].get(r.get("network_id"))
             if network:
                 r["network_name"] = network.get("name")
+
+        # Cache the result (only for default pagination)
+        if offset == 0 and limit >= 100:
+            _run_async(self._cache_set(cache_key, results, ttl=ASSET_TYPE_CACHE_TTL))
+            logger.debug(f"[CACHE] Cached {len(results)} asset types")
 
         return results
 
@@ -444,6 +674,11 @@ class SupabaseBackend(DatabaseBackend):
             if response.data:
                 result = response.data[0]
                 result["company_schema"] = company_schema
+
+                # Invalidate asset type caches
+                _run_async(self._cache_delete_pattern(f"asset_type:{type_id}:*"))
+                _run_async(self._cache_delete_pattern(f"asset_types:*{company_schema}*"))
+
                 return result
             return None
         except Exception as e:
@@ -474,7 +709,15 @@ class SupabaseBackend(DatabaseBackend):
                     .eq("id", type_id)
                     .execute()
                 )
-            return len(response.data) > 0 if response.data else False
+
+            success = len(response.data) > 0 if response.data else False
+
+            if success:
+                # Invalidate asset type caches
+                _run_async(self._cache_delete_pattern(f"asset_type:{type_id}:*"))
+                _run_async(self._cache_delete_pattern(f"asset_types:*{company_schema}*"))
+
+            return success
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to delete asset type: {e}")
             return False
@@ -524,6 +767,10 @@ class SupabaseBackend(DatabaseBackend):
             if response.data:
                 result = response.data[0]
                 result["company_schema"] = company_schema
+
+                # Invalidate network assets cache
+                _run_async(self._cache_delete_pattern(f"network_assets:*{company_schema}*"))
+
                 return result
             return None
         except Exception as e:
@@ -535,6 +782,16 @@ class SupabaseBackend(DatabaseBackend):
         asset_id: int,
         company_schemas: list[str],
     ) -> dict[str, Any] | None:
+        """Get a network asset by ID (cached)."""
+        schemas_key = ",".join(sorted(company_schemas))
+        cache_key = f"network_asset:{asset_id}:{schemas_key}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Network asset cache hit: {asset_id}")
+            return cached
+
         result, schema, status = self._find_in_schemas(
             "network_assets",
             {"id": asset_id, "is_active": True},
@@ -550,6 +807,10 @@ class SupabaseBackend(DatabaseBackend):
                 asset_type = self.get_asset_type(result["type_id"], [schema])
                 if asset_type:
                     result["type_name"] = asset_type.get("name")
+
+            # Cache the result
+            _run_async(self._cache_set(cache_key, result, ttl=NETWORK_ASSET_CACHE_TTL))
+
         return result if status == "found" else None
 
     def get_network_asset_by_key(
@@ -633,6 +894,11 @@ class SupabaseBackend(DatabaseBackend):
             if response.data:
                 result = response.data[0]
                 result["company_schema"] = company_schema
+
+                # Invalidate network asset caches
+                _run_async(self._cache_delete_pattern(f"network_asset:{asset_id}:*"))
+                _run_async(self._cache_delete_pattern(f"network_assets:*{company_schema}*"))
+
                 return result
             return None
         except Exception as e:
@@ -663,7 +929,15 @@ class SupabaseBackend(DatabaseBackend):
                     .eq("id", asset_id)
                     .execute()
                 )
-            return len(response.data) > 0 if response.data else False
+
+            success = len(response.data) > 0 if response.data else False
+
+            if success:
+                # Invalidate network asset caches
+                _run_async(self._cache_delete_pattern(f"network_asset:{asset_id}:*"))
+                _run_async(self._cache_delete_pattern(f"network_assets:*{company_schema}*"))
+
+            return success
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to delete network asset: {e}")
             return False
@@ -713,6 +987,10 @@ class SupabaseBackend(DatabaseBackend):
             if response.data:
                 result = response.data[0]
                 result["company_schema"] = company_schema
+
+                # Invalidate locations cache
+                _run_async(self._cache_delete_pattern(f"locations:*{company_schema}*"))
+
                 return result
             return None
         except Exception as e:
@@ -724,13 +1002,22 @@ class SupabaseBackend(DatabaseBackend):
         location_id: int,
         company_schemas: list[str],
     ) -> dict[str, Any] | None:
+        """Get a location by ID (cached)."""
+        cache_key = f"location_id:{location_id}:{','.join(sorted(company_schemas))}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Location by ID cache hit: {location_id}")
+            return cached
+
         result, schema, status = self._find_in_schemas(
             "locations",
             {"id": location_id, "is_active": True},
             company_schemas,
         )
         if status == "found" and result:
-            # Enrich with network and type names
+            # Enrich with network and type names (also cached now)
             if result.get("network_id"):
                 network = self.get_network(result["network_id"], [schema])
                 if network:
@@ -739,6 +1026,9 @@ class SupabaseBackend(DatabaseBackend):
                 asset_type = self.get_asset_type(result["type_id"], [schema])
                 if asset_type:
                     result["type_name"] = asset_type.get("name")
+            # Cache the enriched result
+            _run_async(self._cache_set(cache_key, result, ttl=LOCATION_CACHE_TTL))
+
         return result if status == "found" else None
 
     def get_location_by_key(
@@ -746,6 +1036,16 @@ class SupabaseBackend(DatabaseBackend):
         location_key: str,
         company_schemas: list[str],
     ) -> dict[str, Any] | None:
+        """Get a location by key (cached)."""
+        normalized_key = location_key.lower().strip()
+        cache_key = f"location:{normalized_key}:{','.join(sorted(company_schemas))}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Location cache hit: {location_key}")
+            return cached
+
         result, schema, status = self._find_in_schemas(
             "locations",
             {"location_key": location_key, "is_active": True},
@@ -760,6 +1060,9 @@ class SupabaseBackend(DatabaseBackend):
                 asset_type = self.get_asset_type(result["type_id"], [schema])
                 if asset_type:
                     result["type_name"] = asset_type.get("name")
+            # Cache the enriched result
+            _run_async(self._cache_set(cache_key, result, ttl=LOCATION_CACHE_TTL))
+
         return result if status == "found" else None
 
     def list_locations(
@@ -771,6 +1074,18 @@ class SupabaseBackend(DatabaseBackend):
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
+        # Create cache key
+        filters_str = f":network={network_id}" if network_id else ""
+        filters_str += f":type={type_id}" if type_id else ""
+        cache_key = f"locations:{','.join(sorted(company_schemas))}:active={not include_inactive}{filters_str}"
+
+        # Try cache first (only for default pagination)
+        if offset == 0 and limit >= 100:
+            cached = _run_async(self._cache_get(cache_key))
+            if cached is not None:
+                logger.debug(f"[CACHE] Locations cache hit ({len(cached)} locations)")
+                return cached
+
         filters = {} if include_inactive else {"is_active": True}
         if network_id is not None:
             filters["network_id"] = network_id
@@ -786,17 +1101,39 @@ class SupabaseBackend(DatabaseBackend):
             offset=offset,
         )
 
-        # Enrich with network and type names (batch for efficiency)
+        # Enrich with network and type names - optimized with pre-fetched data
+        # Pre-fetch networks and types per schema to avoid N+1 queries
+        networks_by_schema = {}
+        types_by_schema = {}
+
         for r in results:
             schema = r.get("company_schema")
+
+            # Lazy-load networks for this schema
+            if schema not in networks_by_schema:
+                networks_by_schema[schema] = {
+                    n.get("id"): n for n in self.list_networks([schema])
+                }
+
+            # Lazy-load asset types for this schema
+            if schema not in types_by_schema:
+                types_by_schema[schema] = {
+                    t.get("id"): t for t in self.list_asset_types([schema])
+                }
+
             if r.get("network_id"):
-                network = self.get_network(r["network_id"], [schema])
+                network = networks_by_schema[schema].get(r["network_id"])
                 if network:
                     r["network_name"] = network.get("name")
             if r.get("type_id"):
-                asset_type = self.get_asset_type(r["type_id"], [schema])
+                asset_type = types_by_schema[schema].get(r["type_id"])
                 if asset_type:
                     r["type_name"] = asset_type.get("name")
+
+        # Cache the result (only for default pagination)
+        if offset == 0 and limit >= 100:
+            _run_async(self._cache_set(cache_key, results, ttl=LOCATION_CACHE_TTL))
+            logger.debug(f"[CACHE] Cached {len(results)} locations")
 
         return results
 
@@ -822,6 +1159,14 @@ class SupabaseBackend(DatabaseBackend):
             if response.data:
                 result = response.data[0]
                 result["company_schema"] = company_schema
+
+                # Invalidate location caches
+                location_key = result.get("location_key", "")
+                _run_async(self._cache_delete_pattern(f"location_id:{location_id}:*"))
+                if location_key:
+                    _run_async(self._cache_delete_pattern(f"location:{location_key.lower()}:*"))
+                _run_async(self._cache_delete_pattern(f"locations:*{company_schema}*"))
+
                 return result
             return None
         except Exception as e:
@@ -836,6 +1181,17 @@ class SupabaseBackend(DatabaseBackend):
     ) -> bool:
         client = self._get_client()
         try:
+            # Get location_key before delete for cache invalidation
+            existing = (
+                client.schema(company_schema)
+                .table("locations")
+                .select("location_key")
+                .eq("id", location_id)
+                .single()
+                .execute()
+            )
+            location_key = existing.data.get("location_key", "") if existing.data else ""
+
             if hard_delete:
                 response = (
                     client.schema(company_schema)
@@ -852,7 +1208,17 @@ class SupabaseBackend(DatabaseBackend):
                     .eq("id", location_id)
                     .execute()
                 )
-            return len(response.data) > 0 if response.data else False
+
+            success = len(response.data) > 0 if response.data else False
+
+            if success:
+                # Invalidate location caches
+                _run_async(self._cache_delete_pattern(f"location_id:{location_id}:*"))
+                if location_key:
+                    _run_async(self._cache_delete_pattern(f"location:{location_key.lower()}:*"))
+                _run_async(self._cache_delete_pattern(f"locations:*{company_schema}*"))
+
+            return success
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to delete location: {e}")
             return False
@@ -898,6 +1264,16 @@ class SupabaseBackend(DatabaseBackend):
         package_id: int,
         company_schemas: list[str],
     ) -> dict[str, Any] | None:
+        """Get a package by ID (cached)."""
+        schemas_key = ",".join(sorted(company_schemas))
+        cache_key = f"package:{package_id}:{schemas_key}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Package cache hit: {package_id}")
+            return cached
+
         result, schema, status = self._find_in_schemas(
             "packages",
             {"id": package_id, "is_active": True},
@@ -905,6 +1281,10 @@ class SupabaseBackend(DatabaseBackend):
         )
         if status == "found" and result:
             result["items"] = self.get_package_items(package_id, schema)
+
+            # Cache the result
+            _run_async(self._cache_set(cache_key, result, ttl=PACKAGE_CACHE_TTL))
+
         return result if status == "found" else None
 
     def list_packages(
@@ -914,8 +1294,19 @@ class SupabaseBackend(DatabaseBackend):
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
+        """List all packages (cached for default pagination)."""
+        schemas_key = ",".join(sorted(company_schemas))
+        cache_key = f"packages:{schemas_key}:inactive={include_inactive}"
+
+        # Only cache for default pagination
+        if offset == 0 and limit >= 100:
+            cached = _run_async(self._cache_get(cache_key))
+            if cached is not None:
+                logger.debug(f"[CACHE] Packages list cache hit")
+                return cached
+
         filters = {} if include_inactive else {"is_active": True}
-        return self._query_schemas(
+        results = self._query_schemas(
             "packages",
             company_schemas,
             filters=filters,
@@ -923,6 +1314,13 @@ class SupabaseBackend(DatabaseBackend):
             limit=limit,
             offset=offset,
         )
+
+        # Cache for default pagination
+        if offset == 0 and limit >= 100:
+            _run_async(self._cache_set(cache_key, results, ttl=PACKAGE_CACHE_TTL))
+            logger.debug(f"[CACHE] Cached {len(results)} packages")
+
+        return results
 
     def update_package(
         self,
@@ -946,6 +1344,11 @@ class SupabaseBackend(DatabaseBackend):
             if response.data:
                 result = response.data[0]
                 result["company_schema"] = company_schema
+
+                # Invalidate package caches
+                _run_async(self._cache_delete_pattern(f"package:{package_id}:*"))
+                _run_async(self._cache_delete_pattern(f"packages:*{company_schema}*"))
+
                 return result
             return None
         except Exception as e:
@@ -976,7 +1379,16 @@ class SupabaseBackend(DatabaseBackend):
                     .eq("id", package_id)
                     .execute()
                 )
-            return len(response.data) > 0 if response.data else False
+
+            success = len(response.data) > 0 if response.data else False
+
+            if success:
+                # Invalidate package caches
+                _run_async(self._cache_delete_pattern(f"package:{package_id}:*"))
+                _run_async(self._cache_delete_pattern(f"packages:*{company_schema}*"))
+                _run_async(self._cache_delete_pattern(f"package_items:{package_id}:*"))
+
+            return success
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to delete package: {e}")
             return False
@@ -1006,6 +1418,11 @@ class SupabaseBackend(DatabaseBackend):
 
             if response.data:
                 result = response.data[0]
+
+                # Invalidate package caches
+                _run_async(self._cache_delete_pattern(f"package:{package_id}:*"))
+                _run_async(self._cache_delete_pattern(f"package_items:{package_id}:*"))
+
                 # Enrich with names
                 if network_id:
                     network = self.get_network(network_id, [company_schema])
@@ -1025,9 +1442,22 @@ class SupabaseBackend(DatabaseBackend):
         self,
         item_id: int,
         company_schema: str,
+        package_id: int | None = None,
     ) -> bool:
         client = self._get_client()
         try:
+            # Get package_id before delete if not provided
+            if package_id is None:
+                existing = (
+                    client.schema(company_schema)
+                    .table("package_items")
+                    .select("package_id")
+                    .eq("id", item_id)
+                    .single()
+                    .execute()
+                )
+                package_id = existing.data.get("package_id") if existing.data else None
+
             response = (
                 client.schema(company_schema)
                 .table("package_items")
@@ -1035,7 +1465,15 @@ class SupabaseBackend(DatabaseBackend):
                 .eq("id", item_id)
                 .execute()
             )
-            return len(response.data) > 0 if response.data else False
+
+            success = len(response.data) > 0 if response.data else False
+
+            if success and package_id:
+                # Invalidate package caches
+                _run_async(self._cache_delete_pattern(f"package:{package_id}:*"))
+                _run_async(self._cache_delete_pattern(f"package_items:{package_id}:*"))
+
+            return success
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to remove package item: {e}")
             return False
@@ -1045,6 +1483,15 @@ class SupabaseBackend(DatabaseBackend):
         package_id: int,
         company_schema: str,
     ) -> list[dict[str, Any]]:
+        """Get package items (cached)."""
+        cache_key = f"package_items:{package_id}:{company_schema}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Package items cache hit: {package_id}")
+            return cached
+
         client = self._get_client()
         try:
             response = (
@@ -1069,6 +1516,9 @@ class SupabaseBackend(DatabaseBackend):
                     location = self.get_location(item["location_id"], [company_schema])
                     if location:
                         item["location_name"] = location.get("display_name")
+
+            # Cache the result
+            _run_async(self._cache_set(cache_key, items, ttl=PACKAGE_CACHE_TTL))
 
             return items
         except Exception as e:
@@ -1340,7 +1790,15 @@ class SupabaseBackend(DatabaseBackend):
         location_key: str,
         company_schema: str,
     ) -> list[dict[str, Any]]:
-        """List all mockup frames for a location."""
+        """List all mockup frames for a location (cached)."""
+        cache_key = f"frames:{location_key.lower()}:{company_schema}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Mockup frames cache hit: {location_key}")
+            return cached
+
         client = self._get_client()
         try:
             response = (
@@ -1350,7 +1808,12 @@ class SupabaseBackend(DatabaseBackend):
                 .eq("location_key", location_key)
                 .execute()
             )
-            return response.data or []
+            result = response.data or []
+
+            # Cache the result
+            _run_async(self._cache_set(cache_key, result, ttl=FRAME_CACHE_TTL))
+
+            return result
         except Exception as e:
             logger.debug(f"[SUPABASE] Failed to list mockup frames: {e}")
             return []
@@ -1363,7 +1826,16 @@ class SupabaseBackend(DatabaseBackend):
         finish: str = "gold",
         photo_filename: str | None = None,
     ) -> dict[str, Any] | None:
-        """Get specific mockup frame data."""
+        """Get specific mockup frame data (uses cached frames list)."""
+        # First try to get from cached frames list (avoids separate DB query)
+        frames = self.list_mockup_frames(location_key, company)
+
+        for frame in frames:
+            if frame.get("time_of_day") == time_of_day and frame.get("finish") == finish:
+                if photo_filename is None or frame.get("photo_filename") == photo_filename:
+                    return frame
+
+        # Fallback to direct query if not in cache (shouldn't happen normally)
         client = self._get_client()
         try:
             query = (
@@ -1408,6 +1880,10 @@ class SupabaseBackend(DatabaseBackend):
                 .eq("finish", finish)
                 .execute()
             )
+
+            # Invalidate frames cache for this location
+            _run_async(self._cache_delete(f"frames:{location_key.lower()}:{company}"))
+
             logger.info(f"[SUPABASE] Deleted mockup frame: {location_key}/{photo_filename}")
             return True
         except Exception as e:

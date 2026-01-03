@@ -2,7 +2,7 @@
 Base abstractions for channel adapters.
 
 This module defines the core interfaces that all channel implementations
-must follow, similar to how integrations/llm/base.py defines LLM interfaces.
+must follow, similar to how crm-llm defines LLM interfaces.
 """
 
 from abc import ABC, abstractmethod

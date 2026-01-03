@@ -71,6 +71,49 @@ async def list_teams(
 
 
 # =============================================================================
+# 1b. GET /teams/:id - Get single team
+# =============================================================================
+
+@router.get("/teams/{team_id}")
+async def get_team(
+    team_id: int,
+    user: AuthUser = Depends(require_profile("system_admin")),
+) -> dict[str, Any]:
+    """
+    Get a single team by ID with member count.
+    """
+    logger.info(f"[UI RBAC API] Getting team: {team_id}")
+
+    supabase = get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        response = (
+            supabase.table("teams")
+            .select("*, parent:parent_team_id(id, name, display_name), team_members(user_id)")
+            .eq("id", team_id)
+            .single()
+            .execute()
+        )
+
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Team not found")
+
+        team = response.data
+        team["member_count"] = len(team.get("team_members") or [])
+        del team["team_members"]
+
+        return team
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[UI RBAC API] Error getting team: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get team")
+
+
+# =============================================================================
 # 2. POST /teams - server.js:2868-2891
 # =============================================================================
 

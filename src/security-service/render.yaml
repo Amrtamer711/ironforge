@@ -48,3 +48,8 @@ services:
       # Inter-service auth
       - key: INTER_SERVICE_SECRET
         sync: false
+      # Redis Caching
+      - key: REDIS_URL
+        sync: false
+      - key: CACHE_BACKEND
+        value: "redis"

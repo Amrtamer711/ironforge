@@ -1,0 +1,583 @@
+# CRM Platform Notes & Tasks
+================================================================================
+
+## 1. NAMING/BRANDING CHANGES
+--------------------------------------------------------------------------------
+- Rename all "sales bot", "sales-bot", "sales_bot" references to "sales module"
+- This was a Slack bot, now a unified sales platform (Slack + Web)
+- "proposal bot" -> "sales module" (unless specifically about proposal generation)
+- If specifically about proposals, use "proposal generator"
+
+
+## 2. UNIFIED-UI MISSING FEATURES
+--------------------------------------------------------------------------------
+- [ ] Security headers middleware (for all responses)
+- [ ] Better rate limiting (Redis support for distributed)
+- [ ] Centralized exception handling (consistent error responses)
+- [ ] Audit logging (track admin actions)
+- [ ] Caching utilities (for RBAC lookups - partially has via rbac_service)
+- [ ] API key auth (for service-to-service calls if needed)
+
+
+## 3. INVESTIGATION ITEMS
+--------------------------------------------------------------------------------
+- [ ] What is the eligibility of locations conditions? Are they correctly hooked to services?
+- [ ] Are all services fully integrated to security module? (comprehensive check)
+- [ ] Is there incorrect synchronous/asynchronous code?
+- [ ] Is there any backwards compatibility that needs to be fixed?
+- [ ] Does security-service have proper directory/testing setup like other modules?
+- [ ] Is security-service established in monorepo and testing setups?
+- [ ] Do we have comprehensive testing setup for engineers? (endpoint testing, frontend, toggle setups, RBAC playground, etc.)
+- [ ] What gits are connected to this repo?
+- [ ] Where are permissions/permission sets stored? (seem hardcoded in places)
+- [ ] Are there sync funcs that need to be async (or vice versa) in sales module?
+
+
+## 4. RECOMMENDATIONS
+--------------------------------------------------------------------------------
+**FIRST PRIORITY: Implement Redis caching (critical for scaling)**
+
+- [ ] Add Redis for session/cache state (critical for scaling)
+- [ ] Introduce SQLAlchemy or query builder for type-safe queries
+- [ ] Add tenant middleware to enforce company filtering consistently
+- [ ] Increase test coverage (especially multi-service integration tests)
+- [ ] Consolidate config into single validated Pydantic settings model
+- [ ] Add resource limits to mockup generation (memory caps, timeouts)
+
+
+## 5. CRITICAL ISSUES
+--------------------------------------------------------------------------------
+| Issue                                      | Impact                    |
+|--------------------------------------------|---------------------------|
+| Security-service duplicates shared middleware | Code drift risk        |
+| Location data in both sales + asset services | Data divergence         |
+| 600+ lines of duplicated DB backend code   | Maintenance burden        |
+| Company schemas hardcoded in 4 places      | Change requires 4 file edits |
+| 4 different config patterns                | Inconsistent codebase     |
+| Security-service not actually integrated   | Dead code paths           |
+| Docker-compose missing 2 services          | Incomplete deployment     |
+| No RLS in asset-management or security-service | Potential data leakage |
+
+### Top Priority Fixes:
+1. Migrate sales-module to use asset-management API for locations (remove duplicate tables)
+2. Security-service should use shared middleware (remove duplication)
+3. Create src/shared/db-common/ for database backend base classes
+4. Centralize company schema config in single shared location
+5. Standardize on Pydantic BaseSettings for all configs
+6. Add missing services to docker-compose.yml
+
+
+## 6. ASSET/NETWORK FEATURES
+--------------------------------------------------------------------------------
+- [ ] Handle day/night variations for assets and networks
+- [ ] Handle gold/silver variations for assets and networks
+
+
+## 7. STORAGE & DATA MANAGEMENT
+--------------------------------------------------------------------------------
+- [ ] Implement storage cleanup for chats over time (old messages, attachments, etc.)
+- [ ] Define retention policy for chat data
+- [ ] Set up scheduled job/cron for cleanup
+
+
+## 8. SECURITY VULNERABILITY (HIGH SEVERITY)
+--------------------------------------------------------------------------------
+### Path Traversal in Storage API
+- **File:** storage.py:113-428
+- **Severity:** HIGH
+- **Confidence:** 9/10
+
+**Description:**
+Storage API endpoints don't sanitize company, location_key, pdf_name, or photo_filename
+path parameters. Attackers can use "../" to access files outside authorized directories.
+
+**Vulnerable Code:**
+```python
+# Line 131 - No validation
+storage_key = f"{company}/{location_key}/{location_key}.pptx"
+
+# Line 345 - pdf_name not sanitized
+storage_key = f"intro_outro/{pdf_name}.pdf"
+
+# Line 403 - Multiple unsanitized params
+storage_key = f"{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}"
+```
+
+**Affected Endpoints:**
+- GET /api/storage/templates/{company}/{location_key}
+- GET /api/storage/templates/{company}/{location_key}/url
+- POST /api/storage/templates/{company}
+- GET /api/storage/intro-outro/{company}/{pdf_name}
+- GET /api/storage/mockups/{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}
+
+**Fix Required:**
+```python
+# 1. Validate company against allowed values
+if company not in config.COMPANY_SCHEMAS:
+    raise HTTPException(status_code=400, detail="Invalid company")
+
+# 2. Sanitize all path components
+def sanitize_path_component(component: str) -> str:
+    sanitized = component.replace("..", "").replace("/", "").replace("\\", "")
+    if not sanitized or sanitized != component:
+        raise HTTPException(status_code=400, detail="Invalid path component")
+    return sanitized
+
+# 3. Apply to all path params
+company = sanitize_path_component(company)
+location_key = sanitize_path_component(location_key)
+pdf_name = sanitize_path_component(pdf_name)
+photo_filename = sanitize_path_component(photo_filename)
+```
+
+
+## 9. SUPABASE CLEANUP - DELETE UNUSED VIEWS
+--------------------------------------------------------------------------------
+These SECURITY DEFINER views exist in Supabase but are NOT used by the application.
+They trigger security warnings and should be deleted.
+
+**Run this SQL in Supabase Dashboard:**
+```sql
+-- Delete unused SECURITY DEFINER views (audited - none are used in code)
+DROP VIEW IF EXISTS public.all_ai_costs;
+DROP VIEW IF EXISTS public.all_proposals;
+DROP VIEW IF EXISTS public.all_mockup_frames;
+DROP VIEW IF EXISTS public.static_locations_with_rates;
+DROP VIEW IF EXISTS public.all_locations;
+DROP VIEW IF EXISTS public.booking_orders_summary;
+DROP VIEW IF EXISTS public.all_booking_orders;
+DROP VIEW IF EXISTS public.static_locations;
+DROP VIEW IF EXISTS public.all_mockup_usage;
+DROP VIEW IF EXISTS public.digital_locations_with_rates;
+DROP VIEW IF EXISTS public.location_availability;
+DROP VIEW IF EXISTS public.digital_locations;
+```
+
+**Why safe to delete:**
+- Code uses parallel schema queries instead (just implemented)
+- All references in codebase are Python variable names, not DB queries
+- Views were planned but never actually used
+- Removes 12 security warnings from Supabase linter
+
+## 10. PROPOSAL GENERATION - NOT API-BASED
+--------------------------------------------------------------------------------
+- [ ] Proposal generation has NO REST API endpoint
+- Currently only accessible via LLM chat tools (get_separate_proposals)
+- Need to create POST /api/proposals endpoint for programmatic access
+- Files involved:
+  - src/sales-module/core/tools.py (tool definition)
+  - src/sales-module/handlers/tool_router.py (tool handler)
+  - src/sales-module/core/proposals/processor.py (generation logic)
+  - src/sales-module/core/proposals/renderer.py (PPTX creation)
+
+
+## 11. CODING STANDARDS AUDIT (2025-12-28)
+--------------------------------------------------------------------------------
+
+### CRITICAL ISSUES
+
+**Massive Functions (Violates "Small Functions" Rule):**
+- [ ] main_llm_loop - 690 lines (src/sales-module/core/llm.py:664-1354)
+- [ ] _handle_booking_order_parse - 317 lines (src/sales-module/core/llm.py:171-487)
+- [ ] handle_tool_call - 800+ lines (src/sales-module/handlers/tool_router.py)
+- [ ] handle_booking_order_edit_flow - 176 lines (src/sales-module/core/llm.py:488-662)
+- [ ] handle_coordinator_approval - 123 lines (src/sales-module/workflows/bo_approval.py:411-533)
+
+**Error Handling (300+ violations):**
+- [ ] 300+ bare `except Exception as e:` clauses across all modules
+- [ ] 5+ swallowed exceptions (`except: pass`) - health.py:56, files.py:64
+- [ ] 6+ generic `raise Exception(...)` - llm.py:132, 146, 405
+- [ ] Custom exceptions defined but never used (SupabaseOperationError in both supabase.py files)
+- [ ] No retry logic for external service calls
+
+**Naming Convention Conflict:**
+- [ ] Team rules say camelCase for methods/functions
+- [ ] Codebase uses snake_case for ALL functions (100+ functions)
+- [ ] Decision needed: Update docs to snake_case OR refactor codebase to camelCase
+
+### HIGH SEVERITY ISSUES
+
+**DRY Violations (Duplicated Code):**
+- [ ] `platform_message_id or message.id` pattern - 13 times (bo_messaging.py, llm.py)
+- [ ] Coordinator approval buttons - 3 times (bo_messaging.py:80-99, 276-295, llm.py:415-434)
+- [ ] Location list [:3] slicing + "X more" - 3 times (bo_messaging.py:146, 249, llm.py:341)
+- [ ] Status message updates - 25+ times scattered in llm.py
+- [ ] Eligibility checking logic duplicated (eligibility.py:130-218 vs 220-311)
+
+**Hardcoded Magic Numbers:**
+- [ ] VAT rate 0.05 - llm.py:642, processor.py:584
+- [ ] Timeout 10 minutes - llm.py:780, llm.py:1005, bo_messaging.py:168
+- [ ] Max locations 3 - 3 files
+- [ ] PDF zoom 4.0 - file_utils.py:85
+- [ ] Slide dimensions 13.333x7.5 - file_utils.py:107
+- [ ] Streaming delay 0.02 - chat_api.py:360
+- [ ] Health check interval 300 - server.py:74
+
+**Poor Test Coverage:**
+- [ ] asset-management module - NO TESTS
+- [ ] security-service module - NO TESTS
+- [ ] shared module - NO TESTS
+- [ ] sales-module - basic integration tests only, no unit tests
+
+### MEDIUM SEVERITY ISSUES
+
+**OOP Violations:**
+- [ ] tool_router.py - 800+ lines procedural dispatch, should be class-based handlers
+- [ ] llm.py - _generate_mockup_queued should be MockupGenerator class
+
+**Other Issues:**
+- [ ] Comment quality - many "what" comments instead of "why" comments
+- [ ] Cleanup vulnerability - tool_router.py:243-247 first failure stops entire cleanup
+- [ ] No circuit breakers or retry logic for external services
+
+### FILES MOST AFFECTED
+1. src/sales-module/core/llm.py (1354 lines)
+2. src/sales-module/handlers/tool_router.py (800+ lines)
+3. src/sales-module/core/bo_messaging.py (435 lines)
+4. src/sales-module/workflows/bo_approval.py (1453 lines)
+5. src/asset-management/core/eligibility.py (361 lines)
+
+### COMPLIANCE SUMMARY
+| Standard                  | Status      |
+|---------------------------|-------------|
+| Classes use PascalCase    | COMPLIANT   |
+| Code in src/ folder       | COMPLIANT   |
+| OOP-First                 | PARTIAL 7/10|
+| Methods use camelCase     | VIOLATION   |
+| Small Functions           | CRITICAL 3/10|
+| DRY                       | POOR 4/10   |
+| Avoid Hardcoded Numbers   | POOR 4/10   |
+| Error Handling            | CRITICAL 4/10|
+| Testable                  | POOR 4/10   |
+
+
+## 12. COMPREHENSIVE MODULE AUDIT (2025-12-28)
+--------------------------------------------------------------------------------
+
+### MODULE SCORES OVERVIEW
+| Module              | Completeness | Clean Code | Architecture | Prod Ready | Overall |
+|---------------------|--------------|------------|--------------|------------|---------|
+| unified-ui          | 95%          | 8.5/10     | 9/10         | 8.5/10     | **8.5/10** |
+| asset-management    | 90%          | 8/10       | 9/10         | 7/10       | **8/10** |
+| shared (crm-*)      | 87%          | 8.5/10     | 9/10         | 7.5/10     | **8/10** |
+| sales-module        | 85%          | 6/10       | 7/10         | 7/10       | **7/10** |
+| security-service    | 70%          | 7/10       | 8/10         | 6.5/10     | **6.5/10** |
+
+### CRITICAL FINDINGS (P0 - Fix Immediately)
+
+**1. SECURITY-SERVICE RBAC INCOMPLETE (CRITICAL)**
+- [ ] Permission sets return EMPTY ARRAY - security-service/db/backends/supabase.py:1146
+- [ ] Sharing rules return EMPTY ARRAY - security-service/db/backends/supabase.py:1155
+- **Impact:** Users may bypass intended permission restrictions!
+- RBAC Level 2 (Permission Sets) and Level 4 (Sharing Rules) NOT IMPLEMENTED
+
+**2. TIMEOUT PROTECTION DISABLED (HIGH)**
+- [ ] sales-module/core/llm.py:291 - Timeout disabled for booking order parsing
+- **Risk:** Service can hang indefinitely (10-15+ minutes), DOS vector
+
+**3. SILENT SQLITE FALLBACK (HIGH)**
+- [ ] sales-module and asset-management silently fall back to SQLite if Supabase fails
+- **Risk:** Data loss in production - data written to SQLite won't sync to Supabase
+
+**4. WEB STREAMING DISABLED (MEDIUM)**
+- [ ] sales-module/core/llm.py:1531 - Token streaming disabled
+- **Reason:** Tool call detection broken in streaming mode
+- **Impact:** Degraded UX in web chat
+
+### MODULE-SPECIFIC ISSUES
+
+**SALES-MODULE (7/10)**
+- [ ] main_llm_loop: 690 lines - needs splitting into 5-6 functions
+- [ ] handle_tool_call: 800+ lines - should be class-based handlers
+- [ ] 56 empty methods with just `pass` in db/base.py - need @abstractmethod
+- [ ] 5+ files with circular import workarounds (lazy imports)
+- [ ] Singleton services without thread-safety guarantees
+- [ ] API routers contain business logic (mockups.py)
+- [ ] 13 hardcoded cache TTLs in supabase.py
+- [ ] Proposal count uses len() instead of COUNT query (api/routers/proposals.py:114)
+- [ ] Asset pricing endpoint returns empty dict (core/services/asset_service.py:315)
+
+**ASSET-MANAGEMENT (8/10)**
+- [ ] Zero test coverage (tests/ directory empty)
+- [ ] No database migration tooling documented
+- [ ] SQLite backend may be unmaintained
+- [ ] Large supabase.py backend needs modularization
+- [ ] Logging configuration duplicated instead of using shared
+
+**SECURITY-SERVICE (6.5/10)**
+- [ ] CRITICAL: permission_sets and sharing_rules not implemented
+- [ ] No rate limiting on /api/auth/* endpoints (brute force vector)
+- [ ] Duplicate SecurityHeadersMiddleware (should import from crm-security)
+- [ ] Monolithic 1,166-line backend file needs modularization
+- [ ] No fallback mechanism if Supabase unavailable
+- [ ] JWT secret fallback chain may cause confusion
+- [ ] Zero test coverage
+
+**UNIFIED-UI (8.5/10)**
+- [ ] Email sending not implemented (backend/routers/auth.py:173)
+- [ ] Zero test coverage
+- [ ] React migration 40-50% complete - decision needed: keep vanilla JS or finish React?
+- [ ] Vanilla JS files large (app.js: 75KB, admin.js: 82KB) - should be split
+- Orphaned server.js (138KB) kept for reference
+
+**SHARED/CRM-CACHE (8/10)**
+- [ ] Zero test coverage
+- [ ] No documentation beyond docstrings
+- [ ] No README.md
+
+**SHARED/CRM-SECURITY (8/10)**
+- [ ] Zero test coverage
+- [ ] Minimal documentation
+- [ ] Version management strategy not documented
+
+### INCOMPLETE/DISABLED FEATURES BY MODULE
+
+**sales-module:**
+| Feature | Status | Location |
+|---------|--------|----------|
+| Timeout protection | DISABLED | core/llm.py:291 |
+| Web streaming | DISABLED | core/llm.py:1531 |
+| Asset pricing | NOT IMPL | core/services/asset_service.py:315 |
+| Viola locations | HARDCODED | integrations/llm/prompts/bo_parsing.py:348 |
+| Proposal count | BUGGY | api/routers/proposals.py:114 |
+
+**security-service:**
+| Feature | Status | Location |
+|---------|--------|----------|
+| Permission sets | EMPTY ARRAY | db/backends/supabase.py:1146 |
+| Sharing rules | EMPTY ARRAY | db/backends/supabase.py:1155 |
+| Shared records | EMPTY | db/backends/supabase.py:1156 |
+| Auth rate limiting | MISSING | api/routers/auth.py |
+
+**unified-ui:**
+| Feature | Status | Location |
+|---------|--------|----------|
+| Email sending | TODO | backend/routers/auth.py:173 |
+| React migration | 40-50% | unified-ui-react/ |
+
+### FILES NEEDING MAJOR REFACTORING
+| Priority | File | Lines | Issues |
+|----------|------|-------|--------|
+| P0 | security-service/db/backends/supabase.py | 1,166 | Incomplete RBAC |
+| P1 | sales-module/core/llm.py | 1,354 | 690-line function |
+| P1 | sales-module/handlers/tool_router.py | 800+ | God object |
+| P2 | sales-module/workflows/bo_approval.py | 1,453 | Long functions |
+| P2 | sales-module/core/bo_messaging.py | 435 | DRY violations |
+
+### ARCHITECTURAL CONCERNS
+- [ ] Strong coupling in sales-module import graph (config → adapters → llm)
+- [ ] Runtime database backend selection (should be compile-time)
+- [ ] God object pattern in tool_router.py (all tool dispatch in one file)
+- [ ] Cache layer directly exposes third-party API (no internal interface)
+- [ ] No connection pooling configuration visible
+
+### SECURITY CONCERNS
+- [ ] No rate limiting on security-service auth endpoints
+- [ ] Path traversal risks (documented in Section 8)
+- [ ] No CSRF protection for state-changing operations
+- [ ] Input validation missing on user IDs, company names in some endpoints
+
+### RECOMMENDATIONS BY PRIORITY
+
+**P0 - Before Next Deploy:**
+1. Implement permission_sets and sharing_rules in security-service
+2. Re-enable timeout protection in sales-module
+3. Add rate limiting to security-service auth endpoints
+4. Make SQLite fallback explicit or remove it
+
+**P1 - Within 2 Weeks:**
+5. Split main_llm_loop (690 lines) into smaller functions
+6. Add test coverage - target 50% for critical paths
+7. Implement email sending in unified-ui
+8. Fix proposal pagination (COUNT query)
+
+**P2 - Code Quality:**
+9. Modularize large backend files
+10. Remove duplicate SecurityHeadersMiddleware
+11. Standardize error handling with custom exceptions
+12. Extract all magic numbers to constants
+
+**P3 - Architectural:**
+13. Decide React vs Vanilla JS for unified-ui
+14. Implement circuit breakers for external calls
+15. Add observability (tracing, metrics)
+
+
+## 13. VERIFICATION AUDIT - ADDITIONAL FINDINGS (2025-12-28)
+--------------------------------------------------------------------------------
+
+### CRITICAL SECURITY ISSUES (IMMEDIATE ACTION REQUIRED)
+
+**Hardcoded Passwords in Source Code:**
+- [ ] sales-module/orphan/mockup_setup.html:938 - `SETUP_PASSWORD = "admin123"`
+- [ ] unified-ui-react/Old Code Archive/mockup_setup.html:938 - Same password
+- [ ] unified-ui/public/js/auth.js:116,123,130 - Dev users: admin123, hos123, sales123
+- [ ] unified-ui-react/src/state/auth.jsx:18 - Same dev passwords
+- [ ] sales-module/orphan/dashboard/server.js:35 - `DASHBOARD_PASSWORD || 'nour'`
+- [ ] sales-module/orphan/dashboard/server.js:34 - `SESSION_SECRET || 'dev-secret-change-in-production'`
+
+**SQL Injection Risks (Low practical risk but bad pattern):**
+- [ ] sales-module/db/backends/sqlite.py:211 - f-string with table name
+- [ ] sales-module/db/backends/sqlite.py:214 - DROP TABLE with f-string
+- [ ] sales-module/db/migrations/runner.py:158,177 - Dynamic table queries
+
+### RACE CONDITIONS (CRITICAL)
+
+**Global Mutable State Without Locks:**
+- [ ] sales-module/db/cache.py:13-26 - FOUR global dicts with NO synchronization:
+  - `user_history: dict[str, list] = {}`
+  - `pending_location_additions: dict[str, dict] = {}`
+  - `mockup_history: dict[str, dict] = {}`
+  - `pending_booking_orders: dict[str, dict] = {}`
+  - **Impact:** Data corruption, file deletion races, inconsistent state
+
+**Lazy-loaded Cache Race:**
+- [ ] sales-module/core/proposals/validator.py:41-71 - _location_index built without lock
+- [ ] sales-module/db/backends/supabase.py:95-112 - Cache initialization race
+
+### MEMORY LEAK POTENTIAL
+
+**Unbounded Caches:**
+- [ ] sales-module/db/cache.py:62-96 - mockup_history grows forever, no max size
+- [ ] shared/crm-cache/crm_cache/base.py:82-101 - No eviction policy
+- [ ] sales-module/integrations/asset_management.py:89-96 - HTTP client created multiple times
+
+### DATA VALIDATION GAPS
+
+**Financial Calculation Risk:**
+- [ ] sales-module/db/schema.py:680-696 - Uses REAL (float) for money fields
+  - net_pre_vat, vat_value, gross_amount should be DECIMAL
+  - **Impact:** Cent-level rounding errors in financial calculations
+
+**File Upload Security:**
+- [ ] unified-ui/backend/routers/files.py:69-76 - Extension validation only
+  - No MIME type verification
+  - No file magic number check
+  - No antivirus scanning
+  - **Risk:** Malicious files can be uploaded
+
+**Missing Boundary Validation:**
+- [ ] sales-module/core/proposals/validator.py:159 - No length limit on string inputs
+- [ ] sales-module/core/mockups/validator.py:88-106 - creative_count=0 not caught
+
+### DEPLOYMENT/INFRASTRUCTURE ISSUES
+
+**Missing Health Checks:**
+- [ ] sales-module/Dockerfile - NO HEALTHCHECK defined (other services have it)
+
+**Dockerfile Variable Bug:**
+- [ ] asset-management/Dockerfile:22 - `${PORT}` won't expand in single quotes
+  ```dockerfile
+  # BROKEN:
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health')"
+  # Should be double quotes or hardcoded port
+  ```
+
+### SERVICE INTEGRATION GAPS
+
+**No Circuit Breakers:**
+- [ ] sales-module/integrations/asset_management.py:104-155 - 30s timeout, no retry
+  - If Asset-Management down: cascading failures
+  - No fallback mechanism
+
+**No Dependency Health Propagation:**
+- [ ] sales-module/api/routers/health.py - Doesn't check Asset-Management status
+  - Load balancer sees "healthy" but service can't function
+
+**Token Refresh Not Handled:**
+- [ ] asset-management/integrations/sales_module.py:97-99 - Expired JWT not refreshed
+  - Returns 401, no automatic retry with new token
+
+### DEPENDENCY ISSUES
+
+**Unpinned Versions (no upper bound):**
+- [ ] supabase>=2.11.0 (5 services) - Major version could break
+- [ ] httpx>=0.28.1 (4 services)
+- [ ] redis>=5.0.0 (4 services)
+- [ ] fastapi>=0.109.0
+- [ ] pydantic>=2.5.0
+
+**Deprecated Package:**
+- [ ] unified-ui/package-lock.json:1047 - Multer 1.x has vulnerabilities, upgrade to 2.x
+
+### ORPHANED CODE TO REMOVE
+
+**Should be deleted (kept in git history):**
+- [ ] unified-ui-react/Old Code Archive/ (entire directory)
+- [ ] sales-module/orphan/ (entire directory)
+- [ ] unified-ui/orphan/server.js (138KB deprecated file)
+
+### CONFIGURATION ISSUES
+
+**Multiple .env Files (confusing):**
+- .env.secrets, .env, .env.example, .env.local at root
+- Each service has own .env files
+- **Risk:** Wrong env file loaded, credentials confusion
+
+**Hardcoded CORS Origins:**
+- [ ] security-service/config.py:148-153 - localhost origins hardcoded in code
+
+### LOGGING GAPS
+
+**Silent Exception Swallowing:**
+- [ ] sales-module/db/backends/supabase.py:128-137 - Cache failures logged at DEBUG only
+- [ ] sales-module/db/cache.py:45 - File deletion errors only logged, not tracked
+
+**Missing Audit Trail:**
+- [ ] No logging in database write operations (create/update/delete)
+- [ ] AI costs table has no modification tracking
+
+### ADDITIONAL TODO ITEMS FOUND
+
+- [ ] unified-ui/public/js/mockup.js:677 - "TODO: Implement green screen detection"
+- [ ] sales-module/integrations/llm/providers/google.py:243 - "TEMPORARY: Log full response"
+
+### SCHEMA CONSISTENCY ISSUES
+
+**Missing Indexes:**
+- [ ] booking_orders table missing index on (company, needs_review)
+- [ ] ai_costs table missing index on (user_id, timestamp)
+
+**No Foreign Key Constraints:**
+- [ ] All tables rely on application-level integrity only
+- [ ] No database-enforced referential integrity
+
+### SUMMARY OF NEW CRITICAL FINDINGS
+
+| Issue | Severity | Count | Priority |
+|-------|----------|-------|----------|
+| Hardcoded passwords | CRITICAL | 6 | P0 |
+| Race conditions (no locks) | CRITICAL | 4 | P0 |
+| Memory leaks (unbounded) | HIGH | 3 | P1 |
+| Float for money | HIGH | 1 | P1 |
+| File upload security | HIGH | 1 | P1 |
+| Missing health check | MEDIUM | 1 | P1 |
+| No circuit breakers | MEDIUM | 1 | P2 |
+| Unpinned dependencies | MEDIUM | 5+ | P2 |
+
+### UPDATED PRIORITY FIXES
+
+**P0 - IMMEDIATE (Security/Data Integrity):**
+1. Remove all hardcoded passwords from source code
+2. Add asyncio.Lock to global mutable dicts in cache.py
+3. Implement permission_sets and sharing_rules in security-service (from prev audit)
+
+**P1 - URGENT (Within 1 Week):**
+4. Change REAL to DECIMAL for money fields in schema
+5. Add MIME type validation for file uploads
+6. Add HEALTHCHECK to sales-module Dockerfile
+7. Fix asset-management Dockerfile ${PORT} expansion
+8. Add max size limits to in-memory caches
+
+**P2 - SOON (Within 2 Weeks):**
+9. Implement circuit breakers for service-to-service calls
+10. Add retry logic with exponential backoff
+11. Pin dependency versions with upper bounds
+12. Remove orphaned code directories
+13. Add missing database indexes
+
+
+================================================================================
+Last Updated: 2025-12-28
+================================================================================
+

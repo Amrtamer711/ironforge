@@ -273,3 +273,103 @@ async def get_api_key_usage(
         requests_this_hour=usage.get("requests_this_hour", 0),
         last_used_at=usage.get("last_used_at"),
     )
+
+
+@router.post("/{key_id}/rotate", response_model=APIKeyCreateResponse)
+async def rotate_api_key(
+    key_id: str,
+    service: str = Depends(require_service_auth),
+):
+    """
+    Rotate an API key - generates a new key value while keeping the same ID.
+
+    The old key is immediately invalidated and a new key is returned.
+    The new key is returned ONCE - save it immediately.
+
+    Returns:
+        APIKeyCreateResponse with the new key value
+    """
+    # Get existing key
+    existing = api_key_service.get_key(key_id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="API key not found",
+        )
+
+    try:
+        # Generate new key with same settings
+        result = api_key_service.generate_key(
+            name=existing["name"],
+            scopes=existing.get("scopes", []),
+            created_by=existing.get("created_by"),
+            description=existing.get("description"),
+            allowed_services=existing.get("allowed_services"),
+            allowed_ips=existing.get("allowed_ips"),
+            rate_limit_per_minute=existing.get("rate_limit_per_minute"),
+            rate_limit_per_day=existing.get("rate_limit_per_day"),
+            expires_at=existing.get("expires_at"),
+            metadata={**(existing.get("metadata") or {}), "rotated_from": key_id},
+        )
+
+        # Revoke the old key
+        api_key_service.revoke_key(key_id)
+
+        audit_service.log_event(
+            actor_type="service",
+            actor_id=service,
+            service="security-service",
+            action="api_key.rotate",
+            resource_type="api_key",
+            resource_id=key_id,
+            metadata={"new_key_id": result["key_id"]},
+        )
+
+        return APIKeyCreateResponse(
+            key=result["key"],
+            key_id=result["key_id"],
+            key_prefix=result["key_prefix"],
+            name=result["name"],
+            scopes=result["scopes"],
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to rotate API key: {str(e)}",
+        )
+
+
+@router.post("/{key_id}/deactivate")
+async def deactivate_api_key(
+    key_id: str,
+    service: str = Depends(require_service_auth),
+):
+    """
+    Deactivate an API key (soft disable).
+
+    The key remains in the database but cannot be used for authentication.
+    Use DELETE to permanently remove.
+    """
+    result = api_key_service.update_key(key_id, {"is_active": False})
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="API key not found",
+        )
+
+    audit_service.log_event(
+        actor_type="service",
+        actor_id=service,
+        service="security-service",
+        action="api_key.deactivate",
+        resource_type="api_key",
+        resource_id=key_id,
+    )
+
+    return {
+        "success": True,
+        "key_id": key_id,
+        "is_active": False,
+    }

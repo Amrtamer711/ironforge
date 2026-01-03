@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # Port - server.js:12
     PORT: int = 3005
 
+    # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+    LOG_LEVEL: str = "INFO"
+
     # ==========================================================================
     # UI SUPABASE CONFIGURATION - server.js:22-47
     # unified-ui owns authentication - these are for the UI Supabase project
@@ -168,8 +171,10 @@ class Settings(BaseSettings):
             return [
                 "http://localhost:3000",
                 "http://localhost:3005",
+                "http://localhost:5173",
                 "http://127.0.0.1:3000",
                 "http://127.0.0.1:3005",
+                "http://127.0.0.1:5173",
             ]
 
         origins = []

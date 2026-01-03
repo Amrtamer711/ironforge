@@ -211,7 +211,7 @@ class LLMProvider(ABC):
 
         Unified interface - each provider handles quality/orientation internally:
         - OpenAI (gpt-image-1): quality=low/medium/high, sizes=1024x1536/1536x1024
-        - Google (gemini-3-pro): quality→resolution (1K/2K/4K), orientation→aspect_ratio
+        - Google (gemini-3-pro): quality->resolution (1K/2K/4K), orientation->aspect_ratio
 
         Args:
             prompt: Text description of the image to generate

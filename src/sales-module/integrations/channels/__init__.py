@@ -2,11 +2,11 @@
 Unified Channel Abstraction Layer.
 
 This module provides a platform-agnostic interface for messaging channels,
-following the same pattern as integrations/llm/ for LLM providers.
+using crm-channels for base types and providing sales-module specific adapters.
 
 Supported Channels:
 - Slack (SlackAdapter)
-- Web UI (WebAdapter) - Future
+- Web UI (WebAdapter)
 - Microsoft Teams (TeamsAdapter) - Future
 
 Usage:
@@ -31,8 +31,11 @@ Usage:
     )
 """
 
-from .adapters import SlackAdapter, WebAdapter
-from .base import (
+# Import adapters from local implementations (they have sales-specific dependencies)
+from integrations.channels.adapters import SlackAdapter, WebAdapter
+
+# Re-export base types from crm-channels
+from crm_channels import (
     ActionResult,
     Attachment,
     Button,
@@ -46,12 +49,21 @@ from .base import (
     Modal,
     ModalField,
     User,
+    # Router
+    ChannelRouter,
+    get_channel,
+    get_router,
+    register_channel,
+    set_channel,
+    # Formatting
+    ChannelFormatter,
+    to_html,
+    to_plain,
+    to_slack,
 )
-from .formatting import ChannelFormatter, to_html, to_plain, to_slack
-from .router import ChannelRouter, get_channel, get_router, register_channel, set_channel
 
 __all__ = [
-    # Base types
+    # Base types (from crm-channels)
     "ChannelAdapter",
     "ChannelType",
     "Message",
@@ -65,18 +77,18 @@ __all__ = [
     "FieldType",
     "Attachment",
     "MessageFormat",
-    # Router
+    # Router (from crm-channels)
     "ChannelRouter",
     "get_channel",
     "set_channel",
     "register_channel",
     "get_router",
-    # Formatting
+    # Formatting (from crm-channels)
     "ChannelFormatter",
     "to_slack",
     "to_html",
     "to_plain",
-    # Adapters
+    # Adapters (sales-module specific)
     "SlackAdapter",
     "WebAdapter",
 ]

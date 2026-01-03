@@ -43,11 +43,20 @@ else:
     DEV_PANEL_ENABLED = False
 
 # Configure logging
+_log_level = os.getenv("LOG_LEVEL", "INFO")
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, _log_level.upper(), logging.INFO),
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger("unified-ui")
+
+# Quiet down noisy third-party loggers
+for _logger_name in [
+    "httpx", "httpcore", "httpcore.http2", "httpcore.connection",
+    "urllib3", "hpack", "hpack.hpack", "hpack.table",
+    "openai", "openai._base_client",
+]:
+    logging.getLogger(_logger_name).setLevel(logging.WARNING)
 
 
 # Filter to silence health check logs in uvicorn
@@ -79,10 +88,19 @@ async def lifespan(app: FastAPI):
     settings.log_config()
     # Rate limiting uses on-demand cleanup via shared security module
 
+    # Initialize cache (Redis or memory fallback)
+    from crm_cache import get_cache, close_cache
+    cache = get_cache()
+    logger.info("[CACHE] Initialized cache backend")
+
     # Check Supabase connection
     supabase = get_supabase()
     if supabase:
         logger.info("[UI] Supabase: Connected")
+
+        # Sync permissions from code to database
+        from backend.services.permissions import sync_permissions_to_database
+        await sync_permissions_to_database()
     else:
         logger.warning("[UI] Supabase: Not configured")
 
@@ -91,7 +109,8 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown (cleanup if needed)
+    # Shutdown
+    await close_cache()
     logger.info("[UI] Shutting down...")
 
 

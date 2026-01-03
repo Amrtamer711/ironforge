@@ -11,9 +11,11 @@ To generate PostgreSQL/Supabase schema SQL for migrations, run:
 Apply the generated SQL in the Supabase dashboard SQL editor or via migrations.
 """
 
+import asyncio
 import json
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any
 
@@ -23,6 +25,34 @@ from db.schema import get_table_names
 from core.utils.time import get_uae_time
 
 logger = logging.getLogger("proposal-bot")
+
+# Cache TTLs (in seconds)
+API_KEY_CACHE_TTL = 300  # 5 minutes for API keys
+LOCATION_CACHE_TTL = 600  # 10 minutes for locations
+USER_CACHE_TTL = 600  # 10 minutes for user lookups
+PERMISSIONS_CACHE_TTL = 900  # 15 minutes for permissions
+BOOKING_ORDER_CACHE_TTL = 300  # 5 minutes for booking orders
+STATS_CACHE_TTL = 600  # 10 minutes for statistics
+PROPOSAL_CACHE_TTL = 300  # 5 minutes for proposals
+DOCUMENT_CACHE_TTL = 600  # 10 minutes for documents
+CHAT_CACHE_TTL = 60  # 1 minute for chat sessions
+BO_WORKFLOW_CACHE_TTL = 30  # 30 seconds for BO workflows (short-lived)
+AI_COSTS_CACHE_TTL = 900  # 15 minutes for AI costs summary
+
+
+def _run_async(coro):
+    """Run async code from sync context."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(asyncio.run, coro).result()
+    else:
+        return asyncio.run(coro)
 
 
 class SupabaseOperationError(Exception):
@@ -40,6 +70,8 @@ class SupabaseBackend(DatabaseBackend):
     def __init__(self):
         """Initialize Supabase backend using environment-aware settings."""
         self._client = None
+        self._cache = None
+        self._cache_initialized = False
 
         # Use the new settings-based config with dev/prod switching
         try:
@@ -57,6 +89,84 @@ class SupabaseBackend(DatabaseBackend):
 
         if not self._url or not self._key:
             logger.warning("[SUPABASE] Credentials not configured. Set SALESBOT_DEV_SUPABASE_URL and SALESBOT_DEV_SUPABASE_SERVICE_ROLE_KEY (or PROD variants)")
+
+    # ========== CACHE METHODS ==========
+
+    def _get_cache(self):
+        """Get the cache backend (lazy initialization)."""
+        if self._cache is not None:
+            return self._cache
+
+        if self._cache_initialized:
+            return None
+
+        self._cache_initialized = True
+
+        try:
+            from crm_cache import get_cache
+            self._cache = get_cache()
+            logger.info("[CACHE] Cache backend initialized for sales-module")
+            return self._cache
+        except ImportError:
+            logger.warning("[CACHE] crm_cache not installed, caching disabled")
+            return None
+        except Exception as e:
+            logger.warning(f"[CACHE] Failed to initialize cache: {e}")
+            return None
+
+    async def _cache_get(self, key: str) -> Any | None:
+        """Get value from cache."""
+        cache = self._get_cache()
+        if not cache:
+            return None
+        try:
+            return await cache.get(key)
+        except Exception as e:
+            logger.debug(f"[CACHE] Get error: {e}")
+            return None
+
+    async def _cache_set(self, key: str, value: Any, ttl: int = 300) -> None:
+        """Set value in cache."""
+        cache = self._get_cache()
+        if not cache:
+            return
+        try:
+            await cache.set(key, value, ttl=ttl)
+        except Exception as e:
+            logger.debug(f"[CACHE] Set error: {e}")
+
+    async def _cache_delete(self, key: str) -> None:
+        """Delete value from cache."""
+        cache = self._get_cache()
+        if not cache:
+            return
+        try:
+            await cache.delete(key)
+        except Exception as e:
+            logger.debug(f"[CACHE] Delete error: {e}")
+
+    async def _cache_delete_pattern(self, pattern: str) -> int:
+        """Delete all keys matching pattern."""
+        cache = self._get_cache()
+        if not cache:
+            return 0
+        try:
+            return await cache.delete_pattern(pattern)
+        except Exception as e:
+            logger.debug(f"[CACHE] Delete pattern error: {e}")
+            return 0
+
+    def invalidate_api_key_cache(self, key_hash: str) -> None:
+        """Invalidate cached API key."""
+        cache_key = f"api_key:{key_hash}"
+        _run_async(self._cache_delete(cache_key))
+        logger.info(f"[CACHE] Invalidated API key cache")
+
+    def invalidate_locations_cache(self, schemas: list[str] | None = None) -> None:
+        """Invalidate location caches."""
+        _run_async(self._cache_delete_pattern("locations:*"))
+        _run_async(self._cache_delete_pattern("location:*"))
+        logger.info("[CACHE] Invalidated locations cache")
 
     @property
     def name(self) -> str:
@@ -125,7 +235,7 @@ class SupabaseBackend(DatabaseBackend):
         Search for a record across all company schemas with access control.
 
         For lookups by key (location_key, bo_ref, etc.), this searches all
-        known schemas, checks if the record exists, and verifies user access.
+        known schemas IN PARALLEL, checks if the record exists, and verifies user access.
 
         Args:
             table: Table name to query
@@ -141,32 +251,38 @@ class SupabaseBackend(DatabaseBackend):
         """
         client = self._get_client()
 
-        # Search all known company schemas
-        for schema in COMPANY_SCHEMAS:
+        def search_schema(schema: str) -> tuple[str, Any]:
+            """Search a single schema, return (schema, data) tuple."""
             try:
                 query = client.schema(schema).table(table).select(select)
                 for col, val in filters.items():
                     query = query.eq(col, val)
                 response = query.execute()
-
                 if response.data:
-                    # Found the record - check access
-                    if schema in user_companies:
-                        # Add company_schema to the result
-                        result = response.data[0] if len(response.data) == 1 else response.data
-                        if isinstance(result, dict):
-                            result["company_schema"] = schema
-                        elif isinstance(result, list):
-                            for item in result:
-                                item["company_schema"] = schema
-                        return (result, schema, "found")
-                    else:
-                        # Found but user can't access
-                        return (None, schema, "access_denied")
+                    return (schema, response.data[0] if len(response.data) == 1 else response.data)
+                return (schema, None)
             except Exception as e:
-                # Log but continue searching other schemas
                 logger.debug(f"[SUPABASE] Error searching {schema}.{table}: {e}")
-                continue
+                return (schema, None)
+
+        # Search all schemas in parallel
+        with ThreadPoolExecutor(max_workers=len(COMPANY_SCHEMAS)) as executor:
+            results = list(executor.map(search_schema, COMPANY_SCHEMAS))
+
+        # Find first match and check access
+        for schema, data in results:
+            if data:
+                if schema in user_companies:
+                    # Add company_schema to the result
+                    if isinstance(data, dict):
+                        data["company_schema"] = schema
+                    elif isinstance(data, list):
+                        for item in data:
+                            item["company_schema"] = schema
+                    return (data, schema, "found")
+                else:
+                    # Found but user can't access
+                    return (None, schema, "access_denied")
 
         # Not found in any schema
         return (None, None, "not_found")
@@ -179,7 +295,7 @@ class SupabaseBackend(DatabaseBackend):
         filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Query a table across multiple company schemas and aggregate results.
+        Query a table across multiple company schemas IN PARALLEL and aggregate results.
 
         For list operations where we want data from all user's accessible companies.
 
@@ -193,9 +309,9 @@ class SupabaseBackend(DatabaseBackend):
             List of records from all schemas, each with 'company_schema' field added
         """
         client = self._get_client()
-        all_results = []
 
-        for schema in company_schemas:
+        def query_single_schema(schema: str) -> list[dict[str, Any]]:
+            """Query a single schema, return list of records with company_schema added."""
             try:
                 query = client.schema(schema).table(table).select(select)
                 if filters:
@@ -206,12 +322,18 @@ class SupabaseBackend(DatabaseBackend):
                 if response.data:
                     for record in response.data:
                         record["company_schema"] = schema
-                    all_results.extend(response.data)
+                    return response.data
+                return []
             except Exception as e:
                 logger.warning(f"[SUPABASE] Error querying {schema}.{table}: {e}")
-                continue
+                return []
 
-        return all_results
+        # Query all schemas in parallel
+        with ThreadPoolExecutor(max_workers=len(company_schemas)) as executor:
+            results = list(executor.map(query_single_schema, company_schemas))
+
+        # Flatten results
+        return [record for schema_results in results for record in schema_results]
 
     # =========================================================================
     # PROPOSALS
@@ -241,11 +363,23 @@ class SupabaseBackend(DatabaseBackend):
                 "total_amount": total_amount
             }).execute()
             logger.info(f"[SUPABASE] Logged proposal for client: {client_name}")
+
+            # Invalidate proposals summary cache
+            _run_async(self._cache_delete("proposals:summary"))
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to log proposal for {client_name}: {e}", exc_info=True)
             raise SupabaseOperationError(f"Failed to log proposal: {e}") from e
 
     def get_proposals_summary(self) -> dict[str, Any]:
+        """Get proposals summary (cached - expensive aggregation)."""
+        cache_key = "proposals:summary"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug("[CACHE] Proposals summary cache hit")
+            return cached
+
         try:
             client = self._get_client()
 
@@ -270,11 +404,16 @@ class SupabaseBackend(DatabaseBackend):
             ]
 
             logger.debug(f"[SUPABASE] Retrieved proposals summary: {total_count} total")
-            return {
+            result = {
                 "total_proposals": total_count,
                 "by_package_type": by_type,
                 "recent_proposals": recent
             }
+
+            # Cache the result
+            _run_async(self._cache_set(cache_key, result, ttl=STATS_CACHE_TTL))
+
+            return result
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to get proposals summary: {e}", exc_info=True)
             return {
@@ -340,10 +479,22 @@ class SupabaseBackend(DatabaseBackend):
             return []
 
     def get_proposal_by_id(self, proposal_id: int) -> dict[str, Any] | None:
-        """Get a single proposal by ID."""
+        """Get a single proposal by ID (cached)."""
+        cache_key = f"proposal:{proposal_id}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Proposal cache hit: {proposal_id}")
+            return cached
+
         try:
             client = self._get_client()
             response = client.table("proposals_log").select("*").eq("id", proposal_id).single().execute()
+
+            if response.data:
+                _run_async(self._cache_set(cache_key, response.data, ttl=PROPOSAL_CACHE_TTL))
+
             return response.data
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to get proposal {proposal_id}: {e}", exc_info=True)
@@ -365,9 +516,30 @@ class SupabaseBackend(DatabaseBackend):
             client = self._get_client()
             client.table("proposals_log").delete().eq("id", proposal_id).execute()
             logger.info(f"[SUPABASE] Deleted proposal {proposal_id}")
+
+            # Invalidate caches
+            _run_async(self._cache_delete(f"proposal:{proposal_id}"))
+            _run_async(self._cache_delete("proposals:summary"))
+
             return True
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to delete proposal {proposal_id}: {e}", exc_info=True)
+            return False
+
+    def update_proposal(self, proposal_id: int, update_data: dict[str, Any]) -> bool:
+        """Update a proposal's metadata by ID."""
+        try:
+            client = self._get_client()
+            client.table("proposals_log").update(update_data).eq("id", proposal_id).execute()
+            logger.info(f"[SUPABASE] Updated proposal {proposal_id}: {list(update_data.keys())}")
+
+            # Invalidate caches
+            _run_async(self._cache_delete(f"proposal:{proposal_id}"))
+            _run_async(self._cache_delete("proposals:summary"))
+
+            return True
+        except Exception as e:
+            logger.error(f"[SUPABASE] Failed to update proposal {proposal_id}: {e}", exc_info=True)
             return False
 
     # =========================================================================
@@ -452,12 +624,27 @@ class SupabaseBackend(DatabaseBackend):
 
             client.table("booking_orders").upsert(record, on_conflict="bo_ref").execute()
             logger.info(f"[SUPABASE] Saved booking order: {data['bo_ref']}")
+
+            # Invalidate cache
+            _run_async(self._cache_delete(f"bo:{data['bo_ref']}"))
+            if data.get("bo_number"):
+                _run_async(self._cache_delete(f"bo_number:{data['bo_number'].strip().lower()}"))
+
             return data["bo_ref"]
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to save booking order {data.get('bo_ref', 'unknown')}: {e}", exc_info=True)
             raise SupabaseOperationError(f"Failed to save booking order: {e}") from e
 
     def get_booking_order(self, bo_ref: str) -> dict[str, Any] | None:
+        """Get booking order by reference (cached)."""
+        cache_key = f"bo:{bo_ref}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Booking order cache hit: {bo_ref}")
+            return cached
+
         try:
             client = self._get_client()
             response = client.table("booking_orders").select("*").eq("bo_ref", bo_ref).single().execute()
@@ -474,12 +661,25 @@ class SupabaseBackend(DatabaseBackend):
             if record.get("missing_fields_json"):
                 record["missing_required"] = json.loads(record["missing_fields_json"])
 
+            # Cache the result
+            _run_async(self._cache_set(cache_key, record, ttl=BOOKING_ORDER_CACHE_TTL))
+
             return record
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to get booking order {bo_ref}: {e}", exc_info=True)
             return None
 
     def get_booking_order_by_number(self, bo_number: str) -> dict[str, Any] | None:
+        """Get booking order by number (cached)."""
+        normalized_number = bo_number.strip().lower()
+        cache_key = f"bo_number:{normalized_number}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Booking order cache hit by number: {bo_number}")
+            return cached
+
         try:
             client = self._get_client()
             response = client.table("booking_orders").select("*").ilike("bo_number", bo_number.strip()).single().execute()
@@ -495,6 +695,12 @@ class SupabaseBackend(DatabaseBackend):
                 record["warnings"] = json.loads(record["warnings_json"])
             if record.get("missing_fields_json"):
                 record["missing_required"] = json.loads(record["missing_fields_json"])
+
+            # Cache the result
+            _run_async(self._cache_set(cache_key, record, ttl=BOOKING_ORDER_CACHE_TTL))
+            # Also cache by bo_ref for cross-lookup
+            if record.get("bo_ref"):
+                _run_async(self._cache_set(f"bo:{record['bo_ref']}", record, ttl=BOOKING_ORDER_CACHE_TTL))
 
             return record
         except Exception as e:
@@ -588,6 +794,9 @@ class SupabaseBackend(DatabaseBackend):
                 "config_json": json.dumps(config) if config else None
             }).execute()
 
+            # Invalidate frames cache for this location
+            _run_async(self._cache_delete_pattern(f"frames:{location_key.lower()}:*"))
+
             logger.info(f"[SUPABASE] Saved mockup frame: {company_schema}.{location_key}/{final_filename}")
             return final_filename
         except Exception as e:
@@ -606,6 +815,10 @@ class SupabaseBackend(DatabaseBackend):
         try:
             client = self._get_client()
             client.schema(company_schema).table("mockup_frames").delete().eq("location_key", location_key).eq("time_of_day", time_of_day).eq("finish", finish).eq("photo_filename", photo_filename).execute()
+
+            # Invalidate frames cache for this location
+            _run_async(self._cache_delete_pattern(f"frames:{location_key.lower()}:*"))
+
             logger.info(f"[SUPABASE] Deleted mockup frame: {company_schema}.{location_key}/{photo_filename}")
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to delete mockup frame {location_key}/{photo_filename}: {e}", exc_info=True)
@@ -652,7 +865,15 @@ class SupabaseBackend(DatabaseBackend):
         self,
         company_schemas: list[str],
     ) -> dict[str, Any]:
-        """Get mockup usage stats from user's accessible company schemas."""
+        """Get mockup usage stats from user's accessible company schemas (cached)."""
+        cache_key = f"mockup:stats:{','.join(sorted(company_schemas))}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug("[CACHE] Mockup usage stats cache hit")
+            return cached
+
         try:
             client = self._get_client()
             all_usage = []
@@ -703,7 +924,7 @@ class SupabaseBackend(DatabaseBackend):
                 for r in all_usage_sorted
             ]
 
-            return {
+            result = {
                 "total_generations": total_count,
                 "successful": successful,
                 "failed": failed,
@@ -713,6 +934,11 @@ class SupabaseBackend(DatabaseBackend):
                 "without_template": without_template,
                 "recent_generations": recent
             }
+
+            # Cache the result
+            _run_async(self._cache_set(cache_key, result, ttl=STATS_CACHE_TTL))
+
+            return result
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to get mockup usage stats: {e}", exc_info=True)
             return {
@@ -793,17 +1019,35 @@ class SupabaseBackend(DatabaseBackend):
                 "workflow_data": workflow_data,
                 "updated_at": updated_at
             }, on_conflict="workflow_id").execute()
+
+            # Invalidate cache
+            _run_async(self._cache_delete(f"bo_workflow:{workflow_id}"))
+
             logger.info(f"[SUPABASE] Saved BO workflow: {workflow_id}")
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to save BO workflow {workflow_id}: {e}", exc_info=True)
             raise SupabaseOperationError(f"Failed to save BO workflow: {e}") from e
 
     def get_bo_workflow(self, workflow_id: str) -> str | None:
+        """Get BO workflow by ID (cached with short TTL)."""
+        cache_key = f"bo_workflow:{workflow_id}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] BO workflow cache hit: {workflow_id}")
+            return cached
+
         try:
             client = self._get_client()
             response = client.table("bo_approval_workflows").select("workflow_data").eq("workflow_id", workflow_id).single().execute()
 
-            return response.data["workflow_data"] if response.data else None
+            result = response.data["workflow_data"] if response.data else None
+
+            if result:
+                _run_async(self._cache_set(cache_key, result, ttl=BO_WORKFLOW_CACHE_TTL))
+
+            return result
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to get BO workflow {workflow_id}: {e}", exc_info=True)
             return None
@@ -822,6 +1066,10 @@ class SupabaseBackend(DatabaseBackend):
         try:
             client = self._get_client()
             client.table("bo_approval_workflows").delete().eq("workflow_id", workflow_id).execute()
+
+            # Invalidate cache
+            _run_async(self._cache_delete(f"bo_workflow:{workflow_id}"))
+
             logger.info(f"[SUPABASE] Deleted BO workflow: {workflow_id}")
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to delete BO workflow {workflow_id}: {e}", exc_info=True)
@@ -888,6 +1136,27 @@ class SupabaseBackend(DatabaseBackend):
         workflow: str | None = None,
         user_id: str | None = None,
     ) -> dict[str, Any]:
+        """Get AI costs summary (cached - expensive aggregation)."""
+        # Build cache key from filters
+        cache_parts = ["ai_costs"]
+        if start_date:
+            cache_parts.append(f"s:{start_date}")
+        if end_date:
+            cache_parts.append(f"e:{end_date}")
+        if call_type:
+            cache_parts.append(f"ct:{call_type}")
+        if workflow:
+            cache_parts.append(f"wf:{workflow}")
+        if user_id:
+            cache_parts.append(f"u:{user_id}")
+        cache_key = ":".join(cache_parts)
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug("[CACHE] AI costs summary cache hit")
+            return cached
+
         try:
             client = self._get_client()
 
@@ -986,7 +1255,7 @@ class SupabaseBackend(DatabaseBackend):
                 for r in (recent_response.data or [])
             ]
 
-            return {
+            result = {
                 "total_calls": total_calls,
                 "total_tokens": total_tokens,
                 "total_cost": total_cost,
@@ -1001,6 +1270,11 @@ class SupabaseBackend(DatabaseBackend):
                 "daily_costs": daily_costs,
                 "calls": calls
             }
+
+            # Cache the result
+            _run_async(self._cache_set(cache_key, result, ttl=AI_COSTS_CACHE_TTL))
+
+            return result
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to get AI costs summary: {e}", exc_info=True)
             return {
@@ -1082,6 +1356,10 @@ class SupabaseBackend(DatabaseBackend):
 
             client.table("users").upsert(user_data, on_conflict="id").execute()
 
+            # Invalidate user cache
+            _run_async(self._cache_delete(f"user:{user_id}"))
+            _run_async(self._cache_delete(f"user:email:{email.lower()}"))
+
             logger.info(f"[SUPABASE] Upserted user: {email}")
             return True
         except Exception as e:
@@ -1089,17 +1367,42 @@ class SupabaseBackend(DatabaseBackend):
             return False
 
     def get_user_by_id(self, user_id: str) -> dict[str, Any] | None:
+        """Get user by ID (cached)."""
+        cache_key = f"user:{user_id}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] User cache hit: {user_id}")
+            return cached
+
         try:
             client = self._get_client()
             response = client.table("users").select("*").eq("id", user_id).single().execute()
+            if response.data:
+                _run_async(self._cache_set(cache_key, response.data, ttl=USER_CACHE_TTL))
             return response.data
         except Exception:
             return None
 
     def get_user_by_email(self, email: str) -> dict[str, Any] | None:
+        """Get user by email (cached)."""
+        cache_key = f"user:email:{email.lower()}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] User email cache hit: {email}")
+            return cached
+
         try:
             client = self._get_client()
             response = client.table("users").select("*").ilike("email", email).single().execute()
+            if response.data:
+                _run_async(self._cache_set(cache_key, response.data, ttl=USER_CACHE_TTL))
+                # Also cache by user ID
+                if response.data.get("id"):
+                    _run_async(self._cache_set(f"user:{response.data['id']}", response.data, ttl=USER_CACHE_TTL))
             return response.data
         except Exception:
             return None
@@ -1109,10 +1412,25 @@ class SupabaseBackend(DatabaseBackend):
     # =========================================================================
 
     def list_permissions(self) -> list[dict[str, Any]]:
+        """List all permissions (cached - rarely changes)."""
+        cache_key = "permissions:all"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Permissions cache hit ({len(cached)} permissions)")
+            return cached
+
         try:
             client = self._get_client()
             response = client.table("permissions").select("*").order("name").execute()
-            return response.data or []
+            result = response.data or []
+
+            # Cache the result
+            _run_async(self._cache_set(cache_key, result, ttl=PERMISSIONS_CACHE_TTL))
+            logger.debug(f"[CACHE] Cached {len(result)} permissions")
+
+            return result
         except Exception as e:
             logger.error(f"[SUPABASE] Error listing permissions: {e}")
             return []
@@ -1141,6 +1459,10 @@ class SupabaseBackend(DatabaseBackend):
             if response.data:
                 perm_id = str(response.data[0]["id"])
                 logger.debug(f"[SUPABASE] Created/updated permission: {name}")
+
+                # Invalidate permissions cache
+                _run_async(self._cache_delete("permissions:all"))
+
                 return perm_id
             return None
         except Exception as e:
@@ -1194,7 +1516,15 @@ class SupabaseBackend(DatabaseBackend):
             return None
 
     def get_api_key_by_hash(self, key_hash: str) -> dict[str, Any] | None:
-        """Get API key info by hash."""
+        """Get API key info by hash (cached)."""
+        cache_key = f"api_key:{key_hash}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] API key cache hit")
+            return cached
+
         try:
             client = self._get_client()
             response = client.table("api_keys").select("*").eq(
@@ -1210,6 +1540,11 @@ class SupabaseBackend(DatabaseBackend):
                 record["scopes"] = json.loads(record["scopes_json"])
             if record.get("metadata_json"):
                 record["metadata"] = json.loads(record["metadata_json"])
+
+            # Cache the result
+            _run_async(self._cache_set(cache_key, record, ttl=API_KEY_CACHE_TTL))
+            logger.debug(f"[CACHE] API key cached")
+
             return record
         except Exception as e:
             logger.error(f"[SUPABASE] Error getting API key by hash: {e}")
@@ -1297,7 +1632,17 @@ class SupabaseBackend(DatabaseBackend):
 
         try:
             client = self._get_client()
+
+            # Get the key_hash before updating for cache invalidation
+            existing = client.table("api_keys").select("key_hash").eq("id", key_id).single().execute()
+            old_hash = existing.data.get("key_hash") if existing.data else None
+
             client.table("api_keys").update(updates).eq("id", key_id).execute()
+
+            # Invalidate cache
+            if old_hash:
+                _run_async(self._cache_delete(f"api_key:{old_hash}"))
+
             logger.info(f"[SUPABASE] Updated API key: {key_id}")
             return True
         except Exception as e:
@@ -1326,11 +1671,22 @@ class SupabaseBackend(DatabaseBackend):
         """Rotate an API key (replace hash)."""
         try:
             client = self._get_client()
+
+            # Get old hash for cache invalidation
+            existing = client.table("api_keys").select("key_hash").eq("id", key_id).single().execute()
+            old_hash = existing.data.get("key_hash") if existing.data else None
+
             client.table("api_keys").update({
                 "key_hash": new_key_hash,
                 "key_prefix": new_key_prefix,
                 "last_rotated_at": rotated_at,
             }).eq("id", key_id).execute()
+
+            # Invalidate old and new hash caches
+            if old_hash:
+                _run_async(self._cache_delete(f"api_key:{old_hash}"))
+            _run_async(self._cache_delete(f"api_key:{new_key_hash}"))
+
             logger.info(f"[SUPABASE] Rotated API key: {key_id}")
             return True
         except Exception as e:
@@ -1341,10 +1697,20 @@ class SupabaseBackend(DatabaseBackend):
         """Delete an API key (hard delete)."""
         try:
             client = self._get_client()
+
+            # Get the key_hash before deleting for cache invalidation
+            existing = client.table("api_keys").select("key_hash").eq("id", key_id).single().execute()
+            key_hash = existing.data.get("key_hash") if existing.data else None
+
             # Delete usage logs first
             client.table("api_key_usage").delete().eq("api_key_id", key_id).execute()
             # Delete the key
             client.table("api_keys").delete().eq("id", key_id).execute()
+
+            # Invalidate cache
+            if key_hash:
+                _run_async(self._cache_delete(f"api_key:{key_hash}"))
+
             logger.info(f"[SUPABASE] Deleted API key: {key_id}")
             return True
         except Exception as e:
@@ -1589,6 +1955,9 @@ class SupabaseBackend(DatabaseBackend):
                 "updated_at": now,
             }, on_conflict="user_id").execute()
 
+            # Invalidate cache
+            _run_async(self._cache_delete(f"chat:{user_id}"))
+
             logger.debug(f"[SUPABASE] Saved chat session for user: {user_id} ({len(messages)} messages)")
             return True
         except Exception as e:
@@ -1596,7 +1965,15 @@ class SupabaseBackend(DatabaseBackend):
             return False
 
     def get_chat_session(self, user_id: str) -> dict[str, Any] | None:
-        """Get a user's chat session."""
+        """Get a user's chat session (cached with short TTL)."""
+        cache_key = f"chat:{user_id}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Chat session cache hit: {user_id}")
+            return cached
+
         try:
             client = self._get_client()
             response = client.table("chat_sessions").select("*").eq("user_id", user_id).single().execute()
@@ -1604,12 +1981,15 @@ class SupabaseBackend(DatabaseBackend):
             if not response.data:
                 return None
 
-            return {
+            result = {
                 "session_id": response.data.get("session_id"),
                 "messages": response.data.get("messages", []),
                 "created_at": response.data.get("created_at"),
                 "updated_at": response.data.get("updated_at"),
             }
+
+            _run_async(self._cache_set(cache_key, result, ttl=CHAT_CACHE_TTL))
+            return result
         except Exception as e:
             # single() throws if no row found, which is expected
             if "PGRST116" in str(e):  # Row not found
@@ -1622,6 +2002,10 @@ class SupabaseBackend(DatabaseBackend):
         try:
             client = self._get_client()
             client.table("chat_sessions").delete().eq("user_id", user_id).execute()
+
+            # Invalidate cache
+            _run_async(self._cache_delete(f"chat:{user_id}"))
+
             logger.info(f"[SUPABASE] Deleted chat session for user: {user_id}")
             return True
         except Exception as e:
@@ -1690,10 +2074,22 @@ class SupabaseBackend(DatabaseBackend):
             return None
 
     def get_document(self, file_id: str) -> dict[str, Any] | None:
-        """Get a document by file_id."""
+        """Get a document by file_id (cached)."""
+        cache_key = f"document:{file_id}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Document cache hit: {file_id}")
+            return cached
+
         try:
             client = self._get_client()
             response = client.table("documents").select("*").eq("file_id", file_id).single().execute()
+
+            if response.data:
+                _run_async(self._cache_set(cache_key, response.data, ttl=DOCUMENT_CACHE_TTL))
+
             return response.data
         except Exception as e:
             if "PGRST116" in str(e):  # Row not found
@@ -1702,7 +2098,15 @@ class SupabaseBackend(DatabaseBackend):
             return None
 
     def get_document_by_hash(self, file_hash: str) -> dict[str, Any] | None:
-        """Get a document by file hash (for deduplication)."""
+        """Get a document by file hash (for deduplication, cached)."""
+        cache_key = f"document:hash:{file_hash}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Document hash cache hit")
+            return cached
+
         try:
             client = self._get_client()
             response = (
@@ -1713,7 +2117,15 @@ class SupabaseBackend(DatabaseBackend):
                 .limit(1)
                 .execute()
             )
-            return response.data[0] if response.data else None
+            result = response.data[0] if response.data else None
+
+            if result:
+                _run_async(self._cache_set(cache_key, result, ttl=DOCUMENT_CACHE_TTL))
+                # Also cache by file_id for cross-lookup
+                if result.get("file_id"):
+                    _run_async(self._cache_set(f"document:{result['file_id']}", result, ttl=DOCUMENT_CACHE_TTL))
+
+            return result
         except Exception as e:
             logger.error(f"[SUPABASE] Error getting document by hash: {e}")
             return None
@@ -1723,6 +2135,11 @@ class SupabaseBackend(DatabaseBackend):
         try:
             client = self._get_client()
             now = datetime.now().isoformat()
+
+            # Get file_hash before update for cache invalidation
+            existing = client.table("documents").select("file_hash").eq("file_id", file_id).single().execute()
+            file_hash = existing.data.get("file_hash") if existing.data else None
+
             response = (
                 client.table("documents")
                 .update({"is_deleted": True, "deleted_at": now})
@@ -1730,6 +2147,11 @@ class SupabaseBackend(DatabaseBackend):
                 .execute()
             )
             if response.data:
+                # Invalidate caches
+                _run_async(self._cache_delete(f"document:{file_id}"))
+                if file_hash:
+                    _run_async(self._cache_delete(f"document:hash:{file_hash}"))
+
                 logger.info(f"[SUPABASE] Soft-deleted document: {file_id}")
                 return True
             return False
@@ -1806,7 +2228,7 @@ class SupabaseBackend(DatabaseBackend):
             return False
 
     # =========================================================================
-    # COMPANY-SCOPED LOCATIONS
+    # COMPANY-SCOPED LOCATIONS (Cached)
     # =========================================================================
 
     def get_locations_for_companies(
@@ -1814,7 +2236,7 @@ class SupabaseBackend(DatabaseBackend):
         company_schemas: list[str],
     ) -> list[dict[str, Any]]:
         """
-        Get all locations from the specified company schemas.
+        Get all locations from the specified company schemas (cached).
 
         Queries each company's locations table and aggregates results.
         Each location includes its source company schema.
@@ -1827,6 +2249,15 @@ class SupabaseBackend(DatabaseBackend):
         """
         if not company_schemas:
             return []
+
+        # Create cache key from sorted schemas
+        cache_key = f"locations:{','.join(sorted(company_schemas))}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Locations cache hit ({len(cached)} locations)")
+            return cached
 
         all_locations = []
 
@@ -1850,6 +2281,11 @@ class SupabaseBackend(DatabaseBackend):
                     continue
 
             logger.info(f"[SUPABASE] Retrieved {len(all_locations)} total locations from {len(company_schemas)} schemas")
+
+            # Cache the result
+            _run_async(self._cache_set(cache_key, all_locations, ttl=LOCATION_CACHE_TTL))
+            logger.debug(f"[CACHE] Cached {len(all_locations)} locations")
+
             return all_locations
 
         except Exception as e:
@@ -1860,13 +2296,17 @@ class SupabaseBackend(DatabaseBackend):
         self,
         location_key: str,
         company_schemas: list[str],
+        locations_cache: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any] | None:
         """
         Get a specific location by key from the user's accessible company schemas.
 
+        Optimized to use pre-loaded locations cache when available, avoiding DB query.
+
         Args:
             location_key: The location key to look up
             company_schemas: List of company schema names user can access
+            locations_cache: Optional pre-loaded locations list to search (avoids DB query)
 
         Returns:
             Location dict with 'company_schema' field if found, None otherwise
@@ -1874,6 +2314,34 @@ class SupabaseBackend(DatabaseBackend):
         if not company_schemas or not location_key:
             return None
 
+        normalized_key = location_key.lower().strip()
+
+        # First, check passed-in cache (workflow context optimization)
+        if locations_cache:
+            for loc in locations_cache:
+                if loc.get("location_key", "").lower() == normalized_key:
+                    logger.debug(f"[CACHE] Location found in passed cache: {location_key}")
+                    return loc
+
+        # Second, check Redis cache for this specific location
+        single_cache_key = f"location:{normalized_key}:{','.join(sorted(company_schemas))}"
+        cached = _run_async(self._cache_get(single_cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Location cache hit: {location_key}")
+            return cached
+
+        # Third, check if we have a cached locations list and search it
+        list_cache_key = f"locations:{','.join(sorted(company_schemas))}"
+        cached_list = _run_async(self._cache_get(list_cache_key))
+        if cached_list:
+            for loc in cached_list:
+                if loc.get("location_key", "").lower() == normalized_key:
+                    logger.debug(f"[CACHE] Location found in cached list: {location_key}")
+                    # Also cache the single lookup for future
+                    _run_async(self._cache_set(single_cache_key, loc, ttl=LOCATION_CACHE_TTL))
+                    return loc
+
+        # Finally, query DB
         try:
             client = self._get_client()
 
@@ -1885,6 +2353,8 @@ class SupabaseBackend(DatabaseBackend):
 
                     if response.data:
                         response.data["company_schema"] = schema
+                        # Cache the result
+                        _run_async(self._cache_set(single_cache_key, response.data, ttl=LOCATION_CACHE_TTL))
                         return response.data
                 except Exception:
                     # Not found in this schema, continue to next

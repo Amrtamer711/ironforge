@@ -37,7 +37,16 @@ async def lifespan(app: FastAPI):
     """Manage startup and shutdown events."""
     logger.info(f"[STARTUP] Asset Management Service starting (env={config.ENVIRONMENT})")
     logger.info(f"[STARTUP] Supabase URL: {config.SUPABASE_URL[:50]}..." if config.SUPABASE_URL else "[STARTUP] No Supabase URL configured")
+
+    # Initialize cache (Redis or memory fallback)
+    from crm_cache import get_cache, close_cache
+    cache = get_cache()
+    logger.info("[CACHE] Initialized cache backend")
+
     yield
+
+    # Close cache connection
+    await close_cache()
     logger.info("[SHUTDOWN] Asset Management Service shutting down")
 
 

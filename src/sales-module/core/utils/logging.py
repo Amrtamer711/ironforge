@@ -226,6 +226,8 @@ def setup_logging(
     default_quiet = {
         "httpx": "WARNING",
         "httpcore": "WARNING",
+        "httpcore.http2": "WARNING",
+        "httpcore.connection": "WARNING",
         "urllib3": "WARNING",
         "asyncio": "WARNING",
         "hpack": "WARNING",  # HTTP/2 header encoding spam
@@ -239,6 +241,16 @@ def setup_logging(
     for module, mod_level in default_quiet.items():
         if module_levels is None or module not in module_levels:
             logging.getLogger(module).setLevel(getattr(logging, mod_level.upper()))
+
+    # Truncate OpenAI logs (system prompts are very long)
+    class TruncatingFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            if hasattr(record, 'msg') and isinstance(record.msg, str) and len(record.msg) > 500:
+                record.msg = record.msg[:500] + "..."
+            return True
+
+    for openai_logger in ["openai", "openai._base_client"]:
+        logging.getLogger(openai_logger).addFilter(TruncatingFilter())
 
 
 def get_logger(name: str) -> logging.Logger:

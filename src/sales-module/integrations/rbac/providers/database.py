@@ -29,7 +29,6 @@ from integrations.rbac.base import (
     Team,
     TeamMember,
     TeamRole,
-    get_default_permissions,
 )
 
 # Import from crm-security SDK
@@ -229,8 +228,8 @@ class DatabaseRBACProvider(RBACProvider):
         return None
 
     async def list_permissions(self) -> list[Permission]:
-        """List all available permissions."""
-        return get_default_permissions()
+        """List all available permissions - managed by unified-ui."""
+        return []
 
     async def initialize_defaults(self) -> bool:
         """

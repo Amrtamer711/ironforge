@@ -123,7 +123,9 @@ async def generate_ai_creative(
     size: str = "1536x1024",
     location_key: str | None = None,
     user_id: str | None = None,
-    provider: str | None = None
+    provider: str | None = None,
+    company_schemas: list[str] | None = None,
+    company_hint: str | None = None,
 ) -> Path | None:
     """Generate a creative using AI image generation.
 
@@ -144,6 +146,8 @@ async def generate_ai_creative(
         user_id: Optional Slack user ID for cost tracking (None for website mockup)
         provider: Which provider to use ("openai" or "google").
                   If None, uses config.IMAGE_PROVIDER or defaults to "openai".
+        company_schemas: List of company schemas to search
+        company_hint: Optional company to try first for O(1) lookup
 
     Returns:
         Path to generated image, or None if failed
@@ -158,10 +162,10 @@ async def generate_ai_creative(
 
     # Determine orientation from location (use async service for Asset-Management)
     is_portrait = False
-    if location_key:
+    if location_key and company_schemas:
         from core.services.mockup_frame_service import MockupFrameService
-        service = MockupFrameService()
-        is_portrait = await service.is_portrait(location_key)
+        service = MockupFrameService(companies=company_schemas)
+        is_portrait = await service.is_portrait(location_key, company_hint=company_hint)
     orientation = "portrait" if is_portrait else "landscape"
 
     # Apply the mockup system prompt with user's creative brief
@@ -320,6 +324,7 @@ async def generate_mockup_async(
     finish: str = "all",
     config_override: dict | None = None,
     company_schemas: list[str] | None = None,
+    company_hint: str | None = None,
 ) -> tuple[Path | None, str | None]:
     """
     Async mockup generator that fetches data from Asset-Management.
@@ -338,6 +343,7 @@ async def generate_mockup_async(
         finish: Billboard finish ("gold", "silver", "black", "all")
         config_override: Optional config dict to override saved frame config
         company_schemas: List of company schemas to search
+        company_hint: Optional company to try first for O(1) lookup (from WorkflowContext)
 
     Returns:
         Tuple of (Path to generated mockup, photo_filename used), or (None, None)
@@ -360,7 +366,8 @@ async def generate_mockup_async(
             selected_finish = finish if finish != "all" else "gold"
 
             photo_path = await service.download_photo(
-                location_key, selected_tod, selected_finish, specific_photo
+                location_key, selected_tod, selected_finish, specific_photo,
+                company_hint=company_hint,
             )
             if not photo_path:
                 logger.error(f"[MOCKUP_ASYNC] Failed to download specific photo: {specific_photo}")
@@ -369,7 +376,9 @@ async def generate_mockup_async(
             photo_filename = specific_photo
         else:
             # Get random photo
-            result = await service.get_random_photo(location_key, time_of_day, finish)
+            result = await service.get_random_photo(
+                location_key, time_of_day, finish, company_hint=company_hint
+            )
             if not result:
                 logger.error(f"[MOCKUP_ASYNC] No photos available for {location_key}")
                 return None, None
@@ -378,7 +387,8 @@ async def generate_mockup_async(
 
         # Get frame data
         frames_data = await service.get_frames(
-            location_key, selected_tod, selected_finish, photo_filename
+            location_key, selected_tod, selected_finish, photo_filename,
+            company_hint=company_hint,
         )
         if not frames_data:
             logger.error(f"[MOCKUP_ASYNC] No frame data for {location_key}/{photo_filename}")
@@ -389,7 +399,8 @@ async def generate_mockup_async(
 
         # Get config if available
         photo_config = await service.get_config(
-            location_key, selected_tod, selected_finish, photo_filename
+            location_key, selected_tod, selected_finish, photo_filename,
+            company_hint=company_hint,
         )
 
         logger.info(

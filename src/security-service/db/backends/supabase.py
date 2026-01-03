@@ -4,9 +4,14 @@ Supabase database backend implementation for Security Service.
 This backend uses two Supabase projects:
 - Security Supabase (read/write): audit_logs, api_keys, rate_limit_state, security_events
 - UI Supabase (read-only): users, profiles, permissions, teams
+
+Caching Strategy:
+- User context (RBAC) is cached for 5 minutes (300s)
+- Cache key pattern: "rbac:user:{user_id}"
+- Invalidation: Call invalidate_user_cache(user_id) on permission/team changes
 """
 
-import hashlib
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import Any
@@ -14,6 +19,30 @@ from typing import Any
 from db.base import DatabaseBackend
 
 logger = logging.getLogger("security-service")
+
+# Cache TTLs (in seconds)
+USER_CONTEXT_TTL = 300  # 5 minutes for user RBAC context
+API_KEY_CACHE_TTL = 300  # 5 minutes for API keys
+USER_CACHE_TTL = 600  # 10 minutes for user lookups
+USER_PROFILE_CACHE_TTL = 600  # 10 minutes for user profiles
+USER_PERMISSIONS_CACHE_TTL = 300  # 5 minutes for permissions
+USER_TEAMS_CACHE_TTL = 300  # 5 minutes for teams
+
+
+def _run_async(coro):
+    """Run async code from sync context."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # We're in an async context - create a new task
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            return pool.submit(asyncio.run, coro).result()
+    else:
+        return asyncio.run(coro)
 
 
 class SupabaseOperationError(Exception):
@@ -28,6 +57,10 @@ class SupabaseBackend(DatabaseBackend):
     Uses two Supabase clients:
     - _security_client: For audit logs, API keys, rate limits (read/write)
     - _ui_client: For user/profile lookups (read-only)
+
+    Caching:
+    - User RBAC context is cached for 5 minutes
+    - Use invalidate_user_cache(user_id) to clear cache on changes
     """
 
     def __init__(self):
@@ -36,6 +69,111 @@ class SupabaseBackend(DatabaseBackend):
         self._ui_client = None
         self._security_initialized = False
         self._ui_initialized = False
+        self._cache = None
+        self._cache_initialized = False
+
+    def _get_cache(self):
+        """Get the cache backend (lazy initialization)."""
+        if self._cache is not None:
+            return self._cache
+
+        if self._cache_initialized:
+            return None
+
+        self._cache_initialized = True
+
+        try:
+            from crm_cache import get_cache
+            self._cache = get_cache()
+            logger.info("[CACHE] Cache backend initialized for user context")
+            return self._cache
+        except ImportError:
+            logger.warning("[CACHE] crm_cache not installed, caching disabled")
+            return None
+        except Exception as e:
+            logger.warning(f"[CACHE] Failed to initialize cache: {e}")
+            return None
+
+    async def _cache_get(self, key: str) -> Any | None:
+        """Get value from cache."""
+        cache = self._get_cache()
+        if not cache:
+            return None
+        try:
+            return await cache.get(key)
+        except Exception as e:
+            logger.debug(f"[CACHE] Get error: {e}")
+            return None
+
+    async def _cache_set(self, key: str, value: Any, ttl: int = USER_CONTEXT_TTL) -> None:
+        """Set value in cache."""
+        cache = self._get_cache()
+        if not cache:
+            return
+        try:
+            await cache.set(key, value, ttl=ttl)
+        except Exception as e:
+            logger.debug(f"[CACHE] Set error: {e}")
+
+    async def _cache_delete(self, key: str) -> None:
+        """Delete value from cache."""
+        cache = self._get_cache()
+        if not cache:
+            return
+        try:
+            await cache.delete(key)
+        except Exception as e:
+            logger.debug(f"[CACHE] Delete error: {e}")
+
+    def invalidate_user_cache(self, user_id: str) -> None:
+        """
+        Invalidate cached user context.
+
+        Call this when user permissions, teams, or companies change.
+        """
+        cache_key = f"rbac:user:{user_id}"
+        _run_async(self._cache_delete(cache_key))
+        logger.info(f"[CACHE] Invalidated user context cache for {user_id}")
+
+    async def _cache_incr(self, key: str, amount: int = 1) -> int:
+        """Atomically increment counter in cache."""
+        cache = self._get_cache()
+        if not cache:
+            return 0
+        try:
+            return await cache.incr(key, amount)
+        except NotImplementedError:
+            # Fallback for non-Redis backends
+            return 0
+        except Exception as e:
+            logger.debug(f"[CACHE] Incr error: {e}")
+            return 0
+
+    async def _cache_expire(self, key: str, seconds: int) -> bool:
+        """Set TTL on cache key."""
+        cache = self._get_cache()
+        if not cache:
+            return False
+        try:
+            return await cache.expire(key, seconds)
+        except NotImplementedError:
+            return False
+        except Exception as e:
+            logger.debug(f"[CACHE] Expire error: {e}")
+            return False
+
+    async def _cache_ttl(self, key: str) -> int:
+        """Get remaining TTL on cache key."""
+        cache = self._get_cache()
+        if not cache:
+            return -2
+        try:
+            return await cache.ttl(key)
+        except NotImplementedError:
+            return -2
+        except Exception as e:
+            logger.debug(f"[CACHE] TTL error: {e}")
+            return -2
 
     @property
     def name(self) -> str:
@@ -323,7 +461,15 @@ class SupabaseBackend(DatabaseBackend):
             return None
 
     def get_api_key_by_hash(self, key_hash: str) -> dict[str, Any] | None:
-        """Get an API key record by its hash."""
+        """Get an API key record by its hash (cached)."""
+        cache_key = f"api_key:{key_hash}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug("[CACHE] API key cache hit")
+            return cached
+
         client = self._get_security_client()
         if not client:
             return None
@@ -336,10 +482,23 @@ class SupabaseBackend(DatabaseBackend):
                 .eq("is_active", True)
                 .execute()
             )
-            return response.data[0] if response.data else None
+            result = response.data[0] if response.data else None
+
+            if result:
+                # Cache the result
+                _run_async(self._cache_set(cache_key, result, ttl=API_KEY_CACHE_TTL))
+                logger.debug("[CACHE] API key cached")
+
+            return result
         except Exception as e:
             logger.error(f"[API_KEY] Failed to get API key by hash: {e}")
             return None
+
+    def invalidate_api_key_cache(self, key_hash: str) -> None:
+        """Invalidate cached API key on update/deactivate."""
+        cache_key = f"api_key:{key_hash}"
+        _run_async(self._cache_delete(cache_key))
+        logger.info("[CACHE] Invalidated API key cache")
 
     def get_api_key(self, key_id: str) -> dict[str, Any] | None:
         """Get an API key record by ID."""
@@ -394,9 +553,19 @@ class SupabaseBackend(DatabaseBackend):
             return None
 
         try:
+            # Get the key_hash before updating for cache invalidation
+            existing = client.table("api_keys").select("key_hash").eq("id", key_id).single().execute()
+            old_hash = existing.data.get("key_hash") if existing.data else None
+
             updates["updated_at"] = self._now()
             response = client.table("api_keys").update(updates).eq("id", key_id).execute()
-            return response.data[0] if response.data else None
+
+            if response.data:
+                # Invalidate cache
+                if old_hash:
+                    self.invalidate_api_key_cache(old_hash)
+                return response.data[0]
+            return None
         except Exception as e:
             logger.error(f"[API_KEY] Failed to update API key {key_id}: {e}")
             return None
@@ -408,6 +577,10 @@ class SupabaseBackend(DatabaseBackend):
             return False
 
         try:
+            # Get the key_hash before deleting for cache invalidation
+            existing = client.table("api_keys").select("key_hash").eq("id", key_id).single().execute()
+            key_hash = existing.data.get("key_hash") if existing.data else None
+
             if hard_delete:
                 client.table("api_keys").delete().eq("id", key_id).execute()
             else:
@@ -415,6 +588,11 @@ class SupabaseBackend(DatabaseBackend):
                     "is_active": False,
                     "updated_at": self._now(),
                 }).eq("id", key_id).execute()
+
+            # Invalidate cache
+            if key_hash:
+                self.invalidate_api_key_cache(key_hash)
+
             return True
         except Exception as e:
             logger.error(f"[API_KEY] Failed to delete API key {key_id}: {e}")
@@ -516,7 +694,7 @@ class SupabaseBackend(DatabaseBackend):
             return {"key_id": key_id, "total_requests": 0, "requests_today": 0, "requests_this_hour": 0}
 
     # =========================================================================
-    # RATE LIMITING
+    # RATE LIMITING (Redis-based with DB fallback)
     # =========================================================================
 
     def get_rate_limit_count(
@@ -525,6 +703,18 @@ class SupabaseBackend(DatabaseBackend):
         window_seconds: int = 60,
     ) -> int:
         """Get current request count for a rate limit key."""
+        # Try Redis first
+        cache = self._get_cache()
+        if cache:
+            try:
+                cache_key = f"rate_limit:{key}:{window_seconds}"
+                cached_count = _run_async(self._cache_get(cache_key))
+                if cached_count is not None:
+                    return int(cached_count) if isinstance(cached_count, (int, str)) else 0
+            except Exception as e:
+                logger.debug(f"[RATE_LIMIT] Redis get failed, using DB: {e}")
+
+        # Fallback to DB
         client = self._get_security_client()
         if not client:
             return 0
@@ -553,7 +743,29 @@ class SupabaseBackend(DatabaseBackend):
         window_seconds: int = 60,
         increment: int = 1,
     ) -> int:
-        """Increment rate limit counter and return new count."""
+        """
+        Increment rate limit counter and return new count.
+
+        Uses Redis INCR for atomic operations (much faster than DB).
+        Falls back to DB if Redis unavailable.
+        """
+        # Try Redis first (atomic INCR + EXPIRE)
+        cache = self._get_cache()
+        if cache:
+            try:
+                cache_key = f"rate_limit:{key}:{window_seconds}"
+                count = _run_async(self._cache_incr(cache_key, increment))
+
+                if count > 0:
+                    # If this is a new key (count == increment), set expiry
+                    if count == increment:
+                        _run_async(self._cache_expire(cache_key, window_seconds))
+                    logger.debug(f"[RATE_LIMIT] Redis: {key} = {count}")
+                    return count
+            except Exception as e:
+                logger.debug(f"[RATE_LIMIT] Redis incr failed, using DB: {e}")
+
+        # Fallback to DB
         client = self._get_security_client()
         if not client:
             return 0
@@ -719,26 +931,47 @@ class SupabaseBackend(DatabaseBackend):
     # =========================================================================
 
     def get_user(self, user_id: str) -> dict[str, Any] | None:
-        """Get user info from UI Supabase."""
+        """Get user info from UI Supabase (cached)."""
+        cache_key = f"security:user:{user_id}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] User cache hit: {user_id}")
+            return cached
+
         client = self._get_ui_client()
         if not client:
             return None
 
         try:
             response = client.table("users").select("*").eq("id", user_id).execute()
-            return response.data[0] if response.data else None
+            result = response.data[0] if response.data else None
+
+            if result:
+                _run_async(self._cache_set(cache_key, result, ttl=USER_CACHE_TTL))
+
+            return result
         except Exception as e:
             logger.error(f"[UI] Failed to get user {user_id}: {e}")
             return None
 
     def get_user_profile(self, user_id: str) -> dict[str, Any] | None:
-        """Get user's RBAC profile from UI Supabase."""
+        """Get user's RBAC profile from UI Supabase (cached)."""
+        cache_key = f"security:user_profile:{user_id}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] User profile cache hit: {user_id}")
+            return cached
+
         client = self._get_ui_client()
         if not client:
             return None
 
         try:
-            # Get user's profile_id
+            # Get user's profile_id (already cached)
             user = self.get_user(user_id)
             if not user or not user.get("profile_id"):
                 return None
@@ -749,13 +982,26 @@ class SupabaseBackend(DatabaseBackend):
                 .eq("id", user["profile_id"])
                 .execute()
             )
-            return response.data[0] if response.data else None
+            result = response.data[0] if response.data else None
+
+            if result:
+                _run_async(self._cache_set(cache_key, result, ttl=USER_PROFILE_CACHE_TTL))
+
+            return result
         except Exception as e:
             logger.error(f"[UI] Failed to get profile for user {user_id}: {e}")
             return None
 
     def get_user_permissions(self, user_id: str) -> list[str]:
-        """Get user's combined permissions from UI Supabase."""
+        """Get user's combined permissions from UI Supabase (cached)."""
+        cache_key = f"security:user_perms:{user_id}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] User permissions cache hit: {user_id}")
+            return cached
+
         client = self._get_ui_client()
         if not client:
             return []
@@ -763,7 +1009,7 @@ class SupabaseBackend(DatabaseBackend):
         try:
             permissions = set()
 
-            # Get profile permissions
+            # Get profile permissions (already cached)
             profile = self.get_user_profile(user_id)
             if profile:
                 for pp in profile.get("profile_permissions", []):
@@ -774,14 +1020,27 @@ class SupabaseBackend(DatabaseBackend):
             # Get permission set permissions
             # (would need to query user_permission_sets -> permission_sets -> permissions)
 
-            return list(permissions)
+            result = list(permissions)
+
+            # Cache the result
+            _run_async(self._cache_set(cache_key, result, ttl=USER_PERMISSIONS_CACHE_TTL))
+
+            return result
 
         except Exception as e:
             logger.error(f"[UI] Failed to get permissions for user {user_id}: {e}")
             return []
 
     def get_user_teams(self, user_id: str) -> list[dict[str, Any]]:
-        """Get user's teams from UI Supabase."""
+        """Get user's teams from UI Supabase (cached)."""
+        cache_key = f"security:user_teams:{user_id}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] User teams cache hit: {user_id}")
+            return cached
+
         client = self._get_ui_client()
         if not client:
             return []
@@ -800,6 +1059,10 @@ class SupabaseBackend(DatabaseBackend):
                 if team:
                     team["role"] = tm.get("role")
                     teams.append(team)
+
+            # Cache the result
+            _run_async(self._cache_set(cache_key, teams, ttl=USER_TEAMS_CACHE_TTL))
+
             return teams
 
         except Exception as e:
@@ -848,7 +1111,19 @@ class SupabaseBackend(DatabaseBackend):
         Get complete user context for RBAC.
 
         Returns all 5 levels of RBAC data.
+        Results are cached for 5 minutes to reduce DB load.
         """
+        cache_key = f"rbac:user:{user_id}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Hit: user context for {user_id}")
+            return cached
+
+        logger.debug(f"[CACHE] Miss: fetching user context for {user_id}")
+
+        # Fetch from DB
         user = self.get_user(user_id)
         if not user:
             return None
@@ -859,7 +1134,7 @@ class SupabaseBackend(DatabaseBackend):
         subordinates = self.get_user_subordinates(user_id)
         companies = self.get_user_companies(user_id)
 
-        return {
+        context = {
             # Level 1: Identity
             "user_id": user_id,
             "email": user.get("email", ""),
@@ -884,3 +1159,8 @@ class SupabaseBackend(DatabaseBackend):
             # Level 5: Companies
             "companies": companies,
         }
+
+        # Cache the result
+        _run_async(self._cache_set(cache_key, context))
+
+        return context
