@@ -37,25 +37,48 @@ class SupabaseBackend(DatabaseBackend):
     """
 
     def __init__(self):
-        """Initialize Supabase client."""
+        """Initialize Supabase backend using environment-aware settings.
+
+        Follows the same pattern as sales-module for platform alignment:
+        1. Try app_settings (centralized config with dev/prod switching)
+        2. Fall back to config.py (video-critique specific)
+        """
         self._client: Client | None = None
+
+        # Use the new settings-based config with dev/prod switching
+        # Matches the pattern used in sales-module for platform alignment
+        try:
+            from app_settings import settings
+            self._url = settings.active_supabase_url or ""
+            self._key = settings.active_supabase_service_key or ""
+
+            if self._url and self._key:
+                env_name = "PROD" if settings.is_production else "DEV"
+                logger.info(f"[SUPABASE] Using {env_name} credentials from app_settings")
+        except ImportError:
+            # Fallback to direct config (video-critique specific config.py)
+            import config
+            self._url = config.SUPABASE_URL or ""
+            self._key = config.SUPABASE_SERVICE_ROLE_KEY or ""
+            if self._url and self._key:
+                logger.info("[SUPABASE] Using credentials from config.py")
+
+        if not self._url or not self._key:
+            logger.warning(
+                "[SUPABASE] Credentials not configured. "
+                "Set VIDEOCRITIQUE_DEV_SUPABASE_URL and VIDEOCRITIQUE_DEV_SUPABASE_SERVICE_ROLE_KEY"
+            )
 
     def _get_client(self) -> Client:
         """Get or create Supabase client (lazy initialization)."""
         if self._client is None:
-            # Import config here to avoid circular imports
-            import config
-
-            url = config.SUPABASE_URL
-            key = config.SUPABASE_SERVICE_ROLE_KEY
-
-            if not url or not key:
+            if not self._url or not self._key:
                 raise RuntimeError(
                     "Supabase credentials not configured. "
                     "Set VIDEOCRITIQUE_DEV_SUPABASE_URL and VIDEOCRITIQUE_DEV_SUPABASE_SERVICE_ROLE_KEY"
                 )
 
-            self._client = create_client(url, key)
+            self._client = create_client(self._url, self._key)
             logger.info("[SUPABASE] Client initialized")
 
         return self._client
@@ -678,31 +701,48 @@ class SupabaseBackend(DatabaseBackend):
         model: str,
         input_tokens: int,
         output_tokens: int,
+        reasoning_tokens: int,
+        input_cost: float,
+        output_cost: float,
+        reasoning_cost: float,
         total_cost: float,
         user_id: str | None = None,
         workflow: str | None = None,
+        cached_input_tokens: int = 0,
         context: str | None = None,
+        metadata_json: str | None = None,
         timestamp: str | None = None,
     ) -> None:
-        """Log an AI API cost entry."""
+        """Log an AI API cost entry with full cost breakdown."""
+        if not timestamp:
+            timestamp = get_uae_time().isoformat()
+
+        total_tokens = input_tokens + output_tokens + reasoning_tokens
+
         try:
             client = self._get_client()
-
-            data = {
+            client.table("ai_costs").insert({
+                "timestamp": timestamp,
                 "call_type": call_type,
-                "model": model,
-                "input_tokens": input_tokens,
-                "output_tokens": output_tokens,
-                "total_cost": total_cost,
-                "user_id": user_id,
                 "workflow": workflow,
+                "model": model,
+                "user_id": user_id,
                 "context": context,
-                "timestamp": timestamp or get_uae_time().isoformat(),
-            }
+                "input_tokens": input_tokens,
+                "cached_input_tokens": cached_input_tokens,
+                "output_tokens": output_tokens,
+                "reasoning_tokens": reasoning_tokens,
+                "total_tokens": total_tokens,
+                "input_cost": input_cost,
+                "output_cost": output_cost,
+                "reasoning_cost": reasoning_cost,
+                "total_cost": total_cost,
+                "metadata_json": metadata_json,
+            }).execute()
 
-            client.table("ai_costs").insert(data).execute()
+            logger.info(f"[SUPABASE COSTS] Logged {call_type}: ${total_cost:.4f}")
         except Exception as e:
-            logger.error(f"[SUPABASE] Error logging AI cost: {e}")
+            logger.error(f"[SUPABASE] Failed to log AI cost for {call_type}: {e}", exc_info=True)
 
     def get_ai_costs_summary(
         self,

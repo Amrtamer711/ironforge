@@ -263,13 +263,14 @@ class SlackEventHandler:
         response_url: str | None = None,
     ) -> dict[str, Any]:
         """Process a message through the LLM loop."""
-        # Get user name
-        user_name = None
-        try:
-            user_info = await self._channel.get_user_info(user_id)
-            user_name = user_info.get("display_name") or user_info.get("name")
-        except Exception:
-            pass
+        # Get full user identity (email is primary identifier per platform pattern)
+        slack_user_id, user_email, user_name = await self._get_user_identity(user_id)
+
+        # Log identity resolution for debugging
+        if user_email:
+            logger.debug(f"[SlackHandler] Resolved {slack_user_id} to email: {user_email}")
+        else:
+            logger.warning(f"[SlackHandler] Could not resolve email for {slack_user_id}")
 
         # Check for image vs video files
         image_files = []
@@ -295,12 +296,22 @@ class SlackEventHandler:
                 files=video_files,
             )
 
-        # Process through LLM
+        # Download image files if present (channel-specific operation)
+        image_data: list[tuple[bytes, str]] = []
+        if image_files:
+            for file_info in image_files:
+                result = await self._channel.download_file_bytes(file_info)
+                if result:
+                    image_data.append(result)
+                else:
+                    logger.warning(f"[SlackHandler] Failed to download image: {file_info.get('name')}")
+
+        # Process through LLM - pass image bytes (channel-agnostic)
         response = await main_llm_loop(
             channel_id=channel_id,
             user_id=user_id,
             user_input=text,
-            files=image_files or None,
+            image_data=image_data or None,
             channel=self._channel,
             user_name=user_name,
             tool_router=self._tool_router,
@@ -562,6 +573,64 @@ class SlackEventHandler:
     # =========================================================================
     # UTILITY METHODS
     # =========================================================================
+
+    async def _resolve_user_email(self, slack_user_id: str) -> str | None:
+        """
+        Resolve Slack user ID to email address.
+
+        Uses platform pattern where email is the primary identifier.
+        First checks ConfigService for database mappings, then falls back to Slack API.
+
+        Args:
+            slack_user_id: Slack user ID (e.g., U12345678)
+
+        Returns:
+            Email address or None if not found
+        """
+        # Check ConfigService for database mappings (cached with TTL)
+        from core.services import get_config_service
+        config_service = get_config_service()
+
+        email = config_service.resolve_email_from_slack_id(slack_user_id)
+        if email:
+            return email
+
+        # Fallback: Slack API users.info
+        try:
+            user_info = await self._channel.get_user_info(slack_user_id)
+            if user_info:
+                # Slack API returns email in profile
+                email = user_info.get("profile", {}).get("email")
+                if email:
+                    return email
+                # Some workspace configs return email at top level
+                return user_info.get("email")
+        except Exception as e:
+            logger.warning(f"[SlackHandler] Failed to resolve email for {slack_user_id}: {e}")
+
+        return None
+
+    async def _get_user_identity(self, slack_user_id: str) -> tuple[str, str | None, str | None]:
+        """
+        Get full user identity from Slack user ID.
+
+        Returns:
+            Tuple of (user_id, email, display_name)
+            - user_id is always set (to slack_user_id)
+            - email may be None if resolution fails
+            - display_name may be None if not available
+        """
+        email = await self._resolve_user_email(slack_user_id)
+        display_name = None
+
+        try:
+            user_info = await self._channel.get_user_info(slack_user_id)
+            if user_info:
+                display_name = user_info.get("display_name") or user_info.get("name")
+        except Exception:
+            pass
+
+        return (slack_user_id, email, display_name)
 
     def _is_bot_mentioned(self, text: str) -> bool:
         """Check if the bot was mentioned in the text."""

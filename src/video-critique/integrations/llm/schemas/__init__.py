@@ -1,0 +1,21 @@
+"""
+JSON Schemas for Video Critique LLM Responses.
+
+Centralized schema management for structured LLM outputs.
+"""
+
+from integrations.llm.schemas.responses import (
+    CONFIRMATION_RESPONSE_SCHEMA,
+    DELETE_CONFIRMATION_SCHEMA,
+    DUPLICATE_CONFIRMATION_SCHEMA,
+    EDIT_DUPLICATE_CONFIRMATION_SCHEMA,
+    EDIT_TASK_SCHEMA,
+)
+
+__all__ = [
+    "CONFIRMATION_RESPONSE_SCHEMA",
+    "DELETE_CONFIRMATION_SCHEMA",
+    "DUPLICATE_CONFIRMATION_SCHEMA",
+    "EDIT_DUPLICATE_CONFIRMATION_SCHEMA",
+    "EDIT_TASK_SCHEMA",
+]

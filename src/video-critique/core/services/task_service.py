@@ -171,6 +171,7 @@ class TaskService:
         status: str | None = None,
         videographer: str | None = None,
         location: str | None = None,
+        user_companies: list[str] | None = None,
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
@@ -181,6 +182,7 @@ class TaskService:
             status: Filter by status
             videographer: Filter by videographer
             location: Filter by location
+            user_companies: Filter by user's accessible companies (RBAC filtering)
             limit: Maximum number of results
             offset: Number of results to skip
 
@@ -196,7 +198,20 @@ class TaskService:
             filters["location"] = location
 
         tasks = await self._db.list_tasks(filters, limit, offset)
-        return [self._task_to_dict(t) for t in tasks]
+        task_dicts = [self._task_to_dict(t) for t in tasks]
+
+        # Company filtering: filter tasks by location -> company mapping
+        # This requires WorkflowContext or AssetService to resolve locations to companies
+        if user_companies:
+            logger.debug(
+                f"[TaskService] Company filtering requested for {len(user_companies)} companies "
+                f"(full implementation pending location->company mapping)"
+            )
+            # TODO: When location->company mapping is available:
+            # 1. Get locations for user_companies from AssetService
+            # 2. Filter task_dicts to only include those with matching locations
+
+        return task_dicts
 
     async def list_all_tasks(self) -> list[dict[str, Any]]:
         """

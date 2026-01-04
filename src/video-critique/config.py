@@ -231,6 +231,9 @@ PROXY_SECRET = os.getenv("PROXY_SECRET", "")
 # Security Service URL (for SDK calls)
 SECURITY_SERVICE_URL = os.getenv("SECURITY_SERVICE_URL", "https://security-service.onrender.com")
 
+# Asset Management Service URL
+ASSET_MGMT_URL = os.getenv("ASSET_MGMT_URL", "https://asset-management.onrender.com")
+
 # Inter-service auth secret
 INTER_SERVICE_SECRET = os.getenv("INTER_SERVICE_SECRET", "")
 

@@ -372,13 +372,19 @@ class DatabaseBackend(ABC):
         model: str,
         input_tokens: int,
         output_tokens: int,
+        reasoning_tokens: int,
+        input_cost: float,
+        output_cost: float,
+        reasoning_cost: float,
         total_cost: float,
         user_id: str | None = None,
         workflow: str | None = None,
+        cached_input_tokens: int = 0,
         context: str | None = None,
+        metadata_json: str | None = None,
         timestamp: str | None = None,
     ) -> None:
-        """Log an AI API cost entry."""
+        """Log an AI API cost entry with full cost breakdown."""
         pass
 
     @abstractmethod

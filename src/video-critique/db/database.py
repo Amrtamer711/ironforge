@@ -113,6 +113,28 @@ class _DatabaseNamespace:
         db.insert_task(task)
     """
 
+    # =========================================================================
+    # LIFECYCLE METHODS
+    # =========================================================================
+
+    async def initialize(self) -> None:
+        """
+        Initialize the database.
+
+        Triggers lazy backend initialization (get_backend calls init_db).
+        Called by API server lifespan on startup.
+        """
+        _ = get_backend()  # Triggers _get_backend() and init_db()
+
+    async def close(self) -> None:
+        """
+        Close database connections.
+
+        No-op for Supabase (uses HTTP, no persistent connections).
+        Called by API server lifespan on shutdown.
+        """
+        pass  # Supabase client uses HTTP, no explicit close needed
+
     @property
     def backend_name(self) -> str:
         """Get the name of the current backend."""
@@ -252,16 +274,35 @@ class _DatabaseNamespace:
         model: str,
         input_tokens: int,
         output_tokens: int,
+        reasoning_tokens: int,
+        input_cost: float,
+        output_cost: float,
+        reasoning_cost: float,
         total_cost: float,
         user_id: str | None = None,
         workflow: str | None = None,
+        cached_input_tokens: int = 0,
         context: str | None = None,
+        metadata_json: str | None = None,
         timestamp: str | None = None,
     ) -> None:
-        """Log an AI API cost entry."""
+        """Log an AI API cost entry with full cost breakdown."""
         return get_backend().log_ai_cost(
-            call_type, model, input_tokens, output_tokens, total_cost,
-            user_id, workflow, context, timestamp
+            call_type=call_type,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            reasoning_tokens=reasoning_tokens,
+            input_cost=input_cost,
+            output_cost=output_cost,
+            reasoning_cost=reasoning_cost,
+            total_cost=total_cost,
+            user_id=user_id,
+            workflow=workflow,
+            cached_input_tokens=cached_input_tokens,
+            context=context,
+            metadata_json=metadata_json,
+            timestamp=timestamp,
         )
 
     def get_ai_costs_summary(
@@ -308,3 +349,16 @@ class _DatabaseNamespace:
 
 # Create the singleton database interface
 db = _DatabaseNamespace()
+
+
+def get_database() -> _DatabaseNamespace:
+    """
+    Get the database namespace.
+
+    This function is used by the API server lifespan for explicit
+    initialization and shutdown. For normal usage, import `db` directly.
+
+    Returns:
+        The singleton _DatabaseNamespace instance
+    """
+    return db

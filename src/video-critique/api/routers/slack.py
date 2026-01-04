@@ -25,6 +25,9 @@ router = APIRouter(prefix="/slack", tags=["slack"])
 # Lazy-initialized handler
 _handler: SlackEventHandler | None = None
 
+# Event deduplication TTL in seconds
+EVENT_DEDUP_TTL = 600  # 10 minutes
+
 
 def get_handler() -> SlackEventHandler:
     """Get or create the Slack event handler."""
@@ -34,6 +37,42 @@ def get_handler() -> SlackEventHandler:
         channel = get_channel("slack")
         _handler = SlackEventHandler(channel=channel)
     return _handler
+
+
+async def is_duplicate_event(event_id: str) -> bool:
+    """
+    Check if an event has already been processed.
+
+    Uses crm-cache for deduplication with fallback to memory cache.
+
+    Args:
+        event_id: Unique event identifier from Slack
+
+    Returns:
+        True if event was already processed (duplicate)
+    """
+    if not event_id:
+        return False
+
+    try:
+        from crm_cache import get_cache
+
+        cache = get_cache()
+        cache_key = f"slack:event:{event_id}"
+
+        # Check if event already processed
+        if await cache.exists(cache_key):
+            logger.debug(f"[Slack] Duplicate event detected: {event_id}")
+            return True
+
+        # Mark event as processed
+        await cache.set(cache_key, "1", ttl=EVENT_DEDUP_TTL)
+        return False
+
+    except Exception as e:
+        # Log but don't fail - better to process duplicate than miss event
+        logger.warning(f"[Slack] Event deduplication error: {e}")
+        return False
 
 
 # ============================================================================
@@ -115,6 +154,15 @@ async def slack_events(request: Request, background_tasks: BackgroundTasks):
     if payload.get("type") == "event_callback":
         event = payload.get("event", {})
 
+        # Get event ID for deduplication
+        # Slack provides event_id in the outer payload, or we can use client_msg_id/event_ts
+        event_id = payload.get("event_id") or event.get("client_msg_id") or event.get("event_ts")
+
+        # Check for duplicate event
+        if event_id and await is_duplicate_event(event_id):
+            logger.info(f"[Slack] Skipping duplicate event: {event_id}")
+            return Response(status_code=200)
+
         # Process event in background to respond quickly
         background_tasks.add_task(process_event, event)
 
@@ -162,6 +210,12 @@ async def slack_interactive(request: Request, background_tasks: BackgroundTasks)
         raise HTTPException(status_code=400, detail="Invalid payload")
 
     payload_type = payload.get("type")
+
+    # Deduplicate interactive payloads using action_ts or trigger_id
+    action_id = payload.get("trigger_id") or payload.get("actions", [{}])[0].get("action_ts")
+    if action_id and await is_duplicate_event(f"interactive:{action_id}"):
+        logger.info(f"[Slack] Skipping duplicate interactive: {action_id}")
+        return Response(status_code=200)
 
     # Handle different payload types
     if payload_type == "block_actions":

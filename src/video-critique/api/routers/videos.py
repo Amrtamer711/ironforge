@@ -8,9 +8,10 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, BackgroundTasks
 from pydantic import BaseModel, Field
 
+from crm_security import require_permission, AuthUser
 import config
 from core.services.video_service import VideoService
 from core.services.approval_service import ApprovalService
@@ -78,8 +79,6 @@ class VideoUploadResponse(BaseModel):
 class ApprovalRequest(BaseModel):
     """Approval action request."""
     workflow_id: str = Field(..., description="Workflow ID")
-    user_id: str = Field(..., description="User making the decision")
-    user_name: str | None = Field(None, description="User display name")
 
 
 class RejectionRequest(ApprovalRequest):
@@ -119,15 +118,15 @@ async def upload_video(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="Video file to upload"),
     task_number: int = Form(..., description="Task number for this video"),
-    user_id: str = Form(..., description="Uploader's user ID"),
-    user_name: str = Form(None, description="Uploader's display name"),
+    user: AuthUser = Depends(require_permission("video:upload")),
 ):
     """
     Upload a video file for a task.
 
     Starts the approval workflow after successful upload.
+    Requires: video:upload permission.
     """
-    logger.info(f"[Videos] Upload for task #{task_number} from {user_id}")
+    logger.info(f"[Videos] Upload for task #{task_number} from {user.email}")
 
     try:
         # Read file content
@@ -147,8 +146,8 @@ async def upload_video(
         result = await workflow.execute(
             task_number=task_number,
             files=[file_info],
-            uploader_id=user_id,
-            uploader_name=user_name,
+            uploader_id=user.id,
+            uploader_name=user.name or user.email,
         )
 
         if result.success:
@@ -175,15 +174,15 @@ async def upload_zip(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="ZIP file containing videos"),
     task_number: int = Form(..., description="Task number"),
-    user_id: str = Form(..., description="Uploader's user ID"),
-    user_name: str = Form(None, description="Uploader's display name"),
+    user: AuthUser = Depends(require_permission("video:upload")),
 ):
     """
     Upload a ZIP file containing multiple videos.
 
     Extracts and processes all video files in the archive.
+    Requires: video:upload permission.
     """
-    logger.info(f"[Videos] ZIP upload for task #{task_number} from {user_id}")
+    logger.info(f"[Videos] ZIP upload for task #{task_number} from {user.email}")
 
     try:
         # Read file content
@@ -203,8 +202,8 @@ async def upload_zip(
         result = await workflow.execute(
             task_number=task_number,
             files=[file_info],
-            uploader_id=user_id,
-            uploader_name=user_name,
+            uploader_id=user.id,
+            uploader_name=user.name or user.email,
         )
 
         if result.success:
@@ -231,19 +230,23 @@ async def upload_zip(
 # ============================================================================
 
 @router.post("/approve/reviewer", response_model=ApprovalResponse)
-async def reviewer_approve(request: ApprovalRequest):
+async def reviewer_approve(
+    request: ApprovalRequest,
+    user: AuthUser = Depends(require_permission("video:review:approve")),
+):
     """
     Reviewer approves a video.
 
     Forwards to Head of Sales for final approval.
+    Requires: video:review:approve permission.
     """
     try:
         workflow = get_approval_workflow()
 
         result = await workflow.handle_reviewer_approve(
             workflow_id=request.workflow_id,
-            reviewer_id=request.user_id,
-            reviewer_name=request.user_name or request.user_id,
+            reviewer_id=user.id,
+            reviewer_name=user.name or user.email,
         )
 
         return ApprovalResponse(
@@ -261,19 +264,23 @@ async def reviewer_approve(request: ApprovalRequest):
 
 
 @router.post("/reject/reviewer", response_model=ApprovalResponse)
-async def reviewer_reject(request: RejectionRequest):
+async def reviewer_reject(
+    request: RejectionRequest,
+    user: AuthUser = Depends(require_permission("video:review:approve")),
+):
     """
     Reviewer rejects a video.
 
     Notifies videographer with rejection reason.
+    Requires: video:review:approve permission.
     """
     try:
         workflow = get_approval_workflow()
 
         result = await workflow.handle_reviewer_reject(
             workflow_id=request.workflow_id,
-            reviewer_id=request.user_id,
-            reviewer_name=request.user_name or request.user_id,
+            reviewer_id=user.id,
+            reviewer_name=user.name or user.email,
             rejection_reason=request.reason,
             rejection_class=request.category,
         )
@@ -293,19 +300,23 @@ async def reviewer_reject(request: RejectionRequest):
 
 
 @router.post("/approve/hos", response_model=ApprovalResponse)
-async def hos_approve(request: ApprovalRequest):
+async def hos_approve(
+    request: ApprovalRequest,
+    user: AuthUser = Depends(require_permission("video:review:final")),
+):
     """
     Head of Sales approves a video.
 
     Completes the task workflow.
+    Requires: video:review:final permission.
     """
     try:
         workflow = get_approval_workflow()
 
         result = await workflow.handle_hos_approve(
             workflow_id=request.workflow_id,
-            hos_id=request.user_id,
-            hos_name=request.user_name or request.user_id,
+            hos_id=user.id,
+            hos_name=user.name or user.email,
         )
 
         return ApprovalResponse(
@@ -323,19 +334,23 @@ async def hos_approve(request: ApprovalRequest):
 
 
 @router.post("/return/hos", response_model=ApprovalResponse)
-async def hos_return(request: RejectionRequest):
+async def hos_return(
+    request: RejectionRequest,
+    user: AuthUser = Depends(require_permission("video:review:final")),
+):
     """
     Head of Sales returns a video for revision.
 
     Notifies videographer with return reason.
+    Requires: video:review:final permission.
     """
     try:
         workflow = get_approval_workflow()
 
         result = await workflow.handle_hos_return(
             workflow_id=request.workflow_id,
-            hos_id=request.user_id,
-            hos_name=request.user_name or request.user_id,
+            hos_id=user.id,
+            hos_name=user.name or user.email,
             return_reason=request.reason,
             return_class=request.category,
         )
@@ -359,9 +374,14 @@ async def hos_return(request: RejectionRequest):
 # ============================================================================
 
 @router.get("/workflow/{workflow_id}", response_model=WorkflowStatus)
-async def get_workflow_status(workflow_id: str):
+async def get_workflow_status(
+    workflow_id: str,
+    user: AuthUser = Depends(require_permission("video:tasks:read")),
+):
     """
     Get the status of an approval workflow.
+
+    Requires: video:tasks:read permission.
     """
     try:
         workflow = get_approval_workflow()
@@ -375,9 +395,14 @@ async def get_workflow_status(workflow_id: str):
 
 
 @router.get("/pending/reviewer/{reviewer_id}")
-async def get_pending_for_reviewer(reviewer_id: str):
+async def get_pending_for_reviewer(
+    reviewer_id: str,
+    user: AuthUser = Depends(require_permission("video:review:approve")),
+):
     """
     Get workflows pending reviewer action.
+
+    Requires: video:review:approve permission.
     """
     try:
         workflow = get_approval_workflow()
@@ -394,9 +419,14 @@ async def get_pending_for_reviewer(reviewer_id: str):
 
 
 @router.get("/pending/hos/{hos_id}")
-async def get_pending_for_hos(hos_id: str):
+async def get_pending_for_hos(
+    hos_id: str,
+    user: AuthUser = Depends(require_permission("video:review:final")),
+):
     """
     Get workflows pending Head of Sales action.
+
+    Requires: video:review:final permission.
     """
     try:
         workflow = get_approval_workflow()
@@ -417,9 +447,15 @@ async def get_pending_for_hos(hos_id: str):
 # ============================================================================
 
 @router.get("/folder/{task_number}")
-async def get_task_folder(task_number: int, folder_type: str = "submitted"):
+async def get_task_folder(
+    task_number: int,
+    folder_type: str = "submitted",
+    user: AuthUser = Depends(require_permission("video:tasks:read")),
+):
     """
     Get the Dropbox folder URL for a task.
+
+    Requires: video:tasks:read permission.
     """
     try:
         service = get_video_service()
@@ -437,9 +473,14 @@ async def get_task_folder(task_number: int, folder_type: str = "submitted"):
 
 
 @router.get("/versions/{task_number}")
-async def get_task_versions(task_number: int):
+async def get_task_versions(
+    task_number: int,
+    user: AuthUser = Depends(require_permission("video:tasks:read")),
+):
     """
     Get all versions of videos for a task.
+
+    Requires: video:tasks:read permission.
     """
     try:
         service = get_video_service()

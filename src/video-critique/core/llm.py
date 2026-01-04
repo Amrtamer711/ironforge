@@ -10,6 +10,11 @@ Provides the main conversational interface that:
 
 This is channel-agnostic - the same code works for both
 Slack webhooks and Web chat endpoints.
+
+Follows the same patterns as sales-module for consistency:
+- WorkflowContext for request-scoped context passing
+- Proper LLM parameters (cache_key, call_type, metadata, context)
+- User identity passed as display name for cost tracking
 """
 
 import base64
@@ -20,7 +25,16 @@ from typing import Any
 
 from integrations.channels import ChannelAdapter
 from integrations.llm import LLMClient, LLMMessage, ToolDefinition, ContentPart
+from integrations.llm.prompts import create_design_request_system_prompt, create_edit_system_prompt
+from integrations.llm.schemas import (
+    CONFIRMATION_RESPONSE_SCHEMA,
+    DELETE_CONFIRMATION_SCHEMA,
+    DUPLICATE_CONFIRMATION_SCHEMA,
+    EDIT_DUPLICATE_CONFIRMATION_SCHEMA,
+    EDIT_TASK_SCHEMA,
+)
 from core.tools import get_tool_definitions
+from core.workflow_context import WorkflowContext
 from core.utils.logging import get_logger
 
 import config
@@ -71,155 +85,6 @@ def append_to_history(user_id: str, role: str, content: str) -> None:
 
 
 # ============================================================================
-# SYSTEM PROMPTS
-# ============================================================================
-
-def create_design_request_system_prompt(
-    user_name: str,
-    config_data: dict[str, Any] | None = None,
-) -> str:
-    """
-    Create the system prompt for design request handling.
-
-    Args:
-        user_name: Display name of the user
-        config_data: Optional config with sales_people, locations, videographers
-
-    Returns:
-        System prompt string
-    """
-    now = datetime.now(config.UAE_TZ)
-    today_str = now.strftime("%B %d, %Y")
-    day_of_week = now.strftime("%A")
-    tomorrow_str = (now + timedelta(days=1)).strftime("%B %d, %Y")
-
-    # Get mapping data from config or use empty defaults
-    config_data = config_data or {}
-    sales_people = list(config_data.get("sales_people", {}).keys())
-    locations = list(config_data.get("location_mappings", {}).keys())
-    videographers = list(config_data.get("videographers", {}).keys())
-
-    return f"""You are an AI assistant for design request management, helping users log and manage marketing design requests in a friendly, professional manner.
-
-IMPORTANT: Always format your responses using proper Markdown syntax:
-- Use **bold** for emphasis
-- Use _italic_ for subtle emphasis
-- Use `code` for reference numbers or technical terms
-- Use bullet points (- item) for lists
-
-Today's date is {today_str} ({day_of_week}).
-If the user mentions dates like "today", "tomorrow", or weekdays without specific dates, interpret them relative to this date:
-- "Tomorrow" means {tomorrow_str}
-- "Next Monday" means the Monday after today
-- "This Friday" means the upcoming Friday
-
-IMPORTANT VALIDATION RULES:
-1. Campaign End Date: ALWAYS reject any campaign where the end date has already passed.
-2. Campaign Start Date: Campaigns can start today or in the future. Reject only if before today.
-3. Campaign dates must be logical: start date should be before or equal to end date.
-
-When a user wants to log a design request, they can:
-- Paste an email with the request details
-- Upload an image/screenshot of the request
-- Provide the details manually
-
-For ALL methods, you need to collect:
-- Brand/Client name (required)
-- Campaign start date (required)
-- Campaign end date (required)
-- Reference number (required)
-- Location (required)
-- Sales person name (required)
-- Task type: 'videography', 'photography', or 'both' (required)
-- Time block: 'day', 'night', or 'both' (required)
-
-STRICT MAPPING RULES:
-1. Sales Person MUST be one of: {sales_people}
-   - Try fuzzy matching: "Nour" -> "Nourhan"
-
-2. Location MUST be one of: {locations}
-   - Common mappings: "TTC" -> "TTC Dubai", "Oryx" -> "The Oryx"
-
-3. Videographer MUST be one of: {videographers}
-
-When you have successfully parsed all required fields:
-1. Call the `log_design_request` function with the parsed data
-2. Do NOT show the parsed details - this will be handled automatically
-3. The system will show the user what was parsed and ask for confirmation
-
-Available tools:
-1. `log_design_request`: Log a design request with all details
-2. `export_current_data`: Export task data as Excel files
-3. `edit_task`: Edit an existing task by task number
-4. `delete_task`: Delete an existing task
-5. `manage_videographer`: Add/remove/list videographers (admin only)
-6. `manage_location`: Add/remove/list location mappings (admin only)
-7. `manage_salesperson`: Add/remove/list salespeople (admin only)
-8. `update_person_slack_ids`: Update Slack IDs for a person
-9. `edit_reviewer`, `edit_hod`, `edit_head_of_sales`: Edit admin users
-
-The user you're helping is named {user_name}.
-
-Be conversational and helpful. If they seem unsure, explain the options clearly."""
-
-
-def create_edit_system_prompt(
-    task_number: int,
-    current_data: dict[str, Any],
-    user_input: str,
-    config_data: dict[str, Any] | None = None,
-) -> str:
-    """
-    Create system prompt for task editing.
-
-    Args:
-        task_number: Task number being edited
-        current_data: Current task data
-        user_input: What the user said
-        config_data: Optional config with valid values
-
-    Returns:
-        System prompt string
-    """
-    now = datetime.now(config.UAE_TZ)
-    today_str = now.strftime("%d-%m-%Y")
-
-    config_data = config_data or {}
-    sales_people = list(config_data.get("sales_people", {}).keys())
-    locations = list(config_data.get("location_mappings", {}).keys())
-    videographers = list(config_data.get("videographers", {}).keys())
-
-    return f"""You are helping edit Task #{task_number}. The user said: "{user_input}"
-
-Determine their intent and parse any field updates:
-- If they want to save/confirm/done: action = 'save'
-- If they want to cancel/stop/exit: action = 'cancel'
-- If they want to see current values: action = 'view'
-- If they're making changes: action = 'edit' and parse the field updates
-
-Current task data: {json.dumps(current_data, indent=2)}
-
-VALIDATION RULES:
-1. Sales Person MUST be one of: {sales_people}
-2. Location MUST be one of: {locations}
-3. Videographer MUST be one of: {videographers}
-4. Status MUST be one of:
-   - "Not assigned yet"
-   - "Assigned to [Videographer Name]"
-   - "Raw", "Critique", "Editing"
-   - "Submitted to Sales", "Returned", "Done"
-   - "Permanently Rejected"
-
-DATE VALIDATION (today: {today_str}):
-- Campaign dates must be today or in the future
-- End date must be >= start date
-- Filming date should be between campaign dates
-
-Return JSON with: action, fields (only changed fields with VALID values), message.
-Use natural language in messages - say 'Sales Person' not 'sales_person'."""
-
-
-# ============================================================================
 # MAIN CONVERSATION LOOP
 # ============================================================================
 
@@ -227,26 +92,29 @@ async def main_llm_loop(
     channel_id: str,
     user_id: str,
     user_input: str,
-    files: list[dict] | None = None,
+    image_data: list[tuple[bytes, str]] | None = None,
     channel: ChannelAdapter | None = None,
     user_name: str | None = None,
+    user_email: str | None = None,
+    user_companies: list[str] | None = None,
     tool_router: Any = None,
-    config_data: dict[str, Any] | None = None,
 ) -> str:
     """
     Main conversational loop with LLM.
 
     This is channel-agnostic - works with both Slack and Web channels.
+    Follows the same patterns as sales-module for consistency.
 
     Args:
         channel_id: Channel/conversation ID
-        user_id: User's ID
+        user_id: User's ID (Slack ID or platform user ID)
         user_input: User's message text
-        files: Optional list of file attachments
+        image_data: Optional list of (image_bytes, mimetype) tuples for vision
         channel: ChannelAdapter for sending messages (optional)
         user_name: User's display name (optional)
+        user_email: User's email address (optional, used as primary identifier)
+        user_companies: List of company schemas user has access to (for RBAC)
         tool_router: Tool router for executing tool calls (optional)
-        config_data: Configuration data with valid values (optional)
 
     Returns:
         Assistant's response text
@@ -266,7 +134,7 @@ async def main_llm_loop(
         except Exception as e:
             logger.debug(f"Could not send thinking message: {e}")
 
-    # Get user name if not provided
+    # Resolve user name if not provided
     if not user_name:
         user_name = "there"
         if channel:
@@ -276,24 +144,54 @@ async def main_llm_loop(
             except Exception:
                 pass
 
+    # Pre-load locations for user's companies (follows sales-module pattern)
+    company_locations = []
+    if user_companies:
+        try:
+            from core.services import get_asset_service
+            asset_service = get_asset_service()
+            company_locations = await asset_service.get_locations_for_companies(user_companies)
+            logger.debug(f"[LLM] Pre-loaded {len(company_locations)} locations for {len(user_companies)} companies")
+        except Exception as e:
+            logger.warning(f"[LLM] Failed to pre-load locations: {e}")
+
+    # Validate config is accessible (ConfigService has TTL cache, called directly where needed)
+    from core.services import get_config_service
+    config_service = get_config_service()
+    logger.debug(
+        f"[LLM] Config available: "
+        f"{len(config_service.get_videographer_names())} videographers, "
+        f"{len(config_service.get_sales_people_names())} sales people, "
+        f"{len(config_service.get_location_names())} locations"
+    )
+
+    # Create workflow context with pre-loaded locations (follows sales-module pattern)
+    workflow_ctx = WorkflowContext.create(
+        user_id=user_id,
+        user_email=user_email,
+        user_name=user_name,
+        user_companies=user_companies or [],
+        locations_list=company_locations,
+    )
+
     try:
         # Check for pending states that need special handling
         if state.pending_confirmation:
             answer = await _handle_confirmation_response(
-                user_id, user_input, state, tool_router, config_data
+                user_id, user_input, state, tool_router, workflow_ctx
             )
         elif state.pending_delete:
             answer = await _handle_delete_confirmation(
-                user_id, user_input, state, tool_router
+                user_id, user_input, state, tool_router, workflow_ctx
             )
         elif state.pending_edit:
             answer = await _handle_edit_flow(
-                user_id, user_input, state, tool_router, config_data
+                user_id, user_input, state, tool_router, workflow_ctx
             )
         else:
             # Normal conversation flow
             answer = await _handle_normal_conversation(
-                user_id, user_input, user_name, files, state, tool_router, config_data
+                user_id, user_input, image_data, state, tool_router, workflow_ctx
             )
 
         # Store history
@@ -332,42 +230,70 @@ async def main_llm_loop(
 async def _handle_normal_conversation(
     user_id: str,
     user_input: str,
-    user_name: str,
-    files: list[dict] | None,
+    image_data: list[tuple[bytes, str]] | None,
     state: ConversationState,
     tool_router: Any,
-    config_data: dict[str, Any] | None,
+    workflow_ctx: WorkflowContext,
 ) -> str:
     """Handle normal conversation flow with LLM."""
     # Build messages
-    system_prompt = create_design_request_system_prompt(user_name, config_data)
+    user_name = workflow_ctx.get_display_name()
+
+    # Call ConfigService directly (follows sales-module pattern - don't store on WorkflowContext)
+    from core.services import get_config_service
+    config_service = get_config_service()
+    system_prompt = create_design_request_system_prompt(
+        user_name,
+        videographers=config_service.get_videographer_names(),
+        sales_people=config_service.get_sales_people_names(),
+        locations=config_service.get_location_names(),
+    )
 
     messages = [
         LLMMessage.system(system_prompt),
         *[LLMMessage(role=m["role"], content=m["content"]) for m in state.history],
-        LLMMessage.user(user_input),
     ]
 
-    # Add file context if provided
-    if files:
-        # For now, note that files were provided
-        # Full vision support would upload to provider first
-        file_names = [f.get("name", "unknown") for f in files]
-        messages[-1] = LLMMessage.user(
-            f"{user_input}\n\n[Attached files: {', '.join(file_names)}]"
-        )
+    # Build user message content - with vision support if images provided
+    has_images = bool(image_data)
+    if image_data:
+        # Create multimodal content with images
+        content_parts = [ContentPart.text(user_input or "Please extract the design request details from this image.")]
+
+        for img_bytes, mimetype in image_data:
+            # Convert to base64 for vision API
+            img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+            content_parts.append(ContentPart.image_base64(img_base64, mimetype))
+
+        # LLMMessage.user accepts list of content parts for multimodal
+        messages.append(LLMMessage.user(content_parts))
+        logger.info(f"[LLM] Processing message with {len(image_data)} image(s)")
+    else:
+        messages.append(LLMMessage.user(user_input))
 
     # Get tool definitions
     tools = get_tool_definitions()
 
-    # Call LLM
+    # Call LLM with proper parameters (follows sales-module pattern)
     client = LLMClient.from_config()
     response = await client.complete(
         messages=messages,
         tools=tools,
         tool_choice="auto",
+        # Caching parameters for prompt optimization
+        cache_key="design_request",
+        cache_retention="24h",
+        # Cost tracking parameters
+        call_type="main_llm",
         workflow="design_request",
-        user_id=user_id,
+        user_id=workflow_ctx.get_tracking_name(),
+        # Context for audit trail
+        context=f"Channel: video-critique, State: {type(state).__name__}",
+        metadata={
+            "has_images": has_images,
+            "message_length": len(user_input),
+            "history_length": len(state.history),
+        },
     )
 
     # Handle tool calls
@@ -375,13 +301,12 @@ async def _handle_normal_conversation(
         tool_call = response.tool_calls[0]
 
         if tool_router:
-            # Delegate to tool router
+            # Delegate to tool router with workflow context
             result = await tool_router.route_tool_call(
                 tool_name=tool_call.name,
                 arguments=tool_call.arguments,
-                user_id=user_id,
-                user_name=user_name,
                 state=state,
+                workflow_ctx=workflow_ctx,
             )
             return result
         else:
@@ -397,7 +322,7 @@ async def _handle_confirmation_response(
     user_input: str,
     state: ConversationState,
     tool_router: Any,
-    config_data: dict[str, Any] | None,
+    workflow_ctx: WorkflowContext,
 ) -> str:
     """Handle user response during design request confirmation."""
     pending_data = state.pending_confirmation
@@ -405,7 +330,7 @@ async def _handle_confirmation_response(
     # Check for duplicate confirmation mode
     if pending_data.get("_duplicate_confirm"):
         return await _handle_duplicate_confirmation(
-            user_id, user_input, state, pending_data, tool_router
+            user_id, user_input, state, pending_data, tool_router, workflow_ctx
         )
 
     # Parse user intent
@@ -427,17 +352,14 @@ Actions:
             LLMMessage.system(system_prompt),
             LLMMessage.user(f"Current request:\n{current_summary}\n\nUser response: {user_input}"),
         ],
-        json_schema={
-            "type": "object",
-            "properties": {
-                "action": {"type": "string", "enum": ["confirm", "cancel", "edit", "view"]},
-                "fields": {"type": "object"},
-                "message": {"type": "string"},
-            },
-            "required": ["action", "message"],
-        },
+        json_schema=CONFIRMATION_RESPONSE_SCHEMA,
+        # LLM parameters (follows sales-module pattern)
+        cache_key="confirmation",
+        cache_retention="24h",
+        call_type="confirmation",
         workflow="confirmation",
-        user_id=user_id,
+        user_id=workflow_ctx.get_tracking_name(),
+        context=f"Channel: video-critique, Flow: confirmation",
     )
 
     try:
@@ -452,9 +374,9 @@ Actions:
         # Delegate to tool router to save
         if tool_router:
             result = await tool_router.save_design_request(
-                user_id=user_id,
                 data=pending_data,
                 state=state,
+                workflow_ctx=workflow_ctx,
             )
             return result
         else:
@@ -489,6 +411,7 @@ async def _handle_duplicate_confirmation(
     state: ConversationState,
     pending_data: dict,
     tool_router: Any,
+    workflow_ctx: WorkflowContext,
 ) -> str:
     """Handle duplicate reference confirmation."""
     client = LLMClient.from_config()
@@ -500,16 +423,14 @@ async def _handle_duplicate_confirmation(
             ),
             LLMMessage.user(user_input),
         ],
-        json_schema={
-            "type": "object",
-            "properties": {
-                "action": {"type": "string", "enum": ["accept", "cancel", "edit"]},
-                "message": {"type": "string"},
-            },
-            "required": ["action"],
-        },
+        json_schema=DUPLICATE_CONFIRMATION_SCHEMA,
+        # LLM parameters (follows sales-module pattern)
+        cache_key="duplicate_confirm",
+        cache_retention="24h",
+        call_type="duplicate_confirm",
         workflow="duplicate_confirm",
-        user_id=user_id,
+        user_id=workflow_ctx.get_tracking_name(),
+        context=f"Channel: video-critique, Flow: duplicate_confirm",
     )
 
     try:
@@ -523,10 +444,10 @@ async def _handle_duplicate_confirmation(
         del pending_data["_duplicate_confirm"]
         if tool_router:
             result = await tool_router.save_design_request(
-                user_id=user_id,
                 data=pending_data,
                 state=state,
                 allow_duplicate=True,
+                workflow_ctx=workflow_ctx,
             )
             return result
         state.pending_confirmation = None
@@ -548,6 +469,7 @@ async def _handle_delete_confirmation(
     user_input: str,
     state: ConversationState,
     tool_router: Any,
+    workflow_ctx: WorkflowContext,
 ) -> str:
     """Handle delete confirmation flow."""
     delete_data = state.pending_delete
@@ -563,16 +485,14 @@ async def _handle_delete_confirmation(
             ),
             LLMMessage.user(user_input),
         ],
-        json_schema={
-            "type": "object",
-            "properties": {
-                "action": {"type": "string", "enum": ["confirm", "cancel"]},
-                "message": {"type": "string"},
-            },
-            "required": ["action"],
-        },
+        json_schema=DELETE_CONFIRMATION_SCHEMA,
+        # LLM parameters (follows sales-module pattern)
+        cache_key="delete_confirm",
+        cache_retention="24h",
+        call_type="delete_confirm",
         workflow="delete_confirm",
-        user_id=user_id,
+        user_id=workflow_ctx.get_tracking_name(),
+        context=f"Channel: video-critique, Flow: delete_confirm, Task: {task_number}",
     )
 
     try:
@@ -585,7 +505,6 @@ async def _handle_delete_confirmation(
     if action == "confirm":
         if tool_router:
             result = await tool_router.delete_task(
-                user_id=user_id,
                 task_number=task_number,
                 task_data=delete_data.get("task_data"),
                 state=state,
@@ -604,7 +523,7 @@ async def _handle_edit_flow(
     user_input: str,
     state: ConversationState,
     tool_router: Any,
-    config_data: dict[str, Any] | None,
+    workflow_ctx: WorkflowContext,
 ) -> str:
     """Handle task edit flow."""
     edit_data = state.pending_edit
@@ -614,30 +533,36 @@ async def _handle_edit_flow(
     # Check for duplicate confirmation in edit mode
     if edit_data.get("_duplicate_confirm"):
         return await _handle_edit_duplicate_confirmation(
-            user_id, user_input, state, edit_data, tool_router
+            user_id, user_input, state, edit_data, tool_router, workflow_ctx
         )
 
     # Parse edit intent
     client = LLMClient.from_config()
+
+    # Call ConfigService directly (follows sales-module pattern)
+    from core.services import get_config_service
+    config_service = get_config_service()
     system_prompt = create_edit_system_prompt(
-        task_number, current_data, user_input, config_data
+        task_number,
+        current_data,
+        user_input,
+        videographers=config_service.get_videographer_names(),
+        sales_people=config_service.get_sales_people_names(),
+        locations=config_service.get_location_names(),
     )
 
     response = await client.complete(
         messages=[
             LLMMessage.system(system_prompt),
         ],
-        json_schema={
-            "type": "object",
-            "properties": {
-                "action": {"type": "string", "enum": ["save", "cancel", "edit", "view"]},
-                "fields": {"type": "object"},
-                "message": {"type": "string"},
-            },
-            "required": ["action"],
-        },
+        json_schema=EDIT_TASK_SCHEMA,
+        # LLM parameters (follows sales-module pattern)
+        cache_key="edit_task",
+        cache_retention="24h",
+        call_type="edit_task",
         workflow="edit_task",
-        user_id=user_id,
+        user_id=workflow_ctx.get_tracking_name(),
+        context=f"Channel: video-critique, Flow: edit_task, Task: {task_number}",
     )
 
     try:
@@ -652,7 +577,6 @@ async def _handle_edit_flow(
         if updates:
             if tool_router:
                 result = await tool_router.save_task_edits(
-                    user_id=user_id,
                     task_number=task_number,
                     updates=updates,
                     current_data=current_data,
@@ -717,6 +641,7 @@ async def _handle_edit_duplicate_confirmation(
     state: ConversationState,
     edit_data: dict,
     tool_router: Any,
+    workflow_ctx: WorkflowContext,
 ) -> str:
     """Handle duplicate reference confirmation during edit."""
     task_number = edit_data["task_number"]
@@ -731,16 +656,14 @@ async def _handle_edit_duplicate_confirmation(
             ),
             LLMMessage.user(user_input),
         ],
-        json_schema={
-            "type": "object",
-            "properties": {
-                "action": {"type": "string", "enum": ["accept", "cancel", "edit"]},
-                "message": {"type": "string"},
-            },
-            "required": ["action"],
-        },
+        json_schema=EDIT_DUPLICATE_CONFIRMATION_SCHEMA,
+        # LLM parameters (follows sales-module pattern)
+        cache_key="edit_duplicate_confirm",
+        cache_retention="24h",
+        call_type="edit_duplicate_confirm",
         workflow="edit_duplicate_confirm",
-        user_id=user_id,
+        user_id=workflow_ctx.get_tracking_name(),
+        context=f"Channel: video-critique, Flow: edit_duplicate_confirm, Task: {task_number}",
     )
 
     try:
@@ -755,7 +678,6 @@ async def _handle_edit_duplicate_confirmation(
         updates = edit_data.get("updates", {})
         if tool_router:
             result = await tool_router.save_task_edits(
-                user_id=user_id,
                 task_number=task_number,
                 updates=updates,
                 current_data=edit_data["current_data"],

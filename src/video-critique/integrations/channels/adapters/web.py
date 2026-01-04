@@ -76,7 +76,7 @@ class WebAdapter(ChannelAdapter):
     Key differences from Slack:
     - Messages are stored in session and returned via HTTP APIs
     - Supports SSE streaming for real-time responses
-    - File uploads return URLs accessible by the web frontend
+    - File uploads stored in persistent directory and tracked in database
     - No modals (uses frontend UI instead)
 
     API Integration:
@@ -96,6 +96,50 @@ class WebAdapter(ChannelAdapter):
         self._file_base_url = file_base_url
         self._users: dict[str, User] = {}
         self._uploaded_files: dict[str, Path] = {}
+
+        # Initialize persistent file storage directory
+        self._init_file_storage()
+
+    def _init_file_storage(self) -> None:
+        """Initialize persistent file storage directory."""
+        import config
+
+        # Use DATA_DIR for persistent storage
+        data_dir = getattr(config, "DATA_DIR", Path("./data"))
+        self._file_storage_dir = Path(data_dir) / "web_uploads"
+        self._file_storage_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"[WebAdapter] File storage: {self._file_storage_dir}")
+
+        # Load existing file mappings from database
+        self._load_file_mappings()
+
+    def _load_file_mappings(self) -> None:
+        """Load existing file mappings from database on startup."""
+        try:
+            # Check for existing files in storage directory
+            for file_path in self._file_storage_dir.glob("*/*"):
+                if file_path.is_file():
+                    file_id = file_path.parent.name
+                    self._uploaded_files[file_id] = file_path
+            logger.info(f"[WebAdapter] Loaded {len(self._uploaded_files)} existing file mappings")
+        except Exception as e:
+            logger.warning(f"[WebAdapter] Failed to load file mappings: {e}")
+
+    def _save_file_persistent(self, file_id: str, filename: str, content: bytes) -> Path:
+        """Save file to persistent storage."""
+        # Create subdirectory for this file
+        file_dir = self._file_storage_dir / file_id
+        file_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save file
+        file_path = file_dir / filename
+        file_path.write_bytes(content)
+
+        # Track in memory
+        self._uploaded_files[file_id] = file_path
+
+        logger.info(f"[WebAdapter] Saved file to persistent storage: {file_path}")
+        return file_path
 
     @property
     def channel_type(self) -> ChannelType:
@@ -440,7 +484,7 @@ class WebAdapter(ChannelAdapter):
         comment: str | None = None,
         thread_id: str | None = None,
     ) -> FileUpload:
-        """Store a file and return URL for web download."""
+        """Store a file in persistent storage and return URL for web download."""
         path = Path(file_path)
         if not path.exists():
             return FileUpload(success=False, error="File not found")
@@ -448,13 +492,14 @@ class WebAdapter(ChannelAdapter):
         file_id = str(uuid.uuid4())
         actual_filename = filename or path.name
 
-        # Store file reference
-        self._uploaded_files[file_id] = path
+        # Read file content and save to persistent storage
+        content = path.read_bytes()
+        persistent_path = self._save_file_persistent(file_id, actual_filename, content)
 
         # Create download URL
         url = f"{self._file_base_url}/{file_id}/{actual_filename}"
 
-        logger.info(f"[WebAdapter] File stored: {actual_filename} -> {url}")
+        logger.info(f"[WebAdapter] File stored persistently: {actual_filename} -> {url}")
 
         # Add message with attachment if comment provided
         session = self.get_session(channel_id)
@@ -505,21 +550,53 @@ class WebAdapter(ChannelAdapter):
         thread_id: str | None = None,
         mimetype: str | None = None,
     ) -> FileUpload:
-        """Upload file from bytes."""
-        import tempfile
+        """Upload file from bytes to persistent storage."""
+        file_id = str(uuid.uuid4())
 
-        suffix = Path(filename).suffix
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
-            f.write(file_bytes)
-            temp_path = Path(f.name)
+        # Save directly to persistent storage (no temp files)
+        persistent_path = self._save_file_persistent(file_id, filename, file_bytes)
 
-        return await self.upload_file(
-            channel_id,
-            temp_path,
-            filename=filename,
-            title=title,
-            comment=comment,
-            thread_id=thread_id,
+        # Create download URL
+        url = f"{self._file_base_url}/{file_id}/{filename}"
+
+        logger.info(f"[WebAdapter] File bytes stored persistently: {filename} -> {url}")
+
+        # Add message with attachment if comment provided
+        session = self.get_session(channel_id)
+        if session:
+            if comment:
+                parent_id = current_parent_message_id.get()
+                session.messages.append({
+                    "id": str(uuid.uuid4()),
+                    "role": "assistant",
+                    "content": comment,
+                    "timestamp": datetime.now().isoformat(),
+                    "parent_id": parent_id,
+                    "attachments": [{
+                        "file_id": file_id,
+                        "url": url,
+                        "filename": filename,
+                        "title": title
+                    }]
+                })
+
+            req_id = current_request_id.get()
+            session.events.append({
+                "type": "file",
+                "request_id": req_id,
+                "file_id": file_id,
+                "url": url,
+                "filename": filename,
+                "title": title,
+                "comment": comment,
+                "timestamp": datetime.now().isoformat(),
+            })
+
+        return FileUpload(
+            success=True,
+            url=url,
+            file_id=file_id,
+            filename=filename
         )
 
     def get_file_path(self, file_id: str) -> Path | None:

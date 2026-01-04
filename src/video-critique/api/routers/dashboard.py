@@ -7,9 +7,10 @@ Provides dashboard data endpoints for the unified-ui.
 from datetime import datetime, timedelta
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from crm_security import require_permission, AuthUser
 import config
 from core.services.task_service import TaskService
 from core.utils.logging import get_logger
@@ -77,9 +78,13 @@ class UpcomingShoot(BaseModel):
 # ============================================================================
 
 @router.get("/stats", response_model=DashboardStats)
-async def get_dashboard_stats():
+async def get_dashboard_stats(
+    user: AuthUser = Depends(require_permission("video:dashboard:view")),
+):
     """
     Get overall dashboard statistics.
+
+    Requires: video:dashboard:view permission.
     """
     try:
         service = get_task_service()
@@ -114,9 +119,13 @@ async def get_dashboard_stats():
 
 
 @router.get("/workload")
-async def get_workload_data():
+async def get_workload_data(
+    user: AuthUser = Depends(require_permission("video:dashboard:view")),
+):
     """
     Get videographer workload data.
+
+    Requires: video:dashboard:view permission.
     """
     try:
         service = get_task_service()
@@ -183,9 +192,12 @@ async def get_workload_data():
 @router.get("/upcoming-shoots")
 async def get_upcoming_shoots(
     days: int = Query(7, description="Number of days to look ahead"),
+    user: AuthUser = Depends(require_permission("video:dashboard:view")),
 ):
     """
     Get upcoming filming dates.
+
+    Requires: video:dashboard:view permission.
     """
     try:
         service = get_task_service()
@@ -227,9 +239,13 @@ async def get_upcoming_shoots(
 
 
 @router.get("/by-status")
-async def get_tasks_by_status():
+async def get_tasks_by_status(
+    user: AuthUser = Depends(require_permission("video:dashboard:view")),
+):
     """
     Get task counts grouped by status.
+
+    Requires: video:dashboard:view permission.
     """
     try:
         service = get_task_service()
@@ -252,9 +268,13 @@ async def get_tasks_by_status():
 
 
 @router.get("/by-location")
-async def get_tasks_by_location():
+async def get_tasks_by_location(
+    user: AuthUser = Depends(require_permission("video:dashboard:view")),
+):
     """
     Get task counts grouped by location.
+
+    Requires: video:dashboard:view permission.
     """
     try:
         service = get_task_service()
@@ -284,9 +304,13 @@ async def get_tasks_by_location():
 
 
 @router.get("/by-videographer")
-async def get_tasks_by_videographer():
+async def get_tasks_by_videographer(
+    user: AuthUser = Depends(require_permission("video:dashboard:view")),
+):
     """
     Get task counts grouped by videographer.
+
+    Requires: video:dashboard:view permission.
     """
     try:
         service = get_task_service()
@@ -319,11 +343,14 @@ async def get_tasks_by_videographer():
 async def get_calendar_data(
     month: int = Query(..., ge=1, le=12, description="Month (1-12)"),
     year: int = Query(..., description="Year"),
+    user: AuthUser = Depends(require_permission("video:dashboard:view")),
 ):
     """
     Get calendar data for a specific month.
 
     Returns filming dates and campaign periods.
+
+    Requires: video:dashboard:view permission.
     """
     try:
         service = get_task_service()

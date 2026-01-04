@@ -123,8 +123,31 @@ app.add_middleware(
     allow_origins=["*"],  # Configure properly in production
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*", "Authorization", "X-API-Key", "X-Request-ID"],
 )
+
+# Security middleware (from crm-security)
+# TrustedUserMiddleware: Extracts user identity from JWT tokens and makes AuthUser available
+# SecurityHeadersMiddleware: Adds standard security headers (X-Content-Type-Options, X-Frame-Options, etc.)
+try:
+    from crm_security import TrustedUserMiddleware, SecurityHeadersMiddleware
+
+    app.add_middleware(SecurityHeadersMiddleware)
+    app.add_middleware(
+        TrustedUserMiddleware,
+        exempt_paths={
+            "/",
+            "/health",
+            "/health/ready",
+            "/health/live",
+        },
+        exempt_prefixes=[
+            "/slack/",  # Slack webhooks have their own auth (signature verification)
+        ],
+    )
+    logger.info("[Server] Security middleware enabled (TrustedUser + SecurityHeaders)")
+except ImportError:
+    logger.warning("[Server] crm_security not available, running without security middleware")
 
 
 # Request logging middleware
@@ -150,19 +173,6 @@ async def handle_errors(request: Request, call_next):
             status_code=500,
             content={"error": "Internal server error", "detail": str(e)},
         )
-
-
-# Security headers middleware
-@app.middleware("http")
-async def add_security_headers(request: Request, call_next):
-    """Add security headers to responses."""
-    response = await call_next(request)
-
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
-
-    return response
 
 
 # ============================================================================

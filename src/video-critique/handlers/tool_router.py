@@ -4,15 +4,22 @@ Tool Router for Video Critique.
 Dispatches LLM tool calls to the appropriate service methods.
 This is the bridge between the LLM conversation loop and the
 business logic in the services layer.
+
+Follows the same patterns as sales-module for consistency:
+- Accepts WorkflowContext for request-scoped context passing
+- Uses context for user identity and configuration access
 """
 
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from core.services.task_service import TaskService
 from core.services.notification_service import NotificationService
 from core.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from core.workflow_context import WorkflowContext
 
 import config
 
@@ -49,25 +56,31 @@ class ToolRouter:
         self,
         tool_name: str,
         arguments: dict[str, Any] | str,
-        user_id: str,
-        user_name: str | None = None,
         state: Any = None,
         channel: Any = None,
+        workflow_ctx: "WorkflowContext" = None,
     ) -> str:
         """
         Route a tool call to the appropriate handler.
 
+        Follows the same pattern as sales-module for consistency:
+        - Accepts WorkflowContext for request-scoped context passing
+        - Uses context for user identity and configuration access
+
         Args:
             tool_name: Name of the tool being called
             arguments: Tool arguments (dict or JSON string)
-            user_id: User making the request
-            user_name: User's display name
             state: Conversation state object
             channel: Channel adapter for sending messages
+            workflow_ctx: Request-scoped workflow context with user identity and config
 
         Returns:
             Response message string
         """
+        # Extract user info from workflow context
+        user_id = workflow_ctx.user_id if workflow_ctx else "unknown"
+        display_name = workflow_ctx.get_display_name() if workflow_ctx else "there"
+
         # Parse arguments if string
         if isinstance(arguments, str):
             try:
@@ -80,7 +93,7 @@ class ToolRouter:
         try:
             if tool_name == "log_design_request":
                 return await self._handle_log_design_request(
-                    arguments, user_id, user_name, state
+                    arguments, user_id, display_name, state
                 )
 
             elif tool_name == "edit_task":
@@ -180,10 +193,10 @@ class ToolRouter:
 
     async def save_design_request(
         self,
-        user_id: str,
         data: dict[str, Any],
         state: Any,
         allow_duplicate: bool = False,
+        workflow_ctx: "WorkflowContext | None" = None,
     ) -> str:
         """Save a confirmed design request."""
         try:
@@ -211,6 +224,9 @@ class ToolRouter:
                     msg += "- Say **'no'** to cancel\n"
                     msg += "- Say **'edit'** to change the reference"
                     return msg
+
+            # Get user identifier for fallback
+            user_id = workflow_ctx.user_id if workflow_ctx else "unknown"
 
             # Create the task
             result = await self._task_service.create_task(
@@ -299,7 +315,6 @@ class ToolRouter:
 
     async def save_task_edits(
         self,
-        user_id: str,
         task_number: int,
         updates: dict[str, Any],
         current_data: dict[str, Any],
@@ -394,7 +409,6 @@ class ToolRouter:
 
     async def delete_task(
         self,
-        user_id: str,
         task_number: int,
         task_data: dict[str, Any] | None,
         state: Any,

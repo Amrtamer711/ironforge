@@ -7,9 +7,10 @@ Handles task CRUD operations and management endpoints.
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel, Field
 
+from crm_security import require_permission, AuthUser
 import config
 from core.services.task_service import TaskService
 from core.services.assignment_service import AssignmentService
@@ -101,9 +102,12 @@ async def list_tasks(
     limit: int = Query(100, description="Maximum results"),
     offset: int = Query(0, description="Offset for pagination"),
     include_history: bool = Query(False, description="Include completed tasks"),
+    user: AuthUser = Depends(require_permission("video:tasks:read")),
 ):
     """
     List tasks with optional filters.
+
+    Requires: video:tasks:read permission.
     """
     try:
         service = get_task_service()
@@ -136,9 +140,14 @@ async def list_tasks(
 
 
 @router.get("/{task_number}")
-async def get_task(task_number: int):
+async def get_task(
+    task_number: int,
+    user: AuthUser = Depends(require_permission("video:tasks:read")),
+):
     """
     Get a specific task by task number.
+
+    Requires: video:tasks:read permission.
     """
     try:
         service = get_task_service()
@@ -161,9 +170,14 @@ async def get_task(task_number: int):
 
 @router.post("", response_model=TaskResponse)
 @router.post("/", response_model=TaskResponse)
-async def create_task(request: TaskCreate):
+async def create_task(
+    request: TaskCreate,
+    user: AuthUser = Depends(require_permission("video:tasks:create")),
+):
     """
     Create a new task.
+
+    Requires: video:tasks:create permission.
     """
     try:
         service = get_task_service()
@@ -200,9 +214,15 @@ async def create_task(request: TaskCreate):
 
 @router.put("/{task_number}", response_model=TaskResponse)
 @router.patch("/{task_number}", response_model=TaskResponse)
-async def update_task(task_number: int, request: TaskUpdate):
+async def update_task(
+    task_number: int,
+    request: TaskUpdate,
+    user: AuthUser = Depends(require_permission("video:tasks:edit")),
+):
     """
     Update an existing task.
+
+    Requires: video:tasks:edit permission.
     """
     try:
         service = get_task_service()
@@ -254,9 +274,14 @@ async def update_task(task_number: int, request: TaskUpdate):
 
 
 @router.delete("/{task_number}", response_model=TaskResponse)
-async def delete_task(task_number: int):
+async def delete_task(
+    task_number: int,
+    user: AuthUser = Depends(require_permission("video:tasks:delete")),
+):
     """
     Delete (archive) a task.
+
+    Requires: video:tasks:delete permission.
     """
     try:
         service = get_task_service()
@@ -286,12 +311,17 @@ async def delete_task(task_number: int):
 # ============================================================================
 
 @router.post("/assignment/run")
-async def trigger_assignment(background_tasks: BackgroundTasks):
+async def trigger_assignment(
+    background_tasks: BackgroundTasks,
+    user: AuthUser = Depends(require_permission("video:admin:assignment")),
+):
     """
     Trigger the assignment check process.
 
     Runs the assignment service to assign unassigned tasks
     to videographers based on location and availability.
+
+    Requires: video:admin:assignment permission.
     """
     try:
         # Run in background
@@ -322,9 +352,13 @@ async def run_assignment_check():
 
 
 @router.get("/assignment/pending")
-async def get_pending_assignments():
+async def get_pending_assignments(
+    user: AuthUser = Depends(require_permission("video:tasks:read")),
+):
     """
     Get tasks pending assignment.
+
+    Requires: video:tasks:read permission.
     """
     try:
         service = get_task_service()
@@ -352,9 +386,12 @@ async def get_pending_assignments():
 async def export_tasks(
     include_history: bool = Query(False, description="Include historical tasks"),
     format: str = Query("json", description="Export format (json/excel)"),
+    user: AuthUser = Depends(require_permission("video:tasks:export")),
 ):
     """
     Export tasks to JSON or Excel format.
+
+    Requires: video:tasks:export permission.
     """
     try:
         service = get_task_service()
@@ -400,9 +437,14 @@ async def export_tasks(
 # ============================================================================
 
 @router.get("/check-duplicate/{reference_number}")
-async def check_duplicate(reference_number: str):
+async def check_duplicate(
+    reference_number: str,
+    user: AuthUser = Depends(require_permission("video:tasks:read")),
+):
     """
     Check if a reference number already exists.
+
+    Requires: video:tasks:read permission.
     """
     try:
         service = get_task_service()

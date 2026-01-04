@@ -19,6 +19,7 @@ from core.utils.logging import get_logger
 from core.utils.time import now_uae
 from db.database import db
 from db.models import ApprovalWorkflow
+from integrations.asset_management import get_asset_client
 
 if TYPE_CHECKING:
     from core.services.notification_service import NotificationService
@@ -443,6 +444,9 @@ class ApprovalService:
                 version=version,
             )
 
+            # Link video to asset-management location
+            await self._link_to_asset_management(workflow)
+
             # Archive the task
             await self._db.archive_task(workflow.task_number)
 
@@ -660,3 +664,85 @@ Return ONLY the category name, nothing else."""
             logger.warning(f"[ApprovalService] Error classifying rejection: {e}")
 
         return "Other"
+
+    async def _link_to_asset_management(self, workflow: ApprovalWorkflow) -> bool:
+        """
+        Link approved video to asset-management location.
+
+        Notifies asset-management about filmed video content at a location,
+        enabling the asset library to know what video content exists.
+
+        Args:
+            workflow: The completed approval workflow
+
+        Returns:
+            True if linked successfully
+        """
+        task_data = workflow.task_data or {}
+        location_name = task_data.get("location", "")
+
+        if not location_name:
+            logger.warning(
+                f"[ApprovalService] No location in task data for workflow {workflow.workflow_id}"
+            )
+            return False
+
+        try:
+            asset_client = get_asset_client()
+
+            # Search for matching location in asset-management
+            matching_locations = await asset_client.search_locations_by_name(location_name)
+
+            if not matching_locations:
+                logger.info(
+                    f"[ApprovalService] No matching asset location found for '{location_name}'"
+                )
+                return False
+
+            # Use first match (best match)
+            asset_location = matching_locations[0]
+            location_id = asset_location.get("id")
+            company = asset_location.get("company", "")
+
+            if not location_id:
+                return False
+
+            # Build metadata for the video content
+            version_info = workflow.version_info or {}
+            metadata = {
+                "brand": task_data.get("brand", ""),
+                "campaign_start_date": task_data.get("campaign_start_date", ""),
+                "campaign_end_date": task_data.get("campaign_end_date", ""),
+                "reference_number": task_data.get("reference_number", ""),
+                "sales_person": task_data.get("sales_person", ""),
+                "videographer": workflow.videographer_id,
+                "dropbox_path": workflow.dropbox_path,
+                "version": version_info.get("version", 1),
+                "files": version_info.get("files", []),
+                "approved_at": now_uae().isoformat(),
+            }
+
+            # Link to asset-management
+            success = await asset_client.link_video_to_location(
+                task_number=workflow.task_number,
+                location_id=location_id,
+                company=company,
+                metadata=metadata,
+            )
+
+            if success:
+                logger.info(
+                    f"[ApprovalService] Linked task #{workflow.task_number} "
+                    f"to asset location {location_id} ({asset_location.get('display_name', '')})"
+                )
+            else:
+                logger.info(
+                    f"[ApprovalService] Asset linking skipped for task #{workflow.task_number} "
+                    f"(endpoint may not exist yet)"
+                )
+
+            return success
+
+        except Exception as e:
+            logger.warning(f"[ApprovalService] Error linking to asset-management: {e}")
+            return False

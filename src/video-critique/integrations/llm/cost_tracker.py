@@ -57,16 +57,27 @@ def track_cost(
 
         metadata_json = json.dumps(full_metadata) if full_metadata else None
 
-        # Log to database
+        # Calculate reasoning cost for accurate breakdown
+        reasoning_cost = 0.0
+        if cost.reasoning_tokens > 0 and cost.reasoning_cost > 0:
+            reasoning_cost = cost.reasoning_cost
+
+        # Log to database with full accuracy
         db.log_ai_cost(
             call_type=call_type,
             model=cost.model,
             input_tokens=cost.input_tokens,
             output_tokens=cost.output_tokens,
+            reasoning_tokens=cost.reasoning_tokens,
+            input_cost=cost.input_cost,
+            output_cost=cost.output_cost,
+            reasoning_cost=reasoning_cost,
             total_cost=cost.total_cost,
             user_id=user_id,
             workflow=workflow,
-            context=metadata_json,
+            cached_input_tokens=cost.cached_tokens,
+            context=context,
+            metadata_json=metadata_json,
         )
 
         # Log detailed summary
