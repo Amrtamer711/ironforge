@@ -1,150 +1,232 @@
 """
 Tool Router - Handles dispatching LLM function calls to appropriate handlers.
+
+Class-based architecture following video-critique pattern for platform alignment.
+Each tool has its own private handler method for clarity and testability.
 """
 
 import os
 from datetime import datetime
+from typing import Any
 
 import config
-from core.proposals import process_proposals  # ✅ Using new modular API
+from core.proposals import process_proposals
 from core.workflow_context import WorkflowContext
 from db.cache import pending_location_additions
 from db.database import db
 from integrations.llm import ToolCall
 from core.utils import sanitize_filename
 from workflows.bo_parser import BookingOrderParser
-
-# ✅ Mockup handler from core/mockups module
 from core.mockups import handle_mockup_generation
 
 logger = config.logger
 
 
-def _validate_company_access(user_companies: list[str] | None) -> tuple[bool, str]:
+class ToolRouter:
     """
-    Validate that user has company access for data operations.
+    Routes LLM tool calls to appropriate handler methods.
 
-    Security: Users without company assignments cannot access any company-specific data.
-    No backwards compatibility - this prevents accidental data leaks.
-
-    Args:
-        user_companies: List of company schemas user can access
-
-    Returns:
-        Tuple of (is_valid, error_message)
+    Class-based architecture for:
+    - Clear separation of concerns (each tool = one method)
+    - Easier testing and mocking
+    - Consistent pattern with video-critique module
+    - Dependency injection via constructor
     """
-    if user_companies is None or len(user_companies) == 0:
-        return False, (
-            "❌ **Access Denied**\n\n"
-            "You don't have access to any company data. "
-            "Please contact your administrator to be assigned to a company."
-        )
-    return True, ""
 
+    def __init__(
+        self,
+        channel_adapter: Any = None,
+    ):
+        """
+        Initialize the tool router.
 
-def _validate_location_access(
-    location_key: str,
-    user_companies: list[str],
-    workflow_ctx: WorkflowContext | None = None,
-) -> tuple[bool, str, str | None]:
-    """
-    Validate that a specific location belongs to user's accessible companies.
+        Args:
+            channel_adapter: Channel adapter for messaging (optional, uses config default)
+        """
+        self._channel = channel_adapter or config.get_channel_adapter()
 
-    Security: Prevents users from accessing locations outside their assigned companies,
-    even if they know the location key.
+    # =========================================================================
+    # VALIDATION HELPERS
+    # =========================================================================
 
-    Performance: If workflow_ctx is provided, uses O(1) in-memory lookup.
-    Falls back to database query if context not available.
+    @staticmethod
+    def validate_company_access(user_companies: list[str] | None) -> tuple[bool, str]:
+        """
+        Validate that user has company access for data operations.
 
-    Args:
-        location_key: The location key to validate
-        user_companies: List of company schemas user can access
-        workflow_ctx: Optional pre-loaded context for O(1) lookups
+        Security: Users without company assignments cannot access any company-specific data.
+        No backwards compatibility - this prevents accidental data leaks.
 
-    Returns:
-        Tuple of (is_valid, error_message, company_schema)
-        company_schema is the schema where the location was found (if valid)
-    """
-    location = None
+        Args:
+            user_companies: List of company schemas user can access
 
-    # Try O(1) lookup from workflow context first (if available)
-    if workflow_ctx is not None:
-        location = workflow_ctx.get_location(location_key)
-        if location:
-            logger.debug(f"[TOOL_ROUTER] Location '{location_key}' found in workflow context (O(1))")
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        if user_companies is None or len(user_companies) == 0:
+            return False, (
+                "❌ **Access Denied**\n\n"
+                "You don't have access to any company data. "
+                "Please contact your administrator to be assigned to a company."
+            )
+        return True, ""
 
-    # Fallback to database query if not in context
-    if location is None:
-        location = db.get_location_by_key(location_key, user_companies)
-        if location:
-            logger.debug(f"[TOOL_ROUTER] Location '{location_key}' found via DB query (fallback)")
+    @staticmethod
+    def validate_location_access(
+        location_key: str,
+        user_companies: list[str],
+        workflow_ctx: WorkflowContext | None = None,
+    ) -> tuple[bool, str, str | None]:
+        """
+        Validate that a specific location belongs to user's accessible companies.
 
-    if location is None:
-        return False, (
-            f"❌ **Location Not Found**\n\n"
-            f"Location `{location_key}` was not found in your accessible companies. "
-            f"Use 'list locations' to see available locations."
-        ), None
-    # Handle both field names: Asset-Management returns 'company', internal code uses 'company_schema'
-    company_schema = location.get("company_schema") or location.get("company")
-    return True, "", company_schema
+        Security: Prevents users from accessing locations outside their assigned companies,
+        even if they know the location key.
 
+        Performance: If workflow_ctx is provided, uses O(1) in-memory lookup.
+        Falls back to database query if context not available.
 
-async def handle_tool_call(
-    tool_call: ToolCall,
-    channel: str,
-    user_id: str,
-    status_ts: str,
-    channel_event: dict = None,
-    user_input: str = "",
-    download_file_func=None,
-    handle_booking_order_parse_func=None,
-    generate_mockup_queued_func=None,
-    generate_ai_mockup_queued_func=None,
-    user_companies: list = None,
-    workflow_ctx: WorkflowContext | None = None,
-):
-    """
-    Main tool router - dispatches function calls to appropriate handlers.
+        Args:
+            location_key: The location key to validate
+            user_companies: List of company schemas user can access
+            workflow_ctx: Optional pre-loaded context for O(1) lookups
 
-    Channel-agnostic: Works with any channel adapter (Slack, Web, etc.)
+        Returns:
+            Tuple of (is_valid, error_message, company_schema)
+            company_schema is the schema where the location was found (if valid)
+        """
+        location = None
 
-    Args:
-        tool_call: The ToolCall object from LLMClient response
-        channel: Channel/conversation ID (Slack channel or web user ID)
-        user_id: User identifier
-        status_ts: ID of status message to update/delete
-        channel_event: Original channel event dict (for file access)
-        user_input: Original user message
-        download_file_func: Function to download files (channel-agnostic)
-        handle_booking_order_parse_func: Function to handle BO parsing
-        generate_mockup_queued_func: Function for queued mockup generation
-        generate_ai_mockup_queued_func: Function for queued AI mockup generation
-        user_companies: List of company schemas user can access (for data filtering)
-        workflow_ctx: Optional pre-loaded context for O(1) location lookups
+        # Try O(1) lookup from workflow context first (if available)
+        if workflow_ctx is not None:
+            location = workflow_ctx.get_location(location_key)
+            if location:
+                logger.debug(f"[TOOL_ROUTER] Location '{location_key}' found in workflow context (O(1))")
 
-    Returns:
-        True if handled as function call, False otherwise
-    """
-    # Extract tool call info - arguments is already a dict from ToolCall
-    tool_name = tool_call.name
-    args = tool_call.arguments
+        # Fallback to database query if not in context
+        if location is None:
+            location = db.get_location_by_key(location_key, user_companies)
+            if location:
+                logger.debug(f"[TOOL_ROUTER] Location '{location_key}' found via DB query (fallback)")
 
-    channel_adapter = config.get_channel_adapter()
+        if location is None:
+            return False, (
+                f"❌ **Location Not Found**\n\n"
+                f"Location `{location_key}` was not found in your accessible companies. "
+                f"Use 'list locations' to see available locations."
+            ), None
 
-    if tool_name == "get_separate_proposals":
-        # Company access validation (security - no backwards compatibility)
-        has_access, error_msg = _validate_company_access(user_companies)
-        if not has_access:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content=error_msg)
+        # Handle both field names: Asset-Management returns 'company', internal code uses 'company_schema'
+        company_schema = location.get("company_schema") or location.get("company")
+        return True, "", company_schema
+
+    # =========================================================================
+    # MAIN ROUTING METHOD
+    # =========================================================================
+
+    async def route_tool_call(
+        self,
+        tool_call: ToolCall,
+        channel: str,
+        user_id: str,
+        status_ts: str,
+        channel_event: dict = None,
+        user_input: str = "",
+        download_file_func=None,
+        handle_booking_order_parse_func=None,
+        generate_mockup_queued_func=None,
+        generate_ai_mockup_queued_func=None,
+        user_companies: list[str] | None = None,
+        workflow_ctx: WorkflowContext | None = None,
+    ) -> bool:
+        """
+        Route a tool call to the appropriate handler method.
+
+        Channel-agnostic: Works with any channel adapter (Slack, Web, etc.)
+
+        Args:
+            tool_call: The ToolCall object from LLMClient response
+            channel: Channel/conversation ID (Slack channel or web user ID)
+            user_id: User identifier
+            status_ts: ID of status message to update/delete
+            channel_event: Original channel event dict (for file access)
+            user_input: Original user message
+            download_file_func: Function to download files (channel-agnostic)
+            handle_booking_order_parse_func: Function to handle BO parsing
+            generate_mockup_queued_func: Function for queued mockup generation
+            generate_ai_mockup_queued_func: Function for queued AI mockup generation
+            user_companies: List of company schemas user can access (for data filtering)
+            workflow_ctx: Optional pre-loaded context for O(1) location lookups
+
+        Returns:
+            True if handled as function call, False otherwise
+        """
+        tool_name = tool_call.name
+        args = tool_call.arguments
+
+        # Build context dict for handlers
+        ctx = {
+            "channel": channel,
+            "user_id": user_id,
+            "status_ts": status_ts,
+            "channel_event": channel_event,
+            "user_input": user_input,
+            "download_file_func": download_file_func,
+            "handle_booking_order_parse_func": handle_booking_order_parse_func,
+            "generate_mockup_queued_func": generate_mockup_queued_func,
+            "generate_ai_mockup_queued_func": generate_ai_mockup_queued_func,
+            "user_companies": user_companies,
+            "workflow_ctx": workflow_ctx,
+        }
+
+        # Route to appropriate handler
+        handlers = {
+            "get_separate_proposals": self._handle_separate_proposals,
+            "get_combined_proposal": self._handle_combined_proposal,
+            "refresh_templates": self._handle_refresh_templates,
+            "add_location": self._handle_add_location,
+            "list_locations": self._handle_list_locations,
+            "delete_location": self._handle_delete_location,
+            "export_proposals_to_excel": self._handle_export_proposals,
+            "export_booking_orders_to_excel": self._handle_export_booking_orders,
+            "fetch_booking_order": self._handle_fetch_booking_order,
+            "revise_booking_order": self._handle_revise_booking_order,
+            "get_proposals_stats": self._handle_proposals_stats,
+            "parse_booking_order": self._handle_parse_booking_order,
+            "generate_mockup": self._handle_generate_mockup,
+        }
+
+        handler = handlers.get(tool_name)
+        if handler:
+            await handler(args, ctx)
             return True
 
-        args = args
+        logger.warning(f"[TOOL_ROUTER] Unknown tool: {tool_name}")
+        return True
+
+    # =========================================================================
+    # PROPOSAL HANDLERS
+    # =========================================================================
+
+    async def _handle_separate_proposals(self, args: dict, ctx: dict) -> None:
+        """Handle get_separate_proposals tool call."""
+        channel = ctx["channel"]
+        user_id = ctx["user_id"]
+        status_ts = ctx["status_ts"]
+        user_companies = ctx["user_companies"]
+        workflow_ctx = ctx["workflow_ctx"]
+
+        # Company access validation
+        has_access, error_msg = self.validate_company_access(user_companies)
+        if not has_access:
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content=error_msg)
+            return
+
         proposals_data = args.get("proposals", [])
         client_name = args.get("client_name") or "Unknown Client"
         payment_terms = args.get("payment_terms", "100% upfront")
-        currency = args.get("currency")  # Optional currency (e.g., 'USD', 'EUR')
+        currency = args.get("currency")
 
         logger.info(f"[SEPARATE] Raw args: {args}")
         logger.info(f"[SEPARATE] Proposals data: {proposals_data}")
@@ -154,43 +236,46 @@ async def handle_tool_call(
         logger.info(f"[SEPARATE] User companies: {user_companies}")
 
         if not proposals_data:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** No proposals data provided")
-            return True
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content="❌ **Error:** No proposals data provided")
+            return
 
-        # Validate all requested locations belong to user's companies
-        # Uses O(1) lookup from workflow context if available
+        # Validate all requested locations
         for proposal in proposals_data:
             location_key = proposal.get("location", "").strip().lower().replace(" ", "_")
             if location_key:
-                is_valid, loc_error, _ = _validate_location_access(location_key, user_companies, workflow_ctx)
+                is_valid, loc_error, _ = self.validate_location_access(location_key, user_companies, workflow_ctx)
                 if not is_valid:
-                    await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-                    await channel_adapter.send_message(channel_id=channel, content=loc_error)
-                    return True
+                    await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+                    await self._channel.send_message(channel_id=channel, content=loc_error)
+                    return
 
-        # Update status to Building Proposal
-        await channel_adapter.update_message(
-            channel_id=channel,
-            message_id=status_ts,
-            content="⏳ _Building Proposal..._"
-        )
+        # Update status
+        await self._channel.update_message(channel_id=channel, message_id=status_ts, content="⏳ _Building Proposal..._")
 
         result = await process_proposals(proposals_data, "separate", None, user_id, client_name, payment_terms, currency, user_companies)
-    elif tool_name == "get_combined_proposal":
-        # Company access validation (security - no backwards compatibility)
-        has_access, error_msg = _validate_company_access(user_companies)
-        if not has_access:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content=error_msg)
-            return True
+        await self._handle_proposal_result(result, channel, status_ts)
 
-        args = args
+    async def _handle_combined_proposal(self, args: dict, ctx: dict) -> None:
+        """Handle get_combined_proposal tool call."""
+        channel = ctx["channel"]
+        user_id = ctx["user_id"]
+        status_ts = ctx["status_ts"]
+        user_companies = ctx["user_companies"]
+        workflow_ctx = ctx["workflow_ctx"]
+
+        # Company access validation
+        has_access, error_msg = self.validate_company_access(user_companies)
+        if not has_access:
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content=error_msg)
+            return
+
         proposals_data = args.get("proposals", [])
         combined_net_rate = args.get("combined_net_rate", None)
         client_name = args.get("client_name") or "Unknown Client"
         payment_terms = args.get("payment_terms", "100% upfront")
-        currency = args.get("currency")  # Optional currency (e.g., 'USD', 'EUR')
+        currency = args.get("currency")
 
         logger.info(f"[COMBINED] Raw args: {args}")
         logger.info(f"[COMBINED] Proposals data: {proposals_data}")
@@ -201,139 +286,179 @@ async def handle_tool_call(
         logger.info(f"[COMBINED] User companies: {user_companies}")
 
         if not proposals_data:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** No proposals data provided")
-            return True
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content="❌ **Error:** No proposals data provided")
+            return
         elif not combined_net_rate:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** Combined package requires a combined net rate")
-            return True
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content="❌ **Error:** Combined package requires a combined net rate")
+            return
         elif len(proposals_data) < 2:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** Combined package requires at least 2 locations")
-            return True
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content="❌ **Error:** Combined package requires at least 2 locations")
+            return
 
-        # Validate all requested locations belong to user's companies
-        # Uses O(1) lookup from workflow context if available
+        # Validate all requested locations
         for proposal in proposals_data:
             location_key = proposal.get("location", "").strip().lower().replace(" ", "_")
             if location_key:
-                is_valid, loc_error, _ = _validate_location_access(location_key, user_companies, workflow_ctx)
+                is_valid, loc_error, _ = self.validate_location_access(location_key, user_companies, workflow_ctx)
                 if not is_valid:
-                    await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-                    await channel_adapter.send_message(channel_id=channel, content=loc_error)
-                    return True
+                    await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+                    await self._channel.send_message(channel_id=channel, content=loc_error)
+                    return
 
-        # Update status to Building Proposal
-        await channel_adapter.update_message(
-            channel_id=channel,
-            message_id=status_ts,
-            content="⏳ _Building Proposal..._"
-        )
+        # Update status
+        await self._channel.update_message(channel_id=channel, message_id=status_ts, content="⏳ _Building Proposal..._")
 
-        # Transform proposals data for combined package (add durations as list with single item)
+        # Transform proposals data for combined package
         for proposal in proposals_data:
             if "duration" in proposal:
                 proposal["durations"] = [proposal.pop("duration")]
                 logger.info(f"[COMBINED] Transformed proposal: {proposal}")
 
         result = await process_proposals(proposals_data, "combined", combined_net_rate, user_id, client_name, payment_terms, currency, user_companies)
+        await self._handle_proposal_result(result, channel, status_ts)
 
-    # Handle result for both get_separate_proposals and get_combined_proposal
-    if tool_name in ["get_separate_proposals", "get_combined_proposal"] and 'result' in locals():
+    async def _handle_proposal_result(self, result: dict, channel: str, status_ts: str) -> None:
+        """Handle the result from proposal generation."""
         logger.info(f"[RESULT] Processing result: {result}")
+
         if result["success"]:
-            # Update status to uploading
-            await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="📤 Uploading proposals...")
+            await self._channel.update_message(channel_id=channel, message_id=status_ts, content="📤 Uploading proposals...")
 
             if result.get("is_combined"):
                 logger.info(f"[RESULT] Combined package - PDF: {result.get('pdf_filename')}")
-                await channel_adapter.upload_file(channel_id=channel, file_path=result["pdf_path"], filename=result["pdf_filename"], title=result["pdf_filename"], comment=f"📦 **Combined Package Proposal**\n📍 Locations: {result['locations']}")
-                try: os.unlink(result["pdf_path"])  # type: ignore
-                except OSError as cleanup_err: logger.debug(f"[RESULT] Failed to cleanup combined PDF: {cleanup_err}")
+                await self._channel.upload_file(
+                    channel_id=channel,
+                    file_path=result["pdf_path"],
+                    filename=result["pdf_filename"],
+                    title=result["pdf_filename"],
+                    comment=f"📦 **Combined Package Proposal**\n📍 Locations: {result['locations']}"
+                )
+                try:
+                    os.unlink(result["pdf_path"])
+                except OSError as cleanup_err:
+                    logger.debug(f"[RESULT] Failed to cleanup combined PDF: {cleanup_err}")
+
             elif result.get("is_single"):
                 logger.info(f"[RESULT] Single proposal - Location: {result.get('location')}")
-                await channel_adapter.upload_file(channel_id=channel, file_path=result["pptx_path"], filename=result["pptx_filename"], title=result["pptx_filename"], comment=f"📊 **PowerPoint Proposal**\n📍 Location: {result['location']}")
-                await channel_adapter.upload_file(channel_id=channel, file_path=result["pdf_path"], filename=result["pdf_filename"], title=result["pdf_filename"], comment=f"📄 **PDF Proposal**\n📍 Location: {result['location']}")
+                await self._channel.upload_file(
+                    channel_id=channel,
+                    file_path=result["pptx_path"],
+                    filename=result["pptx_filename"],
+                    title=result["pptx_filename"],
+                    comment=f"📊 **PowerPoint Proposal**\n📍 Location: {result['location']}"
+                )
+                await self._channel.upload_file(
+                    channel_id=channel,
+                    file_path=result["pdf_path"],
+                    filename=result["pdf_filename"],
+                    title=result["pdf_filename"],
+                    comment=f"📄 **PDF Proposal**\n📍 Location: {result['location']}"
+                )
                 try:
-                    os.unlink(result["pptx_path"])  # type: ignore
-                    os.unlink(result["pdf_path"])  # type: ignore
+                    os.unlink(result["pptx_path"])
+                    os.unlink(result["pdf_path"])
                 except OSError as cleanup_err:
                     logger.debug(f"[RESULT] Failed to cleanup single proposal files: {cleanup_err}")
+
             else:
                 logger.info(f"[RESULT] Multiple separate proposals - Count: {len(result.get('individual_files', []))}")
                 for f in result["individual_files"]:
-                    await channel_adapter.upload_file(channel_id=channel, file_path=f["path"], filename=f["filename"], title=f["filename"], comment=f"📊 **PowerPoint Proposal**\n📍 Location: {f['location']}")
-                await channel_adapter.upload_file(channel_id=channel, file_path=result["merged_pdf_path"], filename=result["merged_pdf_filename"], title=result["merged_pdf_filename"], comment=f"📄 **Combined PDF**\n📍 All Locations: {result['locations']}")
+                    await self._channel.upload_file(
+                        channel_id=channel,
+                        file_path=f["path"],
+                        filename=f["filename"],
+                        title=f["filename"],
+                        comment=f"📊 **PowerPoint Proposal**\n📍 Location: {f['location']}"
+                    )
+                await self._channel.upload_file(
+                    channel_id=channel,
+                    file_path=result["merged_pdf_path"],
+                    filename=result["merged_pdf_filename"],
+                    title=result["merged_pdf_filename"],
+                    comment=f"📄 **Combined PDF**\n📍 All Locations: {result['locations']}"
+                )
                 try:
-                    for f in result["individual_files"]: os.unlink(f["path"])  # type: ignore
-                    os.unlink(result["merged_pdf_path"])  # type: ignore
+                    for f in result["individual_files"]:
+                        os.unlink(f["path"])
+                    os.unlink(result["merged_pdf_path"])
                 except OSError as cleanup_err:
                     logger.debug(f"[RESULT] Failed to cleanup merged proposal files: {cleanup_err}")
-            # Delete status message after uploads complete
+
             try:
-                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                await self._channel.delete_message(channel_id=channel, message_id=status_ts)
             except Exception as e:
                 logger.debug(f"[RESULT] Failed to delete status message: {e}")
         else:
             logger.error(f"[RESULT] Error: {result.get('error')}")
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content=f"❌ **Error:** {result['error']}")
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content=f"❌ **Error:** {result['error']}")
 
-    elif tool_name == "refresh_templates":
+    # =========================================================================
+    # TEMPLATE/LOCATION HANDLERS
+    # =========================================================================
+
+    async def _handle_refresh_templates(self, args: dict, ctx: dict) -> None:
+        """Handle refresh_templates tool call."""
+        channel = ctx["channel"]
+        status_ts = ctx["status_ts"]
+
         config.refresh_templates()
-        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        await channel_adapter.send_message(channel_id=channel, content="✅ Templates refreshed successfully.")
+        await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+        await self._channel.send_message(channel_id=channel, content="✅ Templates refreshed successfully.")
 
-    elif tool_name == "add_location":
+    async def _handle_add_location(self, args: dict, ctx: dict) -> None:
+        """Handle add_location tool call."""
+        channel = ctx["channel"]
+        user_id = ctx["user_id"]
+        status_ts = ctx["status_ts"]
+        user_companies = ctx["user_companies"]
+
         # Admin permission gate
         if not config.is_admin(user_id):
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to add locations.")
-            return True
-
-        args = args
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to add locations.")
+            return
 
         # Validate company parameter
         target_company = args.get("company", "").strip().lower()
         if not target_company:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** Company is required. Please specify which company to add the location to.")
-            return True
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content="❌ **Error:** Company is required. Please specify which company to add the location to.")
+            return
 
         # Check user has access to the target company
         if not user_companies or target_company not in user_companies:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
             available = ", ".join(user_companies) if user_companies else "none"
-            await channel_adapter.send_message(
+            await self._channel.send_message(
                 channel_id=channel,
                 content=f"❌ **Error:** You don't have access to company `{target_company}`. Your available companies: {available}"
             )
-            return True
+            return
 
         location_key = args.get("location_key", "").strip().lower().replace(" ", "_")
-
         if not location_key:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** Location key is required.")
-            return True
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content="❌ **Error:** Location key is required.")
+            return
 
-        # Check if location already exists via Asset-Management storage
-        # SECURITY FIX: Check storage (authoritative) and cache (fallback) to prevent duplicates
+        # Check if location already exists
         from core.services.template_service import TemplateService
         template_service = TemplateService(companies=user_companies)
         template_exists, _ = await template_service.exists(location_key)
         mapping = config.get_location_mapping()
 
-        # Dual check: storage (primary) + cache (secondary) to prevent bypass
         if template_exists or location_key in mapping:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
             if template_exists:
                 logger.warning(f"[SECURITY] Duplicate location attempt blocked - storage check: {location_key}")
-            await channel_adapter.send_message(channel_id=channel, content=f"⚠️ Location `{location_key}` already exists. Please use a different key.")
-            return True
+            await self._channel.send_message(channel_id=channel, content=f"⚠️ Location `{location_key}` already exists. Please use a different key.")
+            return
 
-        # All metadata must be provided upfront
+        # Extract and validate metadata
         display_name = args.get("display_name")
         display_type = args.get("display_type")
         height = args.get("height")
@@ -345,38 +470,34 @@ async def handle_tool_call(
         loop_duration = args.get("loop_duration")
         upload_fee = args.get("upload_fee")
 
-        # Clean duration values - remove any non-numeric suffixes
+        # Clean duration values
         if spot_duration is not None:
-            # Convert to string first to handle the cleaning
             spot_str = str(spot_duration).strip()
-            # Remove common suffixes like 's', 'sec', 'seconds', '"'
             spot_str = spot_str.rstrip('s"').rstrip('sec').rstrip('seconds').strip()
             try:
                 spot_duration = int(spot_str)
                 if spot_duration <= 0:
-                    await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-                    await channel_adapter.send_message(channel_id=channel, content=f"❌ **Error:** Spot duration must be greater than 0 seconds. Got: {spot_duration}")
-                    return True
+                    await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+                    await self._channel.send_message(channel_id=channel, content=f"❌ **Error:** Spot duration must be greater than 0 seconds. Got: {spot_duration}")
+                    return
             except ValueError:
-                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-                await channel_adapter.send_message(channel_id=channel, content=f"❌ **Error:** Invalid spot duration '{spot_duration}'. Please provide a number in seconds (e.g., 10, 12, 16).")
-                return True
+                await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+                await self._channel.send_message(channel_id=channel, content=f"❌ **Error:** Invalid spot duration '{spot_duration}'. Please provide a number in seconds (e.g., 10, 12, 16).")
+                return
 
         if loop_duration is not None:
-            # Convert to string first to handle the cleaning
             loop_str = str(loop_duration).strip()
-            # Remove common suffixes like 's', 'sec', 'seconds', '"'
             loop_str = loop_str.rstrip('s"').rstrip('sec').rstrip('seconds').strip()
             try:
                 loop_duration = int(loop_str)
                 if loop_duration <= 0:
-                    await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-                    await channel_adapter.send_message(channel_id=channel, content=f"❌ **Error:** Loop duration must be greater than 0 seconds. Got: {loop_duration}")
-                    return True
+                    await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+                    await self._channel.send_message(channel_id=channel, content=f"❌ **Error:** Loop duration must be greater than 0 seconds. Got: {loop_duration}")
+                    return
             except ValueError:
-                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-                await channel_adapter.send_message(channel_id=channel, content=f"❌ **Error:** Invalid loop duration '{loop_duration}'. Please provide a number in seconds (e.g., 96, 100).")
-                return True
+                await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+                await self._channel.send_message(channel_id=channel, content=f"❌ **Error:** Invalid loop duration '{loop_duration}'. Please provide a number in seconds (e.g., 96, 100).")
+                return
 
         # Validate required fields
         missing = []
@@ -391,7 +512,6 @@ async def handle_tool_call(
         if not series:
             missing.append("series")
 
-        # For digital locations only, these fields are required
         if display_type == "Digital":
             if not sov:
                 missing.append("sov")
@@ -403,17 +523,14 @@ async def handle_tool_call(
                 missing.append("upload_fee")
 
         if missing:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(
-                channel_id=channel,
-                content=f"❌ **Error:** Missing required fields: {', '.join(missing)}"
-            )
-            return True
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content=f"❌ **Error:** Missing required fields: {', '.join(missing)}")
+            return
 
-        # Store the pending location data
+        # Store pending location data
         pending_location_additions[user_id] = {
             "location_key": location_key,
-            "company": target_company,  # Explicit company selected by user
+            "company": target_company,
             "display_name": display_name,
             "display_type": display_type,
             "height": height,
@@ -430,7 +547,7 @@ async def handle_tool_call(
         logger.info(f"[LOCATION_ADD] Stored pending location for user {user_id}: {location_key}")
         logger.info(f"[LOCATION_ADD] Current pending additions: {list(pending_location_additions.keys())}")
 
-        # Ask for PPT file
+        # Build summary text
         summary_text = (
             f"✅ **Location metadata validated for `{location_key}`**\n\n"
             f"📋 **Summary:**\n"
@@ -441,7 +558,6 @@ async def handle_tool_call(
             f"• Series: {series}\n"
         )
 
-        # Add digital-specific fields only for digital locations
         if display_type == "Digital":
             summary_text += (
                 f"• SOV: {sov}\n"
@@ -452,30 +568,30 @@ async def handle_tool_call(
 
         summary_text += "\n📎 **Please upload the PDF template file now.** (Will be converted to PowerPoint at maximum quality)\n\n⏱️ _You have 10 minutes to upload the file._"
 
-        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        await channel_adapter.send_message(
-            channel_id=channel,
-            content=summary_text
-        )
-        return True
+        await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+        await self._channel.send_message(channel_id=channel, content=summary_text)
 
-    elif tool_name == "list_locations":
-        # Company access validation (security - no backwards compatibility)
-        has_access, error_msg = _validate_company_access(user_companies)
+    async def _handle_list_locations(self, args: dict, ctx: dict) -> None:
+        """Handle list_locations tool call."""
+        channel = ctx["channel"]
+        status_ts = ctx["status_ts"]
+        user_companies = ctx["user_companies"]
+
+        # Company access validation
+        has_access, error_msg = self.validate_company_access(user_companies)
         if not has_access:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content=error_msg)
-            return True
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content=error_msg)
+            return
 
-        # Query locations from user's accessible company schemas
         locations = db.get_locations_for_companies(user_companies)
-        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+        await self._channel.delete_message(channel_id=channel, message_id=status_ts)
 
         if not locations:
-            await channel_adapter.send_message(channel_id=channel, content="📍 No locations available for your companies.")
+            await self._channel.send_message(channel_id=channel, content="📍 No locations available for your companies.")
         else:
-            # Group locations by company for clearer display
-            by_company = {}
+            # Group by company
+            by_company: dict[str, list[str]] = {}
             for loc in locations:
                 company = loc.get("company_schema", "Unknown")
                 if company not in by_company:
@@ -483,7 +599,6 @@ async def handle_tool_call(
                 display_name = loc.get("display_name", loc.get("location_key", "Unknown"))
                 by_company[company].append(display_name)
 
-            # Format the listing
             listing_parts = []
             for company, names in sorted(by_company.items()):
                 company_display = company.replace("_", " ").title()
@@ -492,33 +607,34 @@ async def handle_tool_call(
                     listing_parts.append(f"• {name}")
 
             listing = "\n".join(listing_parts)
-            await channel_adapter.send_message(channel_id=channel, content=f"📍 **Available locations:**{listing}")
+            await self._channel.send_message(channel_id=channel, content=f"📍 **Available locations:**{listing}")
 
-    elif tool_name == "delete_location":
+    async def _handle_delete_location(self, args: dict, ctx: dict) -> None:
+        """Handle delete_location tool call."""
+        channel = ctx["channel"]
+        user_id = ctx["user_id"]
+        status_ts = ctx["status_ts"]
+
         # Admin permission gate
         if not config.is_admin(user_id):
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to delete locations.")
-            return True
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to delete locations.")
+            return
 
-        args = args
         location_input = args.get("location_key", "").strip()
-
         if not location_input:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** Please specify which location to delete.")
-            return True
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content="❌ **Error:** Please specify which location to delete.")
+            return
 
-        # Find the actual location key - check if it's a display name or direct key
+        # Find the actual location key
         location_key = None
         display_name = None
 
-        # First try direct key match
         if location_input.lower().replace(" ", "_") in config.LOCATION_METADATA:
             location_key = location_input.lower().replace(" ", "_")
             display_name = config.LOCATION_METADATA[location_key].get('display_name', location_key)
         else:
-            # Try to match by display name
             for key, meta in config.LOCATION_METADATA.items():
                 if meta.get('display_name', '').lower() == location_input.lower():
                     location_key = key
@@ -526,18 +642,15 @@ async def handle_tool_call(
                     break
 
         if not location_key:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
             available = ", ".join(config.available_location_names())
-            await channel_adapter.send_message(
+            await self._channel.send_message(
                 channel_id=channel,
                 content=f"❌ **Error:** Location '{location_input}' not found.\n\n**Available locations:** {available}"
             )
-            return True
+            return
 
-        # Double confirmation - show location details and ask for confirmation
-        location_dir = config.TEMPLATES_DIR / location_key
         meta = config.LOCATION_METADATA[location_key]
-
         confirmation_text = (
             f"⚠️ **CONFIRM LOCATION DELETION**\n\n"
             f"📍 **Location:** {display_name} (`{location_key}`)\n"
@@ -552,37 +665,39 @@ async def handle_tool_call(
             f"❓ **To cancel, reply with:** `cancel` or ignore this message"
         )
 
-        await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-        await channel_adapter.send_message(
-            channel_id=channel,
-            content=confirmation_text
-        )
-        return True
+        await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+        await self._channel.send_message(channel_id=channel, content=confirmation_text)
 
-    elif tool_name == "export_proposals_to_excel":
-        # Admin permission gate
+    # =========================================================================
+    # EXPORT HANDLERS
+    # =========================================================================
+
+    async def _handle_export_proposals(self, args: dict, ctx: dict) -> None:
+        """Handle export_proposals_to_excel tool call."""
+        channel = ctx["channel"]
+        user_id = ctx["user_id"]
+        status_ts = ctx["status_ts"]
+
         logger.info(f"[EXCEL_EXPORT] Checking admin privileges for user: {user_id}")
         is_admin_user = config.is_admin(user_id)
         logger.info(f"[EXCEL_EXPORT] User {user_id} admin status: {is_admin_user}")
 
         if not is_admin_user:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to export the database.")
-            return True
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to export the database.")
+            return
 
         logger.info("[EXCEL_EXPORT] User requested Excel export")
         try:
             excel_path = db.export_to_excel()
             logger.info(f"[EXCEL_EXPORT] Created Excel file at {excel_path}")
 
-            # Get file size for display
             file_size = os.path.getsize(excel_path)
             size_mb = file_size / (1024 * 1024)
 
-            # Update status to uploading
-            await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="📤 Uploading export...")
+            await self._channel.update_message(channel_id=channel, message_id=status_ts, content="📤 Uploading export...")
 
-            await channel_adapter.upload_file(
+            await self._channel.upload_file(
                 channel_id=channel,
                 file_path=excel_path,
                 title=f"proposals_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
@@ -593,13 +708,11 @@ async def handle_tool_call(
                 )
             )
 
-            # Delete status message after upload completes
             try:
-                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                await self._channel.delete_message(channel_id=channel, message_id=status_ts)
             except Exception as e:
                 logger.debug(f"[EXCEL_EXPORT] Failed to delete status message: {e}")
 
-            # Clean up temp file
             try:
                 os.unlink(excel_path)
             except OSError as cleanup_err:
@@ -607,36 +720,35 @@ async def handle_tool_call(
 
         except Exception as e:
             logger.error(f"[EXCEL_EXPORT] Error: {e}", exc_info=True)
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(
-                channel_id=channel,
-                content="❌ **Error:** Failed to export database to Excel. Please try again."
-            )
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content="❌ **Error:** Failed to export database to Excel. Please try again.")
 
-    elif tool_name == "export_booking_orders_to_excel":
-        # Admin permission gate
+    async def _handle_export_booking_orders(self, args: dict, ctx: dict) -> None:
+        """Handle export_booking_orders_to_excel tool call."""
+        channel = ctx["channel"]
+        user_id = ctx["user_id"]
+        status_ts = ctx["status_ts"]
+
         logger.info(f"[BO_EXPORT] Checking admin privileges for user: {user_id}")
         is_admin_user = config.is_admin(user_id)
         logger.info(f"[BO_EXPORT] User {user_id} admin status: {is_admin_user}")
 
         if not is_admin_user:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to export booking orders.")
-            return True
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to export booking orders.")
+            return
 
         logger.info("[BO_EXPORT] User requested booking orders Excel export")
         try:
             excel_path = db.export_booking_orders_to_excel()
             logger.info(f"[BO_EXPORT] Created Excel file at {excel_path}")
 
-            # Get file size for display
             file_size = os.path.getsize(excel_path)
             size_mb = file_size / (1024 * 1024)
 
-            # Update status to uploading
-            await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="📤 Uploading export...")
+            await self._channel.update_message(channel_id=channel, message_id=status_ts, content="📤 Uploading export...")
 
-            await channel_adapter.upload_file(
+            await self._channel.upload_file(
                 channel_id=channel,
                 file_path=excel_path,
                 title=f"booking_orders_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
@@ -647,13 +759,11 @@ async def handle_tool_call(
                 )
             )
 
-            # Delete status message after upload completes
             try:
-                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                await self._channel.delete_message(channel_id=channel, message_id=status_ts)
             except Exception as e:
                 logger.debug(f"[BO_EXPORT] Failed to delete status message: {e}")
 
-            # Clean up temp file
             try:
                 os.unlink(excel_path)
             except OSError as cleanup_err:
@@ -661,62 +771,55 @@ async def handle_tool_call(
 
         except Exception as e:
             logger.error(f"[BO_EXPORT] Error: {e}", exc_info=True)
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(
-                channel_id=channel,
-                content="❌ **Error:** Failed to export booking orders to Excel. Please try again."
-            )
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content="❌ **Error:** Failed to export booking orders to Excel. Please try again.")
 
-    elif tool_name == "fetch_booking_order":
-        # Admin permission gate
+    # =========================================================================
+    # BOOKING ORDER HANDLERS
+    # =========================================================================
+
+    async def _handle_fetch_booking_order(self, args: dict, ctx: dict) -> None:
+        """Handle fetch_booking_order tool call."""
+        channel = ctx["channel"]
+        user_id = ctx["user_id"]
+        status_ts = ctx["status_ts"]
+
         logger.info(f"[BO_FETCH] Checking admin privileges for user: {user_id}")
         is_admin_user = config.is_admin(user_id)
         logger.info(f"[BO_FETCH] User {user_id} admin status: {is_admin_user}")
 
         if not is_admin_user:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to fetch booking orders.")
-            return True
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to fetch booking orders.")
+            return
 
-        args = args
         bo_number = args.get("bo_number")
         logger.info(f"[BO_FETCH] User requested BO by number: '{bo_number}' (type: {type(bo_number)}, len: {len(bo_number) if bo_number else 0})")
 
         try:
-            # Fetch BO from database by bo_number (user-facing identifier)
-            # Query is case-insensitive and trims whitespace
             bo_data = db.get_booking_order_by_number(bo_number)
             logger.info(f"[BO_FETCH] Database query result: {'Found' if bo_data else 'Not found'}")
 
             if not bo_data:
-                # Try to list similar BOs for debugging
                 conn = db._connect()
                 sample_bos = conn.execute("SELECT bo_number FROM booking_orders LIMIT 10").fetchall()
                 conn.close()
                 logger.info(f"[BO_FETCH] Sample BOs in database: {[bo[0] for bo in sample_bos if bo[0]]}")
 
-                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-                await channel_adapter.send_message(
+                await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+                await self._channel.send_message(
                     channel_id=channel,
                     content=f"❌ **Booking Order Not Found**\n\nBO Number: `{bo_number}` does not exist in the database."
                 )
-                return True
+                return
 
-            # Extract backend bo_ref for internal use and sanitize bo_number for filename
             bo_ref = bo_data.get("bo_ref")
             safe_bo_number = sanitize_filename(bo_number)
-
-            # Check if schema/syntax is outdated and regenerate if needed
-            # For now, we'll just fetch and send - regeneration logic can be added later
-
-            # Get the combined PDF path
             combined_pdf_path = bo_data.get("original_file_path") or bo_data.get("parsed_excel_path")
 
             if combined_pdf_path and os.path.exists(combined_pdf_path):
-                # Update status to uploading
-                await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="📤 Uploading BO...")
+                await self._channel.update_message(channel_id=channel, message_id=status_ts, content="📤 Uploading BO...")
 
-                # Send BO details with file (show user-facing bo_number)
                 details = "📋 **Booking Order Found**\n\n"
                 details += f"**BO Number:** {bo_number}\n"
                 details += f"**Client:** {bo_data.get('client', 'N/A')}\n"
@@ -724,24 +827,21 @@ async def handle_tool_call(
                 details += f"**Gross Total:** AED {bo_data.get('gross_amount', 0):,.2f}\n"
                 details += f"**Created:** {bo_data.get('created_at', 'N/A')}\n"
 
-                await channel_adapter.upload_file(
+                await self._channel.upload_file(
                     channel_id=channel,
                     file_path=combined_pdf_path,
                     title=f"{safe_bo_number}.pdf",
                     comment=details
                 )
-                # Delete status message after upload completes
+
                 try:
-                    await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                    await self._channel.delete_message(channel_id=channel, message_id=status_ts)
                 except Exception as e:
                     logger.debug(f"[BO_FETCH] Failed to delete status message: {e}")
             else:
-                # File not found, regenerate from data
-                await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="📤 Regenerating and uploading BO...")
+                await self._channel.update_message(channel_id=channel, message_id=status_ts, content="📤 Regenerating and uploading BO...")
 
                 parser = BookingOrderParser(company=bo_data.get("company", "backlite"))
-
-                # Generate Excel from stored data (use bo_ref for internal reference)
                 excel_path = await parser.generate_excel(bo_data, bo_ref)
 
                 details = "📋 **Booking Order Found (Regenerated)**\n\n"
@@ -752,19 +852,18 @@ async def handle_tool_call(
                 details += f"**Created:** {bo_data.get('created_at', 'N/A')}\n"
                 details += "\n⚠️ _Original file not found - regenerated from database_"
 
-                await channel_adapter.upload_file(
+                await self._channel.upload_file(
                     channel_id=channel,
                     file_path=str(excel_path),
                     title=f"{safe_bo_number}.xlsx",
                     comment=details
                 )
-                # Delete status message after upload completes
+
                 try:
-                    await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
+                    await self._channel.delete_message(channel_id=channel, message_id=status_ts)
                 except Exception as e:
                     logger.debug(f"[BO_FETCH] Failed to delete status message: {e}")
 
-                # Clean up temp file
                 try:
                     excel_path.unlink()
                 except OSError as cleanup_err:
@@ -772,71 +871,103 @@ async def handle_tool_call(
 
         except Exception as e:
             logger.error(f"[BO_FETCH] Error: {e}", exc_info=True)
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(
                 channel_id=channel,
-                content=f"❌ **Error:** Failed to fetch booking order `{bo_ref}`. Error: {str(e)}"
+                content=f"❌ **Error:** Failed to fetch booking order `{bo_number}`. Error: {str(e)}"
             )
 
-    elif tool_name == "revise_booking_order":
-        # Admin permission gate
+    async def _handle_revise_booking_order(self, args: dict, ctx: dict) -> None:
+        """Handle revise_booking_order tool call."""
+        channel = ctx["channel"]
+        user_id = ctx["user_id"]
+        status_ts = ctx["status_ts"]
+
         logger.info(f"[BO_REVISE] Checking admin privileges for user: {user_id}")
         is_admin_user = config.is_admin(user_id)
         logger.info(f"[BO_REVISE] User {user_id} admin status: {is_admin_user}")
 
         if not is_admin_user:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to revise booking orders.")
-            return True
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content="❌ **Error:** You need admin privileges to revise booking orders.")
+            return
 
-        args = args
         bo_number = args.get("bo_number")
         logger.info(f"[BO_REVISE] Admin requested revision for BO: '{bo_number}'")
 
         try:
             from workflows import bo_approval as bo_approval_workflow
 
-            # Fetch existing BO from database
             bo_data = db.get_booking_order_by_number(bo_number)
             logger.info(f"[BO_REVISE] Database query result: {'Found' if bo_data else 'Not found'}")
 
             if not bo_data:
-                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-                await channel_adapter.send_message(
+                await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+                await self._channel.send_message(
                     channel_id=channel,
                     content=f"❌ **Booking Order Not Found**\n\nBO Number: `{bo_number}` does not exist in the database."
                 )
-                return True
+                return
 
-            # Start revision workflow (sends to coordinator with new thread)
-            await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="⏳ _Starting revision workflow..._")
+            await self._channel.update_message(channel_id=channel, message_id=status_ts, content="⏳ _Starting revision workflow..._")
 
-            result = await bo_approval_workflow.start_revision_workflow(
+            await bo_approval_workflow.start_revision_workflow(
                 bo_data=bo_data,
                 requester_user_id=user_id,
                 requester_channel=channel
             )
 
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(
                 channel_id=channel,
                 content=f"✅ **Revision workflow started for BO {bo_number}**\n\nThe booking order has been sent to the Sales Coordinator for edits."
             )
 
         except Exception as e:
             logger.error(f"[BO_REVISE] Error: {e}", exc_info=True)
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(
                 channel_id=channel,
                 content=f"❌ **Error:** Failed to start revision workflow. Error: {str(e)}"
             )
 
-    elif tool_name == "get_proposals_stats":
+    async def _handle_parse_booking_order(self, args: dict, ctx: dict) -> None:
+        """Handle parse_booking_order tool call."""
+        channel = ctx["channel"]
+        status_ts = ctx["status_ts"]
+        user_id = ctx["user_id"]
+        channel_event = ctx["channel_event"]
+        user_input = ctx["user_input"]
+        handle_booking_order_parse_func = ctx["handle_booking_order_parse_func"]
+
+        company = args.get("company")
+        user_notes = args.get("user_notes", "")
+
+        await self._channel.update_message(channel_id=channel, message_id=status_ts, content="⏳ _Parsing booking order..._")
+
+        await handle_booking_order_parse_func(
+            company=company,
+            channel_event=channel_event,
+            channel=channel,
+            status_ts=status_ts,
+            user_notes=user_notes,
+            user_id=user_id,
+            user_message=user_input
+        )
+
+    # =========================================================================
+    # STATS & MOCKUP HANDLERS
+    # =========================================================================
+
+    async def _handle_proposals_stats(self, args: dict, ctx: dict) -> None:
+        """Handle get_proposals_stats tool call."""
+        channel = ctx["channel"]
+        status_ts = ctx["status_ts"]
+
         logger.info("[STATS] User requested proposals statistics")
         try:
             stats = db.get_proposals_summary()
 
-            # Format the statistics message
             message = "📊 **Proposals Database Summary**\n\n"
             message += f"**Total Proposals:** {stats['total_proposals']}\n\n"
 
@@ -854,51 +985,41 @@ async def handle_tool_call(
             else:
                 message += "_No proposals generated yet._"
 
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(
-                channel_id=channel,
-                content=message
-            )
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content=message)
 
         except Exception as e:
             logger.error(f"[STATS] Error: {e}", exc_info=True)
 
-    elif tool_name == "parse_booking_order":
-        # Available to all users (admin check removed per new workflow)
-        args = args
-        company = args.get("company")
-        user_notes = args.get("user_notes", "")
-        await channel_adapter.update_message(channel_id=channel, message_id=status_ts, content="⏳ _Parsing booking order..._")
-        await handle_booking_order_parse_func(
-            company=company,
-            channel_event=channel_event,
-            channel=channel,
-            status_ts=status_ts,
-            user_notes=user_notes,
-            user_id=user_id,
-            user_message=user_input
-        )
-        return True
+    async def _handle_generate_mockup(self, args: dict, ctx: dict) -> None:
+        """Handle generate_mockup tool call."""
+        channel = ctx["channel"]
+        user_id = ctx["user_id"]
+        status_ts = ctx["status_ts"]
+        user_companies = ctx["user_companies"]
+        workflow_ctx = ctx["workflow_ctx"]
+        channel_event = ctx["channel_event"]
+        download_file_func = ctx["download_file_func"]
+        generate_mockup_queued_func = ctx["generate_mockup_queued_func"]
+        generate_ai_mockup_queued_func = ctx["generate_ai_mockup_queued_func"]
 
-    elif tool_name == "generate_mockup":
-        # Company access validation (security - no backwards compatibility)
-        has_access, error_msg = _validate_company_access(user_companies)
+        # Company access validation
+        has_access, error_msg = self.validate_company_access(user_companies)
         if not has_access:
-            await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-            await channel_adapter.send_message(channel_id=channel, content=error_msg)
-            return True
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            await self._channel.send_message(channel_id=channel, content=error_msg)
+            return
 
-        # Validate the requested location belongs to user's companies
-        # Uses O(1) lookup from workflow context if available
+        # Validate the requested location
         location_name = args.get("location", "").strip()
         company_hint = None
         if location_name:
             location_key = location_name.lower().replace(" ", "_")
-            is_valid, loc_error, company_hint = _validate_location_access(location_key, user_companies, workflow_ctx)
+            is_valid, loc_error, company_hint = self.validate_location_access(location_key, user_companies, workflow_ctx)
             if not is_valid:
-                await channel_adapter.delete_message(channel_id=channel, message_id=status_ts)
-                await channel_adapter.send_message(channel_id=channel, content=loc_error)
-                return True
+                await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+                await self._channel.send_message(channel_id=channel, content=loc_error)
+                return
 
         # Delegate to extracted mockup handler
         await handle_mockup_generation(
@@ -917,4 +1038,65 @@ async def handle_tool_call(
             company_hint=company_hint,
         )
 
-    return True
+
+# =============================================================================
+# BACKWARD COMPATIBILITY - Legacy function wrapper
+# =============================================================================
+
+# Module-level router instance (lazy-loaded)
+_router: ToolRouter | None = None
+
+
+def get_tool_router() -> ToolRouter:
+    """Get the singleton ToolRouter instance."""
+    global _router
+    if _router is None:
+        _router = ToolRouter()
+    return _router
+
+
+async def handle_tool_call(
+    tool_call: ToolCall,
+    channel: str,
+    user_id: str,
+    status_ts: str,
+    channel_event: dict = None,
+    user_input: str = "",
+    download_file_func=None,
+    handle_booking_order_parse_func=None,
+    generate_mockup_queued_func=None,
+    generate_ai_mockup_queued_func=None,
+    user_companies: list = None,
+    workflow_ctx: WorkflowContext | None = None,
+):
+    """
+    Legacy function wrapper for backward compatibility.
+
+    New code should use ToolRouter class directly:
+        router = ToolRouter()
+        await router.route_tool_call(...)
+
+    Or use the singleton:
+        router = get_tool_router()
+        await router.route_tool_call(...)
+    """
+    router = get_tool_router()
+    return await router.route_tool_call(
+        tool_call=tool_call,
+        channel=channel,
+        user_id=user_id,
+        status_ts=status_ts,
+        channel_event=channel_event,
+        user_input=user_input,
+        download_file_func=download_file_func,
+        handle_booking_order_parse_func=handle_booking_order_parse_func,
+        generate_mockup_queued_func=generate_mockup_queued_func,
+        generate_ai_mockup_queued_func=generate_ai_mockup_queued_func,
+        user_companies=user_companies,
+        workflow_ctx=workflow_ctx,
+    )
+
+
+# Backward compatibility aliases for validation functions
+_validate_company_access = ToolRouter.validate_company_access
+_validate_location_access = ToolRouter.validate_location_access

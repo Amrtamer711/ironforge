@@ -7,11 +7,15 @@
 -- Ensure profiles exist
 INSERT INTO profiles (name, display_name, description, is_system) VALUES
     ('system_admin', 'System Administrator', 'Full system access to everything', true),
+    ('head_of_sales', 'Head of Sales', 'Sales leadership with video final approval authority', true),
     ('sales_manager', 'Sales Manager', 'Sales team manager with team oversight', true),
     ('sales_rep', 'Sales Representative', 'Standard sales team member', true),
     ('coordinator', 'Sales Coordinator', 'Booking order processing and coordination', true),
     ('finance', 'Finance', 'Financial review and approval', true),
-    ('viewer', 'View Only', 'Read-only access for reporting', true)
+    ('viewer', 'View Only', 'Read-only access for reporting', true),
+    ('video_admin', 'Video Administrator', 'Full video module administration', true),
+    ('video_reviewer', 'Video Reviewer', 'Reviews and approves video submissions', true),
+    ('video_videographer', 'Videographer', 'Uploads videos and views assigned tasks', true)
 ON CONFLICT (name) DO UPDATE SET
     display_name = EXCLUDED.display_name,
     description = EXCLUDED.description;
@@ -21,6 +25,32 @@ INSERT INTO profile_permissions (profile_id, permission)
 SELECT p.id, perm
 FROM profiles p, unnest(ARRAY['*:*:*']) AS perm
 WHERE p.name = 'system_admin'
+ON CONFLICT (profile_id, permission) DO NOTHING;
+
+-- Head of Sales permissions (Sales leadership + Video final approval)
+INSERT INTO profile_permissions (profile_id, permission)
+SELECT p.id, perm
+FROM profiles p, unnest(ARRAY[
+    -- Full sales module access
+    'sales:*:*',
+    -- Asset access for proposals
+    'assets:locations:read',
+    'assets:networks:read',
+    'assets:packages:read',
+    -- Team management
+    'core:teams:read',
+    'core:teams:manage',
+    'core:users:read',
+    -- Video workflow: final approval authority
+    'video:chat:use',
+    'video:tasks:read',
+    'video:tasks:manage',
+    'video:review:approve',
+    'video:review:final',
+    'video:review:read',
+    'video:dashboard:read'
+]) AS perm
+WHERE p.name = 'head_of_sales'
 ON CONFLICT (profile_id, permission) DO NOTHING;
 
 -- Sales Manager permissions
@@ -128,5 +158,53 @@ SELECT ps.id, perm
 FROM permission_sets ps, unnest(ARRAY['sales:rate_cards:read', 'sales:rate_cards:update']) AS perm
 WHERE ps.name = 'rate_card_editor'
 ON CONFLICT (permission_set_id, permission) DO NOTHING;
+
+-- =============================================================================
+-- VIDEO CRITIQUE PERMISSIONS
+-- =============================================================================
+
+-- Video Admin: Full video access
+INSERT INTO profile_permissions (profile_id, permission)
+SELECT p.id, perm
+FROM profiles p, unnest(ARRAY['video:*:*']) AS perm
+WHERE p.name = 'video_admin'
+ON CONFLICT (profile_id, permission) DO NOTHING;
+
+-- Video Reviewer permissions
+INSERT INTO profile_permissions (profile_id, permission)
+SELECT p.id, perm
+FROM profiles p, unnest(ARRAY[
+    'video:chat:use',
+    'video:tasks:read',
+    'video:uploads:read',
+    'video:review:approve',
+    'video:review:read',
+    'video:dashboard:read'
+]) AS perm
+WHERE p.name = 'video_reviewer'
+ON CONFLICT (profile_id, permission) DO NOTHING;
+
+-- Videographer permissions
+INSERT INTO profile_permissions (profile_id, permission)
+SELECT p.id, perm
+FROM profiles p, unnest(ARRAY[
+    'video:chat:use',
+    'video:tasks:read',
+    'video:uploads:create',
+    'video:uploads:read'
+]) AS perm
+WHERE p.name = 'video_videographer'
+ON CONFLICT (profile_id, permission) DO NOTHING;
+
+-- Sales Rep: Can submit design requests (bridges sales-module and video-critique)
+INSERT INTO profile_permissions (profile_id, permission)
+SELECT p.id, perm
+FROM profiles p, unnest(ARRAY[
+    'video:chat:use',
+    'video:tasks:create',
+    'video:tasks:read'
+]) AS perm
+WHERE p.name = 'sales_rep'
+ON CONFLICT (profile_id, permission) DO NOTHING;
 
 SELECT 'Profiles and permissions seeded successfully' AS status;

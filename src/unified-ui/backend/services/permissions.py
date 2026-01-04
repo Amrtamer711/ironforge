@@ -192,10 +192,43 @@ ASSET_PERMISSIONS = [
 
 
 # =============================================================================
+# VIDEO CRITIQUE PERMISSIONS
+# =============================================================================
+
+VIDEO_PERMISSIONS = [
+    # Chat (AI Assistant)
+    Permission.from_name("video:chat:use", "Use AI chat assistant in video module"),
+
+    # Tasks
+    Permission.from_name("video:tasks:read", "View video tasks"),
+    Permission.from_name("video:tasks:create", "Create design requests"),
+    Permission.from_name("video:tasks:edit", "Edit video tasks"),
+    Permission.from_name("video:tasks:delete", "Delete video tasks"),
+    Permission.from_name("video:tasks:manage", "Full control over video tasks"),
+
+    # Uploads
+    Permission.from_name("video:uploads:create", "Upload videos for review"),
+    Permission.from_name("video:uploads:read", "View uploaded videos"),
+
+    # Reviews
+    Permission.from_name("video:review:approve", "Approve videos (reviewer level)"),
+    Permission.from_name("video:review:final", "Final approval (Head of Sales)"),
+    Permission.from_name("video:review:read", "View reviews and feedback"),
+
+    # Dashboard
+    Permission.from_name("video:dashboard:read", "View video dashboard"),
+
+    # Admin
+    Permission.from_name("video:admin:users", "Manage videographers and reviewers"),
+    Permission.from_name("video:admin:config", "Configure video module settings"),
+]
+
+
+# =============================================================================
 # ALL PERMISSIONS
 # =============================================================================
 
-ALL_PERMISSIONS = CORE_PERMISSIONS + SALES_PERMISSIONS + ASSET_PERMISSIONS
+ALL_PERMISSIONS = CORE_PERMISSIONS + SALES_PERMISSIONS + ASSET_PERMISSIONS + VIDEO_PERMISSIONS
 
 
 def get_all_permissions() -> list[Permission]:

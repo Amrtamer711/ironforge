@@ -24,7 +24,7 @@ class WorkflowContext:
 
     Usage:
         # At workflow start (e.g., in llm.py)
-        ctx = WorkflowContext.create(user_id, user_companies, db)
+        ctx = WorkflowContext.create(user_id, user_email, user_name, user_companies, db)
 
         # In tool_router - O(1) lookup instead of DB query
         location = ctx.get_location(location_key)
@@ -34,7 +34,9 @@ class WorkflowContext:
     """
 
     user_id: str
-    user_companies: list[str]
+    user_email: str | None = None
+    user_name: str | None = None
+    user_companies: list[str] = field(default_factory=list)
     locations: dict[str, dict[str, Any]] = field(default_factory=dict)
     _frames_cache: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     _networks_cache: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -43,14 +45,18 @@ class WorkflowContext:
     def create(
         cls,
         user_id: str,
-        user_companies: list[str],
+        user_email: str | None = None,
+        user_name: str | None = None,
+        user_companies: list[str] | None = None,
         locations_list: list[dict[str, Any]] | None = None,
     ) -> "WorkflowContext":
         """
         Create a new workflow context.
 
         Args:
-            user_id: The user's ID
+            user_id: The user's ID (Slack ID or platform ID)
+            user_email: User's email address (primary identifier per platform pattern)
+            user_name: User's display name
             user_companies: List of company schemas the user can access
             locations_list: Optional pre-loaded locations list
 
@@ -67,9 +73,35 @@ class WorkflowContext:
 
         return cls(
             user_id=user_id,
-            user_companies=user_companies,
+            user_email=user_email,
+            user_name=user_name,
+            user_companies=user_companies or [],
             locations=locations_dict,
         )
+
+    def get_display_name(self) -> str:
+        """
+        Get user's display name for messages.
+
+        Falls back through: user_name -> email prefix -> "there"
+        """
+        if self.user_name:
+            return self.user_name
+        if self.user_email:
+            return self.user_email.split("@")[0].replace(".", " ").title()
+        return "there"
+
+    def get_tracking_name(self) -> str:
+        """
+        Get user's name for cost tracking.
+
+        Uses display name or email for human-readable tracking.
+        """
+        if self.user_name:
+            return self.user_name
+        if self.user_email:
+            return self.user_email
+        return self.user_id
 
     def get_location(self, location_key: str) -> dict[str, Any] | None:
         """
@@ -180,6 +212,8 @@ class WorkflowContext:
         """Serialize context for logging/debugging."""
         return {
             "user_id": self.user_id,
+            "user_email": self.user_email,
+            "user_name": self.user_name,
             "user_companies": self.user_companies,
             "locations_count": len(self.locations),
             "cached_frames_count": len(self._frames_cache),
