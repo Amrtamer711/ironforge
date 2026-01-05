@@ -1,0 +1,12 @@
+# Keep this in sync with Terraform IRSA output:
+# `terraform -chdir=src/infrastructure/aws output -raw alb_controller_role_arn`
+
+clusterName: REPLACE_ME
+region: eu-north-1
+
+serviceAccount:
+  create: true
+  name: aws-load-balancer-controller
+  annotations:
+    eks.amazonaws.com/role-arn: REPLACE_ME
+
