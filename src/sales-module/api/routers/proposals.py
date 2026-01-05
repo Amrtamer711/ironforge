@@ -217,7 +217,9 @@ async def _get_proposal_processor(user_companies: list[str]):
     template_service = TemplateService(companies=user_companies)
     validator = ProposalValidator(user_companies)
     renderer = ProposalRenderer()
-    intro_outro = IntroOutroHandler()
+    # Fetch available locations (async) before creating IntroOutroHandler
+    available_locations = await validator._get_available_locations()
+    intro_outro = IntroOutroHandler(available_locations)
 
     return ProposalProcessor(validator, renderer, intro_outro, template_service)
 
