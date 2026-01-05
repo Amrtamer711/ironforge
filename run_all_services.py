@@ -9,6 +9,7 @@ Usage:
     python run_all_services.py                    # Run all services (default)
     python run_all_services.py --sales-only       # Run only sales-module
     python run_all_services.py --ui-only          # Run only unified-ui
+    python run_all_services.py --video-only       # Run only video-critique
     python run_all_services.py --background       # Run in background (no logs)
     python run_all_services.py --foreground       # Run with interleaved logs
     python run_all_services.py --env production   # Set environment
@@ -19,8 +20,10 @@ Options:
     --env          Environment: development, production, local (default: development)
     --sales-port   Sales module port (default: 8000)
     --ui-port      Unified UI port (default: 3005)
+    --video-port   Video critique port (default: 8003)
     --sales-only   Run only the sales module
     --ui-only      Run only the unified UI
+    --video-only   Run only the video critique service
     --background   Run services in background (daemonize)
     --foreground   Run with interleaved stdout/stderr (default: separate output)
     --no-banner    Skip the startup banner
@@ -123,6 +126,15 @@ SERVICES = {
         "directory": "src/security-service",
         "default_port": 8002,
         "color": "yellow",
+        "health_endpoint": "/health",
+        "depends_on": [],  # No dependencies - can run standalone
+    },
+    "video-critique": {
+        "name": "video-critique",
+        "display_name": "Video Critique",
+        "directory": "src/video-critique",
+        "default_port": 8003,
+        "color": "blue",
         "health_endpoint": "/health",
         "depends_on": [],  # No dependencies - can run standalone
     },
@@ -587,10 +599,12 @@ class ServiceProcess:
         env.update(self.extra_env)
 
         # Add shared modules to PYTHONPATH for local development
-        # This allows importing crm_security and crm_cache without pip install
+        # This allows importing crm_security, crm_cache, crm_channels, crm_llm without pip install
         shared_paths = [
             str(ROOT_DIR / "src" / "shared" / "crm-security"),
             str(ROOT_DIR / "src" / "shared" / "crm-cache"),
+            str(ROOT_DIR / "src" / "shared" / "crm-channels"),
+            str(ROOT_DIR / "src" / "shared" / "crm-llm"),
         ]
         existing_pythonpath = env.get("PYTHONPATH", "")
         if existing_pythonpath:
@@ -808,8 +822,10 @@ class ServiceManager:
             return ["asset-management"]
         elif self.args.security_only:
             return ["security-service"]
+        elif self.args.video_only:
+            return ["video-critique"]
         else:
-            return ["proposal-bot", "unified-ui", "asset-management", "security-service"]
+            return ["proposal-bot", "unified-ui", "asset-management", "security-service", "video-critique"]
 
     def _get_port(self, service_name: str) -> int:
         """Get port for a service."""
@@ -821,6 +837,8 @@ class ServiceManager:
             return self.args.assets_port
         elif service_name == "security-service":
             return self.args.security_port
+        elif service_name == "video-critique":
+            return self.args.video_port
         return SERVICES[service_name]["default_port"]
 
     def wait_for_healthy(self) -> bool:
@@ -1051,6 +1069,11 @@ Environment Variables:
         action="store_true",
         help="Run only the security service",
     )
+    service_group.add_argument(
+        "--video-only",
+        action="store_true",
+        help="Run only the video critique service",
+    )
 
     # Port configuration
     parser.add_argument(
@@ -1076,6 +1099,12 @@ Environment Variables:
         type=int,
         default=int(os.environ.get("SECURITY_PORT", 8002)),
         help="Security service port (default: 8002)",
+    )
+    parser.add_argument(
+        "--video-port",
+        type=int,
+        default=int(os.environ.get("VIDEO_PORT", 8003)),
+        help="Video critique port (default: 8003)",
     )
 
     # Environment

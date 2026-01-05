@@ -138,15 +138,17 @@ async def create_team(
 
     try:
         # server.js:2878-2882
+        # Insert first, then fetch (supabase-py doesn't support chaining .select() after .insert())
+        supabase.table("teams").insert({
+            "name": request.name,
+            "display_name": request.display_name or request.name,
+            "description": request.description,
+            "parent_team_id": request.parent_team_id
+        }).execute()
         response = (
             supabase.table("teams")
-            .insert({
-                "name": request.name,
-                "display_name": request.display_name or request.name,
-                "description": request.description,
-                "parent_team_id": request.parent_team_id
-            })
-            .select()
+            .select("*")
+            .eq("name", request.name)
             .single()
             .execute()
         )
@@ -193,11 +195,12 @@ async def update_team(
             updates["is_active"] = request.is_active
 
         # server.js:2908-2913
+        # Update first, then fetch (supabase-py doesn't support chaining .select() after .update())
+        supabase.table("teams").update(updates).eq("id", team_id).execute()
         response = (
             supabase.table("teams")
-            .update(updates)
+            .select("*")
             .eq("id", team_id)
-            .select()
             .single()
             .execute()
         )
@@ -297,14 +300,17 @@ async def add_team_member(
 
     try:
         # server.js:2979-2987
+        # Insert first, then fetch (supabase-py doesn't support chaining .select() after .insert())
+        supabase.table("team_members").insert({
+            "team_id": team_id,
+            "user_id": request.user_id,
+            "role": request.role or "member"
+        }).execute()
         response = (
             supabase.table("team_members")
-            .insert({
-                "team_id": team_id,
-                "user_id": request.user_id,
-                "role": request.role or "member"
-            })
-            .select()
+            .select("*")
+            .eq("team_id", team_id)
+            .eq("user_id", request.user_id)
             .single()
             .execute()
         )
@@ -346,12 +352,13 @@ async def update_team_member(
 
     try:
         # server.js:3013-3019
+        # Update first, then fetch (supabase-py doesn't support chaining .select() after .update())
+        supabase.table("team_members").update({"role": request.role}).eq("team_id", team_id).eq("user_id", member_user_id).execute()
         response = (
             supabase.table("team_members")
-            .update({"role": request.role})
+            .select("*")
             .eq("team_id", team_id)
             .eq("user_id", member_user_id)
-            .select()
             .single()
             .execute()
         )
@@ -422,11 +429,12 @@ async def set_user_manager(
 
     try:
         # server.js:3066-3071
+        # Update first, then fetch (supabase-py doesn't support chaining .select() after .update())
+        supabase.table("users").update({"manager_id": request.manager_id}).eq("id", user_id).execute()
         response = (
             supabase.table("users")
-            .update({"manager_id": request.manager_id})
+            .select("*")
             .eq("id", user_id)
-            .select()
             .single()
             .execute()
         )

@@ -157,6 +157,8 @@ class AssetManagementClient:
         """
         Get a location by its unique key.
 
+        Uses internal endpoint for service-to-service auth.
+
         Args:
             location_key: Location key (e.g., "dubai_mall")
             companies: Optional companies to search in
@@ -170,7 +172,7 @@ class AssetManagementClient:
 
         return await self._request(
             "GET",
-            f"/api/locations/by-key/{location_key}",
+            f"/api/internal/locations/by-key/{location_key}",
             params=params,
         )
 

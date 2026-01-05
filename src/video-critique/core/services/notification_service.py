@@ -14,7 +14,7 @@ from datetime import date
 from typing import TYPE_CHECKING, Any
 
 from core.utils.logging import get_logger
-from core.utils.time import format_date
+from core.utils.time import format_uae_date
 
 if TYPE_CHECKING:
     from integrations.channels import ChannelAdapter
@@ -101,13 +101,13 @@ class NotificationService:
                 lines.append(f"**Reference:** {reference_number}")
 
             if campaign_start:
-                lines.append(f"**Campaign Start:** {format_date(campaign_start)}")
+                lines.append(f"**Campaign Start:** {format_uae_date(campaign_start)}")
 
             if campaign_end:
-                lines.append(f"**Campaign End:** {format_date(campaign_end)}")
+                lines.append(f"**Campaign End:** {format_uae_date(campaign_end)}")
 
             if filming_date:
-                lines.append(f"**Filming Date:** {format_date(filming_date)}")
+                lines.append(f"**Filming Date:** {format_uae_date(filming_date)}")
 
             lines.extend([
                 "",

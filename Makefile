@@ -28,6 +28,8 @@ ROOT_DIR := $(shell pwd)
 SALES_DIR := $(ROOT_DIR)/src/sales-module
 UI_DIR := $(ROOT_DIR)/src/unified-ui
 ASSETS_DIR := $(ROOT_DIR)/src/asset-management
+SECURITY_DIR := $(ROOT_DIR)/src/security-service
+VIDEO_DIR := $(ROOT_DIR)/src/video-critique
 DOCKER_DIR := $(ROOT_DIR)/docker
 DOCS_DIR := $(ROOT_DIR)/docs
 
@@ -35,6 +37,8 @@ DOCS_DIR := $(ROOT_DIR)/docs
 SALES_PORT ?= 8000
 UI_PORT ?= 3005
 ASSETS_PORT ?= 8001
+SECURITY_PORT ?= 8002
+VIDEO_PORT ?= 8003
 
 # Environment (development, production, local)
 ENV ?= development
@@ -67,6 +71,8 @@ help: ## Show this help message
 	@echo "  SALES_PORT     Sales module port (default: 8000)"
 	@echo "  UI_PORT        Unified UI port (default: 3005)"
 	@echo "  ASSETS_PORT    Asset management port (default: 8001)"
+	@echo "  SECURITY_PORT  Security service port (default: 8002)"
+	@echo "  VIDEO_PORT     Video critique port (default: 8003)"
 	@echo "  ENV            Environment: local|development|production (default: development)"
 	@echo "  COMPOSE_FILE   Docker compose file (default: docker-compose.local.yml)"
 	@echo "  ENV_FILE       Environment file (default: .env.secrets)"
@@ -81,7 +87,7 @@ help: ## Show this help message
 # INSTALLATION
 # =============================================================================
 
-install: install-sales install-ui install-assets ## Install all dependencies
+install: install-sales install-ui install-assets install-security install-video ## Install all dependencies
 	@echo "$(GREEN)All dependencies installed!$(NC)"
 
 install-sales: ## Install sales-module dependencies
@@ -98,6 +104,16 @@ install-assets: ## Install asset-management dependencies
 	@echo "$(BLUE)Installing asset-management dependencies...$(NC)"
 	@cd $(ASSETS_DIR) && $(PYTHON) -m pip install -r requirements.txt -q
 	@echo "$(GREEN)asset-management dependencies installed$(NC)"
+
+install-security: ## Install security-service dependencies
+	@echo "$(BLUE)Installing security-service dependencies...$(NC)"
+	@cd $(SECURITY_DIR) && $(PYTHON) -m pip install -r requirements.txt -q
+	@echo "$(GREEN)security-service dependencies installed$(NC)"
+
+install-video: ## Install video-critique dependencies
+	@echo "$(BLUE)Installing video-critique dependencies...$(NC)"
+	@cd $(VIDEO_DIR) && $(PYTHON) -m pip install -r requirements.txt -q
+	@echo "$(GREEN)video-critique dependencies installed$(NC)"
 
 install-dev: install ## Install dependencies + dev tools
 	@echo "$(BLUE)Installing development tools...$(NC)"
@@ -116,7 +132,7 @@ venv: ## Create virtual environments
 # =============================================================================
 
 dev: ## Run all services in development mode
-	@$(PYTHON) run_all_services.py --env $(ENV) --sales-port $(SALES_PORT) --ui-port $(UI_PORT) --assets-port $(ASSETS_PORT)
+	@$(PYTHON) run_all_services.py --env $(ENV) --sales-port $(SALES_PORT) --ui-port $(UI_PORT) --assets-port $(ASSETS_PORT) --security-port $(SECURITY_PORT) --video-port $(VIDEO_PORT)
 
 dev-sales: run-sales ## Alias for run-sales
 run-sales: ## Run only sales-module
@@ -133,11 +149,21 @@ run-assets: ## Run only asset-management
 	@echo "$(BLUE)Starting asset-management on port $(ASSETS_PORT)...$(NC)"
 	@cd $(ASSETS_DIR) && PORT=$(ASSETS_PORT) ENVIRONMENT=$(ENV) $(PYTHON) run_service.py
 
+dev-security: run-security ## Alias for run-security
+run-security: ## Run only security-service
+	@echo "$(BLUE)Starting security-service on port $(SECURITY_PORT)...$(NC)"
+	@cd $(SECURITY_DIR) && PORT=$(SECURITY_PORT) ENVIRONMENT=$(ENV) $(PYTHON) run_service.py
+
+dev-video: run-video ## Alias for run-video
+run-video: ## Run only video-critique
+	@echo "$(BLUE)Starting video-critique on port $(VIDEO_PORT)...$(NC)"
+	@cd $(VIDEO_DIR) && PORT=$(VIDEO_PORT) ENVIRONMENT=$(ENV) $(PYTHON) run_service.py
+
 run-bg: ## Run all services in background
-	@$(PYTHON) run_all_services.py --env $(ENV) --sales-port $(SALES_PORT) --ui-port $(UI_PORT) --assets-port $(ASSETS_PORT) --background
+	@$(PYTHON) run_all_services.py --env $(ENV) --sales-port $(SALES_PORT) --ui-port $(UI_PORT) --assets-port $(ASSETS_PORT) --security-port $(SECURITY_PORT) --video-port $(VIDEO_PORT) --background
 
 run-fg: ## Run all services in foreground with logs
-	@$(PYTHON) run_all_services.py --env $(ENV) --sales-port $(SALES_PORT) --ui-port $(UI_PORT) --assets-port $(ASSETS_PORT) --foreground
+	@$(PYTHON) run_all_services.py --env $(ENV) --sales-port $(SALES_PORT) --ui-port $(UI_PORT) --assets-port $(ASSETS_PORT) --security-port $(SECURITY_PORT) --video-port $(VIDEO_PORT) --foreground
 
 # =============================================================================
 # DOCKER
@@ -182,6 +208,12 @@ docker-logs-ui: ## View unified-ui Docker logs
 docker-logs-assets: ## View asset-management Docker logs
 	@docker-compose -f $(COMPOSE_FILE) logs -f asset-management
 
+docker-logs-security: ## View security-service Docker logs
+	@docker-compose -f $(COMPOSE_FILE) logs -f security-service
+
+docker-logs-video: ## View video-critique Docker logs
+	@docker-compose -f $(COMPOSE_FILE) logs -f video-critique
+
 docker-status: ## Show Docker container status
 	@echo "$(BLUE)Container Status:$(NC)"
 	@docker-compose -f $(COMPOSE_FILE) ps
@@ -195,6 +227,12 @@ docker-shell-ui: ## Shell into unified-ui container
 docker-shell-assets: ## Shell into asset-management container
 	@docker exec -it asset-management bash
 
+docker-shell-security: ## Shell into security-service container
+	@docker exec -it security-service bash
+
+docker-shell-video: ## Shell into video-critique container
+	@docker exec -it video-critique bash
+
 docker-build-sales: ## Build only sales-module image
 	@echo "$(BLUE)Building sales-module image...$(NC)"
 	@docker build -t proposal-bot $(SALES_DIR)
@@ -206,6 +244,14 @@ docker-build-ui: ## Build only unified-ui image
 docker-build-assets: ## Build only asset-management image
 	@echo "$(BLUE)Building asset-management image...$(NC)"
 	@docker build -t asset-management $(ASSETS_DIR)
+
+docker-build-security: ## Build only security-service image
+	@echo "$(BLUE)Building security-service image...$(NC)"
+	@docker build -t security-service $(SECURITY_DIR)
+
+docker-build-video: ## Build only video-critique image
+	@echo "$(BLUE)Building video-critique image...$(NC)"
+	@docker build -t video-critique $(VIDEO_DIR)
 
 docker-prod: ## Start production Docker compose
 	@docker-compose -f docker/docker-compose.yml --env-file $(ENV_FILE) up -d
@@ -228,6 +274,14 @@ test-assets: ## Run asset-management tests
 	@echo "$(BLUE)Running asset-management tests...$(NC)"
 	@cd $(ASSETS_DIR) && $(PYTHON) -m pytest $(if $(VERBOSE),-v,) $(if $(COV),--cov=. --cov-report=html,)
 
+test-security: ## Run security-service tests
+	@echo "$(BLUE)Running security-service tests...$(NC)"
+	@cd $(SECURITY_DIR) && $(PYTHON) -m pytest $(if $(VERBOSE),-v,) $(if $(COV),--cov=. --cov-report=html,)
+
+test-video: ## Run video-critique tests
+	@echo "$(BLUE)Running video-critique tests...$(NC)"
+	@cd $(VIDEO_DIR) && $(PYTHON) -m pytest $(if $(VERBOSE),-v,) $(if $(COV),--cov=. --cov-report=html,)
+
 test-cov: ## Run tests with coverage report
 	@make test-sales COV=1
 	@echo "$(GREEN)Coverage report: src/sales-module/htmlcov/index.html$(NC)"
@@ -239,7 +293,7 @@ test-watch: ## Run tests in watch mode
 # CODE QUALITY
 # =============================================================================
 
-lint: lint-sales lint-ui lint-assets ## Lint all code
+lint: lint-sales lint-ui lint-assets lint-security lint-video ## Lint all code
 
 lint-sales: ## Lint sales-module code
 	@echo "$(BLUE)Linting sales-module...$(NC)"
@@ -253,17 +307,29 @@ lint-assets: ## Lint asset-management code
 	@echo "$(BLUE)Linting asset-management...$(NC)"
 	@cd $(ASSETS_DIR) && ruff check .
 
+lint-security: ## Lint security-service code
+	@echo "$(BLUE)Linting security-service...$(NC)"
+	@cd $(SECURITY_DIR) && ruff check .
+
+lint-video: ## Lint video-critique code
+	@echo "$(BLUE)Linting video-critique...$(NC)"
+	@cd $(VIDEO_DIR) && ruff check .
+
 lint-fix: ## Lint and auto-fix issues
 	@echo "$(BLUE)Linting and fixing...$(NC)"
 	@cd $(SALES_DIR) && ruff check . --fix
 	@cd $(UI_DIR) && ruff check . --fix
 	@cd $(ASSETS_DIR) && ruff check . --fix
+	@cd $(SECURITY_DIR) && ruff check . --fix
+	@cd $(VIDEO_DIR) && ruff check . --fix
 
 format: ## Format all code
 	@echo "$(BLUE)Formatting code...$(NC)"
 	@cd $(SALES_DIR) && ruff format .
 	@cd $(UI_DIR) && ruff format .
 	@cd $(ASSETS_DIR) && ruff format .
+	@cd $(SECURITY_DIR) && ruff format .
+	@cd $(VIDEO_DIR) && ruff format .
 
 check: lint test ## Run all checks (lint + test)
 
@@ -302,6 +368,12 @@ health: ## Check health of all services
 	@echo ""
 	@echo "Asset Management ($(ASSETS_PORT)):"
 	@curl -sf http://localhost:$(ASSETS_PORT)/health | jq . || echo "$(RED)Not running$(NC)"
+	@echo ""
+	@echo "Security Service ($(SECURITY_PORT)):"
+	@curl -sf http://localhost:$(SECURITY_PORT)/health | jq . || echo "$(RED)Not running$(NC)"
+	@echo ""
+	@echo "Video Critique ($(VIDEO_PORT)):"
+	@curl -sf http://localhost:$(VIDEO_PORT)/health | jq . || echo "$(RED)Not running$(NC)"
 
 health-sales: ## Check sales-module health
 	@curl -sf http://localhost:$(SALES_PORT)/health | jq . || echo "$(RED)Sales module not running$(NC)"
@@ -311,6 +383,12 @@ health-ui: ## Check unified-ui health
 
 health-assets: ## Check asset-management health
 	@curl -sf http://localhost:$(ASSETS_PORT)/health | jq . || echo "$(RED)Asset management not running$(NC)"
+
+health-security: ## Check security-service health
+	@curl -sf http://localhost:$(SECURITY_PORT)/health | jq . || echo "$(RED)Security service not running$(NC)"
+
+health-video: ## Check video-critique health
+	@curl -sf http://localhost:$(VIDEO_PORT)/health | jq . || echo "$(RED)Video critique not running$(NC)"
 
 status: health ## Alias for health
 
@@ -382,6 +460,8 @@ build: docker-up-build ## Shortcut for docker-up-build
 logs-sales: docker-logs-sales ## Shortcut for docker-logs-sales
 logs-ui: docker-logs-ui ## Shortcut for docker-logs-ui
 logs-assets: docker-logs-assets ## Shortcut for docker-logs-assets
+logs-security: docker-logs-security ## Shortcut for docker-logs-security
+logs-video: docker-logs-video ## Shortcut for docker-logs-video
 
 # =============================================================================
 # PRODUCTION
@@ -414,4 +494,12 @@ deploy-assets: ## Deploy asset-management to Render
 	@echo "$(BLUE)Deploying asset-management to Render...$(NC)"
 	@cd $(ASSETS_DIR) && render blueprint apply
 
-deploy: deploy-sales deploy-ui deploy-assets ## Deploy all services to Render
+deploy-security: ## Deploy security-service to Render
+	@echo "$(BLUE)Deploying security-service to Render...$(NC)"
+	@cd $(SECURITY_DIR) && render blueprint apply
+
+deploy-video: ## Deploy video-critique to Render
+	@echo "$(BLUE)Deploying video-critique to Render...$(NC)"
+	@cd $(VIDEO_DIR) && render blueprint apply
+
+deploy: deploy-sales deploy-ui deploy-assets deploy-security deploy-video ## Deploy all services to Render

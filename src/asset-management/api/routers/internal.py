@@ -171,6 +171,46 @@ def list_networks_internal(
         )
 
 
+@router.get("/locations/by-key/{location_key}")
+def get_location_by_key_internal(
+    location_key: str,
+    companies: list[str] = Query(default=None, description="Company schemas to search"),
+    include_eligibility: bool = Query(default=True, description="Include eligibility details"),
+    service: dict = Depends(verify_service_token),
+) -> Location:
+    """
+    Get a location by its key for service-to-service calls.
+
+    Unlike /api/locations/by-key/{key}, this endpoint:
+    - Requires service JWT auth (not user auth)
+    - Does NOT require user permissions
+
+    Used by Sales-Module for location validation during mockup operations.
+    """
+    caller = service.get("service", "unknown")
+    logger.info(f"[INTERNAL] {caller} fetching location by key: {location_key}")
+
+    filter_companies = companies or config.COMPANY_SCHEMAS
+
+    try:
+        location = _location_service.get_location_by_key(
+            location_key=location_key,
+            companies=filter_companies,
+            include_eligibility=include_eligibility,
+        )
+        if not location:
+            raise HTTPException(status_code=404, detail=f"Location not found: {location_key}")
+        return location
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[INTERNAL] Failed to get location by key: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve location",
+        )
+
+
 @router.get("/health")
 def internal_health_check(
     service: dict = Depends(verify_service_token),

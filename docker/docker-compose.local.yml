@@ -9,7 +9,8 @@
 # SELECTIVE SERVICES (using profiles):
 #   docker-compose -f docker-compose.local.yml --profile sales up -d     # Only sales
 #   docker-compose -f docker-compose.local.yml --profile ui up -d        # Only UI
-#   docker-compose -f docker-compose.local.yml --profile all up -d       # Both (default)
+#   docker-compose -f docker-compose.local.yml --profile video up -d     # Only video-critique
+#   docker-compose -f docker-compose.local.yml --profile all up -d       # All services
 #
 # CUSTOM PORTS (via environment or .env.secrets):
 #   SALES_PORT=9000 UI_PORT=4000 docker-compose -f docker-compose.local.yml up -d
@@ -22,9 +23,10 @@
 #   docker-compose -f docker-compose.local.yml down -v                   # Stop + remove volumes
 #
 # ACCESS POINTS (default ports):
-#   - Unified UI:    http://localhost:3005 (or $UI_PORT)
-#   - Proposal Bot:  http://localhost:8000 (or $SALES_PORT)
-#   - API Docs:      http://localhost:8000/docs (with dev auth)
+#   - Unified UI:     http://localhost:3005 (or $UI_PORT)
+#   - Proposal Bot:   http://localhost:8000 (or $SALES_PORT)
+#   - Video Critique: http://localhost:8003 (or $VIDEO_PORT)
+#   - API Docs:       http://localhost:8000/docs (with dev auth)
 #
 # =============================================================================
 # ENVIRONMENT VARIABLES (set in .env.secrets or shell)
@@ -33,6 +35,7 @@
 # Port Configuration:
 #   SALES_PORT          External port for sales module (default: 8000)
 #   UI_PORT             External port for unified-ui (default: 3005)
+#   VIDEO_PORT          External port for video-critique (default: 8003)
 #
 # Environment:
 #   ENVIRONMENT         development | production | local (default: development)
@@ -246,6 +249,44 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: ${HEALTHCHECK_INTERVAL:-30s}
+      timeout: ${HEALTHCHECK_TIMEOUT:-10s}
+      retries: ${HEALTHCHECK_RETRIES:-3}
+      start_period: ${HEALTHCHECK_START_PERIOD:-30s}
+    networks:
+      - crm-network
+
+  # ===========================================================================
+  # Video Critique (FastAPI) - Video Production Workflow Management
+  # ===========================================================================
+  video-critique:
+    build:
+      context: ../src/video-critique
+      dockerfile: Dockerfile
+    container_name: ${VIDEO_CONTAINER_NAME:-video-critique}
+    restart: unless-stopped
+    profiles:
+      - all
+      - video
+    ports:
+      - "${VIDEO_PORT:-8003}:8003"
+    env_file:
+      - ../.env.secrets
+    environment:
+      # Core settings
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      PORT: 8003
+
+      # Database (Supabase)
+      DB_BACKEND: supabase
+
+      # CORS
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
       interval: ${HEALTHCHECK_INTERVAL:-30s}
       timeout: ${HEALTHCHECK_TIMEOUT:-10s}
       retries: ${HEALTHCHECK_RETRIES:-3}

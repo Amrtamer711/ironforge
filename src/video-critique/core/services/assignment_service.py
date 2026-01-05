@@ -13,7 +13,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 from core.utils.logging import get_logger
-from core.utils.time import now_uae
+from core.utils.time import get_uae_time
 from db.database import db
 
 if TYPE_CHECKING:
@@ -126,7 +126,7 @@ class AssignmentService:
                 "videographer": videographer,
                 "status": f"Assigned to {videographer}",
                 "filming_date": filming_date,
-                "updated_at": now_uae(),
+                "updated_at": get_uae_time(),
             }
 
             success = await self._db.update_task(task_number, updates)

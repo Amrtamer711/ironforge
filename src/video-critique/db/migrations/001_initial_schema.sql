@@ -186,14 +186,25 @@ CREATE TABLE IF NOT EXISTS ai_costs (
     -- Call details
     call_type TEXT NOT NULL,
     model TEXT NOT NULL,
+
+    -- Token counts
     input_tokens INTEGER DEFAULT 0,
+    cached_input_tokens INTEGER DEFAULT 0,
     output_tokens INTEGER DEFAULT 0,
+    reasoning_tokens INTEGER DEFAULT 0,
+    total_tokens INTEGER DEFAULT 0,
+
+    -- Cost breakdown
+    input_cost DECIMAL(10, 6) DEFAULT 0,
+    output_cost DECIMAL(10, 6) DEFAULT 0,
+    reasoning_cost DECIMAL(10, 6) DEFAULT 0,
     total_cost DECIMAL(10, 6) DEFAULT 0,
 
     -- Context
     user_id TEXT,
     workflow TEXT,
     context TEXT,
+    metadata_json JSONB,
 
     -- Timestamp
     timestamp TIMESTAMPTZ DEFAULT NOW()

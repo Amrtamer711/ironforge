@@ -145,14 +145,16 @@ async def create_permission_set(
 
     try:
         # server.js:2617-2621 - Create permission set
+        # Insert first, then fetch (supabase-py doesn't support chaining .select() after .insert())
+        supabase.table("permission_sets").insert({
+            "name": request.name,
+            "display_name": request.display_name,
+            "description": request.description
+        }).execute()
         set_response = (
             supabase.table("permission_sets")
-            .insert({
-                "name": request.name,
-                "display_name": request.display_name,
-                "description": request.description
-            })
-            .select()
+            .select("*")
+            .eq("name", request.name)
             .single()
             .execute()
         )
@@ -206,11 +208,12 @@ async def update_permission_set(
             updates["is_active"] = request.is_active
 
         # server.js:2656-2661
+        # Update first, then fetch (supabase-py doesn't support chaining .select() after .update())
+        supabase.table("permission_sets").update(updates).eq("id", set_id).execute()
         set_response = (
             supabase.table("permission_sets")
-            .update(updates)
+            .select("*")
             .eq("id", set_id)
-            .select()
             .single()
             .execute()
         )
@@ -349,15 +352,18 @@ async def assign_permission_set(
 
     try:
         # server.js:2771-2780
+        # Insert first, then fetch (supabase-py doesn't support chaining .select() after .insert())
+        supabase.table("user_permission_sets").insert({
+            "user_id": user_id,
+            "permission_set_id": request.permission_set_id,
+            "granted_by": user.id,
+            "expires_at": request.expires_at
+        }).execute()
         response = (
             supabase.table("user_permission_sets")
-            .insert({
-                "user_id": user_id,
-                "permission_set_id": request.permission_set_id,
-                "granted_by": user.id,
-                "expires_at": request.expires_at
-            })
-            .select()
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("permission_set_id", request.permission_set_id)
             .single()
             .execute()
         )

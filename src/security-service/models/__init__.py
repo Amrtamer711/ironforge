@@ -36,8 +36,6 @@ from .rbac import (
     TeamResponse,
     PermissionResponse,
     UserRBACResponse,
-    # Constants
-    PERMISSIONS,
     # Functions
     matches_wildcard,
     has_permission,
@@ -118,8 +116,7 @@ __all__ = [
     "TeamResponse",
     "PermissionResponse",
     "UserRBACResponse",
-    # RBAC Constants & Functions
-    "PERMISSIONS",
+    # RBAC Functions
     "matches_wildcard",
     "has_permission",
     "has_any_permission",

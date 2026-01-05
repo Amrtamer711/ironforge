@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Standalone uvicorn runner for sales-module (proposal-bot).
+Standalone uvicorn runner for video-critique service.
 
 Usage:
     python run_service.py
 
 Environment Variables:
-    PORT: Server port (default: 8000)
+    PORT: Server port (default: 8003)
     ENVIRONMENT: 'development' or 'production' (default: development)
 
 In development mode, auto-reload is enabled.
@@ -27,12 +27,12 @@ import uvicorn
 
 
 def main():
-    """Run the sales-module FastAPI server."""
-    port = int(os.getenv("PORT", "8000"))
+    """Run the video-critique FastAPI server."""
+    port = int(os.getenv("PORT", "8003"))
     environment = os.getenv("ENVIRONMENT", "development")
     reload = environment != "production"
 
-    print(f"Starting sales-module (proposal-bot) on port {port}")
+    print(f"Starting video-critique service on port {port}")
     print(f"Environment: {environment}")
     print(f"Auto-reload: {reload}")
 

@@ -622,13 +622,25 @@ class SlackEventHandler:
         """
         email = await self._resolve_user_email(slack_user_id)
         display_name = None
+        real_name = None
 
         try:
             user_info = await self._channel.get_user_info(slack_user_id)
             if user_info:
                 display_name = user_info.get("display_name") or user_info.get("name")
+                real_name = user_info.get("real_name")
         except Exception:
             pass
+
+        # Record interaction to unified-ui (fire-and-forget, doesn't block response)
+        from integrations.channel_identity import ChannelIdentity
+        ChannelIdentity.record_fire_and_forget(
+            provider="slack",
+            provider_user_id=slack_user_id,
+            email=email,
+            display_name=display_name,
+            real_name=real_name,
+        )
 
         return (slack_user_id, email, display_name)
 

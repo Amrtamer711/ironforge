@@ -16,10 +16,12 @@ import sys
 from pathlib import Path
 
 # Add shared modules to path for local development
-# This allows importing crm_security without pip install
-_shared_path = Path(__file__).parent.parent / "shared" / "crm-security"
-if _shared_path.exists() and str(_shared_path) not in sys.path:
-    sys.path.insert(0, str(_shared_path))
+# This allows importing crm_security, crm_cache, crm_channels, crm_llm without pip install
+_shared_base = Path(__file__).parent.parent / "shared"
+for _module in ["crm-security", "crm-cache", "crm-channels", "crm-llm"]:
+    _shared_path = _shared_base / _module
+    if _shared_path.exists() and str(_shared_path) not in sys.path:
+        sys.path.insert(0, str(_shared_path))
 
 import uvicorn
 

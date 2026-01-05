@@ -69,7 +69,6 @@ from .rbac import (
     has_permission,
     has_any_permission,
     has_all_permissions,
-    PERMISSIONS,
     # Data Access Helpers (5-Level RBAC)
     can_access_user_data,
     can_access_record,
@@ -184,7 +183,6 @@ __all__ = [
     "has_permission",
     "has_any_permission",
     "has_all_permissions",
-    "PERMISSIONS",
     # Data Access Helpers
     "can_access_user_data",
     "can_access_record",

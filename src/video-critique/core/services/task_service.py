@@ -15,7 +15,7 @@ from datetime import date, datetime
 from typing import Any
 
 from core.utils.logging import get_logger
-from core.utils.time import UAE_TZ, format_date, now_uae
+from core.utils.time import UAE_TZ, format_uae_date, get_uae_time
 from db.database import db
 from db.models import CompletedTask, VideoTask
 
@@ -120,8 +120,8 @@ class TaskService:
                 submission_folder=None,
                 current_version=None,
                 version_history=[],
-                created_at=now_uae(),
-                updated_at=now_uae(),
+                created_at=get_uae_time(),
+                updated_at=get_uae_time(),
             )
 
             # Insert into database
@@ -293,7 +293,7 @@ class TaskService:
                 if hasattr(task, key):
                     setattr(task, key, value)
 
-            task.updated_at = now_uae()
+            task.updated_at = get_uae_time()
 
             # Save to database
             success = await self._db.update_task(task_number, updates)
@@ -342,7 +342,7 @@ class TaskService:
                 history_entry = {
                     "version": version,
                     "status": new_status,
-                    "at": now_uae().strftime("%d-%m-%Y %H:%M:%S"),
+                    "at": get_uae_time().strftime("%d-%m-%Y %H:%M:%S"),
                 }
                 if rejection_class:
                     history_entry["rejection_class"] = rejection_class
@@ -357,7 +357,7 @@ class TaskService:
             updates = {
                 "status": new_status,
                 "version_history": task.version_history,
-                "updated_at": now_uae(),
+                "updated_at": get_uae_time(),
             }
 
             success = await self._db.update_task(task_number, updates)
@@ -518,8 +518,8 @@ class TaskService:
                 "existing_entry": {
                     "task_number": str(task.task_number),
                     "brand": task.brand,
-                    "start_date": format_date(task.campaign_start_date),
-                    "end_date": format_date(task.campaign_end_date),
+                    "start_date": format_uae_date(task.campaign_start_date),
+                    "end_date": format_uae_date(task.campaign_end_date),
                     "location": task.location,
                     "submitted_by": task.submitted_by,
                     "status": "Active",
@@ -534,8 +534,8 @@ class TaskService:
                 "existing_entry": {
                     "task_number": str(completed.task_number),
                     "brand": completed.brand,
-                    "start_date": format_date(completed.campaign_start_date),
-                    "end_date": format_date(completed.campaign_end_date),
+                    "start_date": format_uae_date(completed.campaign_start_date),
+                    "end_date": format_uae_date(completed.campaign_end_date),
                     "location": completed.location,
                     "submitted_by": completed.submitted_by,
                     "status": "Archived (Completed)",
@@ -631,11 +631,11 @@ class TaskService:
 
         # Format dates
         if task.campaign_start_date:
-            data["Campaign Start Date"] = format_date(task.campaign_start_date)
+            data["Campaign Start Date"] = format_uae_date(task.campaign_start_date)
         if task.campaign_end_date:
-            data["Campaign End Date"] = format_date(task.campaign_end_date)
+            data["Campaign End Date"] = format_uae_date(task.campaign_end_date)
         if task.filming_date:
-            data["Filming Date"] = format_date(task.filming_date)
+            data["Filming Date"] = format_uae_date(task.filming_date)
         if task.created_at:
             data["Timestamp"] = task.created_at.strftime("%d-%m-%Y %H:%M:%S")
 

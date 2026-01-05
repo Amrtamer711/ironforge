@@ -203,11 +203,12 @@ async def update_user(
             raise HTTPException(status_code=400, detail="No fields to update")
 
         # server.js:3390-3398
+        # Update first, then fetch (supabase-py doesn't support chaining .select() after .update())
+        supabase.table("users").update(updates).eq("id", user_id).execute()
         response = (
             supabase.table("users")
-            .update(updates)
-            .eq("id", user_id)
             .select("*, profiles(id, name, display_name)")
+            .eq("id", user_id)
             .single()
             .execute()
         )
@@ -290,11 +291,12 @@ async def deactivate_user(
                     )
 
         # server.js:3466-3471 - Deactivate user
+        # Update first, then fetch (supabase-py doesn't support chaining .select() after .update())
+        supabase.table("users").update({"is_active": False}).eq("id", user_id).execute()
         response = (
             supabase.table("users")
-            .update({"is_active": False})
+            .select("*")
             .eq("id", user_id)
-            .select()
             .single()
             .execute()
         )
@@ -344,11 +346,12 @@ async def reactivate_user(
 
     try:
         # server.js:3503-3509
+        # Update first, then fetch (supabase-py doesn't support chaining .select() after .update())
+        supabase.table("users").update({"is_active": True}).eq("id", user_id).execute()
         response = (
             supabase.table("users")
-            .update({"is_active": True})
+            .select("*")
             .eq("id", user_id)
-            .select()
             .single()
             .execute()
         )
@@ -401,11 +404,12 @@ async def assign_user_profile(
         profile = profile_response.data
 
         # Update user's profile
+        # Update first, then fetch (supabase-py doesn't support chaining .select() after .update())
+        supabase.table("users").update({"profile_id": profile["id"]}).eq("id", user_id).execute()
         response = (
             supabase.table("users")
-            .update({"profile_id": profile["id"]})
-            .eq("id", user_id)
             .select("*, profiles(id, name, display_name)")
+            .eq("id", user_id)
             .single()
             .execute()
         )

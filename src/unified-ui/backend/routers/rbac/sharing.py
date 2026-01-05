@@ -102,19 +102,21 @@ async def create_sharing_rule(
 
     try:
         # server.js:3125-3129
+        # Insert first, then fetch (supabase-py doesn't support chaining .select() after .insert())
+        supabase.table("sharing_rules").insert({
+            "name": request.name,
+            "description": request.description,
+            "object_type": request.object_type,
+            "share_from_type": request.share_from_type,
+            "share_from_id": request.share_from_id,
+            "share_to_type": request.share_to_type,
+            "share_to_id": request.share_to_id,
+            "access_level": request.access_level
+        }).execute()
         response = (
             supabase.table("sharing_rules")
-            .insert({
-                "name": request.name,
-                "description": request.description,
-                "object_type": request.object_type,
-                "share_from_type": request.share_from_type,
-                "share_from_id": request.share_from_id,
-                "share_to_type": request.share_to_type,
-                "share_to_id": request.share_to_id,
-                "access_level": request.access_level
-            })
-            .select()
+            .select("*")
+            .eq("name", request.name)
             .single()
             .execute()
         )
@@ -167,11 +169,12 @@ async def update_sharing_rule(
             updates["is_active"] = request.is_active
 
         # server.js:3158-3163
+        # Update first, then fetch (supabase-py doesn't support chaining .select() after .update())
+        supabase.table("sharing_rules").update(updates).eq("id", rule_id).execute()
         response = (
             supabase.table("sharing_rules")
-            .update(updates)
+            .select("*")
             .eq("id", rule_id)
-            .select()
             .single()
             .execute()
         )
@@ -356,11 +359,12 @@ async def update_record_share(
             raise HTTPException(status_code=400, detail="No fields to update")
 
         # server.js:3556-3561
+        # Update first, then fetch (supabase-py doesn't support chaining .select() after .update())
+        supabase.table("record_shares").update(updates).eq("id", share_id).execute()
         response = (
             supabase.table("record_shares")
-            .update(updates)
+            .select("*")
             .eq("id", share_id)
-            .select()
             .single()
             .execute()
         )
@@ -437,22 +441,32 @@ async def create_share(
             )
 
         # server.js:3680-3693 - Create the share
-        response = (
+        # Insert first, then fetch (supabase-py doesn't support chaining .select() after .insert())
+        insert_data = {
+            "object_type": request.object_type,
+            "record_id": request.record_id,
+            "shared_with_user_id": request.shared_with_user_id,
+            "shared_with_team_id": request.shared_with_team_id,
+            "access_level": request.access_level or "read",
+            "shared_by": user.id,
+            "expires_at": request.expires_at,
+            "reason": request.reason
+        }
+        supabase.table("record_shares").insert(insert_data).execute()
+
+        # Fetch the created share
+        fetch_query = (
             supabase.table("record_shares")
-            .insert({
-                "object_type": request.object_type,
-                "record_id": request.record_id,
-                "shared_with_user_id": request.shared_with_user_id,
-                "shared_with_team_id": request.shared_with_team_id,
-                "access_level": request.access_level or "read",
-                "shared_by": user.id,
-                "expires_at": request.expires_at,
-                "reason": request.reason
-            })
-            .select()
-            .single()
-            .execute()
+            .select("*")
+            .eq("object_type", request.object_type)
+            .eq("record_id", request.record_id)
+            .eq("shared_by", user.id)
         )
+        if request.shared_with_user_id:
+            fetch_query = fetch_query.eq("shared_with_user_id", request.shared_with_user_id)
+        else:
+            fetch_query = fetch_query.eq("shared_with_team_id", request.shared_with_team_id)
+        response = fetch_query.order("created_at", desc=True).limit(1).single().execute()
 
         share = response.data
 

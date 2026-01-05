@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from core.utils.logging import get_logger
-from core.utils.time import now_uae
+from core.utils.time import get_uae_time
 from db.database import db
 from db.models import ApprovalWorkflow
 from integrations.asset_management import get_asset_client
@@ -137,8 +137,8 @@ class ApprovalService:
             task_data=task_data or {},
             version_info={"version": version, "files": uploaded_files},
             status="pending_reviewer",
-            created_at=now_uae(),
-            updated_at=now_uae(),
+            created_at=get_uae_time(),
+            updated_at=get_uae_time(),
         )
 
         # Save to database
@@ -200,11 +200,11 @@ class ApprovalService:
             return False
 
         workflow.status = final_status
-        workflow.updated_at = now_uae()
+        workflow.updated_at = get_uae_time()
 
         success = await self._db.update_workflow(workflow_id, {
             "status": final_status,
-            "updated_at": now_uae(),
+            "updated_at": get_uae_time(),
         })
 
         if success:
@@ -259,7 +259,7 @@ class ApprovalService:
             "reviewer_id": reviewer_id,
             "reviewer_msg_ts": reviewer_msg_ts,
             "status": "pending_reviewer",
-            "updated_at": now_uae(),
+            "updated_at": get_uae_time(),
         }
 
         success = await self._db.update_workflow(workflow_id, updates)
@@ -298,7 +298,7 @@ class ApprovalService:
             updates = {
                 "reviewer_approved": True,
                 "status": "pending_hos",
-                "updated_at": now_uae(),
+                "updated_at": get_uae_time(),
             }
             await self._db.update_workflow(workflow_id, updates)
 
@@ -328,7 +328,7 @@ class ApprovalService:
             await self._db.update_workflow(workflow_id, {
                 "reviewer_approved": False,
                 "status": "rejected",
-                "updated_at": now_uae(),
+                "updated_at": get_uae_time(),
             })
 
             # Move video to rejected folder
@@ -394,7 +394,7 @@ class ApprovalService:
             "hos_id": hos_id,
             "hos_msg_ts": hos_msg_ts,
             "status": "pending_hos",
-            "updated_at": now_uae(),
+            "updated_at": get_uae_time(),
         }
 
         success = await self._db.update_workflow(workflow_id, updates)
@@ -428,7 +428,7 @@ class ApprovalService:
             updates = {
                 "hos_approved": True,
                 "status": "completed",
-                "updated_at": now_uae(),
+                "updated_at": get_uae_time(),
             }
             await self._db.update_workflow(workflow_id, updates)
 
@@ -466,7 +466,7 @@ class ApprovalService:
             await self._db.update_workflow(workflow_id, {
                 "hos_approved": False,
                 "status": "returned",
-                "updated_at": now_uae(),
+                "updated_at": get_uae_time(),
             })
 
             # Move video to returned folder
@@ -521,7 +521,7 @@ class ApprovalService:
                 return workflow
 
         # Query database
-        workflows = await self._db.get_pending_workflows()
+        workflows = self._db.get_pending_workflows()
         for workflow in workflows:
             if workflow.task_number == task_number:
                 self._active_workflows[workflow.workflow_id] = workflow
@@ -578,7 +578,7 @@ class ApprovalService:
         Returns:
             Number of workflows recovered
         """
-        workflows = await self._db.get_pending_workflows()
+        workflows = self._db.get_pending_workflows()
 
         for workflow in workflows:
             self._active_workflows[workflow.workflow_id] = workflow
@@ -719,7 +719,7 @@ Return ONLY the category name, nothing else."""
                 "dropbox_path": workflow.dropbox_path,
                 "version": version_info.get("version", 1),
                 "files": version_info.get("files", []),
-                "approved_at": now_uae().isoformat(),
+                "approved_at": get_uae_time().isoformat(),
             }
 
             # Link to asset-management

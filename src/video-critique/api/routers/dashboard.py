@@ -4,7 +4,7 @@ Dashboard Router for Video Critique.
 Provides dashboard data endpoints for the unified-ui.
 """
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -415,7 +415,7 @@ async def get_calendar_data(
 # UTILITY FUNCTIONS
 # ============================================================================
 
-def _parse_date(date_str: str) -> datetime.date | None:
+def _parse_date(date_str: str) -> date | None:
     """Parse a date string in DD-MM-YYYY or YYYY-MM-DD format."""
     if not date_str:
         return None

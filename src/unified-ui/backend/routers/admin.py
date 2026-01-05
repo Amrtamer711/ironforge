@@ -165,21 +165,23 @@ async def create_user(
         pending_id = f"pending-{uuid.uuid4()}"
 
         # server.js:1617-1635 - Create the pending user
+        # Insert first, then fetch (supabase-py doesn't support chaining .select() after .insert())
+        supabase.table("users").insert({
+            "id": pending_id,
+            "email": email,
+            "name": request.name,
+            "profile_id": profile_response.data["id"],
+            "is_active": True,  # Pre-created users are active
+            "metadata_json": {
+                "created_by": user.id,
+                "created_by_email": user.email,
+                "pending_sso": True
+            }
+        }).execute()
         new_user_response = (
             supabase.table("users")
-            .insert({
-                "id": pending_id,
-                "email": email,
-                "name": request.name,
-                "profile_id": profile_response.data["id"],
-                "is_active": True,  # Pre-created users are active
-                "metadata_json": {
-                    "created_by": user.id,
-                    "created_by_email": user.email,
-                    "pending_sso": True
-                }
-            })
-            .select()
+            .select("*")
+            .eq("id", pending_id)
             .single()
             .execute()
         )

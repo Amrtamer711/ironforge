@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from core.utils.logging import get_logger
-from core.utils.time import now_uae
+from core.utils.time import get_uae_time
 from db.database import db
 
 if TYPE_CHECKING:
@@ -222,7 +222,7 @@ class VideoService:
             await self._db.update_task(task_number, {
                 "submission_folder": folder_name,
                 "current_version": new_version,
-                "updated_at": now_uae(),
+                "updated_at": get_uae_time(),
             })
 
             logger.info(

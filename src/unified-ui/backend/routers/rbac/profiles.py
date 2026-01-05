@@ -346,15 +346,17 @@ async def create_profile(
             raise HTTPException(status_code=409, detail="Profile with this name already exists")
 
         # server.js:2306-2310 - Create profile
+        # Insert first, then fetch (supabase-py doesn't support chaining .select() after .insert())
+        supabase.table("profiles").insert({
+            "name": request.name,
+            "display_name": request.display_name,
+            "description": request.description,
+            "is_system": False
+        }).execute()
         profile_response = (
             supabase.table("profiles")
-            .insert({
-                "name": request.name,
-                "display_name": request.display_name,
-                "description": request.description,
-                "is_system": False
-            })
-            .select()
+            .select("*")
+            .eq("name", request.name)
             .single()
             .execute()
         )
@@ -441,11 +443,12 @@ async def update_profile(
             updates["description"] = request.description
 
         # server.js:2381-2386 - Update profile
+        # Update first, then fetch (supabase-py doesn't support chaining .select() after .update())
+        supabase.table("profiles").update(updates).eq("id", profile_id).execute()
         profile_response = (
             supabase.table("profiles")
-            .update(updates)
+            .select("*")
             .eq("id", profile_id)
-            .select()
             .single()
             .execute()
         )

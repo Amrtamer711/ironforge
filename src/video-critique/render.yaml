@@ -32,6 +32,8 @@ envVarGroups:
         sync: false
       - key: REDIS_URL
         sync: false
+      - key: UI_SERVICE_URL
+        sync: false
 
       # Non-sensitive constants (safe inline)
       - key: BOARD_NAME

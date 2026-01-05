@@ -30,20 +30,14 @@ BASE_DIR = Path(__file__).parent
 # Production detection - single source of truth
 # We're in production if ANY of these are true:
 # 1. Running on Render (has RENDER env var)
-# 2. Has PORT env var (web services)
-# 3. Explicitly set PRODUCTION=true or ENVIRONMENT=production
-# 4. /data directory exists (Render disk mount)
+# 2. Explicitly set PRODUCTION=true or ENVIRONMENT=production
+# NOTE: Do NOT check for PORT (run_service.py sets it) or /data (may exist locally)
 IS_PRODUCTION = any([
     os.environ.get("RENDER") == "true",
-    os.environ.get("PORT") is not None,
     os.environ.get("PRODUCTION") == "true",
     os.environ.get("ENVIRONMENT") == "production",
-    os.path.exists("/data")
 ])
 IS_DEVELOPMENT = not IS_PRODUCTION
-
-# Data directory configuration
-DATA_DIR = Path("/data") if IS_PRODUCTION else BASE_DIR / "data"
 
 # ============================================================================
 # LOGGING SETUP
@@ -234,6 +228,9 @@ SECURITY_SERVICE_URL = os.getenv("SECURITY_SERVICE_URL", "https://security-servi
 # Asset Management Service URL
 ASSET_MGMT_URL = os.getenv("ASSET_MGMT_URL", "https://asset-management.onrender.com")
 
+# UI Service URL (for channel identity API)
+UI_SERVICE_URL = os.getenv("UI_SERVICE_URL", "http://localhost:3005")
+
 # Inter-service auth secret
 INTER_SERVICE_SECRET = os.getenv("INTER_SERVICE_SECRET", "")
 
@@ -255,9 +252,6 @@ DROPBOX_REFRESH_TOKEN = os.getenv("DROPBOX_REFRESH_TOKEN", "")
 
 # Dropbox folder paths (configured per environment)
 DROPBOX_ROOT_FOLDER = os.getenv("DROPBOX_ROOT_FOLDER", "/Video Submissions")
-
-# Credentials file path
-DROPBOX_CREDENTIALS_PATH = DATA_DIR / "dropbox_creds.json"
 
 # ============================================================================
 # EMAIL CONFIGURATION
@@ -298,14 +292,4 @@ ESCALATION_DELAY_SECONDS = 10 if TESTING_MODE else 0
 CACHE_BACKEND = os.getenv("CACHE_BACKEND", "memory")
 REDIS_URL = os.getenv("REDIS_URL", "")
 
-# ============================================================================
-# LEGACY FILE PATHS (for migration compatibility)
-# ============================================================================
-
-# These paths are kept for backward compatibility during migration
-# They will be removed once full Supabase migration is complete
-HISTORY_DB_PATH = DATA_DIR / "history_logs.db"
-VIDEOGRAPHER_CONFIG_PATH = DATA_DIR / "videographer_config.json"
-
-logger.info(f"[STARTUP] Data directory: {DATA_DIR}")
 logger.info(f"[STARTUP] Cache backend: {CACHE_BACKEND}")
