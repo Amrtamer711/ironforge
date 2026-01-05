@@ -31,6 +31,19 @@ class LocationResponse(BaseModel):
     city: str | None = None
     area: str | None = None
 
+    # Pricing (for form auto-population)
+    upload_fee: float | None = None
+
+    # Static location specs
+    height: str | None = None
+    width: str | None = None
+    number_of_faces: int | None = None
+
+    # Digital location specs
+    spot_duration: int | None = None
+    loop_duration: int | None = None
+    sov_percent: float | None = None
+
     # Eligibility (Phase 2)
     eligible_for_proposals: bool = True  # Stub - always True in Phase 1
     eligible_for_mockups: bool = True    # Stub - always True in Phase 1
@@ -112,6 +125,16 @@ async def get_available_locations(
                     series=loc.get("series"),
                     city=loc.get("city"),
                     area=loc.get("area"),
+                    # Pricing
+                    upload_fee=loc.get("upload_fee"),
+                    # Static specs
+                    height=loc.get("height"),
+                    width=loc.get("width"),
+                    number_of_faces=loc.get("number_of_faces"),
+                    # Digital specs
+                    spot_duration=loc.get("spot_duration"),
+                    loop_duration=loc.get("loop_duration"),
+                    sov_percent=loc.get("sov_percent"),
                     # Phase 1: Assume all eligible
                     eligible_for_proposals=True,
                     eligible_for_mockups=True,
@@ -185,6 +208,16 @@ async def get_location_by_key(
             series=location.get("series"),
             city=location.get("city"),
             area=location.get("area"),
+            # Pricing
+            upload_fee=location.get("upload_fee"),
+            # Static specs
+            height=location.get("height"),
+            width=location.get("width"),
+            number_of_faces=location.get("number_of_faces"),
+            # Digital specs
+            spot_duration=location.get("spot_duration"),
+            loop_duration=location.get("loop_duration"),
+            sov_percent=location.get("sov_percent"),
             eligible_for_proposals=True,  # Phase 1 stub
             eligible_for_mockups=True,    # Phase 1 stub
         )
