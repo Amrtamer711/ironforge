@@ -854,12 +854,12 @@ async def store_proposal_file(
     if not content_type:
         content_type = get_mime_type(filename)
 
-    # Generate storage key: {user_id}/{date}/{file_id}_{filename}
-    # Note: bucket is already "proposals", so don't include it in the key
+    # Generate storage key: proposals/{user_id}/{date}/{file_id}_{filename}
+    # Using uploads bucket (same as AI chat) with proposals/ prefix for organization
     safe_filename = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
     date_prefix = datetime.utcnow().strftime("%Y/%m/%d")
-    storage_key = f"{user_id}/{date_prefix}/{file_id}_{safe_filename}"
-    bucket = StorageType.PROPOSALS.value
+    storage_key = f"proposals/{user_id}/{date_prefix}/{file_id}_{safe_filename}"
+    bucket = StorageType.UPLOADS.value
 
     try:
         result = await storage.upload(bucket, storage_key, file_bytes, content_type)
