@@ -55,7 +55,7 @@ async def get_mockup_locations(user: AuthUser = Depends(require_permission("sale
         locations.append({
             "key": loc.get("location_key"),
             "name": loc.get("display_name", loc.get("location_key", "").title()),
-            "company": loc.get("company_schema"),
+            "company": loc.get("company") or loc.get("company_schema"),
         })
 
     return {"locations": sorted(locations, key=lambda x: x["name"])}
@@ -135,9 +135,10 @@ async def save_mockup_frame(
         location_data = await asset_service.get_location_by_key(location_key, user.companies)
         if not location_data:
             raise HTTPException(status_code=403, detail=f"Location '{location_key}' not found in your accessible companies")
-        company_schema = location_data.get("company_schema")
+        # Asset-Management API returns "company", some internal code uses "company_schema"
+        company_schema = location_data.get("company") or location_data.get("company_schema")
         if not company_schema:
-            raise HTTPException(status_code=500, detail=f"Location '{location_key}' has no company schema assigned")
+            raise HTTPException(status_code=500, detail=f"Location '{location_key}' has no company assigned")
 
         # Save via Asset-Management API (handles database + storage)
         logger.info(f"[MOCKUP API] Saving {len(frames)} frame(s) via asset-management for {company_schema}.{location_key}/{time_of_day}/{finish}")
@@ -417,7 +418,7 @@ async def delete_mockup_photo(location_key: str, photo_filename: str, time_of_da
         location_data = db.get_location_by_key(location_key, user.companies)
         if not location_data:
             raise HTTPException(status_code=403, detail=f"Location '{location_key}' not found in your accessible companies")
-        company_schema = location_data.get("company_schema")
+        company_schema = location_data.get("company") or location_data.get("company_schema")
 
         # If "all" is specified, find and delete the photo from whichever variation it's in
         if time_of_day == "all" or finish == "all":
@@ -498,7 +499,7 @@ async def generate_mockup_api(
         location_data = db.get_location_by_key(location_key, user.companies)
         if not location_data:
             raise HTTPException(status_code=403, detail=f"Location '{location_key}' not found in your accessible companies")
-        company_schema = location_data.get("company_schema")
+        company_schema = location_data.get("company") or location_data.get("company_schema")
 
         # Determine mode: AI generation or upload
         if ai_prompt:
