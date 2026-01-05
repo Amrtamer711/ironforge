@@ -6,7 +6,6 @@ build-backend = "hatchling.build"
 name = "crm-channels"
 version = "0.1.0"
 description = "Platform-agnostic channel abstractions for CRM messaging"
-readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 dependencies = []

@@ -6,7 +6,6 @@ build-backend = "setuptools.build_meta"
 name = "crm-cache"
 version = "0.1.0"
 description = "CRM Caching SDK - Redis and Memory cache backends"
-readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [

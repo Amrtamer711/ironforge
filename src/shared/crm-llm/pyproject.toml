@@ -2,7 +2,6 @@
 name = "crm-llm"
 version = "0.1.0"
 description = "Shared LLM client library for CRM modules"
-readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "openai>=2.8.1",

@@ -119,7 +119,13 @@ async def send_message(
     logger.info(f"[Chat] Message from {user.email}: {request.message[:50]}...")
 
     try:
+        from core.chat_persistence import load_chat_messages, save_chat_messages
+
         tool_router = ToolRouter()
+
+        # Generate unique message ID for linking
+        message_id = str(uuid.uuid4())
+        timestamp = datetime.now(config.UAE_TZ).isoformat()
 
         response = await main_llm_loop(
             channel_id=session_id,
@@ -135,10 +141,36 @@ async def send_message(
 
         logger.info(f"[Chat] Response generated for {user.email}")
 
+        # Persist messages to database
+        try:
+            existing_messages = load_chat_messages(user.id)
+
+            # Add user message
+            existing_messages.append({
+                "id": message_id,
+                "role": "user",
+                "content": request.message,
+                "timestamp": timestamp,
+            })
+
+            # Add assistant response (linked to user message)
+            response_timestamp = datetime.now(config.UAE_TZ).isoformat()
+            existing_messages.append({
+                "id": str(uuid.uuid4()),
+                "role": "assistant",
+                "content": response,
+                "timestamp": response_timestamp,
+                "parent_id": message_id,
+            })
+
+            save_chat_messages(user.id, existing_messages, session_id)
+        except Exception as persist_err:
+            logger.warning(f"[Chat] Failed to persist messages for {user.email}: {persist_err}")
+
         return ChatResponse(
             response=response,
             session_id=session_id,
-            timestamp=datetime.now(config.UAE_TZ).isoformat(),
+            timestamp=timestamp,
         )
 
     except Exception as e:
@@ -235,13 +267,20 @@ async def upload_file(
         content_type = file.content_type or ""
 
         if content_type.startswith("image/"):
+            from core.chat_persistence import load_chat_messages, save_chat_messages
+
             tool_router = ToolRouter()
             image_data = [(content, content_type)]
+
+            # Generate unique message ID for linking
+            message_id = str(uuid.uuid4())
+            timestamp = datetime.now(config.UAE_TZ).isoformat()
+            user_message = message or "Please extract the design request details from this image."
 
             response = await main_llm_loop(
                 channel_id=session_id,
                 user_id=user.id,
-                user_input=message or "Please extract the design request details from this image.",
+                user_input=user_message,
                 image_data=image_data,
                 channel=None,
                 user_name=user.name or user.email,
@@ -250,14 +289,46 @@ async def upload_file(
                 tool_router=tool_router,
             )
 
+            # Persist messages to database
+            try:
+                existing_messages = load_chat_messages(user.id)
+
+                # Add user message with file attachment info
+                existing_messages.append({
+                    "id": message_id,
+                    "role": "user",
+                    "content": user_message,
+                    "timestamp": timestamp,
+                    "attachments": [{
+                        "filename": file.filename,
+                        "type": "image",
+                        "content_type": content_type,
+                    }],
+                })
+
+                # Add assistant response
+                response_timestamp = datetime.now(config.UAE_TZ).isoformat()
+                existing_messages.append({
+                    "id": str(uuid.uuid4()),
+                    "role": "assistant",
+                    "content": response,
+                    "timestamp": response_timestamp,
+                    "parent_id": message_id,
+                })
+
+                save_chat_messages(user.id, existing_messages, session_id)
+            except Exception as persist_err:
+                logger.warning(f"[Chat] Failed to persist upload messages for {user.email}: {persist_err}")
+
+            file_id = str(uuid.uuid4())
             return {
                 "success": True,
-                "file_id": str(uuid.uuid4()),
+                "file_id": file_id,
                 "filename": file.filename,
                 "type": "image",
                 "response": response,
                 "session_id": session_id,
-                "timestamp": datetime.now(config.UAE_TZ).isoformat(),
+                "timestamp": timestamp,
             }
 
         elif content_type.startswith("video/") or file.filename.lower().endswith(
@@ -310,10 +381,94 @@ async def clear_session(
     """Clear a chat session and its history."""
     clear_conversation_state(session_id)
 
+    # Also clear persisted messages
+    from core.chat_persistence import clear_chat_messages
+    clear_chat_messages(user.id)
+
     return ClearSessionResponse(
         success=True,
         message=f"Session {session_id} cleared",
     )
+
+
+@router.get("/history")
+async def get_chat_history(user: AuthUser = Depends(require_permission("video:chat:use"))):
+    """
+    Load persisted chat history for the authenticated user.
+
+    This endpoint loads chat messages from the database, which persist
+    across server restarts. Use this on login to restore previous conversations.
+
+    Requires video:chat:use permission.
+
+    Returns:
+        messages: List of message objects with role, content, timestamp
+        session_id: The conversation session ID
+        message_count: Total number of messages
+    """
+    from db.database import db
+
+    try:
+        # Single database call - get full session (cached)
+        session = db.get_chat_session(user.id)
+
+        if not session:
+            return {
+                "messages": [],
+                "session_id": None,
+                "message_count": 0,
+                "last_updated": None,
+            }
+
+        messages = session.get("messages", [])
+
+        logger.info(f"[Chat] Loaded {len(messages)} persisted messages for {user.email}")
+
+        return {
+            "messages": messages,
+            "session_id": session.get("session_id"),
+            "message_count": len(messages),
+            "last_updated": session.get("updated_at"),
+        }
+    except Exception as e:
+        logger.error(f"[Chat] Error loading history for {user.email}: {e}", exc_info=True)
+        return {
+            "messages": [],
+            "session_id": None,
+            "message_count": 0,
+            "error": str(e)
+        }
+
+
+@router.post("/conversation")
+async def create_conversation(user: AuthUser = Depends(require_permission("video:chat:use"))):
+    """Create a new conversation (clears existing history). Requires video:chat:use permission."""
+    from core.chat_persistence import clear_chat_messages
+
+    # Clear in-memory state
+    clear_conversation_state(user.id)
+
+    # Clear persisted messages
+    clear_chat_messages(user.id)
+
+    return {
+        "conversation_id": str(uuid.uuid4()),
+        "user_id": user.id
+    }
+
+
+@router.delete("/conversation/{conversation_id}")
+async def delete_conversation(
+    conversation_id: str,
+    user: AuthUser = Depends(require_permission("video:chat:use")),
+):
+    """Delete a conversation for the authenticated user. Requires video:chat:use permission."""
+    from core.chat_persistence import clear_chat_messages
+
+    clear_conversation_state(user.id)
+    clear_chat_messages(user.id)
+
+    return {"success": True, "conversation_id": conversation_id}
 
 
 @router.get("/sessions")
