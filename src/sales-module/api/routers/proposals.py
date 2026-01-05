@@ -212,9 +212,9 @@ async def _get_proposal_processor(user_companies: list[str]):
     from core.proposals.validator import ProposalValidator
     from core.proposals.renderer import ProposalRenderer
     from core.proposals.intro_outro import IntroOutroHandler
-    from core.services.template_service import get_template_service
+    from core.services.template_service import TemplateService
 
-    template_service = get_template_service()
+    template_service = TemplateService(companies=user_companies)
     validator = ProposalValidator(user_companies)
     renderer = ProposalRenderer()
     intro_outro = IntroOutroHandler()

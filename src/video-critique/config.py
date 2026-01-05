@@ -229,7 +229,7 @@ SECURITY_SERVICE_URL = os.getenv("SECURITY_SERVICE_URL", "https://security-servi
 ASSET_MGMT_URL = os.getenv("ASSET_MGMT_URL", "https://asset-management.onrender.com")
 
 # UI Service URL (for channel identity API)
-UI_SERVICE_URL = os.getenv("UI_SERVICE_URL", "http://localhost:3005")
+UI_SERVICE_URL = os.getenv("UI_SERVICE_URL", "https://unified-ui.onrender.com")
 
 # Inter-service auth secret
 INTER_SERVICE_SECRET = os.getenv("INTER_SERVICE_SECRET", "")
@@ -240,7 +240,14 @@ INTER_SERVICE_SECRET = os.getenv("INTER_SERVICE_SECRET", "")
 
 TRELLO_API_KEY = os.getenv("TRELLO_API_KEY", "")
 TRELLO_API_TOKEN = os.getenv("TRELLO_API_TOKEN", "")
-TRELLO_BOARD_NAME = os.getenv("TRELLO_BOARD_NAME", "Amr - Tracker")
+
+# Dev vs Prod board names - use separate boards for development
+# Set TRELLO_BOARD_NAME_DEV in .env to use a different board in dev mode
+_TRELLO_BOARD_PROD = os.getenv("TRELLO_BOARD_NAME", "Amr - Tracker")
+_TRELLO_BOARD_DEV = os.getenv("TRELLO_BOARD_NAME_DEV", "Video Critique - DEV")
+TRELLO_BOARD_NAME = _TRELLO_BOARD_PROD if IS_PRODUCTION else _TRELLO_BOARD_DEV
+
+logger.info(f"[STARTUP] Trello board: {TRELLO_BOARD_NAME} ({'PROD' if IS_PRODUCTION else 'DEV'})")
 
 # ============================================================================
 # DROPBOX CONFIGURATION
@@ -250,7 +257,16 @@ DROPBOX_APP_KEY = os.getenv("DROPBOX_APP_KEY", "")
 DROPBOX_APP_SECRET = os.getenv("DROPBOX_APP_SECRET", "")
 DROPBOX_REFRESH_TOKEN = os.getenv("DROPBOX_REFRESH_TOKEN", "")
 
-# Dropbox folder paths (configured per environment)
+# Dropbox folder prefix - dev uses /test prefix to avoid touching production folders
+# Prod folders: /Site Videos/Raw, /Site Videos/Pending, etc.
+# Dev folders:  /test/Site Videos/Raw, /test/Site Videos/Pending, etc.
+_DROPBOX_FOLDER_PREFIX_PROD = os.getenv("DROPBOX_FOLDER_PREFIX", "")
+_DROPBOX_FOLDER_PREFIX_DEV = os.getenv("DROPBOX_FOLDER_PREFIX_DEV", "/test")
+DROPBOX_FOLDER_PREFIX = _DROPBOX_FOLDER_PREFIX_PROD if IS_PRODUCTION else _DROPBOX_FOLDER_PREFIX_DEV
+
+logger.info(f"[STARTUP] Dropbox folder prefix: '{DROPBOX_FOLDER_PREFIX}' ({'PROD' if IS_PRODUCTION else 'DEV'})")
+
+# Legacy: Root folder for general uploads (not used for Site Videos workflow)
 DROPBOX_ROOT_FOLDER = os.getenv("DROPBOX_ROOT_FOLDER", "/Video Submissions")
 
 # ============================================================================
