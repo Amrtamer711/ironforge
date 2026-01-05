@@ -22,8 +22,11 @@ def get_base_tools() -> list[ToolDefinition | RawTool]:
                             "type": "object",
                             "properties": {
                                 "location": {"type": "string", "description": "The exact location_key from the system prompt (e.g., 'dubai_gateway', 'dubai_jawhara'). Use the location_key shown in parentheses in the DIGITAL/STATIC location lists above. Extract the key from the format 'Display Name (location_key) [company]'. If user says 'gateway', use 'dubai_gateway'. If unsure, use your best judgment to match to the correct location_key."},
-                                "start_date": {"type": "string", "description": "Start date for the campaign (e.g., 1st December 2025)"},
-                                "end_date": {"type": "string", "description": "End date for the campaign. Either extract from user message if provided, or calculate from start_date + duration (e.g., start: 1st Dec + 4 weeks = end: 29th Dec). Use the first/shortest duration if multiple durations provided."},
+                                "start_dates": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "List of start dates corresponding to each duration option (e.g., ['1st December 2025', '1st December 2025', '15th December 2025']). If user provides one start date, repeat it for all durations."
+                                },
                                 "durations": {
                                     "type": "array",
                                     "items": {"type": "string"},
@@ -37,7 +40,7 @@ def get_base_tools() -> list[ToolDefinition | RawTool]:
                                 "spots": {"type": "integer", "description": "Number of spots (default: 1)", "default": 1},
                                 "production_fee": {"type": "string", "description": "Production fee for static locations (e.g., 'AED 5,000'). If multiple production fees are mentioned (client changing artwork during campaign), sum them together (e.g., two productions at AED 20,000 each = 'AED 40,000'). Required for static locations."}
                             },
-                            "required": ["location", "start_date", "end_date", "durations", "net_rates"]
+                            "required": ["location", "start_dates", "durations", "net_rates"]
                         },
                         "description": "Array of proposal objects. Each location can have multiple duration/rate options."
                     },
@@ -72,12 +75,11 @@ def get_base_tools() -> list[ToolDefinition | RawTool]:
                             "properties": {
                                 "location": {"type": "string", "description": "The exact location_key from the system prompt (e.g., 'dubai_gateway', 'dubai_jawhara'). Use the location_key shown in parentheses in the DIGITAL/STATIC location lists above. Extract the key from the format 'Display Name (location_key) [company]'. If user says 'gateway', use 'dubai_gateway'. If unsure, use your best judgment to match to the correct location_key."},
                                 "start_date": {"type": "string", "description": "Start date for this location (e.g., 1st January 2026)"},
-                                "end_date": {"type": "string", "description": "End date for this location. Either extract from user message if provided, or calculate from start_date + duration (e.g., start: 1st Jan + 2 weeks = end: 15th Jan)."},
                                 "duration": {"type": "string", "description": "Duration for this location (e.g., '2 Weeks')"},
                                 "spots": {"type": "integer", "description": "Number of spots (default: 1)", "default": 1},
                                 "production_fee": {"type": "string", "description": "Production fee for static locations (e.g., 'AED 5,000'). If multiple production fees are mentioned (client changing artwork during campaign), sum them together (e.g., two productions at AED 20,000 each = 'AED 40,000'). Required for static locations."}
                             },
-                            "required": ["location", "start_date", "end_date", "duration"]
+                            "required": ["location", "start_date", "duration"]
                         },
                         "description": "Array of locations with their individual durations and start dates"
                     },

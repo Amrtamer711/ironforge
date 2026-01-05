@@ -4,11 +4,73 @@ Proposal Validation Module.
 Validates proposal data before processing.
 """
 
+import re
+from datetime import datetime, timedelta
 from typing import Any
 
 import config
 from core.services.asset_service import get_asset_service
 from core.utils import match_location_key, get_location_metadata
+
+
+def _calculate_end_date(start_date: str, duration_str: str | int) -> str:
+    """
+    Calculate end date from start date and duration.
+
+    Args:
+        start_date: Start date string (e.g., "1st December 2025" or "01/12/2025")
+        duration_str: Duration string (e.g., "4 Weeks", "2 weeks") or int
+
+    Returns:
+        End date in same format as start_date
+    """
+    # Parse duration (extract weeks number)
+    weeks = 4  # default
+    if isinstance(duration_str, str):
+        match = re.search(r'(\d+)', duration_str)
+        if match:
+            weeks = int(match.group(1))
+    elif isinstance(duration_str, int):
+        weeks = duration_str
+
+    # Parse start date (try multiple formats)
+    parsed_date = None
+    formats = [
+        "%d/%m/%Y",  # 01/12/2025
+        "%d-%m-%Y",  # 01-12-2025
+    ]
+
+    for fmt in formats:
+        try:
+            parsed_date = datetime.strptime(start_date, fmt)
+            break
+        except ValueError:
+            continue
+
+    # Try natural language format (1st December 2025)
+    if not parsed_date:
+        try:
+            # Remove ordinal suffixes
+            cleaned = re.sub(r'(\d+)(st|nd|rd|th)', r'\1', start_date)
+            parsed_date = datetime.strptime(cleaned, "%d %B %Y")
+        except ValueError:
+            pass
+
+    if not parsed_date:
+        # Return a placeholder if parsing fails
+        return f"{weeks} weeks from {start_date}"
+
+    # Calculate end date
+    end_date = parsed_date + timedelta(weeks=weeks)
+
+    # Return in same format as input
+    if "/" in start_date:
+        return end_date.strftime("%d/%m/%Y")
+    else:
+        # Return natural language format
+        day = end_date.day
+        suffix = "th" if 11 <= day <= 13 else {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+        return f"{day}{suffix} {end_date.strftime('%B %Y')}"
 
 
 class ProposalValidator:
@@ -104,10 +166,13 @@ class ProposalValidator:
         for idx, proposal in enumerate(proposals_data):
             # Extract proposal data
             location = proposal.get("location", "").lower().strip()
-            start_date = proposal.get("start_date")
             durations = proposal.get("durations", [])
             net_rates = proposal.get("net_rates", [])
             spots = proposal.get("spots", 1)
+
+            # Handle start_dates array (separate proposals) or start_date string (combined)
+            start_dates = proposal.get("start_dates")  # Array for separate proposals
+            start_date = proposal.get("start_date")    # Single for combined proposals
 
             self.logger.info(f"[VALIDATOR] Validating proposal {idx + 1}: location='{location}'")
 
@@ -144,6 +209,14 @@ class ProposalValidator:
                 )
                 continue
 
+            # Validate start_dates alignment (for separate proposals with start_dates array)
+            if start_dates and len(start_dates) != len(durations):
+                errors.append(
+                    f"Proposal {idx + 1}: Mismatched start_dates ({len(start_dates)}) "
+                    f"and durations ({len(durations)}) for {matched_key}"
+                )
+                continue
+
             # Get template filename from mapping
             mapping = config.get_location_mapping()
             if matched_key not in mapping:
@@ -154,19 +227,43 @@ class ProposalValidator:
             validated_proposal = {
                 "location": matched_key,
                 "location_input": location,  # Keep original for logging
-                "start_date": start_date or "1st December 2025",
                 "durations": durations,
                 "spots": int(spots),
                 "filename": mapping[matched_key],
                 "company_schema": company_schema,  # For O(1) template lookup
             }
 
+            # Handle start_dates/end_dates (arrays for separate) vs start_date/end_date (singles for combined)
+            if start_dates:
+                # Separate proposals: arrays of start_dates → calculate end_dates array
+                validated_proposal["start_dates"] = start_dates
+                end_dates = []
+                for i, duration in enumerate(durations):
+                    sd = start_dates[i] if i < len(start_dates) else start_dates[0]
+                    end_dates.append(_calculate_end_date(sd, duration))
+                validated_proposal["end_dates"] = end_dates
+                # Also set start_date to first for backward compat
+                validated_proposal["start_date"] = start_dates[0]
+                validated_proposal["end_date"] = end_dates[0]
+                self.logger.debug(
+                    f"[VALIDATOR] Calculated end_dates for {matched_key}: {end_dates}"
+                )
+            else:
+                # Combined proposals: single start_date → calculate single end_date
+                validated_proposal["start_date"] = start_date or "1st December 2025"
+                # For combined, duration is singular (first item or from 'duration' field)
+                duration_for_calc = durations[0] if durations else proposal.get("duration", "4 Weeks")
+                validated_proposal["end_date"] = _calculate_end_date(
+                    validated_proposal["start_date"],
+                    duration_for_calc
+                )
+                self.logger.debug(
+                    f"[VALIDATOR] Calculated end_date for {matched_key}: {validated_proposal['end_date']}"
+                )
+
             # Add optional fields
             if net_rates:
                 validated_proposal["net_rates"] = net_rates
-
-            if "end_date" in proposal:
-                validated_proposal["end_date"] = proposal["end_date"]
 
             if "production_fee" in proposal:
                 validated_proposal["production_fee"] = proposal["production_fee"]

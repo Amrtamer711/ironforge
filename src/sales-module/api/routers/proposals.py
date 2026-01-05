@@ -118,21 +118,19 @@ class ProposalLocationInput(BaseModel):
     """
     Input for a single location in a proposal.
 
-    Accepts LLM format (durations/net_rates arrays, string amounts)
-    OR simplified format (duration/net_rate single values).
+    For SEPARATE proposals: use start_dates[], durations[], net_rates[] (parallel arrays)
+    For COMBINED proposals: use start_date, duration (singular values per location)
     """
     location: str = Field(..., description="Location key (e.g., 'dubai_gateway')")
-    start_date: str = Field(..., description="Start date (e.g., '1st December 2025' or 'DD/MM/YYYY')")
-    end_date: str | None = Field(default=None, description="End date (optional, calculated from duration if not provided)")
 
-    # LLM format: arrays of durations and rates
+    # Separate proposals: arrays (one per pricing option)
+    start_dates: list[str] | None = Field(default=None, description="Start dates for each duration option (e.g., ['1st Dec 2025', '1st Dec 2025'])")
     durations: list[str] | None = Field(default=None, description="Duration options (e.g., ['2 Weeks', '4 Weeks'])")
     net_rates: list[str] | None = Field(default=None, description="Net rates for each duration (e.g., ['AED 1,250,000', 'AED 2,300,000'])")
 
-    # Combined proposal format: single duration
-    duration: str | int | None = Field(default=None, description="Single duration (e.g., '4 Weeks' or 4)")
-
-    # Simple format: single net_rate (for backward compat or combined proposals)
+    # Combined proposals: single values per location
+    start_date: str | None = Field(default=None, description="Start date for combined proposal (e.g., '1st December 2025')")
+    duration: str | int | None = Field(default=None, description="Single duration for combined (e.g., '4 Weeks' or 4)")
     net_rate: float | str | None = Field(default=None, description="Single net rate (float or 'AED X,XXX')")
 
     # Fees
@@ -426,15 +424,21 @@ async def create_proposal(
 
             proposal_dict = {
                 "location": p.location.strip().lower().replace(" ", "_"),
-                "start_date": p.start_date,
                 "durations": durations,
                 "net_rates": net_rates,
                 "spots": p.spots,
             }
 
-            # Add end_date if provided
-            if p.end_date:
-                proposal_dict["end_date"] = p.end_date
+            # Handle start_dates array (separate) vs start_date (combined)
+            if p.start_dates:
+                # Separate proposals: use start_dates array
+                proposal_dict["start_dates"] = p.start_dates
+            elif p.start_date:
+                # Combined proposals: use single start_date
+                proposal_dict["start_date"] = p.start_date
+            else:
+                # Default: use current date placeholder
+                proposal_dict["start_date"] = "1st December 2025"
 
             # Add fees (parse string amounts)
             if p.upload_fee is not None:
@@ -771,13 +775,19 @@ async def regenerate_proposal(
 
                 proposal_dict = {
                     "location": p.location.strip().lower().replace(" ", "_"),
-                    "start_date": p.start_date,
                     "durations": durations,
                     "net_rates": net_rates,
                     "spots": p.spots,
                 }
-                if p.end_date:
-                    proposal_dict["end_date"] = p.end_date
+
+                # Handle start_dates array (separate) vs start_date (combined)
+                if p.start_dates:
+                    proposal_dict["start_dates"] = p.start_dates
+                elif p.start_date:
+                    proposal_dict["start_date"] = p.start_date
+                else:
+                    proposal_dict["start_date"] = "1st December 2025"
+
                 if p.upload_fee is not None:
                     parsed = _parse_currency_amount(p.upload_fee)
                     if parsed is not None:
