@@ -38,11 +38,11 @@ variable "s3_bucket_names" {
   type        = list(string)
   description = "S3 bucket names to create."
   default = [
-    "mmg-global-ingest-bucket-1-t586",
-    "mmg-global-corpus-bucket-1-t586",
-    "mmg-global-data-bucket-1-t586",
-    "mmg-global-data-bucket-2-t586",
-    "mmg-global-data-bucket-3-t586"
+    "mmg-global-ingest-bucket-1-t587",
+    "mmg-global-corpus-bucket-1-t587",
+    "mmg-global-data-bucket-1-t587",
+    "mmg-global-data-bucket-2-t587",
+    "mmg-global-data-bucket-3-t587"
   ]
 }
 
@@ -63,14 +63,20 @@ variable "ecr_repository_names" {
     "accountsreceivable",
     "salesordermanagement",
     "testapprepo",
-    "mmg-unified-ui"
+    "unifiedui"
   ]
+}
+
+variable "ecr_force_delete" {
+  type        = bool
+  description = "Whether to force delete ECR repositories on destroy (deletes all images)."
+  default     = false
 }
 
 variable "eks_cluster_name" {
   type        = string
   description = "EKS cluster name."
-  default     = "mmg-test-cluster-1-t586"
+  default     = "mmg-test-cluster-1-t587"
 }
 
 variable "kubernetes_version" {
@@ -83,6 +89,35 @@ variable "eks_admin_principal_arns" {
   type        = list(string)
   description = "List of IAM principal ARNs (users/roles) that should have cluster-admin access to the EKS cluster via EKS Access Entries. If empty, defaults to the Terraform caller identity ARN."
   default     = []
+}
+
+variable "enable_workload_fargate_profile" {
+  type        = bool
+  description = "Whether to create a Fargate profile for workload_namespaces."
+  default     = true
+}
+
+variable "workload_namespaces" {
+  type        = list(string)
+  description = "Kubernetes namespaces to schedule onto Fargate for workloads (apps + platform controllers like ArgoCD)."
+  default     = ["argocd", "unifiedui", "backends"]
+
+  validation {
+    condition = (
+      length(var.workload_namespaces) == length(distinct(var.workload_namespaces))
+      && alltrue([
+        for ns in var.workload_namespaces :
+        length(ns) <= 63 && can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", ns))
+      ])
+    )
+    error_message = "workload_namespaces must be unique and each namespace must be a valid Kubernetes namespace name (RFC1123 label): <=63 chars, lowercase alphanumeric or '-', start/end with alphanumeric."
+  }
+}
+
+variable "workload_namespace_labels" {
+  type        = map(map(string))
+  description = "Optional label selectors per workload namespace (namespace => labels map). If omitted for a namespace, all pods in that namespace match."
+  default     = {}
 }
 
 # RDS (RBAC database)
@@ -127,6 +162,3 @@ variable "db_publicly_accessible" {
   description = "Whether the RDS instance is publicly accessible (recommended false)."
   default     = false
 }
-
-
- 

@@ -7,9 +7,9 @@ resource "aws_iam_role" "cluster" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Service = "eks.amazonaws.com" }
-      Action = "sts:AssumeRole"
+      Action    = "sts:AssumeRole"
     }]
   })
 
@@ -17,7 +17,7 @@ resource "aws_iam_role" "cluster" {
 }
 
 resource "aws_iam_role_policy_attachment" "cluster" {
-  role      = aws_iam_role.cluster.name
+  role       = aws_iam_role.cluster.name
   policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
@@ -27,9 +27,9 @@ resource "aws_iam_role" "fargate_pod_execution" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect = "Allow"
+      Effect    = "Allow"
       Principal = { Service = "eks-fargate-pods.amazonaws.com" }
-      Action = "sts:AssumeRole"
+      Action    = "sts:AssumeRole"
     }]
   })
 
@@ -37,7 +37,7 @@ resource "aws_iam_role" "fargate_pod_execution" {
 }
 
 resource "aws_iam_role_policy_attachment" "fargate_pod_execution" {
-  role      = aws_iam_role.fargate_pod_execution.name
+  role       = aws_iam_role.fargate_pod_execution.name
   policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy"
 }
 
@@ -53,9 +53,9 @@ resource "aws_eks_cluster" "this" {
   }
 
   access_config {
-  authentication_mode                         = "API_AND_CONFIG_MAP"
-  bootstrap_cluster_creator_admin_permissions = true
-}
+    authentication_mode                         = "API_AND_CONFIG_MAP"
+    bootstrap_cluster_creator_admin_permissions = true
+  }
 
   tags = var.tags
 
@@ -107,6 +107,8 @@ resource "aws_eks_fargate_profile" "alb_controller" {
 }
 
 resource "aws_eks_fargate_profile" "argocd" {
+  count = var.enable_workload_fargate_profile && contains(var.workload_namespaces, "argocd") ? 1 : 0
+
   cluster_name           = aws_eks_cluster.this.name
   fargate_profile_name   = "${var.cluster_name}-argocd"
   pod_execution_role_arn = aws_iam_role.fargate_pod_execution.arn
@@ -119,5 +121,38 @@ resource "aws_eks_fargate_profile" "argocd" {
   tags = var.tags
 }
 
+locals {
+  workload_profile_namespaces = var.enable_workload_fargate_profile ? toset(var.workload_namespaces) : toset([])
+
+  additional_workload_namespaces = setsubtract(
+    local.workload_profile_namespaces,
+    toset(["argocd", "kube-system"])
+  )
+
+  workload_profile_names = {
+    for ns in local.additional_workload_namespaces :
+    ns => (
+      length("${var.cluster_name}-wl-${ns}") <= 63
+      ? "${var.cluster_name}-wl-${ns}"
+      : "${substr(var.cluster_name, 0, 45)}-wl-${substr(md5(ns), 0, 10)}"
+    )
+  }
+}
+
+resource "aws_eks_fargate_profile" "workloads" {
+  for_each = local.additional_workload_namespaces
+
+  cluster_name           = aws_eks_cluster.this.name
+  fargate_profile_name   = local.workload_profile_names[each.key]
+  pod_execution_role_arn = aws_iam_role.fargate_pod_execution.arn
+  subnet_ids             = var.private_subnet_ids
+
+  selector {
+    namespace = each.value
+    labels    = lookup(var.workload_namespace_labels, each.value, {})
+  }
+
+  tags = var.tags
+}
 
 
