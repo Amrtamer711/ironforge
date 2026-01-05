@@ -169,7 +169,7 @@ export function GenerateTab({
                 setTemplateKey("");
               }}
             >
-              <option value="">Select a location...</option>
+              <option value="">Select a location</option>
               {locationOptions.map((loc) => (
                 <option key={loc.key} value={loc.key}>
                   {loc.name}
@@ -263,7 +263,7 @@ export function GenerateTab({
                         />
                       ) : (
                         <div className="h-40 grid place-items-center text-xs text-black/50 dark:text-white/60">
-                          Loading...
+                          <LoadingEllipsis text="Loading" className="text-xs text-black/50 dark:text-white/60" />
                         </div>
                       )}
                     </div>
@@ -332,7 +332,7 @@ export function GenerateTab({
 
         <div className="flex items-center gap-3">
           <Button className="rounded-2xl" onClick={onGenerate} disabled={!canGenerate}>
-            {generating ? "Generating..." : "Generate"}
+            {generating ? <LoadingEllipsis text="Generating" /> : "Generate"}
           </Button>
           <div className="text-xs text-black/55 dark:text-white/60">Location + (creative or prompt) required</div>
         </div>
@@ -341,7 +341,9 @@ export function GenerateTab({
           {!resultUrl && !generating ? (
             <div className="text-sm text-black/60 dark:text-white/65">Result will appear here</div>
           ) : null}
-          {generating ? <div className="text-sm text-black/60 dark:text-white/65">Processing mockup...</div> : null}
+          {generating ? (
+            <LoadingEllipsis text="Processing mockup" className="text-sm text-black/60 dark:text-white/65" />
+          ) : null}
           {resultUrl ? (
             <div className="space-y-3">
               <img

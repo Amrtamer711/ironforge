@@ -24,16 +24,22 @@ export function PermissionSetsTab({
   return (
     <Card>
       <CardHeader className="space-y-2">
-        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Permission Sets</CardTitle>
-          <SearchInput
-            value={permissionSetSearch}
-            onChange={(e) => setPermissionSetSearch(e.target.value)}
-            className="w-full sm:w-[220px] sm:justify-self-end"
-          />
-          <Button variant="secondary" className="rounded-2xl" onClick={() => openPermissionSetModal(null)}>
-            Add permission set
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <SearchInput
+              value={permissionSetSearch}
+              onChange={(e) => setPermissionSetSearch(e.target.value)}
+              className="w-full sm:w-[220px]"
+            />
+            <Button
+              variant="secondary"
+              className="rounded-2xl self-start sm:self-auto"
+              onClick={() => openPermissionSetModal(null)}
+            >
+              Add permission set
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -520,7 +526,7 @@ export function PermissionSetsModal({
               Cancel
             </Button>
             <Button className="rounded-2xl" onClick={savePermissionSet} disabled={savingPermissionSet}>
-              {savingPermissionSet ? "Saving..." : "Save"}
+              {savingPermissionSet ? <LoadingEllipsis text="Saving" /> : "Save"}
             </Button>
           </div>
         </div>

@@ -5,11 +5,11 @@ export async function getDashboard() {
 }
 
 export async function getUsers({ limit = 100, offset = 0 } = {}) {
-  return apiRequest(`/api/admin/users`); //?limit=${limit}&offset=${offset}`);
+  return apiRequest(`/api/rbac/users`); //?limit=${limit}&offset=${offset}`);
 }
 
 export async function getUser(userId) {
-  return apiRequest(`/api/admin/users/${userId}`);
+  return apiRequest(`/api/rbac/user/${userId}`);
 }
 
 export async function getrbacUser(userId) {
@@ -30,6 +30,14 @@ export async function updateUser(userId, userData) {
 
 export async function deleteUser(userId) {
   return apiRequest(`/api/admin/users/${userId}`, { method: "DELETE" });
+}
+
+export async function deactivateUser(userId) {
+  return apiRequest(`/api/rbac/users/${encodeURIComponent(userId)}/deactivate`, { method: "POST" });
+}
+
+export async function reactivateUser(userId) {
+  return apiRequest(`/api/rbac/users/${encodeURIComponent(userId)}/reactivate`, { method: "POST" });
 }
 
 export async function getProfiles() {

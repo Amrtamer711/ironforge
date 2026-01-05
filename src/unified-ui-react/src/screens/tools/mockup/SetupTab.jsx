@@ -114,7 +114,7 @@ export function SetupTab({
                     setTemplateKey("");
                   }}
                 >
-                  <option value="">Select a location...</option>
+                  <option value="">Select a location</option>
                   {locationOptions.map((loc) => (
                     <option key={loc.key} value={loc.key}>
                       {loc.name}
@@ -219,7 +219,7 @@ export function SetupTab({
                                 />
                               ) : (
                                 <div className="h-40 grid place-items-center text-xs text-black/50 dark:text-white/60">
-                                  Loading...
+                                  <LoadingEllipsis text="Loading" className="text-xs text-black/50 dark:text-white/60" />
                                 </div>
                               )}
                             </div>
@@ -477,7 +477,7 @@ export function SetupTab({
                               onClick={generateTestPreview}
                               disabled={!activeTestCreativeFile || !setupPhoto || !hasActiveFrame || testPreviewing}
                             >
-                              {testPreviewing ? "Generating..." : "Generate Test Preview"}
+                              {testPreviewing ? <LoadingEllipsis text="Generating" /> : "Generate Test Preview"}
                             </Button>
                             {activeFrameIndex >= 0 ? (
                               <div className="text-xs text-blue-800 dark:text-blue-200">
@@ -565,7 +565,13 @@ export function SetupTab({
             Reset Current Frame
           </Button>
           <Button className="rounded-2xl" onClick={saveSetup} disabled={setupSaving || !location || !setupPhoto}>
-            {setupSaving ? "Saving..." : editingTemplate ? "Save Changes" : "Save All Frames"}
+            {setupSaving ? (
+              <LoadingEllipsis text="Saving" />
+            ) : editingTemplate ? (
+              "Save Changes"
+            ) : (
+              "Save All Frames"
+            )}
           </Button>
           <Button variant="ghost" className="rounded-2xl" onClick={() => clearAllFrames(false)}>
             Clear All Frames

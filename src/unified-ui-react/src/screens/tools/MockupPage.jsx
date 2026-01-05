@@ -354,7 +354,7 @@ export function MockupPage() {
       formData.append("location_key", location);
       formData.append("time_of_day", timeOfDay || "all");
       formData.append("finish", finish || "all");
-      formData.append("frames", JSON.stringify(framesPayload));
+      formData.append("frames_data", JSON.stringify(framesPayload));
       formData.append("photo", setupPhoto);
 
       await mockupApi.saveSetupPhoto(formData);
@@ -1302,7 +1302,7 @@ export function MockupPage() {
       });
     }
     return frames.map((frame) => ({
-      points: frame.points.flatMap((pt) => [pt[0], pt[1]]),
+      points: frame.points.map((pt) => [pt[0], pt[1]]),
       config: frame.config,
     }));
   }

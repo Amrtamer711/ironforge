@@ -92,7 +92,7 @@ export function GenerateTab({
               value={location}
               onChange={(e) => setLocation(e.target.value)}
             >
-              <option value="">Select a location...</option>
+              <option value="">Select a location</option>
               {locationOptions.map((loc) => (
                 <option key={loc.key || loc.id} value={loc.key || loc.id}>
                   {loc.name || loc.label || loc.key || loc.id}
@@ -130,7 +130,7 @@ export function GenerateTab({
             disabled={generateMutation.isLoading}
           >
             <Plus size={18} />
-            {generateMutation.isLoading ? "Generating..." : "Generate Proposal"}
+            {generateMutation.isLoading ? <LoadingEllipsis text="Generating" /> : "Generate Proposal"}
           </Button>
           <div className="text-xs text-black/55 dark:text-white/60">Files will appear in history once ready.</div>
         </div>

@@ -23,16 +23,18 @@ export function ProfilesTab({
   return (
     <Card>
       <CardHeader className="space-y-2">
-        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Profiles</CardTitle>
-          <SearchInput
-            value={profileSearch}
-            onChange={(e) => setProfileSearch(e.target.value)}
-            className="w-full sm:w-[220px] sm:justify-self-end"
-          />
-          <Button variant="secondary" className="rounded-2xl" onClick={() => openProfileModal(null)}>
-            Add profile
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <SearchInput
+              value={profileSearch}
+              onChange={(e) => setProfileSearch(e.target.value)}
+              className="w-full sm:w-[220px]"
+            />
+            <Button variant="secondary" className="rounded-2xl self-start sm:self-auto" onClick={() => openProfileModal(null)}>
+              Add profile
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -692,7 +694,7 @@ export function ProfilesModal({
               Cancel
             </Button>
             <Button className="rounded-2xl" onClick={saveProfile} disabled={savingProfile || profileIsSystem}>
-              {savingProfile ? "Saving..." : "Save"}
+              {savingProfile ? <LoadingEllipsis text="Saving" /> : "Save"}
             </Button>
           </div>
         </div>

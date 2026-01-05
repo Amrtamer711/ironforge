@@ -34,18 +34,24 @@ export function PermissionsTab({
   return (
     <Card>
       <CardHeader className="space-y-2">
-        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Permissions</CardTitle>
-          <SearchInput
-            value={permissionSearch}
-            onChange={(e) => setPermissionSearch(e.target.value)}
-            className="w-full sm:w-[220px] sm:justify-self-end"
-          />
-          <Button className="rounded-2xl" variant="secondary" onClick={() => openPermissionModal("add", "")}>
-            Add permission
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <SearchInput
+              value={permissionSearch}
+              onChange={(e) => setPermissionSearch(e.target.value)}
+              className="w-full sm:w-[220px]"
+            />
+            <Button
+              className="rounded-2xl self-start sm:self-auto"
+              variant="secondary"
+              onClick={() => openPermissionModal("add", "")}
+            >
+              Add permission
+            </Button>
+          </div>
         </div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
           <select
             className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
             value={permissionModuleFilter}
@@ -71,7 +77,7 @@ export function PermissionsTab({
             ))}
           </select>
           <select
-            className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+            className="col-span-2 w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none sm:col-span-1"
             value={permissionActionFilter}
             onChange={(e) => setPermissionActionFilter(e.target.value)}
           >
@@ -139,7 +145,12 @@ export function PermissionsTab({
                     </div>
                   </div>
                   {description ? (
-                    <div className="mt-2 text-sm text-black/60 dark:text-white/65 truncate">{description}</div>
+                    <div className="mt-2 flex items-baseline gap-1 text-sm min-w-0">
+                      <span className="text-xs uppercase tracking-wide text-black/50 dark:text-white/60">
+                        Description
+                      </span>
+                      <span className="text-black/60 dark:text-white/65 truncate">{description}</span>
+                    </div>
                   ) : null}
                 </SoftCard>
               );
@@ -449,11 +460,13 @@ export function PermissionsModal({
         ) : null}
         <div className="flex justify-end">
           <Button className="rounded-2xl" onClick={savePermissionModal} disabled={savingPermission}>
-            {savingPermission
-              ? "Saving..."
-              : permissionModal.mode === "edit"
-                ? "Update Permission"
-                : "Add Permission"}
+            {savingPermission ? (
+              <LoadingEllipsis text="Saving" />
+            ) : permissionModal.mode === "edit" ? (
+              "Update Permission"
+            ) : (
+              "Add Permission"
+            )}
           </Button>
         </div>
       </div>

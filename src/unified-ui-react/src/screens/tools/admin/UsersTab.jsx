@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, ChevronDown, Pencil, UserRoundX } from "lucide-react";
+import { Check, ChevronDown, Pencil, UserRoundCheck, UserRoundX } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { Button } from "../../../components/ui/button";
 import { FormField } from "../../../components/ui/form-field";
@@ -32,26 +32,28 @@ export function UsersTab({
   return (
     <Card className="flex-1 min-h-0">
       <CardHeader className="space-y-2">
-        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Users</CardTitle>
-          <SearchInput
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className="w-full sm:w-[220px] sm:justify-self-end"
-          />
-          {/* <div className="flex w-full justify-end gap-1 md:w-auto">
-            <Button variant="ghost" size="sm" className="rounded-xl" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
-              Prev
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <SearchInput
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              className="w-full sm:w-[220px]"
+            />
+            {/* <div className="flex w-full justify-end gap-1 md:w-auto">
+              <Button variant="ghost" size="sm" className="rounded-xl" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+                Prev
+              </Button>
+              <Button variant="ghost" size="sm" className="rounded-xl" disabled={!hasNext} onClick={() => setPage((p) => p + 1)}>
+                Next
+              </Button>
+            </div> */}
+            <Button variant="secondary" className="rounded-2xl self-start sm:self-auto" onClick={openNewUserModal}>
+              Add user
             </Button>
-            <Button variant="ghost" size="sm" className="rounded-xl" disabled={!hasNext} onClick={() => setPage((p) => p + 1)}>
-              Next
-            </Button>
-          </div> */}
-          <Button variant="secondary" className="rounded-2xl" onClick={openNewUserModal}>
-            Add user
-          </Button>
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <select
             className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
             value={userCompanyFilter}
@@ -97,11 +99,22 @@ export function UsersTab({
                   (u.user_id && user?.user_id && u.user_id === user.user_id) ||
                   (u.email && user?.email && u.email === user.email)
               );
+              const rawActive = u.is_active ?? u.isActive ?? u.active;
+              const hasActiveFlag = typeof rawActive === "boolean";
+              const isActive = hasActiveFlag ? rawActive : true;
+              const deactivateLabel = isActive ? "Deactivate" : "Reactivate";
               return (
                 <SoftCard key={u.id || u.user_id || u.email} className="p-4 space-y-2">
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="text-base font-semibold">{u.name || "—"}</div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-base font-semibold">{u.name || "—"}</div>
+                        {hasActiveFlag && !isActive ? (
+                          <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/20 dark:text-red-200">
+                            Inactive
+                          </span>
+                        ) : null}
+                      </div>
                       <div className="text-sm text-black/55 dark:text-white/60">{u.email}</div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -114,15 +127,20 @@ export function UsersTab({
                           setConfirmDelete({
                             open: true,
                             type: "user",
-                            payload: u.id || u.user_id,
-                            label: `Deactivate user "${u.email}"?`,
+                            payload: { id: u.id || u.user_id, isActive },
+                            label: `${deactivateLabel} user "${u.email}"?`,
                           })
                         }
                         disabled={isSelfCard}
-                        title={isSelfCard ? "You cannot deactivate yourself" : "Deactivate user"}
-                        aria-label="Deactivate user"
+                        title={isSelfCard ? "You cannot deactivate yourself" : `${deactivateLabel} user`}
+                        aria-label={`${deactivateLabel} user`}
+                        className={
+                          isActive
+                            ? undefined
+                            : "text-emerald-600 hover:text-emerald-700 dark:text-emerald-300"
+                        }
                       >
-                        <UserRoundX size={16} />
+                        {isActive ? <UserRoundX size={16} /> : <UserRoundCheck size={16} />}
                       </IconActionButton>
                     </div>
                   </div>
@@ -221,10 +239,13 @@ export function UsersPanel({
   async function handleConfirmDelete() {
     if (!confirmDelete.open || !confirmDelete.payload) return;
     try {
-      if ((user?.id && confirmDelete.payload === user.id) || (user?.user_id && confirmDelete.payload === user.user_id)) {
+      const payload = confirmDelete.payload;
+      const targetId = payload?.id ?? payload;
+      if (!targetId) return;
+      if ((user?.id && targetId === user.id) || (user?.user_id && targetId === user.user_id)) {
         return;
       }
-      await deleteUser(confirmDelete.payload);
+      await deleteUser(payload);
     } finally {
       setConfirmDelete({ open: false, type: "", payload: null, label: "" });
     }
@@ -458,10 +479,17 @@ function useUserActions({ permissionList, profileValues, permissionSetValues }) 
     }
   }
 
-  async function deleteUser(userId) {
-    if (!userId) return;
+  async function deleteUser(payload) {
+    const target = payload?.id ?? payload;
+    if (!target) return;
     try {
-      await adminApi.deleteUser(userId);
+      const rawActive = payload?.isActive ?? payload?.is_active;
+      const isActive = typeof rawActive === "boolean" ? rawActive : true;
+      if (isActive) {
+        await adminApi.deactivateUser(target);
+      } else {
+        await adminApi.reactivateUser(target);
+      }
       qc.invalidateQueries({ queryKey: ["admin", "users"] });
       setUserModalOpen(false);
       setSelectedUser(null);
@@ -947,18 +975,40 @@ export function UsersModal({
             {userModalMode === "edit" ? (
               <Button
                 variant="ghost"
-                className="rounded-2xl text-red-600 hover:text-red-700 dark:text-red-300"
+                className={cn(
+                  "rounded-2xl",
+                  typeof (selectedUser?.is_active ?? selectedUser?.isActive ?? selectedUser?.active) === "boolean" &&
+                    !(selectedUser?.is_active ?? selectedUser?.isActive ?? selectedUser?.active)
+                    ? "text-emerald-600 hover:text-emerald-700 dark:text-emerald-300"
+                    : "text-red-600 hover:text-red-700 dark:text-red-300"
+                )}
                 onClick={() =>
                   setConfirmDelete({
                     open: true,
                     type: "user",
-                    payload: selectedUser?.id || selectedUser?.user_id,
-                    label: `Deactivate user \"${selectedUser?.email}\"?`,
+                    payload: {
+                      id: selectedUser?.id || selectedUser?.user_id,
+                      isActive:
+                        typeof (selectedUser?.is_active ?? selectedUser?.isActive ?? selectedUser?.active) === "boolean"
+                          ? selectedUser?.is_active ?? selectedUser?.isActive ?? selectedUser?.active
+                          : true,
+                    },
+                    label: `${
+                      typeof (selectedUser?.is_active ?? selectedUser?.isActive ?? selectedUser?.active) === "boolean"
+                        ? selectedUser?.is_active ?? selectedUser?.isActive ?? selectedUser?.active
+                          ? "Deactivate"
+                          : "Reactivate"
+                        : "Deactivate"
+                    } user \"${selectedUser?.email}\"?`,
                   })
                 }
                 disabled={isSelfUser}
               >
-                Deactivate
+                {typeof (selectedUser?.is_active ?? selectedUser?.isActive ?? selectedUser?.active) === "boolean"
+                  ? selectedUser?.is_active ?? selectedUser?.isActive ?? selectedUser?.active
+                    ? "Deactivate"
+                    : "Reactivate"
+                  : "Deactivate"}
               </Button>
             ) : (
               <span />
@@ -968,7 +1018,7 @@ export function UsersModal({
                 Cancel
               </Button>
               <Button className="rounded-2xl" onClick={saveUser} disabled={savingUser}>
-                {savingUser ? "Saving..." : "Save"}
+                {savingUser ? <LoadingEllipsis text="Saving" /> : "Save"}
               </Button>
             </div>
           </div>

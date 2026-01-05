@@ -23,16 +23,22 @@ export function CompaniesTab({
   return (
     <Card>
       <CardHeader className="space-y-2">
-        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Companies</CardTitle>
-          <SearchInput
-            value={companySearch}
-            onChange={(e) => setCompanySearch(e.target.value)}
-            className="w-full sm:w-[220px] sm:justify-self-end"
-          />
-          <Button variant="secondary" className="rounded-2xl" onClick={() => openCompanyModal(null)}>
-            Add company
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+            <SearchInput
+              value={companySearch}
+              onChange={(e) => setCompanySearch(e.target.value)}
+              className="w-full sm:w-[220px]"
+            />
+            <Button
+              variant="secondary"
+              className="rounded-2xl self-start sm:self-auto"
+              onClick={() => openCompanyModal(null)}
+            >
+              Add company
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -299,7 +305,7 @@ export function CompaniesModal({
               className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
               value={companyForm.code}
               onChange={(e) => setCompanyForm((f) => ({ ...f, code: e.target.value }))}
-              placeholder="IF-001"
+              placeholder="MMG-001"
               disabled={Boolean(editingCompany)}
             />
           </FormField>
@@ -308,7 +314,7 @@ export function CompaniesModal({
               className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
               value={companyForm.name}
               onChange={(e) => setCompanyForm((f) => ({ ...f, name: e.target.value }))}
-              placeholder="IronForge HQ"
+              placeholder="MMG Global"
             />
           </FormField>
         </div>
@@ -405,7 +411,7 @@ export function CompaniesModal({
               Cancel
             </Button>
             <Button className="rounded-2xl" onClick={saveCompany} disabled={savingCompany}>
-              {savingCompany ? "Saving..." : "Save"}
+              {savingCompany ? <LoadingEllipsis text="Saving" /> : "Save"}
             </Button>
           </div>
         </div>

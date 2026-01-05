@@ -125,10 +125,13 @@ select {
   background-position:
     calc(100% - 18px) calc(50%),
     calc(100% - 12px) calc(50%),
-    calc(100% - 2.4rem) 50%;
-  background-size: 6px 6px, 6px 6px, 1px 1.6rem;
+    calc(100% - 2rem) 50%;
+  background-size: 6px 6px, 6px 6px, 1px 1.2rem;
   background-repeat: no-repeat;
-  padding-right: 2.75rem;
+  padding-right: 2.6rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .dark select {
