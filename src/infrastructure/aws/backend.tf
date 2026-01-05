@@ -1,6 +1,9 @@
 /*
-Uncomment this backend block AFTER you apply ./bootstrap to create the remote
-state bucket and lock table. */
+Remote state backend (S3 + DynamoDB locking)
+
+Keep this commented out so a plain `terraform init` works without AWS access.
+After applying `./bootstrap`, uncomment this block and run
+`terraform init -reconfigure`. */
 
 terraform {
   backend "s3" {
@@ -11,4 +14,3 @@ terraform {
     encrypt        = true
   }
 }
-

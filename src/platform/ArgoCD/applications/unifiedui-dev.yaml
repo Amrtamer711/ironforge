@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: unifiedui-dev
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://REPLACE_ME/your/repo.git
+    targetRevision: HEAD
+    path: src/platform/deploy/kustomize/unifiedui/overlays/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: unifiedui
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+
