@@ -132,17 +132,31 @@ async def save_mockup_frame(
         logger.info(f"[MOCKUP API] ✓ Read {len(photo_data)} bytes from upload")
 
         # Determine which company schema to save to - based on which company owns the location
-        location_data = db.get_location_by_key(location_key, user.companies)
+        location_data = await asset_service.get_location_by_key(location_key, user.companies)
         if not location_data:
             raise HTTPException(status_code=403, detail=f"Location '{location_key}' not found in your accessible companies")
         company_schema = location_data.get("company_schema")
         if not company_schema:
             raise HTTPException(status_code=500, detail=f"Location '{location_key}' has no company schema assigned")
 
-        # Save all frames to database with per-frame configs - this returns the auto-numbered filename
-        logger.info(f"[MOCKUP API] Saving {len(frames)} frame(s) to database for {company_schema}.{location_key}/{time_of_day}/{finish}")
-        final_filename = db.save_mockup_frame(location_key, photo.filename, frames, company_schema, created_by=user.email, time_of_day=time_of_day, finish=finish, config=config_dict)
-        logger.info(f"[MOCKUP API] ✓ Database save complete, filename: {final_filename}")
+        # Save via Asset-Management API (handles database + storage)
+        logger.info(f"[MOCKUP API] Saving {len(frames)} frame(s) via asset-management for {company_schema}.{location_key}/{time_of_day}/{finish}")
+        from integrations.asset_management import asset_mgmt_client
+        result = await asset_mgmt_client.save_mockup_frame(
+            company=company_schema,
+            location_key=location_key,
+            photo_data=photo_data,
+            photo_filename=photo.filename,
+            frames_data=frames,
+            time_of_day=time_of_day,
+            finish=finish,
+            created_by=user.email,
+            config=config_dict,
+        )
+        if not result or not result.get("success"):
+            raise HTTPException(status_code=500, detail="Failed to save mockup frame via asset-management")
+        final_filename = result.get("photo_filename")
+        logger.info(f"[MOCKUP API] ✓ Asset-management save complete, filename: {final_filename}")
 
         # Save photo to disk with the final auto-numbered filename
         logger.info(f"[MOCKUP API] Saving photo to disk: {final_filename}")

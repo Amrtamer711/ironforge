@@ -58,44 +58,9 @@ def save_location_photo(location_key: str, photo_filename: str, photo_data: byte
         else:
             logger.error(f"[MOCKUP] ✗ Photo path does not exist after write: {photo_path}")
 
-        # Track in storage system (async operation with error handling)
-        try:
-            import asyncio
-
-            from integrations.storage import store_mockup_file
-
-            async def _track_photo():
-                try:
-                    result = await store_mockup_file(
-                        data=photo_data,
-                        filename=photo_filename,
-                        location_key=location_key,
-                        time_of_day=time_of_day,
-                        finish=finish,
-                        file_type="location_photo",
-                    )
-                    if result.success:
-                        if result.is_duplicate:
-                            logger.debug(f"[MOCKUP] Photo already tracked (duplicate): {result.file_id}")
-                        else:
-                            logger.info(f"[MOCKUP] Photo tracked in storage: {result.file_id}")
-                    else:
-                        logger.warning(f"[MOCKUP] Failed to track photo in storage: {result.error}")
-                except Exception as e:
-                    logger.warning(f"[MOCKUP] Storage tracking error: {e}")
-
-            # Run async tracking if we're in an event loop
-            try:
-                asyncio.get_running_loop()
-                # Create task with error handling callback
-                task = asyncio.create_task(_track_photo())
-                task.add_done_callback(lambda t: t.exception() if not t.cancelled() and t.exception() else None)
-            except RuntimeError:
-                # No running loop - skip DB tracking for sync context
-                logger.debug("[MOCKUP] No event loop - skipping storage tracking")
-        except Exception as track_err:
-            logger.warning(f"[MOCKUP] Failed to setup storage tracking: {track_err}")
-            # Don't fail the save if tracking fails
+        # Note: Storage upload is now handled by asset-management service
+        # Photo is saved locally here for fallback/caching, but primary storage
+        # goes through the asset-management API
 
     except Exception as e:
         logger.error(f"[MOCKUP] ✗ Failed to save photo: {e}", exc_info=True)

@@ -585,7 +585,7 @@ async def _check_duplicate_by_hash(
     from db.database import db
 
     try:
-        client = db._get_client()
+        client = db._backend._get_client()
         response = client.table(table).select("*").eq(
             "file_hash", file_hash
         ).eq(
@@ -854,10 +854,11 @@ async def store_proposal_file(
     if not content_type:
         content_type = get_mime_type(filename)
 
-    # Generate storage key: proposals/{user_id}/{date}/{file_id}_{filename}
+    # Generate storage key: {user_id}/{date}/{file_id}_{filename}
+    # Note: bucket is already "proposals", so don't include it in the key
     safe_filename = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
     date_prefix = datetime.utcnow().strftime("%Y/%m/%d")
-    storage_key = f"proposals/{user_id}/{date_prefix}/{file_id}_{safe_filename}"
+    storage_key = f"{user_id}/{date_prefix}/{file_id}_{safe_filename}"
     bucket = StorageType.PROPOSALS.value
 
     try:
@@ -878,7 +879,7 @@ async def store_proposal_file(
             )
 
         # Track in proposal_files table (matches schema)
-        client = db._get_client()
+        client = db._backend._get_client()
         insert_data = {
             "file_id": file_id,
             "user_id": user_id,
@@ -1010,9 +1011,10 @@ async def store_mockup_file(
     if not content_type:
         content_type = get_mime_type(filename)
 
-    # Generate storage key: mockups/{location_key}/{time_of_day}/{finish}/{file_id}_{filename}
+    # Generate storage key: {location_key}/{time_of_day}/{finish}/{file_id}_{filename}
+    # Note: bucket is already "mockups", so don't include it in the key
     safe_filename = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
-    storage_key = f"mockups/{location_key}/{time_of_day}/{finish}/{file_id}_{safe_filename}"
+    storage_key = f"{location_key}/{time_of_day}/{finish}/{file_id}_{safe_filename}"
     bucket = StorageType.MOCKUPS.value
 
     try:
@@ -1033,7 +1035,7 @@ async def store_mockup_file(
             )
 
         # Track in mockup_files table (matches schema)
-        client = db._get_client()
+        client = db._backend._get_client()
         insert_data = {
             "file_id": file_id,
             "location_key": location_key,
@@ -1106,7 +1108,7 @@ async def get_tracked_file(
     from db.database import db
 
     try:
-        client = db._get_client()
+        client = db._backend._get_client()
         response = client.table(table).select("*").eq("file_id", file_id).execute()
 
         if not response.data:
@@ -1184,7 +1186,7 @@ async def soft_delete_tracked_file(
     from db.database import db
 
     try:
-        client = db._get_client()
+        client = db._backend._get_client()
         client.table(table).update({
             "is_deleted": True,
             "deleted_at": datetime.utcnow().isoformat(),
@@ -1221,7 +1223,7 @@ async def soft_delete_mockup_by_location(
     from db.database import db
 
     try:
-        client = db._get_client()
+        client = db._backend._get_client()
         # Find the file by location info
         response = client.table("mockup_files").select("file_id").eq(
             "location_key", location_key

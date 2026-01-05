@@ -653,6 +653,70 @@ class AssetManagementClient:
             logger.error(f"[ASSET CLIENT] Failed to delete mockup frame: {e}")
             return False
 
+    async def save_mockup_frame(
+        self,
+        company: str,
+        location_key: str,
+        photo_data: bytes,
+        photo_filename: str,
+        frames_data: list[dict],
+        time_of_day: str = "day",
+        finish: str = "gold",
+        created_by: str | None = None,
+        config: dict | None = None,
+    ) -> dict | None:
+        """
+        Save a mockup frame to Asset-Management (database + storage).
+
+        Args:
+            company: Company schema (e.g., "backlite_dubai")
+            location_key: Location identifier
+            photo_data: Photo file bytes
+            photo_filename: Original photo filename
+            frames_data: List of frame coordinate dicts
+            time_of_day: "day" or "night"
+            finish: "gold" or "silver"
+            created_by: User email who created this
+            config: Optional config dict
+
+        Returns:
+            Result dict with photo_filename, success, storage_url or None on error
+        """
+        import json as json_module
+
+        try:
+            client = await self._get_http_client()
+            headers = self._get_headers()
+            # Remove Content-Type for multipart - httpx will set it
+            headers.pop("Content-Type", None)
+
+            # Prepare multipart form data
+            files = {
+                "photo": (photo_filename, photo_data, "image/jpeg"),
+            }
+            data = {
+                "frames_data": json_module.dumps(frames_data),
+                "time_of_day": time_of_day,
+                "finish": finish,
+            }
+            if created_by:
+                data["created_by"] = created_by
+            if config:
+                data["config_json"] = json_module.dumps(config)
+
+            response = await client.post(
+                f"/api/mockup-frames/{company}/{location_key}",
+                headers=headers,
+                files=files,
+                data=data,
+            )
+            response.raise_for_status()
+            return response.json()
+
+        except Exception as e:
+            logger.error(f"[ASSET CLIENT] Failed to save mockup frame: {e}")
+            return None
+
     async def get_mockup_photo(
         self,
         company: str,
