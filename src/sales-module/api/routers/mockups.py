@@ -161,7 +161,7 @@ async def save_mockup_frame(
 
         # Save photo to disk with the final auto-numbered filename
         logger.info(f"[MOCKUP API] Saving photo to disk: {final_filename}")
-        photo_path = mockup_generator.save_location_photo(location_key, final_filename, photo_data, time_of_day, finish)
+        photo_path = mockup_generator.save_location_photo(company_schema, location_key, final_filename, photo_data, time_of_day, finish)
         logger.info(f"[MOCKUP API] ✓ Photo saved to disk at: {photo_path}")
 
         # Verify the file exists immediately after saving
