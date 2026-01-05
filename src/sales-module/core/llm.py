@@ -1189,12 +1189,19 @@ async def main_llm_loop(
                 if template_deleted:
                     logger.info(f"[LOCATION_DELETE] Template deleted from Asset-Management storage")
 
-                # Delete local mockup photos if they exist (legacy cleanup)
-                mockup_dir = mockup_generator.MOCKUPS_DIR / location_key
-                if mockup_dir.exists():
-                    import shutil
-                    shutil.rmtree(mockup_dir)
-                    logger.info(f"[LOCATION_DELETE] Deleted local mockup directory: {mockup_dir}")
+                # Delete local mockup photos if they exist
+                import shutil
+                # New structure: mockups/{company}/{location_key}/...
+                for company in user_companies:
+                    mockup_dir = mockup_generator.MOCKUPS_DIR / company / location_key
+                    if mockup_dir.exists():
+                        shutil.rmtree(mockup_dir)
+                        logger.info(f"[LOCATION_DELETE] Deleted local mockup directory: {mockup_dir}")
+                # Legacy structure cleanup: mockups/{location_key}/...
+                legacy_mockup_dir = mockup_generator.MOCKUPS_DIR / location_key
+                if legacy_mockup_dir.exists():
+                    shutil.rmtree(legacy_mockup_dir)
+                    logger.info(f"[LOCATION_DELETE] Deleted legacy mockup directory: {legacy_mockup_dir}")
 
                 # Delete all mockup frame data from Asset-Management for each company
                 deleted_count = 0

@@ -899,8 +899,17 @@ async def store_proposal_file(
 
         client.table("proposal_files").insert(insert_data).execute()
 
-        # Always use signed URL (uploads bucket is private)
-        url = await storage.get_signed_url(bucket, storage_key)
+        # Get signed URL with 24-hour expiry (matches web chat pattern)
+        try:
+            url = await storage.get_signed_url(bucket, storage_key, expires_in=86400)
+            if not url:
+                # Fallback to API endpoint if signing fails
+                url = f"/api/proposals/files/{file_id}/{safe_filename}"
+                logger.warning(f"[STORAGE] Signed URL returned None, using API fallback: {url}")
+        except Exception as sign_err:
+            # Fallback to API endpoint if signing fails
+            url = f"/api/proposals/files/{file_id}/{safe_filename}"
+            logger.warning(f"[STORAGE] Signed URL error ({sign_err}), using API fallback: {url}")
 
         logger.info(f"[STORAGE] Stored proposal file: {filename} -> {storage_key}")
 

@@ -200,7 +200,7 @@ async def save_mockup_frame(
             from db.database import _backend
             if hasattr(_backend, '_get_client'):
                 client = _backend._get_client()
-                storage_key = f"{location_key}/{time_of_day}/{finish}/{final_filename}"
+                storage_key = f"{company}/{location_key}/{time_of_day}/{finish}/{final_filename}"
                 content_type = photo.content_type or "image/jpeg"
 
                 # Upload to mockups bucket
