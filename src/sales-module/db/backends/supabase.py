@@ -35,7 +35,7 @@ BOOKING_ORDER_CACHE_TTL = 300  # 5 minutes for booking orders
 STATS_CACHE_TTL = 600  # 10 minutes for statistics
 PROPOSAL_CACHE_TTL = 300  # 5 minutes for proposals
 DOCUMENT_CACHE_TTL = 600  # 10 minutes for documents
-CHAT_CACHE_TTL = 60  # 1 minute for chat sessions
+CHAT_CACHE_TTL = 300  # 5 minutes for chat sessions
 BO_WORKFLOW_CACHE_TTL = 30  # 30 seconds for BO workflows (short-lived)
 AI_COSTS_CACHE_TTL = 900  # 15 minutes for AI costs summary
 

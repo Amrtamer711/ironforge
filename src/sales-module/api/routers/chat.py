@@ -252,11 +252,21 @@ async def get_chat_history(user: AuthUser = Depends(require_permission("sales:ch
         session_id: The conversation session ID
         message_count: Total number of messages
     """
-    from core.chat_persistence import get_chat_session_info, load_chat_messages
+    from db.database import db
 
     try:
-        messages = load_chat_messages(user.id)
-        session_info = get_chat_session_info(user.id)
+        # Single database call - get full session (cached)
+        session = db.get_chat_session(user.id)
+
+        if not session:
+            return {
+                "messages": [],
+                "session_id": None,
+                "message_count": 0,
+                "last_updated": None,
+            }
+
+        messages = session.get("messages", [])
 
         # Refresh signed URLs for attachments (they expire after 24h)
         messages = await _refresh_attachment_urls(messages)
@@ -265,9 +275,9 @@ async def get_chat_history(user: AuthUser = Depends(require_permission("sales:ch
 
         return {
             "messages": messages,
-            "session_id": session_info.get("session_id") if session_info else None,
+            "session_id": session.get("session_id"),
             "message_count": len(messages),
-            "last_updated": session_info.get("updated_at") if session_info else None,
+            "last_updated": session.get("updated_at"),
         }
     except Exception as e:
         logger.error(f"[CHAT] Error loading history for {user.email}: {e}", exc_info=True)
