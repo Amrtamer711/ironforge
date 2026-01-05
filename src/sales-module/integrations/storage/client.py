@@ -899,9 +899,8 @@ async def store_proposal_file(
 
         client.table("proposal_files").insert(insert_data).execute()
 
-        url = result.file.url if result.file else None
-        if not url:
-            url = await storage.get_signed_url(bucket, storage_key)
+        # Always use signed URL (uploads bucket is private)
+        url = await storage.get_signed_url(bucket, storage_key)
 
         logger.info(f"[STORAGE] Stored proposal file: {filename} -> {storage_key}")
 
