@@ -84,3 +84,6 @@ Sofia-Pro Font/
 #Terraform
 .terraform
 .terraform.lock.hcl
+worldstate
+*.tfstate.**
+*.tfstate
