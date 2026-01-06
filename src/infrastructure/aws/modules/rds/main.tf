@@ -1,5 +1,5 @@
 resource "aws_db_subnet_group" "this" {
-  name       = "${var.name_prefix}-db-subnets"
+  name       = "${var.name_prefix}-db-subnets-t588"
   subnet_ids = var.private_subnet_ids
 
   tags = merge(var.tags, {
@@ -37,7 +37,7 @@ resource "aws_security_group_rule" "egress_all" {
 }
 
 resource "aws_db_parameter_group" "this" {
-  name   = "${var.name_prefix}-pg-params"
+  name   = "${var.name_prefix}-pg-params-t588"
   family = "postgres17"
 
   parameter {
