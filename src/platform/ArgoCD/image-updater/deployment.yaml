@@ -24,8 +24,9 @@ spec:
             - run
             - --interval=2m
             - --loglevel=info
-            - --argocd-server=argocd-server.argocd.svc:80
-            - --argocd-insecure
+            - --argocd-server-addr=argocd-server.argocd.svc:80
+            - --argocd-plaintext
+            - --argocd-grpc-web
             - --registries-conf-path=/app/config/registries.conf
           env:
             - name: AWS_REGION
