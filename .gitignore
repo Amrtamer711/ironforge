@@ -87,3 +87,6 @@ Sofia-Pro Font/
 worldstate
 *.tfstate.**
 *.tfstate
+
+# Argo CD TLS params (local env file)
+src/platform/ArgoCD/bootstrap-tls/argocd-tls.env
