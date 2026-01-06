@@ -15,8 +15,8 @@ pandas>=2.1.0,<2.3.0
 openpyxl==3.1.5
 numpy>=2.0.0,<3.0.0
 
-# OpenAI
-openai==1.100.1
+# OpenAI (let crm-llm handle version, requires >=2.8.1)
+# openai version managed by crm-llm SDK
 
 # Dropbox
 dropbox==12.0.2
