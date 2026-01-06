@@ -110,6 +110,7 @@ async def process_proposals(
             proposals_data,
             submitted_by,
             client_name,
+            payment_terms,
             currency
         )
 
