@@ -9,6 +9,6 @@ output "principal_arns" {
 }
 
 output "access_entry_ids" {
-  value       = { for k, v in aws_eks_access_entry.admin : k => v.id }
+  value       = { for k, v in aws_eks_access_entry.admin_t588 : k => v.id }
   description = "Access entry IDs keyed by principal ARN."
 }
