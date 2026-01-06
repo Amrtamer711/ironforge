@@ -6,7 +6,7 @@ locals {
   principals                     = toset(var.principal_arns)
 }
 
-resource "aws_eks_access_entry" "admin" {
+resource "aws_eks_access_entry" "admin_t588" {
   for_each = local.principals
 
   cluster_name  = var.cluster_name
@@ -29,5 +29,5 @@ resource "aws_eks_access_policy_association" "cluster_admin" {
     type = "cluster"
   }
 
-  depends_on = [aws_eks_access_entry.admin]
+  depends_on = [aws_eks_access_entry.admin_t588]
 }
