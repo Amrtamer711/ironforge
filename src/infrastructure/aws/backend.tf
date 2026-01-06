@@ -7,10 +7,10 @@ After applying `./bootstrap`, uncomment this block and run
 
 terraform {
   backend "s3" {
-    bucket         = "mmg-global-terraform-state-bucket-t585"
+    bucket         = "mmg-global-terraform-state-bucket-t588"
     key            = "bootstrap/terraform.tfstate"
     region         = "eu-north-1"
-    dynamodb_table = "terraform-state-lock"
+    dynamodb_table = "terraform-state-lock-t588"
     encrypt        = true
   }
 }
