@@ -1,0 +1,37 @@
+# =============================================================================
+# Security Service - Production Dependencies (Render)
+# =============================================================================
+# This file is used for Render deployments where editable installs don't work.
+# Configure Render build command: pip install -r requirements.render.txt
+
+# Web Framework
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+
+# Database
+supabase>=2.11.0
+
+# Data Validation
+pydantic==2.10.0
+pydantic-settings==2.11.0
+
+# HTTP Client (for Supabase internal calls)
+httpx>=0.28.1,<1.0.0
+
+# JWT & Cryptography
+PyJWT>=2.8.0,<3.0.0
+
+# Utils
+python-dotenv==1.0.0
+python-multipart==0.0.6
+
+# Redis (for distributed caching)
+redis>=5.0.0
+
+# CRM Security SDK (git install for production)
+# GitLab (switch to this when migrated): crm-security[fastapi] @ git+https://gitlab.com/mmg-global/ironforge.git@main#subdirectory=src/shared/crm-security
+crm-security[fastapi] @ git+https://github.com/Amrtamer711/ironforge.git@dev#subdirectory=src/shared/crm-security
+
+# CRM Cache SDK (git install for production)
+# GitLab (switch to this when migrated): crm-cache[redis] @ git+https://gitlab.com/mmg-global/ironforge.git@main#subdirectory=src/shared/crm-cache
+crm-cache[redis] @ git+https://github.com/Amrtamer711/ironforge.git@dev#subdirectory=src/shared/crm-cache
