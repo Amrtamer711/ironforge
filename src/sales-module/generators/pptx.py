@@ -327,10 +327,22 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     header_text = f"{client_name} Investment Sheet" if client_name else "Investment Sheet"
 
     location_name = financial_data["location"]
-    start_date = format_date_for_display(financial_data["start_date"])
-    end_date = format_date_for_display(financial_data.get("end_date", ""))
-    date_range = f"{start_date} - {end_date}" if end_date else start_date
     durations = financial_data["durations"]
+
+    # Handle start_dates array (parallel with durations) vs single start_date
+    if "start_dates" in financial_data and financial_data["start_dates"]:
+        # Multiple start dates - format each one
+        start_dates_formatted = [format_date_for_display(d) for d in financial_data["start_dates"]]
+        # If we have fewer dates than durations, repeat the last date
+        while len(start_dates_formatted) < len(durations):
+            start_dates_formatted.append(start_dates_formatted[-1] if start_dates_formatted else "TBD")
+        date_display = start_dates_formatted
+    else:
+        # Single start_date - backward compatible
+        start_date = format_date_for_display(financial_data.get("start_date", "1st December 2025"))
+        end_date = format_date_for_display(financial_data.get("end_date", ""))
+        date_range = f"{start_date} - {end_date}" if end_date else start_date
+        date_display = date_range
     net_rates = financial_data["net_rates"]
     spots = int(financial_data.get("spots", 1))
     production_fee_str = financial_data.get("production_fee")
@@ -371,10 +383,15 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     else:
         formatted_rates = net_rates
 
+    # For date_display: if it's a list, use array logic; if string, use as-is
+    date_value = date_display if isinstance(date_display, str) else (
+        date_display if len(date_display) > 1 else date_display[0]
+    )
+
     data = [
         (header_text, None),
         ("Location:", location_text),
-        ("Start/End Date:", date_range),
+        ("Start/End Date:", date_value),
         ("Duration:", durations if len(durations) > 1 else durations[0]),
         ("Net Rate:", formatted_rates if len(formatted_rates) > 1 else formatted_rates[0]),
         (fee_label, fee_str),
@@ -383,7 +400,8 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
         ("Total:", total_amounts if len(total_amounts) > 1 else total_amounts[0]),
     ]
 
-    split_start_index = 3
+    # Start from index 2 (Start/End Date) to include date columns in split calculation
+    split_start_index = 2
     max_splits = max(len(v) if isinstance(v, list) else 1 for _, v in data[split_start_index:])
     cols = 1 + max_splits
 

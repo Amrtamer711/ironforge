@@ -247,6 +247,7 @@ class ProposalProcessor:
         proposals_data: list[dict[str, Any]],
         submitted_by: str = "",
         client_name: str = "",
+        payment_terms: str = "100% upfront",
         currency: str = None
     ) -> dict[str, Any]:
         """
@@ -256,6 +257,7 @@ class ProposalProcessor:
             proposals_data: List of proposal dicts
             submitted_by: User who submitted
             client_name: Client name
+            payment_terms: Payment terms text
             currency: Currency code (e.g., 'USD', 'EUR')
 
         Returns:
@@ -269,12 +271,14 @@ class ProposalProcessor:
             ...     proposals_data,
             ...     submitted_by="user@example.com",
             ...     client_name="ABC Corp",
+            ...     payment_terms="100% upfront",
             ...     currency="AED"
             ... )
         """
         self.logger.info("[PROCESSOR] Starting process_separate")
         self.logger.info(f"[PROCESSOR] Proposals: {len(proposals_data)}")
         self.logger.info(f"[PROCESSOR] Client: {client_name}, Submitted by: {submitted_by}")
+        self.logger.info(f"[PROCESSOR] Payment terms: {payment_terms}")
         self.logger.info(f"[PROCESSOR] Currency: {currency or 'AED'}")
 
         # Validate proposals (async)
@@ -304,20 +308,24 @@ class ProposalProcessor:
             # Build financial data
             financial_data = {
                 "location": proposal["location"],
-                "start_date": proposal.get("start_date", "1st December 2025"),
                 "durations": proposal["durations"],
                 "net_rates": proposal.get("net_rates", []),
                 "spots": proposal.get("spots", 1),
                 "client_name": client_name,
+                "payment_terms": payment_terms,
             }
+
+            # Handle start_dates (array) vs start_date (single)
+            if "start_dates" in proposal and proposal["start_dates"]:
+                financial_data["start_dates"] = proposal["start_dates"]
+            else:
+                financial_data["start_date"] = proposal.get("start_date", "1st December 2025")
 
             # Add optional fields
             if "end_date" in proposal:
                 financial_data["end_date"] = proposal["end_date"]
             if "production_fee" in proposal:
                 financial_data["production_fee"] = proposal["production_fee"]
-            if "payment_terms" in proposal:
-                financial_data["payment_terms"] = proposal["payment_terms"]
 
             # Render PPTX with financial slide
             pptx_path, vat_amounts, total_amounts = await loop.run_in_executor(

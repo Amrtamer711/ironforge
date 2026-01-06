@@ -482,6 +482,7 @@ async def create_proposal(
                 proposals_data=proposals_data,
                 submitted_by=user.id,
                 client_name=request.client_name,
+                payment_terms=request.payment_terms or "100% upfront",
                 currency=request.currency,
             )
 
