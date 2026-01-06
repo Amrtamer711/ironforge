@@ -27,8 +27,8 @@ PyJWT>=2.8.0
 # CRM Security SDK (git install for production)
 crm-security[fastapi] @ file:///app/shared/crm-security
 
-# CRM Cache SDK (git install for production)
-crm-cache[redis] @ git+https://gitlab.com/mmg-global/ironforge.git@main#subdirectory=src/shared/crm-cache
+# CRM Cache SDK (local install for Docker builds)
+crm-cache[redis] @ file:///app/shared/crm-cache
 
 # Redis (for distributed caching)
 redis>=5.0.0
