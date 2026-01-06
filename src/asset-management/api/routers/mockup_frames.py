@@ -2,12 +2,14 @@
 Mockup Frames API Router.
 
 Provides access to mockup frame data stored in the database.
+Handles mockup frame CRUD operations and photo storage.
 """
 
+import json
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 import config
@@ -114,6 +116,127 @@ async def get_mockup_frame(
 
     except Exception as e:
         logger.error(f"[MOCKUP_FRAMES] Failed to get frame: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class SaveResponse(BaseModel):
+    """Response for save operations."""
+    success: bool
+    photo_filename: str
+    location_key: str
+    time_of_day: str
+    finish: str
+    frames_count: int
+    storage_url: str | None = None
+
+
+@router.post("/{company}/{location_key}", response_model=SaveResponse)
+async def save_mockup_frame(
+    company: str,
+    location_key: str,
+    frames_data: str = Form(..., description="JSON array of frame data"),
+    time_of_day: str = Form(default="day"),
+    finish: str = Form(default="gold"),
+    photo: UploadFile = File(...),
+    config_json: str | None = Form(default=None),
+    created_by: str | None = Form(default=None),
+) -> dict[str, Any]:
+    """
+    Save a mockup frame with photo to storage.
+
+    Args:
+        company: Company schema (e.g., "backlite_dubai")
+        location_key: Location identifier
+        frames_data: JSON array of frame coordinate data
+        time_of_day: "day" or "night"
+        finish: "gold" or "silver"
+        photo: The billboard photo file
+        config_json: Optional JSON config
+        created_by: User email who created this
+
+    Returns:
+        Save result with final filename
+    """
+    logger.info(
+        f"[MOCKUP_FRAMES] Saving frame for {company}/{location_key} "
+        f"({time_of_day}/{finish}/{photo.filename})"
+    )
+
+    # Validate time_of_day and finish
+    if time_of_day not in {"day", "night"}:
+        raise HTTPException(status_code=400, detail=f"Invalid time_of_day: {time_of_day}")
+    if finish not in {"gold", "silver"}:
+        raise HTTPException(status_code=400, detail=f"Invalid finish: {finish}")
+
+    try:
+        # Parse frames data
+        frames = json.loads(frames_data)
+        if not isinstance(frames, list) or len(frames) == 0:
+            raise HTTPException(status_code=400, detail="frames_data must be a non-empty list")
+
+        # Parse config if provided
+        config_dict = None
+        if config_json:
+            config_dict = json.loads(config_json)
+
+        # Read photo data
+        photo_data = await photo.read()
+
+        # Save to database (returns auto-numbered filename)
+        final_filename = db.save_mockup_frame(
+            location_key=location_key,
+            photo_filename=photo.filename,
+            frames_data=frames,
+            company_schema=company,
+            time_of_day=time_of_day,
+            finish=finish,
+            created_by=created_by,
+            config=config_dict,
+        )
+
+        # Upload photo to Supabase storage
+        storage_url = None
+        try:
+            from db.database import _backend
+            if hasattr(_backend, '_get_client'):
+                client = _backend._get_client()
+                storage_key = f"{company}/{location_key}/{time_of_day}/{finish}/{final_filename}"
+                content_type = photo.content_type or "image/jpeg"
+
+                # Upload to mockups bucket
+                result = client.storage.from_("mockups").upload(
+                    storage_key,
+                    photo_data,
+                    {"content-type": content_type},
+                )
+                if result:
+                    # Get public URL
+                    url_result = client.storage.from_("mockups").get_public_url(storage_key)
+                    storage_url = url_result
+                    logger.info(f"[MOCKUP_FRAMES] Photo uploaded to storage: {storage_key}")
+        except Exception as storage_err:
+            logger.warning(f"[MOCKUP_FRAMES] Storage upload failed (non-critical): {storage_err}")
+            # Don't fail the save if storage fails - photo is optional backup
+
+        logger.info(f"[MOCKUP_FRAMES] ✓ Saved frame: {company}/{location_key}/{final_filename}")
+
+        return {
+            "success": True,
+            "photo_filename": final_filename,
+            "location_key": location_key,
+            "time_of_day": time_of_day,
+            "finish": finish,
+            "frames_count": len(frames),
+            "storage_url": storage_url,
+        }
+
+    except json.JSONDecodeError as e:
+        logger.error(f"[MOCKUP_FRAMES] JSON decode error: {e}")
+        raise HTTPException(status_code=400, detail="Invalid JSON in frames_data or config_json")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[MOCKUP_FRAMES] Failed to save frame: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

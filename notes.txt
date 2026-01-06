@@ -1,6 +1,29 @@
 # CRM Platform Notes & Tasks
 ================================================================================
 
+## TOMORROW'S TASKS (2025-01-06)
+--------------------------------------------------------------------------------
+- [ ] Create dev Trello board: "Video Critique - DEV"
+- [ ] Create /test/Site Videos/ folder structure in Dropbox with subfolders:
+      - /test/Site Videos/Raw
+      - /test/Site Videos/Pending
+      - /test/Site Videos/Critique
+      - /test/Site Videos/Rejected
+      - /test/Site Videos/Editing
+      - /test/Site Videos/Submitted to Sales
+      - /test/Site Videos/Returned
+      - /test/Site Videos/Accepted
+- [ ] Initialize locations/networks and their resources:
+      - Proposal templates (.pptx) for each location
+      - Mockup templates/backgrounds for each location
+- [ ] Render deployment (see plan file: ~/.claude/plans/synchronous-baking-kurzweil.md)
+      - Set all `sync: false` env vars in Render dashboard
+      - Update inter-service URLs with actual Render URLs
+      - Upload templates to /data/templates/
+      - Test health endpoints and auth flow
+
+--------------------------------------------------------------------------------
+
 ## 1. NAMING/BRANDING CHANGES
 --------------------------------------------------------------------------------
 - Rename all "sales bot", "sales-bot", "sales_bot" references to "sales module"

@@ -3,45 +3,90 @@ Dropbox Helper Operations for Video Critique.
 
 Provides utility functions for working with Dropbox folder structure
 and file naming conventions used in the video workflow.
+
+NOTE: Folder paths are prefixed based on environment:
+- Production: /Site Videos/...
+- Development: /test/Site Videos/...
+
+This prevents dev testing from touching production folders.
 """
 
 import re
 from datetime import datetime
 
 
-# Dropbox folder structure for video workflow
-DROPBOX_FOLDERS = {
-    "raw": "/Site Videos/Raw",
-    "pending": "/Site Videos/Pending",
-    "critique": "/Site Videos/Critique",
-    "rejected": "/Site Videos/Rejected",
-    "editing": "/Site Videos/Editing",
-    "submitted": "/Site Videos/Submitted to Sales",
-    "returned": "/Site Videos/Returned",
-    "accepted": "/Site Videos/Accepted",
-}
+def _get_folder_prefix() -> str:
+    """Get the Dropbox folder prefix from config (lazy import to avoid circular deps)."""
+    try:
+        import config
+        return getattr(config, "DROPBOX_FOLDER_PREFIX", "")
+    except ImportError:
+        return ""
 
-# Status mapping from folder to task status
-FOLDER_TO_STATUS = {
-    "/Site Videos/Raw": "Raw",
-    "/Site Videos/Pending": "Critique",
-    "/Site Videos/Critique": "Critique",
-    "/Site Videos/Rejected": "Editing",
-    "/Site Videos/Editing": "Editing",
-    "/Site Videos/Submitted to Sales": "Submitted to Sales",
-    "/Site Videos/Returned": "Returned",
-    "/Site Videos/Accepted": "Done",
-}
 
-# Reverse mapping: status to folder
-STATUS_TO_FOLDER = {
-    "Raw": DROPBOX_FOLDERS["raw"],
-    "Critique": DROPBOX_FOLDERS["critique"],
-    "Editing": DROPBOX_FOLDERS["editing"],
-    "Submitted to Sales": DROPBOX_FOLDERS["submitted"],
-    "Returned": DROPBOX_FOLDERS["returned"],
-    "Done": DROPBOX_FOLDERS["accepted"],
-}
+def get_dropbox_folders() -> dict[str, str]:
+    """
+    Get Dropbox folder paths with environment-specific prefix.
+
+    Returns:
+        Dict mapping folder keys to full Dropbox paths
+    """
+    prefix = _get_folder_prefix()
+    return {
+        "raw": f"{prefix}/Site Videos/Raw",
+        "pending": f"{prefix}/Site Videos/Pending",
+        "critique": f"{prefix}/Site Videos/Critique",
+        "rejected": f"{prefix}/Site Videos/Rejected",
+        "editing": f"{prefix}/Site Videos/Editing",
+        "submitted": f"{prefix}/Site Videos/Submitted to Sales",
+        "returned": f"{prefix}/Site Videos/Returned",
+        "accepted": f"{prefix}/Site Videos/Accepted",
+    }
+
+
+def get_folder_to_status_mapping() -> dict[str, str]:
+    """
+    Get folder-to-status mapping with environment-specific prefixes.
+
+    Returns:
+        Dict mapping folder paths to task statuses
+    """
+    prefix = _get_folder_prefix()
+    return {
+        f"{prefix}/Site Videos/Raw": "Raw",
+        f"{prefix}/Site Videos/Pending": "Critique",
+        f"{prefix}/Site Videos/Critique": "Critique",
+        f"{prefix}/Site Videos/Rejected": "Editing",
+        f"{prefix}/Site Videos/Editing": "Editing",
+        f"{prefix}/Site Videos/Submitted to Sales": "Submitted to Sales",
+        f"{prefix}/Site Videos/Returned": "Returned",
+        f"{prefix}/Site Videos/Accepted": "Done",
+    }
+
+
+def get_status_to_folder_mapping() -> dict[str, str]:
+    """
+    Get status-to-folder mapping with environment-specific prefixes.
+
+    Returns:
+        Dict mapping task statuses to folder paths
+    """
+    folders = get_dropbox_folders()
+    return {
+        "Raw": folders["raw"],
+        "Critique": folders["critique"],
+        "Editing": folders["editing"],
+        "Submitted to Sales": folders["submitted"],
+        "Returned": folders["returned"],
+        "Done": folders["accepted"],
+    }
+
+
+# Legacy static mappings (for backward compatibility - use functions above for new code)
+# These are evaluated at import time, so they won't pick up config changes
+DROPBOX_FOLDERS = get_dropbox_folders()
+FOLDER_TO_STATUS = get_folder_to_status_mapping()
+STATUS_TO_FOLDER = get_status_to_folder_mapping()
 
 
 def get_status_from_folder(folder: str) -> str:
@@ -54,7 +99,9 @@ def get_status_from_folder(folder: str) -> str:
     Returns:
         Task status string
     """
-    return FOLDER_TO_STATUS.get(folder, "Unknown")
+    # Use dynamic mapping to support dev/prod prefix
+    mapping = get_folder_to_status_mapping()
+    return mapping.get(folder, "Unknown")
 
 
 def get_folder_for_status(status: str) -> str | None:
@@ -67,7 +114,9 @@ def get_folder_for_status(status: str) -> str | None:
     Returns:
         Folder path or None if no mapping
     """
-    return STATUS_TO_FOLDER.get(status)
+    # Use dynamic mapping to support dev/prod prefix
+    mapping = get_status_to_folder_mapping()
+    return mapping.get(status)
 
 
 def parse_version_from_filename(filename: str) -> int:
@@ -140,7 +189,7 @@ def build_submission_path(
         folder: Target folder key (default: pending)
 
     Returns:
-        Full Dropbox path
+        Full Dropbox path (with dev/prod prefix applied)
     """
     # Sanitize components
     brand_clean = sanitize_filename(brand)
@@ -150,8 +199,9 @@ def build_submission_path(
     # Build filename
     filename = f"{brand_clean}_{ref_clean}_{location_clean}_v{version}"
 
-    # Get folder path
-    folder_path = DROPBOX_FOLDERS.get(folder, DROPBOX_FOLDERS["pending"])
+    # Get folder path (dynamic to support dev/prod prefix)
+    folders = get_dropbox_folders()
+    folder_path = folders.get(folder, folders["pending"])
 
     # Build task folder
     task_folder = f"Task_{task_number}"
@@ -171,9 +221,11 @@ def build_submission_folder_path(
         folder: Target folder key
 
     Returns:
-        Full Dropbox folder path
+        Full Dropbox folder path (with dev/prod prefix applied)
     """
-    folder_path = DROPBOX_FOLDERS.get(folder, DROPBOX_FOLDERS["pending"])
+    # Get folder path (dynamic to support dev/prod prefix)
+    folders = get_dropbox_folders()
+    folder_path = folders.get(folder, folders["pending"])
     return f"{folder_path}/Task_{task_number}"
 
 

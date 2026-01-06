@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any
 from core.utils.logging import get_logger
 from core.utils.time import get_uae_time
 from db.database import db
+from integrations.dropbox.operations import get_dropbox_folders
 
 if TYPE_CHECKING:
     from integrations.dropbox import DropboxClient
@@ -27,17 +28,13 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-# Dropbox folder paths for video workflow
-DROPBOX_FOLDERS = {
-    "raw": "/Site Videos/Raw",
-    "pending": "/Site Videos/Pending",
-    "critique": "/Site Videos/Critique",
-    "rejected": "/Site Videos/Rejected",
-    "editing": "/Site Videos/Editing",
-    "submitted": "/Site Videos/Submitted to Sales",
-    "returned": "/Site Videos/Returned",
-    "accepted": "/Site Videos/Accepted",
-}
+def _get_folders() -> dict[str, str]:
+    """Get Dropbox folders with dev/prod prefix applied."""
+    return get_dropbox_folders()
+
+
+# Legacy alias for backward compatibility (use _get_folders() for dynamic access)
+DROPBOX_FOLDERS = _get_folders()
 
 
 @dataclass

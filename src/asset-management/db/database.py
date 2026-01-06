@@ -423,6 +423,23 @@ class _DatabaseNamespace:
         """List all mockup frames for a location."""
         return self._backend.list_mockup_frames(location_key, company_schema)
 
+    def save_mockup_frame(
+        self,
+        location_key: str,
+        photo_filename: str,
+        frames_data: list[dict],
+        company_schema: str,
+        time_of_day: str = "day",
+        finish: str = "gold",
+        created_by: str | None = None,
+        config: dict | None = None,
+    ) -> str:
+        """Save mockup frame data. Returns auto-numbered filename."""
+        return self._backend.save_mockup_frame(
+            location_key, photo_filename, frames_data, company_schema,
+            time_of_day, finish, created_by, config
+        )
+
     def get_mockup_frame(
         self,
         location_key: str,

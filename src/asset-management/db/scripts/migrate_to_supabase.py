@@ -8,10 +8,11 @@ This script migrates asset/location inventory METADATA to Asset-Management Supab
 
 STORAGE ARCHITECTURE:
 - Templates (.pptx) → Sales-Module Supabase Storage (used for proposal generation)
-- Mockups/Frames → Sales-Module Supabase Storage (used for mockup generation)
+- Mockups/Frames → Asset-Management Supabase Storage (background photos for mockup generation)
 - Asset Photos → Asset-Management Supabase Storage (real billboard photos)
 
-This script does NOT upload templates - they belong in Sales-Module.
+Storage upload options:
+    --upload-mockups     Upload mockup background photos to 'mockups' bucket
 
 MULTI-SCHEMA ARCHITECTURE:
 - Each company has its own schema (backlite_dubai, backlite_uk, etc.)
@@ -64,10 +65,12 @@ REPO_ROOT = PROJECT_ROOT.parent.parent  # CRM root
 SALES_MODULE_DIR = REPO_ROOT / "src" / "sales-module"
 BACKUP_DIR = SALES_MODULE_DIR / "data_backup_prod" / "data"
 TEMPLATES_DIR = BACKUP_DIR / "templates"
+MOCKUPS_DIR = BACKUP_DIR / "mockups"
 
 # Also check render_main_data for files (production location)
 RENDER_DATA_DIR = SALES_MODULE_DIR / "render_main_data"
 RENDER_TEMPLATES_DIR = RENDER_DATA_DIR / "templates"
+RENDER_MOCKUPS_DIR = RENDER_DATA_DIR / "mockups"
 
 # Valid company schemas (must match schema.sql)
 VALID_COMPANIES = ['backlite_dubai', 'backlite_uk', 'backlite_abudhabi', 'viola']
@@ -261,6 +264,72 @@ def upload_templates(supabase: Client, dry_run: bool = False) -> int:
     return uploaded
 
 
+def upload_mockups(supabase: Client, company: str, dry_run: bool = False) -> int:
+    """
+    Upload mockups (background photos) to Asset-Management Supabase Storage.
+
+    Structure: mockups/{company}/{location_key}/{time_of_day}/{finish}/{photo}.jpg
+
+    Source files are in: data_backup_prod/data/mockups/{location_key}/{time_of_day}/{finish}/
+    The company prefix is added during upload.
+    """
+    print("\n--- Uploading mockups ---")
+
+    # Find mockups directory
+    mockups_dir = None
+    for candidate in [MOCKUPS_DIR, RENDER_MOCKUPS_DIR]:
+        if candidate.exists():
+            mockups_dir = candidate
+            break
+
+    if not mockups_dir:
+        print("  No mockups directory found")
+        print(f"  Checked: {MOCKUPS_DIR}")
+        print(f"  Checked: {RENDER_MOCKUPS_DIR}")
+        return 0
+
+    print(f"  Source: {mockups_dir}")
+    print(f"  Target bucket: mockups")
+    print(f"  Company prefix: {company}")
+
+    uploaded = 0
+
+    # Walk the mockups directory structure
+    for location_dir in sorted(mockups_dir.iterdir()):
+        if not location_dir.is_dir():
+            continue
+        if location_dir.name.startswith('.'):
+            continue
+
+        location_key = location_dir.name
+
+        # Walk through time_of_day/finish/photos structure
+        for item in location_dir.rglob('*'):
+            if not item.is_file():
+                continue
+            if item.name.startswith('.'):
+                continue
+
+            # Get relative path from location directory
+            rel_path = item.relative_to(location_dir)
+
+            # Storage path: {company}/{location_key}/{relative_path}
+            # e.g., backlite_dubai/triple_crown/day/gold/photo.jpg
+            storage_path = f"{company}/{location_key}/{rel_path}"
+
+            if dry_run:
+                print(f"    [DRY RUN] Would upload: mockups/{storage_path}")
+                uploaded += 1
+            else:
+                if upload_file_to_storage(supabase, 'mockups', storage_path, item):
+                    uploaded += 1
+                    if uploaded % 20 == 0:
+                        print(f"    Progress: {uploaded} files")
+
+    print(f"  Uploaded: {uploaded} mockup files")
+    return uploaded
+
+
 # =============================================================================
 # STEP 1: SEED STANDALONE ASSETS FROM METADATA.TXT FILES
 # =============================================================================
@@ -446,18 +515,30 @@ def run_migration(args: argparse.Namespace) -> None:
     print("=" * 60)
     print(f"Company: {COMPANY_SCHEMA}")
     print(f"Mode: {'DRY RUN' if args.dry_run else 'LIVE'}")
+    print(f"Upload mockups: {args.upload_mockups}")
     print("=" * 60)
 
     supabase = get_supabase()
 
-    # Seed standalone assets from template metadata
-    assets_count, asset_map = seed_standalone_assets(supabase, dry_run=args.dry_run)
+    assets_count = 0
+    mockups_count = 0
+
+    # Seed standalone assets from template metadata (unless mockups-only)
+    if not args.upload_mockups:
+        assets_count, asset_map = seed_standalone_assets(supabase, dry_run=args.dry_run)
+
+    # Upload mockups to storage
+    if args.upload_mockups:
+        mockups_count = upload_mockups(supabase, args.company, dry_run=args.dry_run)
 
     # Summary
     print("\n" + "=" * 60)
     print("MIGRATION SUMMARY")
     print("=" * 60)
-    print(f"  Standalone assets: {assets_count}")
+    if not args.upload_mockups:
+        print(f"  Standalone assets: {assets_count}")
+    if args.upload_mockups:
+        print(f"  Mockups uploaded: {mockups_count}")
     print("=" * 60)
 
     if args.dry_run:
@@ -480,6 +561,11 @@ def main():
         '--dry-run',
         action='store_true',
         help='Preview migration without making changes'
+    )
+    parser.add_argument(
+        '--upload-mockups',
+        action='store_true',
+        help='Upload mockup background photos to mockups bucket'
     )
 
     args = parser.parse_args()

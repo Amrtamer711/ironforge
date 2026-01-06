@@ -650,6 +650,36 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
+    def save_mockup_frame(
+        self,
+        location_key: str,
+        photo_filename: str,
+        frames_data: list[dict],
+        company_schema: str,
+        time_of_day: str = "day",
+        finish: str = "gold",
+        created_by: str | None = None,
+        config: dict | None = None,
+    ) -> str:
+        """
+        Save mockup frame data. Returns the final auto-numbered filename.
+
+        Args:
+            location_key: Location identifier
+            photo_filename: Original photo filename
+            frames_data: List of frame coordinate dicts
+            company_schema: Company schema
+            time_of_day: "day" or "night"
+            finish: "gold" or "silver"
+            created_by: User email who created this
+            config: Optional config dict
+
+        Returns:
+            Final auto-numbered filename (e.g., "Dubai_Mall_1.jpg")
+        """
+        pass
+
+    @abstractmethod
     def get_mockup_frame(
         self,
         location_key: str,

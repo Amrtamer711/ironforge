@@ -23,17 +23,21 @@ MOCKUPS_DIR.mkdir(parents=True, exist_ok=True)
 logger.info(f"[MOCKUP INIT] Mockups directory exists: {MOCKUPS_DIR.exists()}, writable: {os.access(MOCKUPS_DIR, os.W_OK)}")
 
 
-def get_location_photos_dir(location_key: str, time_of_day: str = "day", finish: str = "gold") -> Path:
-    """Get the directory for a location's mockup photos with time_of_day and finish."""
-    return MOCKUPS_DIR / location_key / time_of_day / finish
+def get_location_photos_dir(company: str, location_key: str, time_of_day: str = "day", finish: str = "gold") -> Path:
+    """Get the directory for a location's mockup photos.
 
-
-def save_location_photo(location_key: str, photo_filename: str, photo_data: bytes, time_of_day: str = "day", finish: str = "gold") -> Path:
-    """Save a location photo to disk with time_of_day and finish.
-
-    Also tracks the file in the storage system for database consistency.
+    Structure: mockups/{company}/{location_key}/{time_of_day}/{finish}
+    Example: mockups/backlite_dubai/triple_crown/day/gold
     """
-    location_dir = get_location_photos_dir(location_key, time_of_day, finish)
+    return MOCKUPS_DIR / company / location_key / time_of_day / finish
+
+
+def save_location_photo(company: str, location_key: str, photo_filename: str, photo_data: bytes, time_of_day: str = "day", finish: str = "gold") -> Path:
+    """Save a location photo to disk.
+
+    Structure: mockups/{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}
+    """
+    location_dir = get_location_photos_dir(company, location_key, time_of_day, finish)
 
     logger.info(f"[MOCKUP] Creating directory: {location_dir}")
     location_dir.mkdir(parents=True, exist_ok=True)
@@ -58,44 +62,9 @@ def save_location_photo(location_key: str, photo_filename: str, photo_data: byte
         else:
             logger.error(f"[MOCKUP] ✗ Photo path does not exist after write: {photo_path}")
 
-        # Track in storage system (async operation with error handling)
-        try:
-            import asyncio
-
-            from integrations.storage import store_mockup_file
-
-            async def _track_photo():
-                try:
-                    result = await store_mockup_file(
-                        data=photo_data,
-                        filename=photo_filename,
-                        location_key=location_key,
-                        time_of_day=time_of_day,
-                        finish=finish,
-                        file_type="location_photo",
-                    )
-                    if result.success:
-                        if result.is_duplicate:
-                            logger.debug(f"[MOCKUP] Photo already tracked (duplicate): {result.file_id}")
-                        else:
-                            logger.info(f"[MOCKUP] Photo tracked in storage: {result.file_id}")
-                    else:
-                        logger.warning(f"[MOCKUP] Failed to track photo in storage: {result.error}")
-                except Exception as e:
-                    logger.warning(f"[MOCKUP] Storage tracking error: {e}")
-
-            # Run async tracking if we're in an event loop
-            try:
-                asyncio.get_running_loop()
-                # Create task with error handling callback
-                task = asyncio.create_task(_track_photo())
-                task.add_done_callback(lambda t: t.exception() if not t.cancelled() and t.exception() else None)
-            except RuntimeError:
-                # No running loop - skip DB tracking for sync context
-                logger.debug("[MOCKUP] No event loop - skipping storage tracking")
-        except Exception as track_err:
-            logger.warning(f"[MOCKUP] Failed to setup storage tracking: {track_err}")
-            # Don't fail the save if tracking fails
+        # Note: Storage upload is now handled by asset-management service
+        # Photo is saved locally here for fallback/caching, but primary storage
+        # goes through the asset-management API
 
     except Exception as e:
         logger.error(f"[MOCKUP] ✗ Failed to save photo: {e}", exc_info=True)
@@ -104,9 +73,9 @@ def save_location_photo(location_key: str, photo_filename: str, photo_data: byte
     return photo_path
 
 
-def list_location_photos(location_key: str, time_of_day: str = "day", finish: str = "gold") -> list[str]:
-    """List all photo files for a location with time_of_day and finish."""
-    location_dir = get_location_photos_dir(location_key, time_of_day, finish)
+def list_location_photos(company: str, location_key: str, time_of_day: str = "day", finish: str = "gold") -> list[str]:
+    """List all photo files for a location."""
+    location_dir = get_location_photos_dir(company, location_key, time_of_day, finish)
     if not location_dir.exists():
         return []
 
@@ -286,7 +255,7 @@ async def delete_location_photo(
             logger.warning(f"[MOCKUP] Failed to delete frame from Asset-Management: {location_key}/{photo_filename}")
 
         # Delete local file if exists
-        photo_path = get_location_photos_dir(location_key, time_of_day, finish) / photo_filename
+        photo_path = get_location_photos_dir(company_schema, location_key, time_of_day, finish) / photo_filename
         if photo_path.exists():
             photo_path.unlink()
 

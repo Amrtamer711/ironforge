@@ -1818,6 +1818,73 @@ class SupabaseBackend(DatabaseBackend):
             logger.debug(f"[SUPABASE] Failed to list mockup frames: {e}")
             return []
 
+    def save_mockup_frame(
+        self,
+        location_key: str,
+        photo_filename: str,
+        frames_data: list[dict],
+        company_schema: str,
+        time_of_day: str = "day",
+        finish: str = "gold",
+        created_by: str | None = None,
+        config: dict | None = None,
+    ) -> str:
+        """Save mockup frame to company-specific schema. Returns auto-numbered filename."""
+        import os
+        try:
+            client = self._get_client()
+
+            # Generate auto-numbered filename
+            _, ext = os.path.splitext(photo_filename)
+            location_display_name = location_key.replace('_', ' ').title().replace(' ', '')
+
+            # Get existing photos for numbering
+            response = (
+                client.schema(company_schema)
+                .table("mockup_frames")
+                .select("photo_filename")
+                .eq("location_key", location_key)
+                .execute()
+            )
+            existing_files = [r["photo_filename"] for r in (response.data or [])]
+
+            existing_numbers = []
+            for filename in existing_files:
+                name_part = os.path.splitext(filename)[0]
+                if name_part.startswith(f"{location_display_name}_"):
+                    try:
+                        num = int(name_part.split('_')[-1])
+                        existing_numbers.append(num)
+                    except ValueError:
+                        pass
+
+            next_num = 1
+            while next_num in existing_numbers:
+                next_num += 1
+
+            final_filename = f"{location_display_name}_{next_num}{ext}"
+
+            # Insert the record
+            client.schema(company_schema).table("mockup_frames").insert({
+                "location_key": location_key,
+                "time_of_day": time_of_day,
+                "finish": finish,
+                "photo_filename": final_filename,
+                "frames_data": frames_data,
+                "created_at": datetime.now().isoformat(),
+                "created_by": created_by,
+                "config": config,
+            }).execute()
+
+            # Invalidate cache for this location
+            _run_async(self._cache_delete_pattern(f"frames:{location_key.lower()}:*"))
+
+            logger.info(f"[SUPABASE] Saved mockup frame: {company_schema}.{location_key}/{final_filename}")
+            return final_filename
+        except Exception as e:
+            logger.error(f"[SUPABASE] Failed to save mockup frame for {location_key}: {e}", exc_info=True)
+            raise
+
     def get_mockup_frame(
         self,
         location_key: str,

@@ -391,7 +391,7 @@ class ProposalProcessor:
             db.log_proposal(
                 submitted_by=submitted_by,
                 client_name=client_name,
-                package_type="single",
+                package_type="separate",
                 locations=result["location"],
                 total_amount=total_str,
             )

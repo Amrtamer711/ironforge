@@ -75,22 +75,82 @@ class ProposalListResponse(BaseModel):
 # REQUEST MODELS (for create/update endpoints)
 # =============================================================================
 
+def _parse_currency_amount(value: str | float | int | None) -> float | None:
+    """
+    Parse currency amount from string (e.g., "AED 1,250,000") or number.
+    Returns float or None.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        # Remove currency codes and formatting: "AED 1,250,000" -> 1250000.0
+        cleaned = value.replace(",", "").strip()
+        # Remove common currency codes
+        for currency in ["AED", "USD", "EUR", "GBP", "SAR", "QAR", "KWD", "BHD", "OMR"]:
+            cleaned = cleaned.replace(currency, "").strip()
+        try:
+            return float(cleaned)
+        except ValueError:
+            return None
+    return None
+
+
+def _parse_duration_weeks(duration: str | int) -> int:
+    """
+    Parse duration from string (e.g., "4 Weeks", "2 weeks") or integer.
+    Returns integer weeks.
+    """
+    if isinstance(duration, int):
+        return duration
+    if isinstance(duration, str):
+        # Extract number from strings like "4 Weeks", "2 weeks", "8"
+        cleaned = duration.lower().replace("weeks", "").replace("week", "").strip()
+        try:
+            return int(cleaned)
+        except ValueError:
+            return 4  # Default to 4 weeks
+    return 4
+
+
 class ProposalLocationInput(BaseModel):
-    """Input for a single location in a proposal."""
-    location: str = Field(..., description="Location key (e.g., 'dubai_mall')")
-    start_date: str = Field(..., description="Start date in DD/MM/YYYY format")
-    duration: int = Field(..., ge=1, description="Duration in weeks")
-    net_rate: float = Field(..., ge=0, description="Net rate for this location")
-    upload_fee: float | None = Field(default=None, description="Upload fee (optional)")
-    production_fee: float | None = Field(default=None, description="Production fee (optional)")
+    """
+    Input for a single location in a proposal.
+
+    For SEPARATE proposals: use start_dates[], durations[], net_rates[] (parallel arrays)
+    For COMBINED proposals: use start_date, duration (singular values per location)
+    """
+    location: str = Field(..., description="Location key (e.g., 'dubai_gateway')")
+
+    # Separate proposals: arrays (one per pricing option)
+    start_dates: list[str] | None = Field(default=None, description="Start dates for each duration option (e.g., ['1st Dec 2025', '1st Dec 2025'])")
+    durations: list[str] | None = Field(default=None, description="Duration options (e.g., ['2 Weeks', '4 Weeks'])")
+    net_rates: list[str] | None = Field(default=None, description="Net rates for each duration (e.g., ['AED 1,250,000', 'AED 2,300,000'])")
+
+    # Combined proposals: single values per location
+    start_date: str | None = Field(default=None, description="Start date for combined proposal (e.g., '1st December 2025')")
+    duration: str | int | None = Field(default=None, description="Single duration for combined (e.g., '4 Weeks' or 4)")
+    net_rate: float | str | None = Field(default=None, description="Single net rate (float or 'AED X,XXX')")
+
+    # Fees
+    upload_fee: float | str | None = Field(default=None, description="Upload fee (optional)")
+    production_fee: float | str | None = Field(default=None, description="Production fee for static locations (e.g., 'AED 5,000')")
+
+    # Additional fields
+    spots: int = Field(default=1, description="Number of spots (default: 1)")
 
 
 class ProposalCreateRequest(BaseModel):
-    """Request body for creating a new proposal."""
+    """
+    Request body for creating a new proposal.
+
+    Accepts the same format as the LLM tools (get_separate_proposals, get_combined_proposal).
+    """
     proposals: list[ProposalLocationInput] = Field(..., min_length=1, description="List of locations")
     client_name: str = Field(..., min_length=1, description="Client name")
     proposal_type: Literal["separate", "combined"] = Field(default="separate", description="Type of proposal")
-    combined_net_rate: float | None = Field(default=None, description="Combined rate (required for combined type)")
+    combined_net_rate: float | str | None = Field(default=None, description="Combined rate (e.g., 'AED 2,000,000' or 2000000)")
     payment_terms: str | None = Field(default="100% upfront", description="Payment terms")
     currency: str = Field(default="AED", description="Currency code")
 
@@ -152,12 +212,14 @@ async def _get_proposal_processor(user_companies: list[str]):
     from core.proposals.validator import ProposalValidator
     from core.proposals.renderer import ProposalRenderer
     from core.proposals.intro_outro import IntroOutroHandler
-    from core.services.template_service import get_template_service
+    from core.services.template_service import TemplateService
 
-    template_service = get_template_service()
+    template_service = TemplateService(companies=user_companies)
     validator = ProposalValidator(user_companies)
     renderer = ProposalRenderer()
-    intro_outro = IntroOutroHandler()
+    # Fetch available locations (async) before creating IntroOutroHandler
+    available_locations = await validator._get_available_locations()
+    intro_outro = IntroOutroHandler(available_locations)
 
     return ProposalProcessor(validator, renderer, intro_outro, template_service)
 
@@ -334,29 +396,82 @@ async def create_proposal(
             raise HTTPException(status_code=403, detail=error_msg)
 
     try:
-        # Transform request to processor format
+        # Transform request to processor format (handles both LLM and simple formats)
         proposals_data = []
         for p in request.proposals:
+            # Build durations array: prefer durations[], fall back to duration
+            if p.durations:
+                durations = p.durations  # Already in LLM format ["2 Weeks", "4 Weeks"]
+            elif p.duration is not None:
+                # Convert single duration to array format
+                if isinstance(p.duration, int):
+                    durations = [f"{p.duration} Weeks"]
+                else:
+                    durations = [str(p.duration)]
+            else:
+                durations = ["4 Weeks"]  # Default
+
+            # Build net_rates array: prefer net_rates[], fall back to net_rate
+            if p.net_rates:
+                net_rates = p.net_rates  # Already in LLM format ["AED 1,250,000"]
+            elif p.net_rate is not None:
+                # Convert single net_rate to array format with currency
+                parsed = _parse_currency_amount(p.net_rate)
+                if parsed is not None:
+                    net_rates = [f"{request.currency} {parsed:,.0f}"]
+                else:
+                    net_rates = [str(p.net_rate)]
+            else:
+                net_rates = []
+
             proposal_dict = {
                 "location": p.location.strip().lower().replace(" ", "_"),
-                "start_date": p.start_date,
-                "durations": [p.duration],
-                "net_rates": [str(p.net_rate)],
+                "durations": durations,
+                "net_rates": net_rates,
+                "spots": p.spots,
             }
+
+            # Handle start_dates array (separate) vs start_date (combined)
+            if p.start_dates:
+                # Separate proposals: use start_dates array
+                proposal_dict["start_dates"] = p.start_dates
+            elif p.start_date:
+                # Combined proposals: use single start_date
+                proposal_dict["start_date"] = p.start_date
+            else:
+                # Default: use current date placeholder
+                proposal_dict["start_date"] = "1st December 2025"
+
+            # Add fees (parse string amounts)
             if p.upload_fee is not None:
-                proposal_dict["upload_fee"] = p.upload_fee
+                parsed = _parse_currency_amount(p.upload_fee)
+                if parsed is not None:
+                    proposal_dict["upload_fee"] = parsed
             if p.production_fee is not None:
-                proposal_dict["production_fee"] = p.production_fee
+                # Keep as string for processor (it expects "AED 5,000" format)
+                if isinstance(p.production_fee, str):
+                    proposal_dict["production_fee"] = p.production_fee
+                else:
+                    proposal_dict["production_fee"] = f"{request.currency} {p.production_fee:,.0f}"
+
             proposals_data.append(proposal_dict)
 
         # Initialize processor
         processor = await _get_proposal_processor(user_companies)
 
+        # Parse combined_net_rate (keep as string for processor)
+        combined_net_rate_str = None
+        if request.combined_net_rate is not None:
+            if isinstance(request.combined_net_rate, str):
+                combined_net_rate_str = request.combined_net_rate
+            else:
+                combined_net_rate_str = f"{request.currency} {request.combined_net_rate:,.0f}"
+
         # Generate proposal
         if request.proposal_type == "combined":
             result = await processor.process_combined(
                 proposals_data=proposals_data,
-                combined_net_rate=str(request.combined_net_rate),
+                combined_net_rate=combined_net_rate_str,
                 submitted_by=user.id,
                 client_name=request.client_name,
                 payment_terms=request.payment_terms or "100% upfront",
@@ -625,6 +740,8 @@ async def regenerate_proposal(
         user_companies = user.companies
 
         # Get existing locations if not overriding
+        currency = request.currency or proposal.get("currency", "AED")
+
         if request.proposals:
             # Validate new locations
             for p in request.proposals:
@@ -635,16 +752,53 @@ async def regenerate_proposal(
 
             proposals_data = []
             for p in request.proposals:
+                # Build durations array: prefer durations[], fall back to duration
+                if p.durations:
+                    durations = p.durations
+                elif p.duration is not None:
+                    if isinstance(p.duration, int):
+                        durations = [f"{p.duration} Weeks"]
+                    else:
+                        durations = [str(p.duration)]
+                else:
+                    durations = ["4 Weeks"]
+
+                # Build net_rates array: prefer net_rates[], fall back to net_rate
+                if p.net_rates:
+                    net_rates = p.net_rates
+                elif p.net_rate is not None:
+                    parsed = _parse_currency_amount(p.net_rate)
+                    if parsed is not None:
+                        net_rates = [f"{currency} {parsed:,.0f}"]
+                    else:
+                        net_rates = [str(p.net_rate)]
+                else:
+                    net_rates = []
+
                 proposal_dict = {
                     "location": p.location.strip().lower().replace(" ", "_"),
-                    "start_date": p.start_date,
-                    "durations": [p.duration],
-                    "net_rates": [str(p.net_rate)],
+                    "durations": durations,
+                    "net_rates": net_rates,
+                    "spots": p.spots,
                 }
+
+                # Handle start_dates array (separate) vs start_date (combined)
+                if p.start_dates:
+                    proposal_dict["start_dates"] = p.start_dates
+                elif p.start_date:
+                    proposal_dict["start_date"] = p.start_date
+                else:
+                    proposal_dict["start_date"] = "1st December 2025"
+
                 if p.upload_fee is not None:
-                    proposal_dict["upload_fee"] = p.upload_fee
+                    parsed = _parse_currency_amount(p.upload_fee)
+                    if parsed is not None:
+                        proposal_dict["upload_fee"] = parsed
                 if p.production_fee is not None:
-                    proposal_dict["production_fee"] = p.production_fee
+                    if isinstance(p.production_fee, str):
+                        proposal_dict["production_fee"] = p.production_fee
+                    else:
+                        proposal_dict["production_fee"] = f"{currency} {p.production_fee:,.0f}"
                 proposals_data.append(proposal_dict)
         else:
             # Use existing locations from proposal

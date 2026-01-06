@@ -585,7 +585,7 @@ async def _check_duplicate_by_hash(
     from db.database import db
 
     try:
-        client = db._get_client()
+        client = db._backend._get_client()
         response = client.table(table).select("*").eq(
             "file_hash", file_hash
         ).eq(
@@ -855,10 +855,11 @@ async def store_proposal_file(
         content_type = get_mime_type(filename)
 
     # Generate storage key: proposals/{user_id}/{date}/{file_id}_{filename}
+    # Using uploads bucket (same as AI chat) with proposals/ prefix for organization
     safe_filename = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
     date_prefix = datetime.utcnow().strftime("%Y/%m/%d")
     storage_key = f"proposals/{user_id}/{date_prefix}/{file_id}_{safe_filename}"
-    bucket = StorageType.PROPOSALS.value
+    bucket = StorageType.UPLOADS.value
 
     try:
         result = await storage.upload(bucket, storage_key, file_bytes, content_type)
@@ -878,7 +879,7 @@ async def store_proposal_file(
             )
 
         # Track in proposal_files table (matches schema)
-        client = db._get_client()
+        client = db._backend._get_client()
         insert_data = {
             "file_id": file_id,
             "user_id": user_id,
@@ -898,9 +899,17 @@ async def store_proposal_file(
 
         client.table("proposal_files").insert(insert_data).execute()
 
-        url = result.file.url if result.file else None
-        if not url:
-            url = await storage.get_signed_url(bucket, storage_key)
+        # Get signed URL with 24-hour expiry (matches web chat pattern)
+        try:
+            url = await storage.get_signed_url(bucket, storage_key, expires_in=86400)
+            if not url:
+                # Fallback to API endpoint if signing fails
+                url = f"/api/proposals/files/{file_id}/{safe_filename}"
+                logger.warning(f"[STORAGE] Signed URL returned None, using API fallback: {url}")
+        except Exception as sign_err:
+            # Fallback to API endpoint if signing fails
+            url = f"/api/proposals/files/{file_id}/{safe_filename}"
+            logger.warning(f"[STORAGE] Signed URL error ({sign_err}), using API fallback: {url}")
 
         logger.info(f"[STORAGE] Stored proposal file: {filename} -> {storage_key}")
 
@@ -1010,9 +1019,10 @@ async def store_mockup_file(
     if not content_type:
         content_type = get_mime_type(filename)
 
-    # Generate storage key: mockups/{location_key}/{time_of_day}/{finish}/{file_id}_{filename}
+    # Generate storage key: {location_key}/{time_of_day}/{finish}/{file_id}_{filename}
+    # Note: bucket is already "mockups", so don't include it in the key
     safe_filename = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
-    storage_key = f"mockups/{location_key}/{time_of_day}/{finish}/{file_id}_{safe_filename}"
+    storage_key = f"{location_key}/{time_of_day}/{finish}/{file_id}_{safe_filename}"
     bucket = StorageType.MOCKUPS.value
 
     try:
@@ -1033,7 +1043,7 @@ async def store_mockup_file(
             )
 
         # Track in mockup_files table (matches schema)
-        client = db._get_client()
+        client = db._backend._get_client()
         insert_data = {
             "file_id": file_id,
             "location_key": location_key,
@@ -1106,7 +1116,7 @@ async def get_tracked_file(
     from db.database import db
 
     try:
-        client = db._get_client()
+        client = db._backend._get_client()
         response = client.table(table).select("*").eq("file_id", file_id).execute()
 
         if not response.data:
@@ -1184,7 +1194,7 @@ async def soft_delete_tracked_file(
     from db.database import db
 
     try:
-        client = db._get_client()
+        client = db._backend._get_client()
         client.table(table).update({
             "is_deleted": True,
             "deleted_at": datetime.utcnow().isoformat(),
@@ -1221,7 +1231,7 @@ async def soft_delete_mockup_by_location(
     from db.database import db
 
     try:
-        client = db._get_client()
+        client = db._backend._get_client()
         # Find the file by location info
         response = client.table("mockup_files").select("file_id").eq(
             "location_key", location_key

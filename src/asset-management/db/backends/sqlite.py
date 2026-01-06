@@ -1216,6 +1216,69 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
+    def save_mockup_frame(
+        self,
+        location_key: str,
+        photo_filename: str,
+        frames_data: list[dict],
+        company_schema: str,
+        time_of_day: str = "day",
+        finish: str = "gold",
+        created_by: str | None = None,
+        config: dict | None = None,
+    ) -> str:
+        """Save mockup frame data. Returns auto-numbered filename."""
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN")
+            config_json = json.dumps(config) if config else None
+
+            # Generate auto-numbered filename
+            _, ext = os.path.splitext(photo_filename)
+            location_display_name = location_key.replace('_', ' ').title().replace(' ', '')
+
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT photo_filename FROM mockup_frames WHERE location_key = ? AND company = ?",
+                (location_key, company_schema),
+            )
+            existing_files = [row[0] for row in cursor.fetchall()]
+
+            existing_numbers = []
+            for filename in existing_files:
+                name_part = os.path.splitext(filename)[0]
+                if name_part.startswith(f"{location_display_name}_"):
+                    try:
+                        num = int(name_part.split('_')[-1])
+                        existing_numbers.append(num)
+                    except ValueError:
+                        pass
+
+            next_num = 1
+            while next_num in existing_numbers:
+                next_num += 1
+
+            final_filename = f"{location_display_name}_{next_num}{ext}"
+
+            conn.execute(
+                """
+                INSERT INTO mockup_frames (location_key, company, time_of_day, finish, photo_filename, frames_data, created_at, created_by, config)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (location_key, company_schema, time_of_day, finish, final_filename,
+                 json.dumps(frames_data), datetime.now().isoformat(), created_by, config_json),
+            )
+
+            conn.execute("COMMIT")
+            logger.info(f"[SQLITE] Saved mockup frame: {company_schema}.{location_key}/{final_filename}")
+            return final_filename
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            logger.error(f"[SQLITE] Failed to save mockup frame for {location_key}: {e}", exc_info=True)
+            raise
+        finally:
+            conn.close()
+
     def get_mockup_frame(
         self,
         location_key: str,
