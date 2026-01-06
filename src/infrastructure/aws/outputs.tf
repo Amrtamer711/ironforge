@@ -45,6 +45,16 @@ output "alb_controller_policy_arn" {
   value = module.alb_controller_irsa.policy_arn
 }
 
+output "argocd_image_updater_role_arn" {
+  value       = module.argocd_image_updater_irsa.role_arn
+  description = "IRSA role ARN to annotate the argocd-image-updater ServiceAccount (eks.amazonaws.com/role-arn)."
+}
+
+output "argocd_image_updater_policy_arn" {
+  value       = module.argocd_image_updater_irsa.policy_arn
+  description = "IAM policy ARN attached to the argocd-image-updater IRSA role."
+}
+
 output "rds_endpoint" {
   value = module.rds.endpoint
 }
