@@ -11,20 +11,20 @@ output "private_subnet_ids" {
 }
 
 output "eks_cluster_name" {
-  value = module.eks.cluster_name
+  value = module.eks_fargate.cluster_name
 }
 
 output "eks_cluster_endpoint" {
-  value = module.eks.cluster_endpoint
+  value = module.eks_fargate.cluster_endpoint
 }
 
 output "eks_cluster_ca_data" {
-  value     = module.eks.cluster_certificate_authority_data
+  value     = module.eks_fargate.cluster_certificate_authority_data
   sensitive = true
 }
 
 output "eks_oidc_provider_arn" {
-  value = module.eks.oidc_provider_arn
+  value = module.eks_fargate.oidc_provider_arn
 }
 
 output "eks_admin_principal_arns" {
