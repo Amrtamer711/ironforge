@@ -18,7 +18,7 @@ spec:
       serviceAccountName: argocd-image-updater
       containers:
         - name: argocd-image-updater
-          image: quay.io/argoprojlabs/argocd-image-updater:v0.14.1
+          image: quay.io/argoprojlabs/argocd-image-updater:v0.18.0
           imagePullPolicy: IfNotPresent
           args:
             - run
