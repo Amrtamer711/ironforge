@@ -1,11 +1,11 @@
-# CRM Platform
+# MMG Service Platform
 
-Multi-module CRM system with independent, deployable services.
+Multi-module service platform with independent, deployable services.
 
 ## Architecture
 
 ```
-CRM/
+MMG/
 ├── src/                         # Service modules
 │   ├── unified-ui/              # Auth gateway + frontend (port 3005)
 │   └── sales-module/            # Proposal bot backend (port 8000)
@@ -41,7 +41,7 @@ CRM/
 ### Option 1: Run All Services Locally (Python)
 
 ```bash
-# From the CRM root directory
+# From the repository root directory
 python run_all_services.py
 ```
 

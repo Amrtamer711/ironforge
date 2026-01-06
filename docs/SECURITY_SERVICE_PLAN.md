@@ -322,7 +322,7 @@ rate_limit_state (
 [project]
 name = "crm-security"
 version = "1.0.0"
-description = "Security SDK for CRM platform"
+description = "Security SDK for MMG Service Platform"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.100.0",

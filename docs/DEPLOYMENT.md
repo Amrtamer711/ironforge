@@ -1,6 +1,6 @@
 # Deployment Guide
 
-Options for deploying the CRM platform to production.
+Options for deploying the MMG Service Platform to production.
 
 ## Deployment Options
 

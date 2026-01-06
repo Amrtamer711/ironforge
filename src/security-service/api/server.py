@@ -137,7 +137,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Security Service",
-    description="Centralized authentication, RBAC, and audit logging for CRM platform",
+    description="Centralized authentication, RBAC, and audit logging for MMG Service Platform",
     version="0.1.0",
     lifespan=lifespan,
     docs_url="/docs" if not config.settings.is_production else None,

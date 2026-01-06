@@ -1,6 +1,6 @@
 # Unified UI
 
-Authentication gateway and frontend SPA for the CRM platform.
+Authentication gateway and frontend SPA for the MMG Service Platform.
 
 ## Table of Contents
 

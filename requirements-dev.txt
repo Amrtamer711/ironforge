@@ -1,5 +1,5 @@
 # =============================================================================
-# CRM Platform - Development Dependencies
+# MMG Service Platform - Development Dependencies
 # =============================================================================
 # Install ALL dependencies for local development across all services.
 #

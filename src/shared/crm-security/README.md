@@ -1,6 +1,6 @@
 # CRM Security SDK
 
-Security SDK for CRM platform providing RBAC, audit logging, and trusted header parsing.
+Security SDK for MMG Service Platform providing RBAC, audit logging, and trusted header parsing.
 
 ## Installation
 

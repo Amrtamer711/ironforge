@@ -1,6 +1,6 @@
 # Sales Module (proposal-bot)
 
-An enterprise-grade AI-powered sales intelligence platform that automates proposal generation, billboard mockup creation, and booking order management. Part of the CRM platform, built with Python FastAPI.
+An enterprise-grade AI-powered sales intelligence platform that automates proposal generation, billboard mockup creation, and booking order management. Part of the MMG Service Platform, built with Python FastAPI.
 
 ## Table of Contents
 

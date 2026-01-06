@@ -1,6 +1,6 @@
-# CRM Platform Architecture
+# MMG Service Platform Architecture
 
-A comprehensive technical architecture document for the CRM Platform. This document covers the entire system architecture including both unified-ui (authentication gateway) and sales-module (proposal bot) services, detailing system design, component interactions, data flows, and implementation patterns.
+A comprehensive technical architecture document for the MMG Service Platform. This document covers the entire system architecture including both unified-ui (authentication gateway) and sales-module (proposal bot) services, detailing system design, component interactions, data flows, and implementation patterns.
 
 > **Scope**: This is the global architecture document. For service-specific details, see [src/unified-ui/README.md](./src/unified-ui/README.md) and [src/sales-module/README.md](./src/sales-module/README.md).
 
@@ -2139,4 +2139,4 @@ logger.info("Proposal generated",
 
 ---
 
-*This architecture document provides a comprehensive technical reference for the CRM Platform. For setup instructions, see [DEVELOPMENT.md](./DEVELOPMENT.md). For deployment options, see [DEPLOYMENT.md](./DEPLOYMENT.md). For API details, see [src/sales-module/FRONTEND_API.md](./src/sales-module/FRONTEND_API.md).*
+*This architecture document provides a comprehensive technical reference for the MMG Service Platform. For setup instructions, see [DEVELOPMENT.md](./DEVELOPMENT.md). For deployment options, see [DEPLOYMENT.md](./DEPLOYMENT.md). For API details, see [src/sales-module/FRONTEND_API.md](./src/sales-module/FRONTEND_API.md).*

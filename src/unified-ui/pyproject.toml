@@ -1,7 +1,7 @@
 [project]
 name = "unified-ui"
 version = "1.0.0"
-description = "CRM Platform - Authentication Gateway and Frontend SPA"
+description = "MMG Service Platform - Authentication Gateway and Frontend SPA"
 readme = "README.md"
 requires-python = ">=3.11"
 

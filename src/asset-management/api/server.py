@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Asset Management Service",
-    description="Centralized asset/location management for CRM platform",
+    description="Centralized asset/location management for MMG Service Platform",
     version="0.1.0",
     lifespan=lifespan,
 )

@@ -1,6 +1,6 @@
 # Development Guide
 
-Complete guide for setting up and developing the CRM platform locally.
+Complete guide for setting up and developing the MMG Service Platform locally.
 
 ## Table of Contents
 

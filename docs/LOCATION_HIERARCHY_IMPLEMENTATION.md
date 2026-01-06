@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the implementation plan for adding hierarchical location management to the CRM platform. The new model supports:
+This document outlines the implementation plan for adding hierarchical location management to the MMG Service Platform. The new model supports:
 
 - **Networks**: Groups of assets (sellable as a whole)
 - **Asset Types**: Organizational categories within networks (NOT sellable)
@@ -891,7 +891,7 @@ async def get_eligible_locations_for_proposal(company: str):
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         CRM Platform                             │
+│                     MMG Service Platform                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  unified-ui (port 3005)          sales-module (port 8000)       │
@@ -911,7 +911,7 @@ async def get_eligible_locations_for_proposal(company: str):
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         CRM Platform                             │
+│                     MMG Service Platform                          │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  unified-ui        sales-module        asset-management         │

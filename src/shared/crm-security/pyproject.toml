@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "crm-security"
 version = "1.0.0"
-description = "Security SDK for CRM platform - RBAC, audit logging, trusted headers"
+description = "Security SDK for MMG Service Platform - RBAC, audit logging, trusted headers"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Proprietary"}

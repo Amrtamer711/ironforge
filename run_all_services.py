@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CRM Platform - Service Runner with Live Logs Panel
+MMG Service Platform - Service Runner with Live Logs Panel
 
 A flexible service runner for local development with full control over
 services, ports, and execution modes. Includes a browser-based log viewer.
@@ -915,7 +915,7 @@ def print_banner(args: argparse.Namespace):
 
     print()
     print(color("=" * 60, "blue"))
-    print(color("CRM Platform - Service Runner", "blue", bold=True))
+    print(color("MMG Service Platform - Service Runner", "blue", bold=True))
     print(color("=" * 60, "blue"))
     print()
     print(f"  Environment:  {color(args.env, 'cyan')}")
@@ -1027,7 +1027,7 @@ def print_status(manager: ServiceManager):
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="CRM Platform - Service Runner",
+        description="MMG Service Platform - Service Runner",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
