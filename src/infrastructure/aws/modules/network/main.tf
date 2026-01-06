@@ -39,8 +39,8 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = merge(local.base_tags, {
-    Name                    = "${var.name_prefix}-public-${each.value}"
-    (local.cluster_tag_key) = "shared"
+    Name                     = "${var.name_prefix}-public-${each.value}"
+    (local.cluster_tag_key)  = "shared"
     "kubernetes.io/role/elb" = "1"
   })
 }

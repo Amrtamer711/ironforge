@@ -3,7 +3,7 @@ data "aws_partition" "current" {}
 locals {
   # Grants full administrator access across the whole cluster.
   cluster_admin_access_policy_arn = "arn:${data.aws_partition.current.partition}:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
-  principals                     = toset(var.principal_arns)
+  principals                      = toset(var.principal_arns)
 }
 
 resource "aws_eks_access_entry" "admin_t588" {

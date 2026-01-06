@@ -1,0 +1,12 @@
+- op: add
+  path: /metadata/annotations/alb.ingress.kubernetes.io~1listen-ports
+  value: '[{"HTTP":80},{"HTTPS":443}]'
+- op: add
+  path: /metadata/annotations/alb.ingress.kubernetes.io~1ssl-redirect
+  value: "443"
+- op: add
+  path: /metadata/annotations/alb.ingress.kubernetes.io~1certificate-arn
+  value: REPLACE_ME_ACM_CERT_ARN
+- op: add
+  path: /spec/rules/0/host
+  value: REPLACE_ME_HOSTNAME

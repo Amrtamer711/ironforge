@@ -1,0 +1,42 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../bootstrap
+
+configMapGenerator:
+  - name: argocd-tls-params
+    behavior: create
+    envs:
+      - argocd-tls.env
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+patches:
+  - target:
+      kind: Ingress
+      name: argocd-server
+    path: tls-ingress-jsonpatch.yaml
+
+replacements:
+  - source:
+      kind: ConfigMap
+      name: argocd-tls-params
+      fieldPath: data.ARGOCD_HOSTNAME
+    targets:
+      - select:
+          kind: Ingress
+          name: argocd-server
+        fieldPaths:
+          - spec.rules.0.host
+  - source:
+      kind: ConfigMap
+      name: argocd-tls-params
+      fieldPath: data.ARGOCD_ACM_CERT_ARN
+    targets:
+      - select:
+          kind: Ingress
+          name: argocd-server
+        fieldPaths:
+          - metadata.annotations.[alb.ingress.kubernetes.io/certificate-arn]

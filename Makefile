@@ -1,7 +1,7 @@
 # =============================================================================
-# CRM Platform - Makefile
+# MMG Service Platform - Makefile
 # =============================================================================
-# Comprehensive build, run, and management commands for the CRM platform.
+# Comprehensive build, run, and management commands for the MMG Service Platform.
 #
 # Usage: make <target> [OPTIONS]
 #
@@ -14,7 +14,11 @@
 # Configuration
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
-.PHONY: help install dev run stop clean test lint format docker-up docker-down
+.PHONY: help install dev run stop clean test lint format docker-up docker-down \
+	infra-bootstrap infra-init infra-plan infra-apply infra-output \
+	platform-argocd-bootstrap platform-argocd-tls-step1 platform-argocd-tls-step2 platform-argocd-url \
+	tf-bootstrap tf-init tf-plan tf-apply tf-output \
+	argocd-bootstrap argocd-tls-tf-init argocd-tls-step1 argocd-tls-step2 argocd-url
 
 # Colors for output
 BLUE := \033[34m
@@ -32,6 +36,16 @@ SECURITY_DIR := $(ROOT_DIR)/src/security-service
 VIDEO_DIR := $(ROOT_DIR)/src/video-critique
 DOCKER_DIR := $(ROOT_DIR)/docker
 DOCS_DIR := $(ROOT_DIR)/docs
+
+# AWS/Terraform (override with VAR=value)
+AWS_PROFILE ?=
+AWS_REGION ?= eu-north-1
+
+TF_AWS_DIR ?= $(ROOT_DIR)/src/infrastructure/aws
+TF_AWS_BOOTSTRAP_DIR ?= $(TF_AWS_DIR)/bootstrap
+
+# Helper to pass AWS env vars only when set
+TF_AWS_ENV := $(if $(AWS_PROFILE),AWS_PROFILE=$(AWS_PROFILE),) AWS_REGION=$(AWS_REGION)
 
 # Default ports (can be overridden: make dev SALES_PORT=9000)
 SALES_PORT ?= 8000
@@ -56,7 +70,7 @@ PYTHON ?= python3
 
 help: ## Show this help message
 	@echo ""
-	@echo "$(BLUE)CRM Platform - Available Commands$(NC)"
+	@echo "$(BLUE)MMG Service Platform - Available Commands$(NC)"
 	@echo "===================================="
 	@echo ""
 	@echo "$(GREEN)Quick Start:$(NC)"
@@ -158,6 +172,85 @@ dev-video: run-video ## Alias for run-video
 run-video: ## Run only video-critique
 	@echo "$(BLUE)Starting video-critique on port $(VIDEO_PORT)...$(NC)"
 	@cd $(VIDEO_DIR) && PORT=$(VIDEO_PORT) ENVIRONMENT=$(ENV) $(PYTHON) run_service.py
+
+# =============================================================================
+# INFRASTRUCTURE - TERRAFORM (AWS)
+# =============================================================================
+
+infra-bootstrap: ## Create Terraform remote state (S3 + DynamoDB) in AWS
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_BOOTSTRAP_DIR) init
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_BOOTSTRAP_DIR) apply
+
+infra-init: ## Terraform init for AWS infrastructure
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) init -reconfigure
+
+infra-plan: infra-init ## Terraform plan for AWS infrastructure
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) plan
+
+infra-apply: infra-init ## Terraform apply for AWS infrastructure
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) apply
+
+infra-output: infra-init ## Terraform outputs for AWS infrastructure
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) output
+
+# =============================================================================
+# PLATFORM - ARGO CD (EKS)
+# =============================================================================
+
+ARGOCD_BOOTSTRAP_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/bootstrap
+ARGOCD_TLS_OVERLAY_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/bootstrap-tls
+
+# DNS/TLS variables (override with VAR=value)
+# Example:
+#   make platform-argocd-tls-step1 ARGOCD_ZONE_NAME=argocdmmg.global ARGOCD_HOSTNAME=argocdmmg.global
+ARGOCD_ZONE_NAME ?= argocdmmg.global
+ARGOCD_HOSTNAME ?= argocdmmg.global
+
+platform-argocd-bootstrap: ## Install/refresh Argo CD bootstrap (no TLS)
+	@kubectl apply -k $(ARGOCD_BOOTSTRAP_DIR)
+
+platform-argocd-tls-step1: infra-init ## Step 1: create Route53 zone + ACM (prints nameservers; you must set them in GoDaddy)
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) apply \
+	  -var enable_argocd_public_dns=true \
+	  -var argocd_dns_provider=route53 \
+	  -var create_argocd_public_zone=true \
+	  -var argocd_public_zone_name=$(ARGOCD_ZONE_NAME) \
+	  -var argocd_hostname=$(ARGOCD_HOSTNAME) \
+	  -var argocd_wait_for_acm_validation=false
+	@echo ""
+	@echo "$(YELLOW)Set these nameservers in your registrar (GoDaddy), then run: make platform-argocd-tls-step2$(NC)"
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) output -json argocd_public_zone_name_servers
+
+platform-argocd-tls-step2: infra-init ## Step 2: finish ACM validation, write local TLS env file, apply TLS overlay
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) apply \
+	  -var enable_argocd_public_dns=true \
+	  -var argocd_dns_provider=route53 \
+	  -var create_argocd_public_zone=true \
+	  -var argocd_public_zone_name=$(ARGOCD_ZONE_NAME) \
+	  -var argocd_hostname=$(ARGOCD_HOSTNAME) \
+	  -var argocd_wait_for_acm_validation=true
+	@CERT_ARN=$$($(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) output -raw argocd_acm_certificate_arn); \
+	  echo "ARGOCD_HOSTNAME=$(ARGOCD_HOSTNAME)" > $(ARGOCD_TLS_OVERLAY_DIR)/argocd-tls.env; \
+	  echo "ARGOCD_ACM_CERT_ARN=$$CERT_ARN" >> $(ARGOCD_TLS_OVERLAY_DIR)/argocd-tls.env; \
+	  echo "$(GREEN)Wrote $(ARGOCD_TLS_OVERLAY_DIR)/argocd-tls.env$(NC)"; \
+	  kubectl apply -k $(ARGOCD_TLS_OVERLAY_DIR); \
+	  echo "$(GREEN)Applied TLS overlay. Open: https://$(ARGOCD_HOSTNAME)$(NC)"
+
+platform-argocd-url: ## Print the current Argo CD Ingress ALB hostname (useful for debugging)
+	@echo "http://$$(kubectl -n argocd get ingress argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+
+# Backwards-compatible aliases
+tf-bootstrap: infra-bootstrap ## Alias for infra-bootstrap
+tf-init: infra-init ## Alias for infra-init
+tf-plan: infra-plan ## Alias for infra-plan
+tf-apply: infra-apply ## Alias for infra-apply
+tf-output: infra-output ## Alias for infra-output
+
+argocd-bootstrap: platform-argocd-bootstrap ## Alias for platform-argocd-bootstrap
+argocd-tls-tf-init: infra-init ## Alias for infra-init
+argocd-tls-step1: platform-argocd-tls-step1 ## Alias for platform-argocd-tls-step1
+argocd-tls-step2: platform-argocd-tls-step2 ## Alias for platform-argocd-tls-step2
+argocd-url: platform-argocd-url ## Alias for platform-argocd-url
 
 run-bg: ## Run all services in background
 	@$(PYTHON) run_all_services.py --env $(ENV) --sales-port $(SALES_PORT) --ui-port $(UI_PORT) --assets-port $(ASSETS_PORT) --security-port $(SECURITY_PORT) --video-port $(VIDEO_PORT) --background
@@ -436,7 +529,7 @@ env-check: ## Check environment configuration
 	@test -f $(ENV_FILE) && grep -q "OPENAI_API_KEY" $(ENV_FILE) && echo "  $(GREEN)OPENAI_API_KEY: Set$(NC)" || echo "  $(RED)OPENAI_API_KEY: Missing$(NC)"
 
 setup: ## Initial setup for new developers
-	@echo "$(BLUE)CRM Platform Setup$(NC)"
+	@echo "$(BLUE)MMG Service Platform Setup$(NC)"
 	@echo "==================="
 	@echo ""
 	@test -f $(ENV_FILE) || (cp .env.example $(ENV_FILE) && echo "$(GREEN)Created $(ENV_FILE) from template$(NC)")

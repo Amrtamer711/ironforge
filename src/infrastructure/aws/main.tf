@@ -42,16 +42,16 @@ module "ecr" {
 }
 
 module "eks_fargate" {
-  source                          = "./modules/eks_fargate"
-  cluster_name                    = var.eks_cluster_name
-  kubernetes_version              = var.kubernetes_version
-  vpc_id                          = module.network.vpc_id
-  private_subnet_ids              = module.network.private_subnet_ids
+  source                                      = "./modules/eks_fargate"
+  cluster_name                                = var.eks_cluster_name
+  kubernetes_version                          = var.kubernetes_version
+  vpc_id                                      = module.network.vpc_id
+  private_subnet_ids                          = module.network.private_subnet_ids
   bootstrap_cluster_creator_admin_permissions = var.bootstrap_cluster_creator_admin_permissions
-  enable_workload_fargate_profile = var.enable_workload_fargate_profile
-  workload_namespaces             = var.workload_namespaces
-  workload_namespace_labels       = var.workload_namespace_labels
-  tags                            = local.common_tags
+  enable_workload_fargate_profile             = var.enable_workload_fargate_profile
+  workload_namespaces                         = var.workload_namespaces
+  workload_namespace_labels                   = var.workload_namespace_labels
+  tags                                        = local.common_tags
 }
 
 module "eks_access" {
