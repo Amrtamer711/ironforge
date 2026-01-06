@@ -7,3 +7,6 @@ Tech stack:
 - TanStack Query
 - shadcn/ui-style components 
 
+# Hidden for Future
+- Edit Delete of templates
+- History in Mockup

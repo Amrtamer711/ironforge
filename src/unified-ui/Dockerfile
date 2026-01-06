@@ -33,11 +33,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl git \
 
 # Copy requirements first for better caching
 COPY src/shared/crm-security /app/shared/crm-security
+COPY src/shared/crm-cache /app/shared/crm-cache
 COPY src/unified-ui/requirements.render.txt /app/requirements.render.txt
 
 # Install Python dependencies
-RUN pip install --no-cache-dir "/app/shared/crm-security[fastapi]" \
- && pip install --no-cache-dir -r /app/requirements.render.txt
+RUN pip install --no-cache-dir -r /app/requirements.render.txt
 
 # Copy backend
 COPY src/unified-ui/backend /app/backend

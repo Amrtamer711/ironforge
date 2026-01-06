@@ -479,3 +479,13 @@ body[data-brand-theme] .mmg-nav-btn-active .mmg-nav-icon {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

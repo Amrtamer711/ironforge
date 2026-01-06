@@ -3,11 +3,17 @@ kind: Application
 metadata:
   name: unifiedui-dev
   namespace: argocd
+  annotations:
+    # Automatically roll out the newest ECR image by digest.
+    # Requires argocd-image-updater running in-cluster with ECR read permissions.
+    argocd-image-updater.argoproj.io/image-list: unifiedui=018881300778.dkr.ecr.eu-north-1.amazonaws.com/unifiedui:demo
+    argocd-image-updater.argoproj.io/unifiedui.update-strategy: digest
+    argocd-image-updater.argoproj.io/write-back-method: argocd
 spec:
   project: default
   source:
-    repoURL: https://REPLACE_ME/your/repo.git
-    targetRevision: HEAD
+    repoURL: https://gitlab.com/mmg-global/ironforge.git
+    targetRevision: demo
     path: src/platform/deploy/kustomize/unifiedui/overlays/dev
   destination:
     server: https://kubernetes.default.svc
@@ -18,4 +24,3 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-
