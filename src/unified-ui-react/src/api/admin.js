@@ -17,7 +17,7 @@ export async function getrbacUser(userId) {
 }
 
 export async function getUserPermissions(userId) {
-  return apiRequest(`/api/admin/users/${userId}/permissions`);
+  return apiRequest(`/api/rbac/users/${userId}/permissions`);
 }
 
 export async function createUser(userData) {
@@ -41,19 +41,22 @@ export async function reactivateUser(userId) {
 }
 
 export async function getProfiles() {
-  return apiRequest("/api/admin/profiles");
+  return apiRequest("/api/rbac/profiles");
 }
 
 export async function createProfile(profileData) {
-  return apiRequest("/api/admin/profiles", { method: "POST", body: JSON.stringify(profileData) });
+  return apiRequest("/api/rbac/profiles", { method: "POST", body: JSON.stringify(profileData) });
 }
 
-export async function updateProfile(profileName, profileData) {
-  return apiRequest(`/api/admin/profiles/${profileName}`, { method: "PUT", body: JSON.stringify(profileData) });
+export async function updateProfile(profileId, profileData) {
+  return apiRequest(`/api/rbac/profiles/${encodeURIComponent(profileId)}`, {
+    method: "PUT",
+    body: JSON.stringify(profileData),
+  });
 }
 
-export async function deleteProfile(profileName) {
-  return apiRequest(`/api/admin/profiles/${profileName}`, { method: "DELETE" });
+export async function deleteProfile(profileId) {
+  return apiRequest(`/api/rbac/profiles/${encodeURIComponent(profileId)}`, { method: "DELETE" });
 }
 
 export async function getTeams() {
@@ -68,7 +71,7 @@ export async function setUserPermissions(userId, permissions) {
 }
 
 export async function getPermissions() {
-  const data = await apiRequest("/api/dev/permissions");
+  const data = await apiRequest("/api/rbac/permissions");
   return data;
 }
 
@@ -81,6 +84,26 @@ export async function addPermission(value, description) {
 
 export async function deletePermission(value) {
   return apiRequest(`/api/dev/permissions/${encodeURIComponent(value)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getUserPermissionSets(userId) {
+  if (!userId) return [];
+  return apiRequest(`/api/rbac/users/${encodeURIComponent(userId)}/permission-sets`);
+}
+
+export async function assignUserPermissionSet(userId, payload) {
+  if (!userId) return null;
+  return apiRequest(`/api/rbac/users/${encodeURIComponent(userId)}/permission-sets`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function revokeUserPermissionSet(userId, setId) {
+  if (!userId || !setId) return null;
+  return apiRequest(`/api/rbac/users/${encodeURIComponent(userId)}/permission-sets/${encodeURIComponent(setId)}`, {
     method: "DELETE",
   });
 }

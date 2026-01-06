@@ -23,9 +23,10 @@ function useGenerateActions({
   const [genFrameConfig, setGenFrameConfig] = useState(defaultFrameConfig);
   const [aiPrompt, setAiPrompt] = useState("");
   const [creativeFile, setCreativeFile] = useState(null);
-  const [resultUrl, setResultUrl] = useState("");
+  const [lastResults, setLastResults] = useState([]);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState("");
+  const resultsRef = React.useRef([]);
 
   const templateMap = useMemo(() => {
     const map = new Map();
@@ -60,16 +61,20 @@ function useGenerateActions({
   }, [finish, timeOfDay]);
 
   useEffect(() => {
+    resultsRef.current = lastResults;
+  }, [lastResults]);
+
+  useEffect(() => {
     return () => {
-      if (resultUrl) URL.revokeObjectURL(resultUrl);
+      resultsRef.current.forEach((entry) => {
+        if (entry?.url) URL.revokeObjectURL(entry.url);
+      });
     };
-  }, [resultUrl]);
+  }, []);
 
   async function onGenerate() {
     if (!canGenerate) return;
     setGenerateError("");
-    setResultUrl("");
-
     try {
       setGenerating(true);
       const formData = new FormData();
@@ -93,8 +98,14 @@ function useGenerateActions({
 
       const blob = await mockupApi.generateMockup(formData);
       const url = URL.createObjectURL(blob);
-      if (resultUrl) URL.revokeObjectURL(resultUrl);
-      setResultUrl(url);
+      setLastResults((prev) => {
+        const next = [{ url, location }, ...prev];
+        if (next.length > 3) {
+          const removed = next.pop();
+          if (removed?.url) URL.revokeObjectURL(removed.url);
+        }
+        return next;
+      });
     } catch (error) {
       setGenerateError(error?.message || "Unable to generate mockup.");
     } finally {
@@ -109,9 +120,10 @@ function useGenerateActions({
     setAiPrompt,
     creativeFile,
     setCreativeFile,
-    resultUrl,
+    lastResults,
     generating,
     generateError,
+    setGenerateError,
     onGenerate,
     canGenerate,
   };
@@ -148,11 +160,22 @@ export function GenerateTab({
   aiPrompt,
   setAiPrompt,
   generateError,
+  setGenerateError,
   generating,
   onGenerate,
   canGenerate,
-  resultUrl,
+  lastResults,
 }) {
+  function resetForm() {
+    setLocation("");
+    setTimeOfDay("all");
+    setFinish("all");
+    setTemplateKey("");
+    setCreativeFile(null);
+    setAiPrompt("");
+    setGenerateError("");
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -332,34 +355,43 @@ export function GenerateTab({
 
         <div className="flex items-center gap-3">
           <Button className="rounded-2xl" onClick={onGenerate} disabled={!canGenerate}>
-            {generating ? <LoadingEllipsis text="Generating" /> : "Generate"}
+            {generating ? <LoadingEllipsis text="Generating Mockup" /> : "Generate Mockup"}
           </Button>
-          <div className="text-xs text-black/55 dark:text-white/60">Location + (creative or prompt) required</div>
+          <Button variant="secondary" className="rounded-2xl" onClick={resetForm} disabled={generating}>
+            Reset
+          </Button>
         </div>
 
         <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 p-4">
-          {!resultUrl && !generating ? (
+          {!lastResults.length && !generating ? (
             <div className="text-sm text-black/60 dark:text-white/65">Result will appear here</div>
           ) : null}
           {generating ? (
             <LoadingEllipsis text="Processing mockup" className="text-sm text-black/60 dark:text-white/65" />
           ) : null}
-          {resultUrl ? (
+          {lastResults.length ? (
             <div className="space-y-3">
-              <img
-                src={resultUrl}
-                alt="Generated mockup"
-                className="w-full rounded-xl border border-black/5 dark:border-white/10"
-              />
-              <div className="flex gap-2">
-                <a
-                  href={resultUrl}
-                  download={`mockup_${location || "result"}.jpg`}
-                  className="inline-flex items-center justify-center rounded-2xl bg-black text-white px-4 py-2 text-sm dark:bg-white dark:text-black"
-                >
-                  Download
-                </a>
+              <div className="text-sm font-semibold text-black/80 dark:text-white/85">
+                Last 3 Generated Mockups
               </div>
+              {lastResults.map((entry, index) => (
+                <div key={`mockup-result-${index}`} className="space-y-3">
+                  <img
+                    src={entry.url}
+                    alt="Generated mockup"
+                    className="w-full rounded-xl border border-black/5 dark:border-white/10"
+                  />
+                  <div className="flex gap-2">
+                    <a
+                      href={entry.url}
+                      download={`mockup_${entry.location || "result"}.jpg`}
+                      className="inline-flex items-center justify-center rounded-2xl bg-black text-white px-4 py-2 text-sm dark:bg-white dark:text-black"
+                    >
+                      Download
+                    </a>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : null}
         </div>

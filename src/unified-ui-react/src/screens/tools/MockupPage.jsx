@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../../components/ui/button";
 import * as mockupApi from "../../api/mockup";
 import { useAuth, hasPermission } from "../../state/auth";
@@ -67,6 +67,7 @@ function getRangeBackground(value, min, max) {
 }
 
 export function MockupPage() {
+  const queryClient = useQueryClient();
   const { user } = useAuth();
   const canSetup = hasPermission(user, "sales:mockups:setup");
 
@@ -365,7 +366,7 @@ export function MockupPage() {
       setSetupPhoto(null);
       previewImgRef.current = null;
       setSetupImageReady(false);
-      templatesQuery.refetch();
+      queryClient.invalidateQueries({ queryKey: ["mockup", "templates"] });
       drawPreview();
     } catch (err) {
       setSetupError(err?.message || "Failed to save template");
@@ -378,7 +379,7 @@ export function MockupPage() {
     if (!location) return;
     try {
       await mockupApi.deleteSetupPhoto(location, photo);
-      templatesQuery.refetch();
+      queryClient.invalidateQueries({ queryKey: ["mockup", "templates"] });
     } catch (err) {
       setSetupError(err?.message || "Failed to delete template");
     }
@@ -542,6 +543,9 @@ export function MockupPage() {
     setSetupError("");
     setTimeOfDay("all");
     setFinish("all");
+    setSetupPhoto(null);
+    previewImgRef.current = null;
+    setSetupImageReady(false);
     currentPointsRef.current = [];
     allFramesRef.current = [];
     clearActiveSelection();

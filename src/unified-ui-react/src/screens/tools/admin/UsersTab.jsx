@@ -12,6 +12,63 @@ import { ConfirmModal, Modal } from "../../../components/ui/modal";
 import { adminApi } from "../../../api";
 import { cn, parsePermissions, selectionLabel } from "../../../lib/utils";
 
+function getValue(entry) {
+  if (!entry) return "";
+  if (typeof entry === "string") return entry;
+  return entry.name || entry.id || entry.value || "";
+}
+
+function getPermissionValue(entry) {
+  if (!entry) return "";
+  if (typeof entry === "string") return entry;
+  return entry.name || entry.value || entry.permission || "";
+}
+
+function isSubset(subset, container) {
+  if (!subset || !container) return true;
+  for (const value of subset) {
+    if (!container.has(value)) return false;
+  }
+  return true;
+}
+
+function buildPermissionSetPermissionsMap(permissionSetList) {
+  const map = new Map();
+  (permissionSetList || []).forEach((set) => {
+    const key = getValue(set);
+    if (!key) return;
+    const perms = (set.permissions || set.permission_list || set.permissionList || [])
+      .map(getPermissionValue)
+      .filter(Boolean);
+    map.set(key, new Set(perms));
+  });
+  return map;
+}
+
+function buildProfilePermissionSetsMap(profileOptions) {
+  const map = new Map();
+  (profileOptions || []).forEach((profile) => {
+    const key = profile.name || profile.id;
+    if (!key) return;
+    const sets = (profile.permission_sets || profile.permissionSets || profile.permission_set_names || [])
+      .map(getValue)
+      .filter(Boolean);
+    map.set(key, new Set(sets));
+  });
+  return map;
+}
+
+function buildProfilePermissionsMap(profileOptions) {
+  const map = new Map();
+  (profileOptions || []).forEach((profile) => {
+    const key = profile.name || profile.id;
+    if (!key) return;
+    const perms = (profile.permissions || []).map(getPermissionValue).filter(Boolean);
+    map.set(key, new Set(perms));
+  });
+  return map;
+}
+
 export function UsersTab({
   q,
   setQ,
@@ -222,7 +279,7 @@ export function UsersPanel({
     toggleUserPermissionSet,
     selectAllUserPermissionSets,
     clearUserPermissionSets,
-  } = useUserActions({ permissionList, profileValues, permissionSetValues });
+  } = useUserActions({ permissionList, profileValues, permissionSetValues, profileOptions, permissionSetList });
   const [confirmDelete, setConfirmDelete] = useState({ open: false, type: "", payload: null, label: "" });
 
   const isSelfUser = Boolean(
@@ -331,7 +388,7 @@ export function UsersPanel({
   );
 }
 
-function useUserActions({ permissionList, profileValues, permissionSetValues }) {
+function useUserActions({ permissionList, profileValues, permissionSetValues, profileOptions, permissionSetList }) {
   const qc = useQueryClient();
   const [selectedUser, setSelectedUser] = useState(null);
   const [userForm, setUserForm] = useState({
@@ -371,6 +428,98 @@ function useUserActions({ permissionList, profileValues, permissionSetValues }) 
     return selectedUserPermissions.filter((perm) => !known.has(perm));
   }, [permissionList, selectedUserPermissions]);
 
+  const permissionSetPermissionsMap = useMemo(
+    () => buildPermissionSetPermissionsMap(permissionSetList),
+    [permissionSetList]
+  );
+  const profilePermissionSetsMap = useMemo(
+    () => buildProfilePermissionSetsMap(profileOptions),
+    [profileOptions]
+  );
+  const profilePermissionsMap = useMemo(
+    () => buildProfilePermissionsMap(profileOptions),
+    [profileOptions]
+  );
+
+  function collectPermissionsFromSets(setValues) {
+    const permissions = new Set();
+    (setValues || []).forEach((setName) => {
+      const setPerms = permissionSetPermissionsMap.get(setName);
+      if (!setPerms) return;
+      setPerms.forEach((perm) => permissions.add(perm));
+    });
+    return permissions;
+  }
+
+  function collectPermissionsFromProfiles(profileNames) {
+    const permissions = new Set();
+    (profileNames || []).forEach((profileName) => {
+      const profilePerms = profilePermissionsMap.get(profileName);
+      if (profilePerms) profilePerms.forEach((perm) => permissions.add(perm));
+      const profileSets = profilePermissionSetsMap.get(profileName);
+      if (profileSets) {
+        profileSets.forEach((setName) => {
+          const setPerms = permissionSetPermissionsMap.get(setName);
+          if (!setPerms) return;
+          setPerms.forEach((perm) => permissions.add(perm));
+        });
+      }
+    });
+    return permissions;
+  }
+
+  function filterPermissionSetsByPermissions(permissionSetValuesList, permissionSetPermissions, permissionsSet) {
+    return (permissionSetValuesList || []).filter((setName) => {
+      const required = permissionSetPermissions.get(setName);
+      if (!required) return true;
+      return isSubset(required, permissionsSet);
+    });
+  }
+
+  function filterProfilesBySelections(profileValuesList, permissionsSet, permissionSetsList) {
+    const permissionSets = new Set(permissionSetsList || []);
+    return (profileValuesList || []).filter((profileName) => {
+      const profilePerms = profilePermissionsMap.get(profileName);
+      const profileSets = profilePermissionSetsMap.get(profileName);
+      if (!profilePerms && !profileSets) return true;
+      if (profileSets && !isSubset(profileSets, permissionSets)) return false;
+      const required = new Set();
+      if (profilePerms) profilePerms.forEach((perm) => required.add(perm));
+      if (profileSets) {
+        profileSets.forEach((setName) => {
+          const setPerms = permissionSetPermissionsMap.get(setName);
+          if (setPerms) setPerms.forEach((perm) => required.add(perm));
+        });
+      }
+      return isSubset(required, permissionsSet);
+    });
+  }
+
+  function applyProfileSelections(form, permissionsOverride) {
+    const profiles = new Set(form.profiles || []);
+    const permissionSets = new Set(form.permissionSets || []);
+    const permissions = new Set(
+      permissionsOverride || parsePermissions(form.permissionsText)
+    );
+    profiles.forEach((profileName) => {
+      const profileSets = profilePermissionSetsMap.get(profileName);
+      if (profileSets) profileSets.forEach((setName) => permissionSets.add(setName));
+      const profilePerms = profilePermissionsMap.get(profileName);
+      if (profilePerms) profilePerms.forEach((perm) => permissions.add(perm));
+      if (profileSets) {
+        profileSets.forEach((setName) => {
+          const setPerms = permissionSetPermissionsMap.get(setName);
+          if (setPerms) setPerms.forEach((perm) => permissions.add(perm));
+        });
+      }
+    });
+    return {
+      ...form,
+      permissionSets: Array.from(permissionSets),
+      permissionsText: Array.from(permissions).join("\n"),
+    };
+  }
+
   async function selectUser(u) {
     setSelectedUser(u);
     setPermissionsMessage("");
@@ -405,7 +554,7 @@ function useUserActions({ permissionList, profileValues, permissionSetValues }) 
         const list = Array.isArray(raw)
           ? raw.map((perm) => (typeof perm === "string" ? perm : perm?.name)).filter(Boolean)
           : [];
-        setUserForm((f) => ({ ...f, permissionsText: list.join("\n") }));
+        setUserForm((f) => applyProfileSelections({ ...f, permissionsText: list.join("\n") }));
       } catch {
         // ignore
       }
@@ -501,9 +650,26 @@ function useUserActions({ permissionList, profileValues, permissionSetValues }) 
   function toggleUserPermission(value) {
     setUserForm((f) => {
       const current = new Set(parsePermissions(f.permissionsText));
-      if (current.has(value)) current.delete(value);
+      const removing = current.has(value);
+      if (removing) current.delete(value);
       else current.add(value);
-      return { ...f, permissionsText: Array.from(current).join("\n") };
+
+      let permissionSets = f.permissionSets || [];
+      let profiles = f.profiles || [];
+      if (removing) {
+        permissionSets = filterPermissionSetsByPermissions(
+          permissionSets,
+          permissionSetPermissionsMap,
+          current
+        );
+        profiles = filterProfilesBySelections(profiles, current, permissionSets);
+      }
+      return {
+        ...f,
+        permissionsText: Array.from(current).join("\n"),
+        permissionSets,
+        profiles,
+      };
     });
   }
 
@@ -513,21 +679,82 @@ function useUserActions({ permissionList, profileValues, permissionSetValues }) 
   }
 
   function clearUserPermissions() {
-    setUserForm((f) => ({ ...f, permissionsText: "" }));
+    setUserForm((f) => ({ ...f, permissionsText: "", permissionSets: [], profiles: [] }));
   }
 
   function toggleUserProfile(value) {
     setUserForm((f) => {
-      const current = new Set(f.profiles || []);
-      if (current.has(value)) current.delete(value);
-      else current.add(value);
-      return { ...f, profiles: Array.from(current) };
+      const profiles = new Set(f.profiles || []);
+      const permissionSets = new Set(f.permissionSets || []);
+      const permissions = new Set(parsePermissions(f.permissionsText));
+      const isActive = profiles.has(value);
+
+      if (isActive) {
+        profiles.delete(value);
+        const filteredPermissionSets = filterPermissionSetsByPermissions(
+          Array.from(permissionSets),
+          permissionSetPermissionsMap,
+          permissions
+        );
+        const filteredProfiles = filterProfilesBySelections(
+          Array.from(profiles),
+          permissions,
+          filteredPermissionSets
+        );
+        return {
+          ...f,
+          profiles: filteredProfiles,
+          permissionSets: filteredPermissionSets,
+          permissionsText: Array.from(permissions).join("\n"),
+        };
+      }
+
+      profiles.add(value);
+      const profileSets = profilePermissionSetsMap.get(value);
+      if (profileSets) {
+        profileSets.forEach((setName) => permissionSets.add(setName));
+      }
+      const profilePerms = profilePermissionsMap.get(value);
+      if (profilePerms) profilePerms.forEach((perm) => permissions.add(perm));
+      if (profileSets) {
+        profileSets.forEach((setName) => {
+          const setPerms = permissionSetPermissionsMap.get(setName);
+          if (setPerms) setPerms.forEach((perm) => permissions.add(perm));
+        });
+      }
+      return {
+        ...f,
+        profiles: Array.from(profiles),
+        permissionSets: Array.from(permissionSets),
+        permissionsText: Array.from(permissions).join("\n"),
+      };
     });
   }
 
   function selectAllUserProfiles() {
-    const combined = new Set([...(userForm.profiles || []), ...profileValues]);
-    setUserForm((f) => ({ ...f, profiles: Array.from(combined) }));
+    setUserForm((f) => {
+      const profiles = new Set([...(f.profiles || []), ...profileValues]);
+      const permissionSets = new Set(f.permissionSets || []);
+      const permissions = new Set(parsePermissions(f.permissionsText));
+      profiles.forEach((profileName) => {
+        const profileSets = profilePermissionSetsMap.get(profileName);
+        if (profileSets) profileSets.forEach((setName) => permissionSets.add(setName));
+        const profilePerms = profilePermissionsMap.get(profileName);
+        if (profilePerms) profilePerms.forEach((perm) => permissions.add(perm));
+        if (profileSets) {
+          profileSets.forEach((setName) => {
+            const setPerms = permissionSetPermissionsMap.get(setName);
+            if (setPerms) setPerms.forEach((perm) => permissions.add(perm));
+          });
+        }
+      });
+      return {
+        ...f,
+        profiles: Array.from(profiles),
+        permissionSets: Array.from(permissionSets),
+        permissionsText: Array.from(permissions).join("\n"),
+      };
+    });
   }
 
   function clearUserProfiles() {
@@ -536,20 +763,58 @@ function useUserActions({ permissionList, profileValues, permissionSetValues }) 
 
   function toggleUserPermissionSet(value) {
     setUserForm((f) => {
-      const current = new Set(f.permissionSets || []);
-      if (current.has(value)) current.delete(value);
-      else current.add(value);
-      return { ...f, permissionSets: Array.from(current) };
+      const currentSets = new Set(f.permissionSets || []);
+      const permissions = new Set(parsePermissions(f.permissionsText));
+      const isActive = currentSets.has(value);
+
+      if (isActive) {
+        currentSets.delete(value);
+        const profiles = filterProfilesBySelections(
+          f.profiles || [],
+          permissions,
+          Array.from(currentSets)
+        );
+        return {
+          ...f,
+          permissionSets: Array.from(currentSets),
+          profiles,
+          permissionsText: Array.from(permissions).join("\n"),
+        };
+      }
+
+      currentSets.add(value);
+      const setPerms = permissionSetPermissionsMap.get(value);
+      if (setPerms) setPerms.forEach((perm) => permissions.add(perm));
+      return {
+        ...f,
+        permissionSets: Array.from(currentSets),
+        permissionsText: Array.from(permissions).join("\n"),
+      };
     });
   }
 
   function selectAllUserPermissionSets() {
-    const combined = new Set([...(userForm.permissionSets || []), ...permissionSetValues]);
-    setUserForm((f) => ({ ...f, permissionSets: Array.from(combined) }));
+    setUserForm((f) => {
+      const permissionSets = new Set([...(f.permissionSets || []), ...permissionSetValues]);
+      const permissions = new Set(parsePermissions(f.permissionsText));
+      permissionSets.forEach((setName) => {
+        const setPerms = permissionSetPermissionsMap.get(setName);
+        if (setPerms) setPerms.forEach((perm) => permissions.add(perm));
+      });
+      return {
+        ...f,
+        permissionSets: Array.from(permissionSets),
+        permissionsText: Array.from(permissions).join("\n"),
+      };
+    });
   }
 
   function clearUserPermissionSets() {
-    setUserForm((f) => ({ ...f, permissionSets: [] }));
+    setUserForm((f) => {
+      const permissions = new Set(parsePermissions(f.permissionsText));
+      const profiles = filterProfilesBySelections(f.profiles || [], permissions, []);
+      return { ...f, permissionSets: [], profiles, permissionsText: Array.from(permissions).join("\n") };
+    });
   }
 
   return {

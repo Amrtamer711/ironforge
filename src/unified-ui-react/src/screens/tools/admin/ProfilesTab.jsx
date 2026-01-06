@@ -40,7 +40,7 @@ export function ProfilesTab({
       <CardContent className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {filteredProfileOptions.map((p) => (
-            <SoftCard key={p.name} className="p-4 space-y-1">
+            <SoftCard key={p.id || p.name} className="p-4 space-y-1">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-base font-semibold">{p.display_name || p.name}</div>
@@ -69,8 +69,8 @@ export function ProfilesTab({
                           setConfirmDelete({
                             open: true,
                             type: "profile",
-                            payload: p.name,
-                            label: `Delete profile "${p.display_name || p.name}"?`,
+                        payload: p.id || p.name,
+                        label: `Delete profile "${p.display_name || p.name}"?`,
                           })
                         }
                         title="Delete profile"
@@ -141,7 +141,7 @@ export function ProfilesPanel({
     toggleProfilePermissionSet,
     selectAllProfilePermissionSets,
     clearProfilePermissionSets,
-  } = useProfileActions({ permissionList, permissionSetValues });
+  } = useProfileActions({ permissionList, permissionSetValues, permissionSetList });
   const [confirmDelete, setConfirmDelete] = useState({ open: false, type: "", payload: null, label: "" });
 
   async function handleConfirmDelete() {
@@ -212,7 +212,7 @@ export function ProfilesPanel({
   );
 }
 
-function useProfileActions({ permissionList, permissionSetValues }) {
+function useProfileActions({ permissionList, permissionSetValues, permissionSetList }) {
   const qc = useQueryClient();
   const [profileForm, setProfileForm] = useState({
     name: "",
@@ -246,13 +246,37 @@ function useProfileActions({ permissionList, permissionSetValues }) {
     return selectedProfilePermissions.filter((perm) => !known.has(perm));
   }, [permissionList, selectedProfilePermissions]);
 
+  const permissionSetPermissionsMap = useMemo(() => {
+    const map = new Map();
+    (permissionSetList || []).forEach((set) => {
+      const key = set.name || set.id;
+      if (!key) return;
+      const perms = (set.permissions || set.permission_list || set.permissionList || [])
+        .map((entry) => (typeof entry === "string" ? entry : entry?.name || entry?.value || entry?.permission))
+        .filter(Boolean);
+      map.set(key, new Set(perms));
+    });
+    return map;
+  }, [permissionSetList]);
+
+  function filterPermissionSetsByPermissions(permissionSetValuesList, permissionsSet) {
+    return (permissionSetValuesList || []).filter((setName) => {
+      const required = permissionSetPermissionsMap.get(setName);
+      if (!required) return true;
+      for (const value of required) {
+        if (!permissionsSet.has(value)) return false;
+      }
+      return true;
+    });
+  }
+
   function openProfileModal(profile) {
     setProfileIsSystem(Boolean(profile?.is_system));
     if (profile?.is_system) return;
     setProfilePermissionSetsOpen(false);
     setProfilePermissionsOpen(false);
     if (profile) {
-      setEditingProfile(profile.name);
+      setEditingProfile(profile.id || profile.name);
       setProfileForm({
         name: profile.name,
         display_name: profile.display_name || profile.name,
@@ -340,9 +364,18 @@ function useProfileActions({ permissionList, permissionSetValues }) {
   function toggleProfilePermission(value) {
     setProfileForm((f) => {
       const current = new Set(parsePermissions(f.permissionsText));
-      if (current.has(value)) current.delete(value);
+      const removing = current.has(value);
+      if (removing) current.delete(value);
       else current.add(value);
-      return { ...f, permissionsText: Array.from(current).join("\n") };
+      let permissionSets = f.permissionSets || [];
+      if (removing) {
+        permissionSets = filterPermissionSetsByPermissions(permissionSets, current);
+      }
+      return {
+        ...f,
+        permissionsText: Array.from(current).join("\n"),
+        permissionSets,
+      };
     });
   }
 
@@ -357,16 +390,35 @@ function useProfileActions({ permissionList, permissionSetValues }) {
 
   function toggleProfilePermissionSet(value) {
     setProfileForm((f) => {
-      const current = new Set(f.permissionSets || []);
-      if (current.has(value)) current.delete(value);
-      else current.add(value);
-      return { ...f, permissionSets: Array.from(current) };
+      const currentSets = new Set(f.permissionSets || []);
+      const permissions = new Set(parsePermissions(f.permissionsText));
+      const isActive = currentSets.has(value);
+      if (isActive) {
+        currentSets.delete(value);
+        return { ...f, permissionSets: Array.from(currentSets), permissionsText: Array.from(permissions).join("\n") };
+      }
+
+      currentSets.add(value);
+      const setPerms = permissionSetPermissionsMap.get(value);
+      if (setPerms) setPerms.forEach((perm) => permissions.add(perm));
+      return { ...f, permissionSets: Array.from(currentSets), permissionsText: Array.from(permissions).join("\n") };
     });
   }
 
   function selectAllProfilePermissionSets() {
-    const combined = new Set([...(profileForm.permissionSets || []), ...permissionSetValues]);
-    setProfileForm((f) => ({ ...f, permissionSets: Array.from(combined) }));
+    setProfileForm((f) => {
+      const permissionSets = new Set([...(f.permissionSets || []), ...permissionSetValues]);
+      const permissions = new Set(parsePermissions(f.permissionsText));
+      permissionSets.forEach((setName) => {
+        const setPerms = permissionSetPermissionsMap.get(setName);
+        if (setPerms) setPerms.forEach((perm) => permissions.add(perm));
+      });
+      return {
+        ...f,
+        permissionSets: Array.from(permissionSets),
+        permissionsText: Array.from(permissions).join("\n"),
+      };
+    });
   }
 
   function clearProfilePermissionSets() {
