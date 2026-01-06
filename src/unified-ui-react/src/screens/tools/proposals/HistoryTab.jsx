@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui
 import { Button } from "../../../components/ui/button";
 import { SearchInput } from "../../../components/ui/search-input";
 import { LoadingEllipsis } from "../../../components/ui/loading-ellipsis";
-import { useAuth } from "../../../state/auth";
+import { useAuth, canAccessAdmin } from "../../../state/auth";
 import { runtimeConfig } from "../../../lib/runtimeConfig";
 
 function useProposalsHistory() {
@@ -27,15 +27,18 @@ function useProposalsHistory() {
     return historyQuery.data || [];
   }, [historyQuery.data]);
 
+  const canViewAll = useMemo(() => canAccessAdmin(user), [user]);
+
   const visibleProposals = useMemo(() => {
     const list = proposals || [];
+    if (canViewAll) return list;
     const userId = user?.id || user?.user_id || user?.email || "";
     if (!userId) return list;
     return list.filter((p) => {
       const owner = p.submitted_by || p.user_id || "";
       return owner === userId;
     });
-  }, [proposals, user?.id, user?.user_id, user?.email]);
+  }, [proposals, canViewAll, user?.id, user?.user_id, user?.email]);
 
   const userIds = useMemo(() => {
     const ids = new Set();
@@ -220,15 +223,16 @@ export function HistoryTab({ historyQuery, userNamesLoading, visibleProposals, u
               </div>
             </div>
           <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-[760px] w-full text-sm">
+            <div className="max-h-[480px] overflow-y-auto">
+              <div className="overflow-x-auto">
+                <table className="min-w-[760px] w-full text-sm">
                 <thead className="bg-white/60 dark:bg-white/10 text-xs uppercase tracking-wide text-black/45 dark:text-white/50">
                   <tr>
                     <th className="px-4 py-3 text-left font-semibold">Client</th>
-                    <th className="px-4 py-3 text-left font-semibold">Generated</th>
-                    <th className="px-4 py-3 text-left font-semibold">Package</th>
-                    <th className="px-4 py-3 text-left font-semibold">Total</th>
                     <th className="px-4 py-3 text-left font-semibold">Locations</th>
+                    <th className="px-4 py-3 text-left font-semibold">Amount</th>
+                    <th className="px-4 py-3 text-left font-semibold">User</th>
+                    <th className="px-4 py-3 text-left font-semibold">Generated</th>
                     <th className="px-4 py-3 text-left font-semibold">Actions</th>
                   </tr>
                 </thead>
@@ -237,12 +241,12 @@ export function HistoryTab({ historyQuery, userNamesLoading, visibleProposals, u
                     return (
                       <tr key={p.id} className="text-black/80 dark:text-white/85">
                         <td className="px-4 py-3 font-semibold">{p.clientName}</td>
+                        <td className="px-4 py-3">{p.locationText}</td>
+                        <td className="px-4 py-3">{p.totalAmount}</td>
+                        <td className="px-4 py-3">{p.userName}</td>
                         <td className="px-4 py-3">
                           {p.generatedAt ? new Date(p.generatedAt).toLocaleString() : "—"}
                         </td>
-                        <td className="px-4 py-3">{p.packageType}</td>
-                        <td className="px-4 py-3">{p.totalAmount}</td>
-                        <td className="px-4 py-3">{p.locationText}</td>
                         <td className="px-4 py-3">
                           {p.fileEntries.length ? (
                             <div className="flex flex-col gap-2">
@@ -294,7 +298,8 @@ export function HistoryTab({ historyQuery, userNamesLoading, visibleProposals, u
                     );
                   })}
                 </tbody>
-              </table>
+                </table>
+              </div>
             </div>
           </div>
             {!filteredProposals.length ? (

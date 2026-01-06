@@ -19,6 +19,17 @@ if (typeof window !== "undefined") {
   } else {
     document.body.removeAttribute("data-brand-theme");
   }
+
+  window.addEventListener(
+    "wheel",
+    (event) => {
+      const target = event.target;
+      if (target instanceof HTMLInputElement && target.type === "number" && target === document.activeElement) {
+        event.preventDefault();
+      }
+    },
+    { passive: false }
+  );
 }
 
 const queryClient = new QueryClient({
