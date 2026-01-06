@@ -1,7 +1,8 @@
 FROM python:3.11-slim
 
-# Install system dependencies including LibreOffice
+# Install system dependencies including LibreOffice and git
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
     libreoffice \
     libreoffice-writer \
     libreoffice-impress \
