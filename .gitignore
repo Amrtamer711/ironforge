@@ -92,3 +92,6 @@ worldstate
 
 # Argo CD TLS params (local env file)
 src/platform/ArgoCD/bootstrap-tls/argocd-tls.env
+
+# Argo CD repo credentials (local env file)
+src/platform/ArgoCD/repo-credentials/gitlab-repo.env

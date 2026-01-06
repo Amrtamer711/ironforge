@@ -17,6 +17,7 @@ SHELL := /bin/bash
 .PHONY: help install dev run stop clean test lint format docker-up docker-down \
 	infra-bootstrap infra-init infra-plan infra-apply infra-output \
 	platform-argocd-bootstrap platform-argocd-tls-step1 platform-argocd-tls-step2 platform-argocd-url \
+	platform-argocd-repo-creds \
 	tf-bootstrap tf-init tf-plan tf-apply tf-output \
 	argocd-bootstrap argocd-tls-tf-init argocd-tls-step1 argocd-tls-step2 argocd-url
 
@@ -199,6 +200,7 @@ infra-output: infra-init ## Terraform outputs for AWS infrastructure
 
 ARGOCD_BOOTSTRAP_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/bootstrap
 ARGOCD_TLS_OVERLAY_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/bootstrap-tls
+ARGOCD_REPO_CREDS_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/repo-credentials
 
 # DNS/TLS variables (override with VAR=value)
 # Example:
@@ -238,6 +240,10 @@ platform-argocd-tls-step2: infra-init ## Step 2: finish ACM validation, write lo
 
 platform-argocd-url: ## Print the Argo CD URL (custom hostname)
 	@echo "https://$(ARGOCD_HOSTNAME)"
+
+platform-argocd-repo-creds: ## Configure Argo CD repo credentials (required for syncing private repos)
+	@test -f $(ARGOCD_REPO_CREDS_DIR)/gitlab-repo.env || (echo "$(RED)Missing $(ARGOCD_REPO_CREDS_DIR)/gitlab-repo.env (copy from gitlab-repo.env.example)$(NC)" && exit 1)
+	@kubectl apply -k $(ARGOCD_REPO_CREDS_DIR)
 
 # Backwards-compatible aliases
 tf-bootstrap: infra-bootstrap ## Alias for infra-bootstrap
