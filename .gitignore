@@ -8,6 +8,7 @@
 .env.secrets
 .env.*.local
 /dev_venv
+src/infrastructure/aws/local.auto.tfvars
 
 # Python
 __pycache__/

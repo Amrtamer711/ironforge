@@ -1,0 +1,16 @@
+# Local Terraform variables (auto-loaded).
+#
+# Copy to `local.auto.tfvars` and adjust values for your environment.
+# This is intentionally gitignored because it is environment-specific.
+#
+# NOTE:
+# If you previously created the Argo CD Route53 hosted zone + ACM cert with these variables,
+# keeping them here prevents Terraform from planning to destroy those resources on later runs.
+
+enable_argocd_public_dns       = true
+argocd_dns_provider            = "route53"
+create_argocd_public_zone      = true
+argocd_public_zone_name        = "argocdmmg.global"
+argocd_hostname                = "argocdmmg.global"
+argocd_wait_for_acm_validation = true
+
