@@ -38,6 +38,8 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /app/config
+            - name: tmp
+              mountPath: /tmp
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -45,3 +47,5 @@ spec:
         - name: config
           configMap:
             name: argocd-image-updater-config
+        - name: tmp
+          emptyDir: {}
