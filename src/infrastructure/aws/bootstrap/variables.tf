@@ -7,13 +7,13 @@ variable "aws_region" {
 variable "state_bucket_name" {
   type        = string
   description = "Globally-unique S3 bucket name to hold Terraform state."
-  default     = "mmg-global-terraform-state-bucket-t586"
+  default     = "mmg-global-terraform-state-bucket-t588"
 }
 
 variable "lock_table_name" {
   type        = string
   description = "DynamoDB table name for Terraform state locking."
-  default     = "terraform-state-lock"
+  default     = "terraform-state-lock-t588"
 }
 
 variable "tags" {
