@@ -38,11 +38,11 @@ variable "s3_bucket_names" {
   type        = list(string)
   description = "S3 bucket names to create."
   default = [
-    "mmg-global-ingest-bucket-1-t587",
-    "mmg-global-corpus-bucket-1-t587",
-    "mmg-global-data-bucket-1-t587",
-    "mmg-global-data-bucket-2-t587",
-    "mmg-global-data-bucket-3-t587"
+    "mmg-global-ingest-bucket-1-t588",
+    "mmg-global-corpus-bucket-1-t588",
+    "mmg-global-data-bucket-1-t588",
+    "mmg-global-data-bucket-2-t588",
+    "mmg-global-data-bucket-3-t588"
   ]
 }
 
@@ -76,13 +76,19 @@ variable "ecr_force_delete" {
 variable "eks_cluster_name" {
   type        = string
   description = "EKS cluster name."
-  default     = "mmg-test-cluster-1-t587"
+  default     = "mmg-test-cluster-1-t588"
 }
 
 variable "kubernetes_version" {
   type        = string
   description = "EKS Kubernetes version."
   default     = "1.34"
+}
+
+variable "bootstrap_cluster_creator_admin_permissions" {
+  type        = bool
+  description = "Whether EKS should automatically grant the cluster creator admin permissions (creates an access entry/policy association for the creator)."
+  default     = true
 }
 
 variable "eks_admin_principal_arns" {
