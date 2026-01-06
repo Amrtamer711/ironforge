@@ -236,8 +236,8 @@ platform-argocd-tls-step2: infra-init ## Step 2: finish ACM validation, write lo
 	  kubectl apply -k $(ARGOCD_TLS_OVERLAY_DIR); \
 	  echo "$(GREEN)Applied TLS overlay. Open: https://$(ARGOCD_HOSTNAME)$(NC)"
 
-platform-argocd-url: ## Print the current Argo CD Ingress ALB hostname (useful for debugging)
-	@echo "http://$$(kubectl -n argocd get ingress argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+platform-argocd-url: ## Print the Argo CD URL (custom hostname)
+	@echo "https://$(ARGOCD_HOSTNAME)"
 
 # Backwards-compatible aliases
 tf-bootstrap: infra-bootstrap ## Alias for infra-bootstrap
