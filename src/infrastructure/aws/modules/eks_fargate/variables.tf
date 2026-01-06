@@ -18,6 +18,12 @@ variable "private_subnet_ids" {
   description = "Private subnet IDs for the cluster."
 }
 
+variable "bootstrap_cluster_creator_admin_permissions" {
+  type        = bool
+  description = "Whether EKS should automatically grant the cluster creator admin permissions (creates an access entry/policy association for the creator)."
+  default     = true
+}
+
 variable "enable_workload_fargate_profile" {
   type        = bool
   description = "Whether to create additional Fargate profiles for workload_namespaces."
