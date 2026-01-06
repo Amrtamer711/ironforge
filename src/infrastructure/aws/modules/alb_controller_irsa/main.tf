@@ -8,14 +8,14 @@ locals {
 }
 
 resource "aws_iam_policy" "this" {
-  name        = "${var.name_prefix}-AWSLoadBalancerControllerIAMPolicy"
+  name        = "${var.name_prefix}-AWSLoadBalancerControllerIAMPolicy-t588"
   description = "Policy for AWS Load Balancer Controller (ALB) using IRSA."
   policy      = data.http.alb_policy.response_body
   tags        = var.tags
 }
 
 resource "aws_iam_role" "this" {
-  name = "${var.name_prefix}-AmazonEKSLoadBalancerControllerRole"
+  name = "${var.name_prefix}-AmazonEKSLoadBalancerControllerRole-t588"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
