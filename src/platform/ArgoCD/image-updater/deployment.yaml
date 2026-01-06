@@ -24,6 +24,7 @@ spec:
             - run
             - --interval=2m
             - --loglevel=info
+            - --application-namespace=argocd
             - --argocd-server-addr=argocd-server.argocd.svc:80
             - --argocd-plaintext
             - --argocd-grpc-web
