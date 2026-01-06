@@ -5,16 +5,21 @@ metadata:
   namespace: argocd
 spec:
   project: default
-  sources:
-    - repoURL: https://aws.github.io/eks-charts
-      chart: aws-load-balancer-controller
-      targetRevision: 1.13.2
-      helm:
-        valueFiles:
-          - $values/src/platform/ArgoCD/values/aws-load-balancer-controller/values.yaml
-    - repoURL: https://REPLACE_ME/your/repo.git
-      targetRevision: HEAD
-      ref: values
+  source:
+    repoURL: https://aws.github.io/eks-charts
+    chart: aws-load-balancer-controller
+    targetRevision: 1.13.2
+    helm:
+      values: |-
+        clusterName: mmg-test-cluster-1-t588
+        region: eu-north-1
+        vpcId: vpc-0998b6e143b2ce7ef
+
+        serviceAccount:
+          create: true
+          name: aws-load-balancer-controller
+          annotations:
+            eks.amazonaws.com/role-arn: arn:aws:iam::018881300778:role/example-dev-AmazonEKSLoadBalancerControllerRole-t588
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system

@@ -7,21 +7,39 @@ resources:
   - namespace.yaml
   # Official Argo CD install manifest (pinned). Requires network access at apply time.
   - https://raw.githubusercontent.com/argoproj/argo-cd/v2.13.3/manifests/install.yaml
+  - ingress.yaml
 
 patches:
-  # Fargate works best with a non-root filesystem; ensure the repo-server has a writable tmp.
+  # Fargate works best with a non-root filesystem; ensure the repo-server has a writable /tmp.
+  # Use a strategic-merge patch so it merges by `name`/`mountPath` and won't create duplicates.
   - target:
       kind: Deployment
       name: argocd-repo-server
     patch: |-
-      - op: add
-        path: /spec/template/spec/volumes/-
-        value:
-          name: tmp
-          emptyDir: {}
-      - op: add
-        path: /spec/template/spec/containers/0/volumeMounts/-
-        value:
-          name: tmp
-          mountPath: /tmp
-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: argocd-repo-server
+      spec:
+        template:
+          spec:
+            volumes:
+              - name: tmp
+                emptyDir: {}
+            containers:
+              - name: argocd-repo-server
+                volumeMounts:
+                  - name: tmp
+                    mountPath: /tmp
+  # Serve Argo CD over plain HTTP (port 80) so it works via the LB URL without TLS/cert setup.
+  # If you later add proper TLS (Ingress/ACM), remove this and terminate TLS at the edge.
+  - target:
+      kind: ConfigMap
+      name: argocd-cmd-params-cm
+    patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: argocd-cmd-params-cm
+      data:
+        server.insecure: "true"
