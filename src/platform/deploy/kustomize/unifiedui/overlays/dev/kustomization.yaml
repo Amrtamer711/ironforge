@@ -6,8 +6,8 @@ resources:
 
 images:
   - name: unifiedui
-    newName: 000000000000.dkr.ecr.eu-north-1.amazonaws.com/unifiedui
-    newTag: dev
+    newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/unifiedui
+    newTag: demo
 
 patches:
   - target:
@@ -15,8 +15,18 @@ patches:
       name: unified-ui
     patch: |-
       - op: add
-        path: /spec/rules/0/host
-        value: unifiedui.dev.example.com
+        path: /spec/rules/-
+        value:
+          host: serviceplatform.mmg.global
+          http:
+            paths:
+              - path: /
+                pathType: Prefix
+                backend:
+                  service:
+                    name: unified-ui
+                    port:
+                      name: http
   - target:
       kind: Deployment
       name: unified-ui
@@ -31,4 +41,3 @@ patches:
         value:
           name: SALES_BOT_URL
           value: http://proposal-bot.sales.svc.cluster.local:8000
-

@@ -47,6 +47,13 @@ variables:
     - docker build -f "src/unified-ui/Dockerfile" -t "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}" .
     - docker push "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}"
 
+    # Push a stable env tag from the demo branch (used by argocd-image-updater to track the latest digest)
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "demo" ]; then
+        docker tag "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}" "${ECR_REGISTRY}/${ECR_REPO}:demo"
+        docker push "${ECR_REGISTRY}/${ECR_REPO}:demo"
+      fi
+
     # Push latest only from default branch
     - |
       if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
