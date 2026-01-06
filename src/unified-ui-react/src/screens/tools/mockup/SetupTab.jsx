@@ -229,25 +229,28 @@ export function SetupTab({
                                 {t.time_of_day}/{t.finish} - {t.frame_count} frame
                                 {t.frame_count > 1 ? "s" : ""}
                               </div>
-                              <div className="flex gap-2">
-                                <Button
-                                  variant="secondary"
-                                  size="sm"
-                                  className="rounded-xl"
-                                  onClick={() => startEditTemplate(t)}
-                                  disabled={editingTemplateLoading}
-                                >
-                                  Edit
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="rounded-xl"
-                                  onClick={() => deleteTemplate(t.photo)}
-                                >
-                                  Delete
-                                </Button>
-                              </div>
+                              {/* Template actions hidden until fully implemented. */}
+                              {false ? (
+                                <div className="flex gap-2">
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    className="rounded-xl"
+                                    onClick={() => startEditTemplate(t)}
+                                    disabled={editingTemplateLoading}
+                                  >
+                                    Edit
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="rounded-xl"
+                                    onClick={() => deleteTemplate(t.photo)}
+                                  >
+                                    Delete
+                                  </Button>
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                         );

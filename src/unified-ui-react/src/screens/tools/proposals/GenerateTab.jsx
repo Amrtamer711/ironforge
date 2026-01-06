@@ -460,9 +460,9 @@ export function GenerateTab({
                 ) : (
                   <>
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-xs font-semibold text-black/60 dark:text-white/60">Schedule</div>
+                    <div className="text-xs font-semibold text-black/60 dark:text-white/60">Line Items</div>
                       <Button variant="secondary" size="sm" className="rounded-xl" onClick={() => addPeriod(item.id)}>
-                        Add dates
+                        Add Line Item
                       </Button>
                     </div>
                     <div className="space-y-2">

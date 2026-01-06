@@ -3,10 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 
 import * as proposalsApi from "../../../api/proposals";
 import * as adminApi from "../../../api/admin";
+import { Download, ExternalLink } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
-import { SoftCard } from "../../../components/ui/soft-card";
+import { Button } from "../../../components/ui/button";
+import { SearchInput } from "../../../components/ui/search-input";
 import { LoadingEllipsis } from "../../../components/ui/loading-ellipsis";
 import { useAuth } from "../../../state/auth";
+import { runtimeConfig } from "../../../lib/runtimeConfig";
 
 function useProposalsHistory() {
   const { user } = useAuth();
@@ -97,83 +100,242 @@ export function HistoryPanel() {
 }
 
 export function HistoryTab({ historyQuery, userNamesLoading, visibleProposals, userNameById }) {
+  const [packageFilter, setPackageFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const proposals = useMemo(
+    () =>
+      (visibleProposals || []).map((p, idx) => {
+        const clientName = p.client_name || p.client || "Proposal";
+        const userId = p.submitted_by || p.user_id || "";
+        const userName = userId ? userNameById[userId] || userId : "—";
+        const generatedAt = p.date_generated || p.created_at;
+        const packageType = p.package_type || "—";
+        const locationText = p.locations || p.proposal_data?.locations_text || p.location || "—";
+        const totalAmount =
+          p.total_amount ||
+          (p.total_amount_value != null
+            ? `${p.currency || ""} ${Number(p.total_amount_value).toLocaleString()}`
+            : "—");
+        const fileEntries = [];
+        if (p.pptx_url) fileEntries.push({ url: p.pptx_url, type: "pptx" });
+        if (p.pdf_url) fileEntries.push({ url: p.pdf_url, type: "pdf" });
+        if (!fileEntries.length && p.file_url) fileEntries.push({ url: p.file_url, type: "pdf" });
+        return {
+          id: p.id || p.file_url || idx,
+          clientName,
+          userName,
+          generatedAt,
+          packageType,
+          locationText,
+          totalAmount,
+          fileEntries,
+        };
+      }),
+    [visibleProposals, userNameById]
+  );
+
+  const packageOptions = useMemo(() => {
+    const set = new Set();
+    proposals.forEach((p) => {
+      if (p.packageType && p.packageType !== "—") set.add(p.packageType);
+    });
+    return Array.from(set);
+  }, [proposals]);
+
+  const locationOptions = useMemo(() => {
+    const set = new Set();
+    proposals.forEach((p) => {
+      if (!p.locationText || p.locationText === "—") return;
+      p.locationText.split(",").forEach((part) => {
+        const value = part.trim();
+        if (value) set.add(value);
+      });
+    });
+    return Array.from(set);
+  }, [proposals]);
+
+  const filteredProposals = useMemo(() => {
+    const needle = searchTerm.trim().toLowerCase();
+    return proposals.filter((p) => {
+      if (packageFilter && p.packageType !== packageFilter) return false;
+      if (locationFilter) {
+        const locations = (p.locationText || "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean);
+        if (!locations.includes(locationFilter)) return false;
+      }
+      if (needle) {
+        const haystack = `${p.clientName} ${p.locationText}`.toLowerCase();
+        if (!haystack.includes(needle)) return false;
+      }
+      return true;
+    });
+  }, [proposals, packageFilter, locationFilter, searchTerm]);
+
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="space-y-2">
         <CardTitle>History</CardTitle>
       </CardHeader>
       <CardContent>
         {historyQuery.isLoading || userNamesLoading ? (
           <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
-        ) : (
-          <div className="space-y-2">
-            {(visibleProposals || []).map((p, idx) => {
-              const clientName = p.client_name || p.client || "Proposal";
-              const userId = p.submitted_by || p.user_id || "";
-              const userName = userId ? userNameById[userId] || userId : "—";
-              const generatedAt = p.date_generated || p.created_at;
-              const packageType = p.package_type || "—";
-              const locationText = p.locations || p.proposal_data?.locations_text || p.location || "—";
-              const totalAmount =
-                p.total_amount ||
-                (p.total_amount_value != null
-                  ? `${p.currency || ""} ${Number(p.total_amount_value).toLocaleString()}`
-                  : "—");
-
-              return (
-                <SoftCard key={p.id || p.file_url || idx} className="p-3">
-                  <div className="text-base font-semibold">{clientName}</div>
-                  <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs text-black/65 dark:text-white/65">
-                    <div className="flex flex-wrap items-baseline gap-1">
-                      <span className="uppercase tracking-wide text-xs text-black/45 dark:text-white/50">User</span>
-                      <span className="font-semibold text-black/80 dark:text-white/85">{userName}</span>
-                    </div>
-                    <div className="flex flex-wrap items-baseline gap-1">
-                      <span className="uppercase tracking-wide text-xs text-black/45 dark:text-white/50">
-                        Generated
-                      </span>
-                      <span className="font-semibold text-black/80 dark:text-white/85">
-                        {generatedAt ? new Date(generatedAt).toLocaleString() : "—"}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-baseline gap-1">
-                      <span className="uppercase tracking-wide text-xs text-black/45 dark:text-white/50">
-                        Package Type
-                      </span>
-                      <span className="font-semibold text-black/80 dark:text-white/85">{packageType}</span>
-                    </div>
-                    <div className="flex flex-wrap items-baseline gap-1">
-                      <span className="uppercase tracking-wide text-xs text-black/45 dark:text-white/50">
-                        Total Amount
-                      </span>
-                      <span className="font-semibold text-black/80 dark:text-white/85">{totalAmount}</span>
-                    </div>
-                    <div className="flex flex-wrap items-baseline gap-1 sm:col-span-2">
-                      <span className="uppercase tracking-wide text-xs text-black/45 dark:text-white/50">
-                        Locations
-                      </span>
-                      <span className="font-semibold text-black/80 dark:text-white/85">{locationText}</span>
-                    </div>
-                  </div>
-                  {p.file_url ? (
-                    <a
-                      href={p.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex mt-2 text-xs underline opacity-80 hover:opacity-100"
-                    >
-                      Download
-                    </a>
-                  ) : null}
-                </SoftCard>
-              );
-            })}
-            {!visibleProposals?.length ? (
-              <div className="text-sm text-black/60 dark:text-white/65">No proposals yet.</div>
+        ) : visibleProposals?.length ? (
+          <div className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <SearchInput
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full sm:w-[260px]"
+                placeholder="Search..."
+              />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                <select
+                  className="w-full sm:w-[200px] rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                  value={packageFilter}
+                  onChange={(e) => setPackageFilter(e.target.value)}
+                >
+                  <option value="">All packages</option>
+                  {packageOptions.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="w-full sm:w-[220px] rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                  value={locationFilter}
+                  onChange={(e) => setLocationFilter(e.target.value)}
+                >
+                  <option value="">All locations</option>
+                  {locationOptions.map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-[760px] w-full text-sm">
+                <thead className="bg-white/60 dark:bg-white/10 text-xs uppercase tracking-wide text-black/45 dark:text-white/50">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-semibold">Client</th>
+                    <th className="px-4 py-3 text-left font-semibold">Generated</th>
+                    <th className="px-4 py-3 text-left font-semibold">Package</th>
+                    <th className="px-4 py-3 text-left font-semibold">Total</th>
+                    <th className="px-4 py-3 text-left font-semibold">Locations</th>
+                    <th className="px-4 py-3 text-left font-semibold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-black/5 dark:divide-white/10">
+                  {(filteredProposals || []).map((p) => {
+                    return (
+                      <tr key={p.id} className="text-black/80 dark:text-white/85">
+                        <td className="px-4 py-3 font-semibold">{p.clientName}</td>
+                        <td className="px-4 py-3">
+                          {p.generatedAt ? new Date(p.generatedAt).toLocaleString() : "—"}
+                        </td>
+                        <td className="px-4 py-3">{p.packageType}</td>
+                        <td className="px-4 py-3">{p.totalAmount}</td>
+                        <td className="px-4 py-3">{p.locationText}</td>
+                        <td className="px-4 py-3">
+                          {p.fileEntries.length ? (
+                            <div className="flex flex-col gap-2">
+                              {p.fileEntries.map((file) => {
+                                const resolvedUrl = resolveProposalUrl(file.url);
+                                const nameFromUrl = getNameFromUrl(resolvedUrl);
+                                const fallbackName = file.type === "pdf" ? "proposal.pdf" : "proposal.pptx";
+                                const displayName = nameFromUrl || fallbackName;
+                                return (
+                                  <div key={`${file.type}-${file.url}`} className="flex flex-wrap items-center gap-2">
+                                    <span className="text-[11px] uppercase tracking-wide text-black/50 dark:text-white/60">
+                                      {file.type}
+                                    </span>
+                                    <Button asChild size="sm" variant="ghost" className="rounded-xl">
+                                      <a href={resolvedUrl} target="_blank" rel="noopener noreferrer">
+                                        <ExternalLink size={14} className="mr-1" />
+                                        Open
+                                      </a>
+                                    </Button>
+                                    <Button size="sm" variant="secondary" className="rounded-xl">
+                                      <span
+                                        role="link"
+                                        tabIndex={0}
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          downloadFile(resolvedUrl, displayName);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter" || e.key === " ") {
+                                            e.preventDefault();
+                                            downloadFile(resolvedUrl, displayName);
+                                          }
+                                        }}
+                                        className="inline-flex items-center"
+                                      >
+                                        <Download size={14} className="mr-1" />
+                                        Download
+                                      </span>
+                                    </Button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-black/50 dark:text-white/55">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+            {!filteredProposals.length ? (
+              <div className="text-sm text-black/60 dark:text-white/65">No matching proposals.</div>
             ) : null}
           </div>
+        ) : (
+          <div className="text-sm text-black/60 dark:text-white/65">No proposals yet.</div>
         )}
       </CardContent>
     </Card>
   );
+}
+
+function resolveProposalUrl(url) {
+  if (!url) return "";
+  if (url.startsWith("http")) return url;
+  return `${runtimeConfig.API_BASE_URL}${url}`;
+}
+
+function getNameFromUrl(url) {
+  if (!url) return "";
+  try {
+    const resolved = new URL(url, window.location.href);
+    const parts = resolved.pathname.split("/").filter(Boolean);
+    return parts.length ? decodeURIComponent(parts[parts.length - 1]) : "";
+  } catch {
+    const fallback = url.split("?")[0].split("#")[0];
+    const parts = fallback.split("/").filter(Boolean);
+    return parts.length ? decodeURIComponent(parts[parts.length - 1]) : "";
+  }
+}
+
+async function downloadFile(url, filename) {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename || "download";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
