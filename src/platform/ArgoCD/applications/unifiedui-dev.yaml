@@ -15,9 +15,9 @@ spec:
     repoURL: https://gitlab.com/mmg-global/ironforge.git
     targetRevision: demo
     path: src/platform/deploy/kustomize/unifiedui/overlays/dev
-    kustomize:
-      images:
-        - unifiedui=018881300778.dkr.ecr.eu-north-1.amazonaws.com/unifiedui:demo
+    # Note: do NOT set `spec.source.kustomize.images` here.
+    # argocd-image-updater writes digest pins into the live Application object under that field.
+    # If it’s present in git, re-applying this manifest will overwrite those pins and prevent rollouts on tag updates.
   destination:
     server: https://kubernetes.default.svc
     namespace: unifiedui
