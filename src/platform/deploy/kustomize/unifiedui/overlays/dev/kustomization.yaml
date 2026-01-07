@@ -8,8 +8,8 @@ images:
   - name: unifiedui
     newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/unifiedui
     # Fallback only. The actual version is managed by argocd-image-updater on the Argo CD Application.
-    # This tag may become stale; do not rely on it for updates.
-    newTag: latest
+    # This tag must exist in ECR, otherwise new pods will fail with ImagePullBackOff.
+    newTag: demo
 
 patches:
   - target:
