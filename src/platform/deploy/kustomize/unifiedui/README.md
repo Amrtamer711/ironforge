@@ -5,6 +5,7 @@ This directory contains the Kubernetes manifests for deploying `unified-ui` into
 In the demo setup, these manifests are applied by Argo CD via the `Application` at:
 
 - `src/platform/ArgoCD/applications/unifiedui-dev.yaml`
+- `src/platform/ArgoCD/applications/unifiedui-prod.yaml` (SemVer release flow)
 
 ## In-cluster API traffic model
 
@@ -31,3 +32,9 @@ make platform-apex-step1 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
 make platform-apex-step2 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
 make platform-unifiedui-url PLATFORM_APEX=mmg-nova.com
 ```
+
+## Releases (SemVer)
+
+CI publishes immutable SemVer image tags (e.g. `1.2.3`) when you create a git tag (e.g. `v1.2.3`).
+
+Production uses `overlays/prod` and expects `images[].newTag` to be set to the desired SemVer tag.

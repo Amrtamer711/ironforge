@@ -18,7 +18,7 @@ SHELL := /bin/bash
 	infra-bootstrap infra-init infra-plan infra-apply infra-output \
 	platform-argocd-bootstrap platform-argocd-tls-step1 platform-argocd-tls-step2 platform-argocd-url \
 	platform-argocd-repo-creds platform-argocd-image-updater-apply platform-argocd-image-updater-irsa platform-argocd-image-updater-token platform-argocd-image-updater-restart \
-	platform-unifiedui-apply platform-unifiedui-url \
+	platform-unifiedui-apply platform-unifiedui-prod-apply platform-unifiedui-url \
 	platform-apex-step1 platform-apex-step2 \
 	tf-bootstrap tf-init tf-plan tf-apply tf-output \
 	argocd-bootstrap argocd-tls-tf-init argocd-tls-step1 argocd-tls-step2 argocd-url
@@ -279,11 +279,15 @@ platform-argocd-image-updater-restart: ## Restart argocd-image-updater
 # =============================================================================
 
 UNIFIEDUI_APP_MANIFEST ?= $(ROOT_DIR)/src/platform/ArgoCD/applications/unifiedui-dev.yaml
+UNIFIEDUI_PROD_APP_MANIFEST ?= $(ROOT_DIR)/src/platform/ArgoCD/applications/unifiedui-prod.yaml
 UNIFIEDUI_NAMESPACE ?= unifiedui
 UNIFIEDUI_INGRESS_NAME ?= unified-ui
 
 platform-unifiedui-apply: ## Install/refresh the Unified UI Argo CD Application
 	@kubectl apply -f $(UNIFIEDUI_APP_MANIFEST)
+
+platform-unifiedui-prod-apply: ## Install/refresh the Unified UI (prod) Argo CD Application
+	@kubectl apply -f $(UNIFIEDUI_PROD_APP_MANIFEST)
 
 platform-unifiedui-url: ## Print the Unified UI URL (requires PLATFORM_APEX)
 	@test -n "$(PLATFORM_APEX)" || (echo "$(RED)Missing PLATFORM_APEX (e.g. PLATFORM_APEX=mmg-nova.com)$(NC)" && exit 1)

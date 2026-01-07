@@ -1,0 +1,45 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# Production should use immutable SemVer tags (e.g. 1.2.3).
+# Update `newTag` when you cut a new release.
+images:
+  - name: unifiedui
+    newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/unifiedui
+    newTag: 0.0.0
+
+patches:
+  - target:
+      kind: Ingress
+      name: unified-ui
+    patch: |-
+      - op: add
+        path: /spec/rules/-
+        value:
+          host: serviceplatform.mmg-nova.com
+          http:
+            paths:
+              - path: /
+                pathType: Prefix
+                backend:
+                  service:
+                    name: unified-ui
+                    port:
+                      name: http
+  - target:
+      kind: Deployment
+      name: unified-ui
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ENVIRONMENT
+          value: production
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: SALES_BOT_URL
+          value: http://proposal-bot.sales.svc.cluster.local:8000
