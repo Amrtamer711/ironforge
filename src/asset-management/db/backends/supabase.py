@@ -344,24 +344,24 @@ class SupabaseBackend(DatabaseBackend):
         company_schema: str,
         description: str | None = None,
         created_by: str | None = None,
-        # New fields for unified architecture
+        # Unified architecture fields
         standalone: bool = False,
-        series: str | None = None,
-        sov_percent: float | None = None,
-        upload_fee: float | None = None,
-        spot_duration: int | None = None,
-        loop_duration: int | None = None,
-        number_of_faces: int | None = None,
-        template_path: str | None = None,
-        # Location fields (for standalone networks)
         display_type: str | None = None,
+        series: str | None = None,
         height: str | None = None,
         width: str | None = None,
+        number_of_faces: int | None = None,
+        spot_duration: int | None = None,
+        loop_duration: int | None = None,
+        sov_percent: float | None = None,
+        upload_fee: float | None = None,
         city: str | None = None,
         area: str | None = None,
+        country: str | None = None,
         address: str | None = None,
         gps_lat: float | None = None,
         gps_lng: float | None = None,
+        template_path: str | None = None,
         notes: str | None = None,
     ) -> dict[str, Any] | None:
         client = self._get_client()
@@ -380,21 +380,22 @@ class SupabaseBackend(DatabaseBackend):
             }
             # Add optional fields if provided
             optional_fields = {
-                "series": series,
-                "sov_percent": sov_percent,
-                "upload_fee": upload_fee,
-                "spot_duration": spot_duration,
-                "loop_duration": loop_duration,
-                "number_of_faces": number_of_faces,
-                "template_path": template_path,
                 "display_type": display_type,
+                "series": series,
                 "height": height,
                 "width": width,
+                "number_of_faces": number_of_faces,
+                "spot_duration": spot_duration,
+                "loop_duration": loop_duration,
+                "sov_percent": sov_percent,
+                "upload_fee": upload_fee,
                 "city": city,
                 "area": area,
+                "country": country,
                 "address": address,
                 "gps_lat": gps_lat,
                 "gps_lng": gps_lng,
+                "template_path": template_path,
                 "notes": notes,
             }
             for field, value in optional_fields.items():
@@ -1020,7 +1021,7 @@ class SupabaseBackend(DatabaseBackend):
             optional_fields = [
                 "series", "height", "width", "number_of_faces", "spot_duration",
                 "loop_duration", "sov_percent", "upload_fee", "address", "city",
-                "country", "gps_lat", "gps_lng", "template_path", "notes"
+                "area", "country", "gps_lat", "gps_lng", "template_path", "notes"
             ]
             for field in optional_fields:
                 if field in kwargs and kwargs[field] is not None:
@@ -1444,13 +1445,12 @@ class SupabaseBackend(DatabaseBackend):
     def add_package_item(
         self,
         package_id: int,
-        item_type: str,
         company_schema: str,
         network_id: int,
     ) -> dict[str, Any] | None:
         """Add a network to a package.
 
-        After unification, all package items are networks.
+        Unified architecture: all package items are networks.
         """
         client = self._get_client()
         try:
@@ -1575,34 +1575,23 @@ class SupabaseBackend(DatabaseBackend):
         package_id: int,
         company_schema: str,
     ) -> list[dict[str, Any]]:
-        """Get all locations in a package (expanded from networks and direct assets)."""
+        """Get all networks in a package.
+
+        Unified architecture: packages contain networks (both standalone and traditional).
+        Returns the networks themselves, not expanded to individual assets.
+        """
         items = self.get_package_items(package_id, company_schema)
-        location_ids = set()
-        locations = []
+        networks = []
+        network_ids = set()
 
         for item in items:
-            if item["item_type"] == "asset" and item.get("location_id"):
-                location_ids.add(item["location_id"])
-            elif item["item_type"] == "network" and item.get("network_id"):
-                # Get all locations in this network
-                network_locations = self.list_locations(
-                    [company_schema],
-                    network_id=item["network_id"],
-                )
-                for loc in network_locations:
-                    if loc["id"] not in location_ids:
-                        location_ids.add(loc["id"])
-                        locations.append(loc)
+            if item.get("network_id") and item["network_id"] not in network_ids:
+                network = self.get_network(item["network_id"], [company_schema])
+                if network:
+                    network_ids.add(item["network_id"])
+                    networks.append(network)
 
-        # Add direct asset locations
-        for item in items:
-            if item["item_type"] == "asset" and item.get("location_id"):
-                if item["location_id"] not in {loc["id"] for loc in locations}:
-                    loc = self.get_location(item["location_id"], [company_schema])
-                    if loc:
-                        locations.append(loc)
-
-        return locations
+        return networks
 
     # =========================================================================
     # ELIGIBILITY
@@ -1869,8 +1858,9 @@ class SupabaseBackend(DatabaseBackend):
         photo_filename: str,
         frames_data: list[dict],
         company_schema: str,
+        environment: str = "outdoor",
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         created_by: str | None = None,
         config: dict | None = None,
     ) -> str:
@@ -1912,8 +1902,9 @@ class SupabaseBackend(DatabaseBackend):
             # Insert the record
             client.schema(company_schema).table("mockup_frames").insert({
                 "location_key": location_key,
+                "environment": environment,
                 "time_of_day": time_of_day,
-                "finish": finish,
+                "side": side,
                 "photo_filename": final_filename,
                 "frames_data": frames_data,
                 "created_at": datetime.now().isoformat(),
@@ -1924,7 +1915,7 @@ class SupabaseBackend(DatabaseBackend):
             # Invalidate cache for this location
             _run_async(self._cache_delete_pattern(f"frames:{location_key.lower()}:*"))
 
-            logger.info(f"[SUPABASE] Saved mockup frame: {company_schema}.{location_key}/{final_filename}")
+            logger.info(f"[SUPABASE] Saved mockup frame: {company_schema}.{location_key}/{environment}/{final_filename}")
             return final_filename
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to save mockup frame for {location_key}: {e}", exc_info=True)
@@ -1934,8 +1925,9 @@ class SupabaseBackend(DatabaseBackend):
         self,
         location_key: str,
         company: str,
+        environment: str = "outdoor",
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         photo_filename: str | None = None,
     ) -> dict[str, Any] | None:
         """Get specific mockup frame data (uses cached frames list)."""
@@ -1943,9 +1935,17 @@ class SupabaseBackend(DatabaseBackend):
         frames = self.list_mockup_frames(location_key, company)
 
         for frame in frames:
-            if frame.get("time_of_day") == time_of_day and frame.get("finish") == finish:
-                if photo_filename is None or frame.get("photo_filename") == photo_filename:
-                    return frame
+            frame_env = frame.get("environment", "outdoor")
+            # For indoor, ignore time_of_day and side matching
+            if environment == "indoor":
+                if frame_env == "indoor":
+                    if photo_filename is None or frame.get("photo_filename") == photo_filename:
+                        return frame
+            else:
+                # For outdoor, match all fields
+                if frame_env == "outdoor" and frame.get("time_of_day") == time_of_day and frame.get("side") == side:
+                    if photo_filename is None or frame.get("photo_filename") == photo_filename:
+                        return frame
 
         # Fallback to direct query if not in cache (shouldn't happen normally)
         client = self._get_client()
@@ -1955,9 +1955,12 @@ class SupabaseBackend(DatabaseBackend):
                 .table("mockup_frames")
                 .select("*")
                 .eq("location_key", location_key)
-                .eq("time_of_day", time_of_day)
-                .eq("finish", finish)
+                .eq("environment", environment)
             )
+
+            # Only filter by time_of_day and side for outdoor
+            if environment == "outdoor":
+                query = query.eq("time_of_day", time_of_day).eq("side", side)
 
             if photo_filename:
                 query = query.eq("photo_filename", photo_filename)
@@ -1976,27 +1979,32 @@ class SupabaseBackend(DatabaseBackend):
         location_key: str,
         company: str,
         photo_filename: str,
+        environment: str = "outdoor",
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
     ) -> bool:
         """Delete a mockup frame."""
         client = self._get_client()
         try:
-            response = (
+            query = (
                 client.schema(company)
                 .table("mockup_frames")
                 .delete()
                 .eq("location_key", location_key)
                 .eq("photo_filename", photo_filename)
-                .eq("time_of_day", time_of_day)
-                .eq("finish", finish)
-                .execute()
+                .eq("environment", environment)
             )
+
+            # Only filter by time_of_day and side for outdoor
+            if environment == "outdoor":
+                query = query.eq("time_of_day", time_of_day).eq("side", side)
+
+            response = query.execute()
 
             # Invalidate frames cache for this location
             _run_async(self._cache_delete(f"frames:{location_key.lower()}:{company}"))
 
-            logger.info(f"[SUPABASE] Deleted mockup frame: {location_key}/{photo_filename}")
+            logger.info(f"[SUPABASE] Deleted mockup frame: {location_key}/{environment}/{photo_filename}")
             return True
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to delete mockup frame: {e}")

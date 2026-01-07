@@ -16,6 +16,26 @@ class NetworkRecord:
     company: str
     id: int | None = None
     description: str | None = None
+    # Unified architecture: standalone flag (INTERNAL ONLY - never exposed to frontend)
+    standalone: bool = False
+    # Location fields (for standalone networks)
+    display_type: str | None = None  # 'digital' or 'static'
+    series: str | None = None
+    height: str | None = None
+    width: str | None = None
+    number_of_faces: int | None = None
+    spot_duration: int | None = None
+    loop_duration: int | None = None
+    sov_percent: float | None = None
+    upload_fee: float | None = None
+    city: str | None = None
+    area: str | None = None
+    country: str | None = None
+    address: str | None = None
+    gps_lat: float | None = None
+    gps_lng: float | None = None
+    template_path: str | None = None
+    notes: str | None = None
     is_active: bool = True
     created_at: str | None = None
     updated_at: str | None = None
@@ -87,10 +107,9 @@ class PackageRecord:
 class PackageItemRecord:
     """Package item database record."""
     package_id: int
-    item_type: str  # 'network' or 'asset'
+    item_type: str = "network"  # Always 'network' after unified architecture
     id: int | None = None
-    network_id: int | None = None
-    location_id: int | None = None
+    network_id: int | None = None  # Required for unified architecture
     created_at: str | None = None
 
 
@@ -125,6 +144,25 @@ class DatabaseBackend(ABC):
         company_schema: str,
         description: str | None = None,
         created_by: str | None = None,
+        # Unified architecture fields
+        standalone: bool = False,
+        display_type: str | None = None,
+        series: str | None = None,
+        height: str | None = None,
+        width: str | None = None,
+        number_of_faces: int | None = None,
+        spot_duration: int | None = None,
+        loop_duration: int | None = None,
+        sov_percent: float | None = None,
+        upload_fee: float | None = None,
+        city: str | None = None,
+        area: str | None = None,
+        country: str | None = None,
+        address: str | None = None,
+        gps_lat: float | None = None,
+        gps_lng: float | None = None,
+        template_path: str | None = None,
+        notes: str | None = None,
     ) -> dict[str, Any] | None:
         """
         Create a new network.
@@ -135,6 +173,24 @@ class DatabaseBackend(ABC):
             company_schema: Company schema to create in
             description: Optional description
             created_by: User ID who created
+            standalone: INTERNAL flag - True for standalone networks (no asset types)
+            display_type: 'digital' or 'static' (for standalone networks)
+            series: Series identifier
+            height: Height specification
+            width: Width specification
+            number_of_faces: Number of display faces
+            spot_duration: Spot duration in seconds
+            loop_duration: Loop duration in seconds
+            sov_percent: Share of voice percentage
+            upload_fee: Upload fee
+            city: City location
+            area: Area within city
+            country: Country
+            address: Full address
+            gps_lat: GPS latitude
+            gps_lng: GPS longitude
+            template_path: Path to template
+            notes: Additional notes
 
         Returns:
             Created network record or None if failed
@@ -486,20 +542,19 @@ class DatabaseBackend(ABC):
     def add_package_item(
         self,
         package_id: int,
-        item_type: str,
         company_schema: str,
-        network_id: int | None = None,
-        location_id: int | None = None,
+        network_id: int,
     ) -> dict[str, Any] | None:
         """
-        Add an item to a package.
+        Add a network to a package.
+
+        After unified architecture, all package items are networks.
+        Both standalone and traditional networks are added the same way.
 
         Args:
             package_id: Package ID
-            item_type: 'network' or 'asset'
             company_schema: Company schema
-            network_id: Network ID (if item_type='network')
-            location_id: Location ID (if item_type='asset')
+            network_id: Network ID (required)
 
         Returns:
             Created package item record or None
@@ -656,8 +711,9 @@ class DatabaseBackend(ABC):
         photo_filename: str,
         frames_data: list[dict],
         company_schema: str,
+        environment: str = "outdoor",
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         created_by: str | None = None,
         config: dict | None = None,
     ) -> str:
@@ -669,8 +725,9 @@ class DatabaseBackend(ABC):
             photo_filename: Original photo filename
             frames_data: List of frame coordinate dicts
             company_schema: Company schema
-            time_of_day: "day" or "night"
-            finish: "gold" or "silver"
+            environment: "indoor" or "outdoor"
+            time_of_day: "day" or "night" (ignored for indoor)
+            side: "gold", "silver", or "single_side" (ignored for indoor)
             created_by: User email who created this
             config: Optional config dict
 
@@ -684,8 +741,9 @@ class DatabaseBackend(ABC):
         self,
         location_key: str,
         company: str,
+        environment: str = "outdoor",
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         photo_filename: str | None = None,
     ) -> dict[str, Any] | None:
         """
@@ -694,8 +752,9 @@ class DatabaseBackend(ABC):
         Args:
             location_key: Location identifier
             company: Company schema
-            time_of_day: "day" or "night"
-            finish: "gold", "silver", or "black"
+            environment: "indoor" or "outdoor"
+            time_of_day: "day" or "night" (ignored for indoor)
+            side: "gold", "silver", or "single_side" (ignored for indoor)
             photo_filename: Specific photo (optional, returns first if None)
 
         Returns:
@@ -709,8 +768,9 @@ class DatabaseBackend(ABC):
         location_key: str,
         company: str,
         photo_filename: str,
+        environment: str = "outdoor",
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
     ) -> bool:
         """
         Delete a mockup frame.
@@ -719,8 +779,9 @@ class DatabaseBackend(ABC):
             location_key: Location identifier
             company: Company schema
             photo_filename: Photo filename
-            time_of_day: "day" or "night"
-            finish: "gold", "silver", or "black"
+            environment: "indoor" or "outdoor"
+            time_of_day: "day" or "night" (ignored for indoor)
+            side: "gold", "silver", or "single_side" (ignored for indoor)
 
         Returns:
             True if deleted successfully

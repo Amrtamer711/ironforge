@@ -579,7 +579,7 @@ class AssetManagementClient:
             location_key: Location identifier
 
         Returns:
-            List of mockup frame dicts with time_of_day, finish, photo_filename, frames_data
+            List of mockup frame dicts with time_of_day, side, photo_filename, frames_data
         """
         return await self._request(
             "GET",
@@ -590,8 +590,9 @@ class AssetManagementClient:
         self,
         company: str,
         location_key: str,
+        environment: str = "outdoor",
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         photo_filename: str | None = None,
     ) -> dict | None:
         """
@@ -600,14 +601,19 @@ class AssetManagementClient:
         Args:
             company: Company schema
             location_key: Location identifier
-            time_of_day: "day" or "night"
-            finish: "gold", "silver", or "black"
+            environment: "indoor" or "outdoor"
+            time_of_day: "day" or "night" (ignored for indoor)
+            side: "gold", "silver", or "single_side" (ignored for indoor)
             photo_filename: Specific photo (optional, returns first match if None)
 
         Returns:
             Mockup frame data dict or None
         """
-        params: dict[str, Any] = {"time_of_day": time_of_day, "finish": finish}
+        params: dict[str, Any] = {
+            "environment": environment,
+            "time_of_day": time_of_day,
+            "side": side
+        }
         if photo_filename:
             params["photo_filename"] = photo_filename
 
@@ -622,8 +628,9 @@ class AssetManagementClient:
         company: str,
         location_key: str,
         photo_filename: str,
+        environment: str = "outdoor",
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
     ) -> bool:
         """
         Delete a mockup frame from Asset-Management.
@@ -632,8 +639,9 @@ class AssetManagementClient:
             company: Company schema
             location_key: Location identifier
             photo_filename: Photo filename to delete
-            time_of_day: "day" or "night"
-            finish: "gold", "silver", or "black"
+            environment: "indoor" or "outdoor"
+            time_of_day: "day" or "night" (ignored for indoor)
+            side: "gold", "silver", or "single_side" (ignored for indoor)
 
         Returns:
             True if deleted successfully
@@ -644,8 +652,9 @@ class AssetManagementClient:
                 f"/api/mockup-frames/{company}/{location_key}",
                 params={
                     "photo_filename": photo_filename,
+                    "environment": environment,
                     "time_of_day": time_of_day,
-                    "finish": finish,
+                    "side": side,
                 },
             )
             return result.get("success", False) if result else False
@@ -660,8 +669,9 @@ class AssetManagementClient:
         photo_data: bytes,
         photo_filename: str,
         frames_data: list[dict],
+        environment: str = "outdoor",
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         created_by: str | None = None,
         config: dict | None = None,
     ) -> dict | None:
@@ -674,8 +684,9 @@ class AssetManagementClient:
             photo_data: Photo file bytes
             photo_filename: Original photo filename
             frames_data: List of frame coordinate dicts
-            time_of_day: "day" or "night"
-            finish: "gold" or "silver"
+            environment: "indoor" or "outdoor"
+            time_of_day: "day" or "night" (ignored for indoor)
+            side: "gold", "silver", or "single_side" (ignored for indoor)
             created_by: User email who created this
             config: Optional config dict
 
@@ -696,8 +707,9 @@ class AssetManagementClient:
             }
             data = {
                 "frames_data": json_module.dumps(frames_data),
+                "environment": environment,
                 "time_of_day": time_of_day,
-                "finish": finish,
+                "side": side,
             }
             if created_by:
                 data["created_by"] = created_by
@@ -722,8 +734,9 @@ class AssetManagementClient:
         company: str,
         location_key: str,
         time_of_day: str,
-        finish: str,
+        side: str,
         photo_filename: str,
+        environment: str = "outdoor",
     ) -> bytes | None:
         """
         Download mockup background photo from Asset-Management storage.
@@ -731,18 +744,22 @@ class AssetManagementClient:
         Args:
             company: Company schema
             location_key: Location identifier
-            time_of_day: "day" or "night"
-            finish: "gold", "silver", or "black"
+            time_of_day: "day" or "night" (ignored for indoor)
+            side: "gold", "silver", or "single_side" (ignored for indoor)
             photo_filename: Photo filename
+            environment: "indoor" or "outdoor"
 
         Returns:
             Photo bytes or None if not found
         """
         try:
-            response = await self._request(
-                "GET",
-                f"/api/storage/mockups/{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}",
-            )
+            # Use simplified path for indoor
+            if environment == "indoor":
+                endpoint = f"/api/storage/mockups/{company}/{location_key}/indoor/{photo_filename}"
+            else:
+                endpoint = f"/api/storage/mockups/{company}/{location_key}/{environment}/{time_of_day}/{side}/{photo_filename}"
+
+            response = await self._request("GET", endpoint)
             if response and "data" in response:
                 import base64
                 return base64.b64decode(response["data"])
@@ -756,8 +773,9 @@ class AssetManagementClient:
         company: str,
         location_key: str,
         time_of_day: str,
-        finish: str,
+        side: str,
         photo_filename: str,
+        environment: str = "outdoor",
         expires_in: int = 3600,
     ) -> str | None:
         """
@@ -766,19 +784,22 @@ class AssetManagementClient:
         Args:
             company: Company schema
             location_key: Location identifier
-            time_of_day: "day" or "night"
-            finish: "gold", "silver", or "black"
+            time_of_day: "day" or "night" (ignored for indoor)
+            side: "gold", "silver", or "single_side" (ignored for indoor)
             photo_filename: Photo filename
+            environment: "indoor" or "outdoor"
             expires_in: URL expiry in seconds
 
         Returns:
             Signed URL or None if not found
         """
-        result = await self._request(
-            "GET",
-            f"/api/storage/mockups/{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}/url",
-            params={"expires_in": expires_in},
-        )
+        # Use simplified path for indoor
+        if environment == "indoor":
+            endpoint = f"/api/storage/mockups/{company}/{location_key}/indoor/{photo_filename}/url"
+        else:
+            endpoint = f"/api/storage/mockups/{company}/{location_key}/{environment}/{time_of_day}/{side}/{photo_filename}/url"
+
+        result = await self._request("GET", endpoint, params={"expires_in": expires_in})
         return result.get("url") if result else None
 
     async def get_intro_outro_pdf(self, company: str, pdf_name: str) -> bytes | None:

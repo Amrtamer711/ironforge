@@ -22,9 +22,10 @@ BEGIN
         ADD COLUMN IF NOT EXISTS country TEXT
     ', v_schema);
 
-    -- Recreate the locations VIEW with country field
+    -- Drop and recreate the locations VIEW with country field
+    EXECUTE format('DROP VIEW IF EXISTS %I.locations', v_schema);
     EXECUTE format('
-        CREATE OR REPLACE VIEW %I.locations AS
+        CREATE VIEW %I.locations AS
         SELECT
             n.id,
             n.network_key AS location_key,

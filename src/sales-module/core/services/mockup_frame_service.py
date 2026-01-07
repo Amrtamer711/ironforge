@@ -200,12 +200,12 @@ class MockupFrameService:
 
             for frame in frames:
                 tod = frame.get("time_of_day", "day")
-                finish = frame.get("finish", "gold")
+                side = frame.get("side", "gold")
 
                 if tod not in variations:
                     variations[tod] = []
-                if finish not in variations[tod]:
-                    variations[tod].append(finish)
+                if side not in variations[tod]:
+                    variations[tod].append(side)
 
             self.logger.info(f"[MOCKUP_FRAME_SERVICE] Variations for {location_key}: {variations}")
             return variations
@@ -217,16 +217,16 @@ class MockupFrameService:
         self,
         location_key: str,
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         company_hint: str | None = None,
     ) -> list[str]:
         """
-        List available photos for a location/time/finish combination.
+        List available photos for a location/time/side combination.
 
         Args:
             location_key: Location identifier
             time_of_day: "day" or "night"
-            finish: "gold", "silver", or "black"
+            side: "gold", "silver", or "single_side"
             company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
@@ -237,7 +237,7 @@ class MockupFrameService:
             photos = []
 
             for frame in frames:
-                if frame.get("time_of_day") == time_of_day and frame.get("finish") == finish:
+                if frame.get("time_of_day") == time_of_day and frame.get("side") == side:
                     photo = frame.get("photo_filename")
                     if photo and photo not in photos:
                         photos.append(photo)
@@ -251,8 +251,9 @@ class MockupFrameService:
         self,
         location_key: str,
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         photo_filename: str | None = None,
+        environment: str = "outdoor",
         company_hint: str | None = None,
     ) -> list[dict] | None:
         """
@@ -262,16 +263,17 @@ class MockupFrameService:
 
         Args:
             location_key: Location identifier
-            time_of_day: "day" or "night"
-            finish: "gold", "silver", or "black"
+            time_of_day: "day" or "night" (ignored for indoor)
+            side: "gold", "silver", or "single_side" (ignored for indoor)
             photo_filename: Specific photo (optional, returns first match if None)
+            environment: "indoor" or "outdoor"
             company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
             List of frame dicts with "points" and optional "config", or None if not found
         """
         self.logger.info(
-            f"[MOCKUP_FRAME_SERVICE] Getting frames for {location_key}/{time_of_day}/{finish}"
+            f"[MOCKUP_FRAME_SERVICE] Getting frames for {location_key}/{environment}/{time_of_day}/{side}"
             + (f"/{photo_filename}" if photo_filename else "")
         )
 
@@ -281,8 +283,9 @@ class MockupFrameService:
                 frame_data = await asset_mgmt_client.get_mockup_frame(
                     company_hint,
                     location_key,
+                    environment,
                     time_of_day,
-                    finish,
+                    side,
                     photo_filename,
                 )
                 if frame_data and "frames_data" in frame_data:
@@ -299,8 +302,9 @@ class MockupFrameService:
                 frame_data = await asset_mgmt_client.get_mockup_frame(
                     company,
                     location_key,
+                    environment,
                     time_of_day,
-                    finish,
+                    side,
                     photo_filename,
                 )
 
@@ -316,8 +320,9 @@ class MockupFrameService:
         self,
         location_key: str,
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         photo_filename: str | None = None,
+        environment: str = "outdoor",
         company_hint: str | None = None,
     ) -> dict | None:
         """
@@ -325,9 +330,10 @@ class MockupFrameService:
 
         Args:
             location_key: Location identifier
-            time_of_day: "day" or "night"
-            finish: "gold", "silver", or "black"
+            time_of_day: "day" or "night" (ignored for indoor)
+            side: "gold", "silver", or "single_side" (ignored for indoor)
             photo_filename: Specific photo (optional)
+            environment: "indoor" or "outdoor"
             company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
@@ -339,8 +345,9 @@ class MockupFrameService:
                 frame_data = await asset_mgmt_client.get_mockup_frame(
                     company_hint,
                     location_key,
+                    environment,
                     time_of_day,
-                    finish,
+                    side,
                     photo_filename,
                 )
                 if frame_data and frame_data.get("config"):
@@ -356,8 +363,9 @@ class MockupFrameService:
                 frame_data = await asset_mgmt_client.get_mockup_frame(
                     company,
                     location_key,
+                    environment,
                     time_of_day,
-                    finish,
+                    side,
                     photo_filename,
                 )
 
@@ -373,8 +381,9 @@ class MockupFrameService:
         self,
         location_key: str,
         time_of_day: str,
-        finish: str,
+        side: str,
         photo_filename: str,
+        environment: str = "outdoor",
         company_hint: str | None = None,
     ) -> Path | None:
         """
@@ -384,16 +393,17 @@ class MockupFrameService:
 
         Args:
             location_key: Location identifier
-            time_of_day: "day" or "night"
-            finish: "gold", "silver", or "black"
+            time_of_day: "day" or "night" (ignored for indoor)
+            side: "gold", "silver", or "single_side" (ignored for indoor)
             photo_filename: Photo filename
+            environment: "indoor" or "outdoor"
             company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
             Path to temp file or None if download failed
         """
         self.logger.info(
-            f"[MOCKUP_FRAME_SERVICE] Downloading photo: {location_key}/{time_of_day}/{finish}/{photo_filename}"
+            f"[MOCKUP_FRAME_SERVICE] Downloading photo: {location_key}/{environment}/{time_of_day}/{side}/{photo_filename}"
         )
 
         # Try company_hint first if provided (O(1) lookup from WorkflowContext)
@@ -403,8 +413,9 @@ class MockupFrameService:
                     company_hint,
                     location_key,
                     time_of_day,
-                    finish,
+                    side,
                     photo_filename,
+                    environment,
                 )
 
                 if data:
@@ -427,8 +438,9 @@ class MockupFrameService:
                     company,
                     location_key,
                     time_of_day,
-                    finish,
+                    side,
                     photo_filename,
+                    environment,
                 )
 
                 if data:
@@ -452,24 +464,26 @@ class MockupFrameService:
         self,
         location_key: str,
         time_of_day: str = "all",
-        finish: str = "all",
+        side: str = "all",
+        environment: str = "all",
         company_hint: str | None = None,
-    ) -> tuple[str, str, str, Path] | None:
+    ) -> tuple[str, str, str, str, Path] | None:
         """
         Get a random photo for a location that has frame data.
 
         Args:
             location_key: Location identifier
-            time_of_day: "day", "night", or "all" for random
-            finish: "gold", "silver", "black", or "all" for random
+            time_of_day: "day", "night", or "all" for random (ignored for indoor)
+            side: "gold", "silver", "single_side", or "all" for random (ignored for indoor)
+            environment: "indoor", "outdoor", or "all" for random
             company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
-            Tuple of (photo_filename, time_of_day, finish, photo_path) or None
+            Tuple of (photo_filename, time_of_day, side, environment, photo_path) or None
         """
         self.logger.info(
             f"[MOCKUP_FRAME_SERVICE] Getting random photo for {location_key} "
-            f"(time={time_of_day}, finish={finish})"
+            f"(env={environment}, time={time_of_day}, side={side})"
         )
 
         try:
@@ -481,33 +495,40 @@ class MockupFrameService:
             # Filter frames based on criteria
             matching = []
             for frame in frames:
+                env = frame.get("environment", "outdoor")
                 tod = frame.get("time_of_day", "day")
-                fin = frame.get("finish", "gold")
+                frame_side = frame.get("side", "gold")
                 photo = frame.get("photo_filename")
 
                 if not photo:
                     continue
 
-                if time_of_day != "all" and tod != time_of_day:
-                    continue
-                if finish != "all" and fin != finish:
+                if environment != "all" and env != environment:
                     continue
 
-                matching.append((photo, tod, fin))
+                # For outdoor, apply time_of_day and side filters
+                if env == "outdoor":
+                    if time_of_day != "all" and tod != time_of_day:
+                        continue
+                    if side != "all" and frame_side != side:
+                        continue
+
+                matching.append((photo, tod, frame_side, env))
 
             if not matching:
                 self.logger.warning(
                     f"[MOCKUP_FRAME_SERVICE] No matching photos for {location_key} "
-                    f"with time={time_of_day}, finish={finish}"
+                    f"with env={environment}, time={time_of_day}, side={side}"
                 )
                 return None
 
             # Pick random
-            photo_filename, selected_tod, selected_finish = random.choice(matching)
+            photo_filename, selected_tod, selected_side, selected_env = random.choice(matching)
 
             # Download the photo (use found_company as hint since we know it has frames)
             photo_path = await self.download_photo(
-                location_key, selected_tod, selected_finish, photo_filename,
+                location_key, selected_tod, selected_side, photo_filename,
+                environment=selected_env,
                 company_hint=found_company,
             )
 
@@ -515,9 +536,9 @@ class MockupFrameService:
                 return None
 
             self.logger.info(
-                f"[MOCKUP_FRAME_SERVICE] Selected: {photo_filename} ({selected_tod}/{selected_finish})"
+                f"[MOCKUP_FRAME_SERVICE] Selected: {photo_filename} ({selected_env}/{selected_tod}/{selected_side})"
             )
-            return photo_filename, selected_tod, selected_finish, photo_path
+            return photo_filename, selected_tod, selected_side, selected_env, photo_path
 
         except Exception as e:
             self.logger.error(f"[MOCKUP_FRAME_SERVICE] Error getting random photo: {e}")

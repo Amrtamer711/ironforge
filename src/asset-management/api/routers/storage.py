@@ -377,39 +377,68 @@ async def get_intro_outro_pdf(company: str, pdf_name: str) -> dict[str, Any]:
 # =============================================================================
 
 
+def _build_mockup_storage_key(
+    company: str,
+    location_key: str,
+    environment: str,
+    time_of_day: str | None,
+    side: str | None,
+    photo_filename: str,
+) -> str:
+    """
+    Build mockup storage key based on environment.
+
+    Structure:
+    - Outdoor: mockups/{company}/{location_key}/outdoor/{time_of_day}/{side}/{photo_filename}
+    - Indoor: mockups/{company}/{location_key}/indoor/{photo_filename}
+    """
+    if environment == "indoor":
+        # Indoor: simplified structure, no time_of_day/side
+        return f"{company}/{location_key}/indoor/{photo_filename}"
+    else:
+        # Outdoor: full structure with time_of_day and side
+        return f"{company}/{location_key}/outdoor/{time_of_day}/{side}/{photo_filename}"
+
+
 @router.get(
-    "/mockups/{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}",
+    "/mockups/{company}/{location_key}/{environment}/{time_of_day}/{side}/{photo_filename}",
     response_model=FileResponse,
 )
 async def get_mockup_photo(
     company: str,
     location_key: str,
+    environment: str,
     time_of_day: str,
-    finish: str,
+    side: str,
     photo_filename: str,
 ) -> dict[str, Any]:
     """
     Download mockup background photo.
 
-    Storage structure: mockups/{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}
+    Storage structure:
+    - Outdoor: mockups/{company}/{location_key}/outdoor/{time_of_day}/{side}/{photo_filename}
+    - Indoor: mockups/{company}/{location_key}/indoor/{photo_filename}
 
     Args:
         company: Company schema
         location_key: Location identifier
-        time_of_day: "day" or "night"
-        finish: "gold", "silver", or "black"
+        environment: "indoor" or "outdoor"
+        time_of_day: "day" or "night" (ignored for indoor)
+        side: "gold", "silver", or "single_side" (ignored for indoor)
         photo_filename: Photo filename
 
     Returns:
         Base64-encoded photo data
     """
-    logger.info(f"[STORAGE] Getting mockup photo: {company}/{location_key}/{time_of_day}/{finish}/{photo_filename}")
+    logger.info(f"[STORAGE] Getting mockup photo: {company}/{location_key}/{environment}/{time_of_day}/{side}/{photo_filename}")
 
     try:
         storage = _get_storage_client()
         bucket = storage.from_("mockups")
 
-        storage_key = f"{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}"
+        storage_key = _build_mockup_storage_key(
+            company, location_key, environment, time_of_day, side, photo_filename
+        )
 
         data = bucket.download(storage_key)
         if not data:
@@ -434,19 +463,77 @@ async def get_mockup_photo(
         raise
     except Exception as e:
         # Log at debug level since 404s are expected during multi-company searches
-        logger.debug(f"[STORAGE] Mockup photo not found: {company}/{location_key}/{time_of_day}/{finish}/{photo_filename} - {e}")
+        logger.debug(f"[STORAGE] Mockup photo not found: {storage_key} - {e}")
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+
+# Simplified route for indoor (no time_of_day/finish needed)
+@router.get(
+    "/mockups/{company}/{location_key}/indoor/{photo_filename}",
+    response_model=FileResponse,
+)
+async def get_mockup_photo_indoor(
+    company: str,
+    location_key: str,
+    photo_filename: str,
+) -> dict[str, Any]:
+    """
+    Download indoor mockup background photo (simplified path).
+
+    Storage structure: mockups/{company}/{location_key}/indoor/{photo_filename}
+
+    Args:
+        company: Company schema
+        location_key: Location identifier
+        photo_filename: Photo filename
+
+    Returns:
+        Base64-encoded photo data
+    """
+    logger.info(f"[STORAGE] Getting indoor mockup photo: {company}/{location_key}/indoor/{photo_filename}")
+
+    try:
+        storage = _get_storage_client()
+        bucket = storage.from_("mockups")
+
+        storage_key = f"{company}/{location_key}/indoor/{photo_filename}"
+
+        data = bucket.download(storage_key)
+        if not data:
+            raise HTTPException(status_code=404, detail="Photo not found")
+
+        # Determine content type from extension
+        ext = photo_filename.lower().split(".")[-1] if "." in photo_filename else "jpg"
+        content_types = {
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+        }
+        content_type = content_types.get(ext, "image/jpeg")
+
+        return {
+            "data": base64.b64encode(data).decode("utf-8"),
+            "content_type": content_type,
+            "filename": photo_filename,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.debug(f"[STORAGE] Indoor mockup photo not found: {company}/{location_key}/indoor/{photo_filename} - {e}")
         raise HTTPException(status_code=404, detail="Photo not found")
 
 
 @router.get(
-    "/mockups/{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}/url",
+    "/mockups/{company}/{location_key}/{environment}/{time_of_day}/{side}/{photo_filename}/url",
     response_model=UrlResponse,
 )
 async def get_mockup_photo_url(
     company: str,
     location_key: str,
+    environment: str,
     time_of_day: str,
-    finish: str,
+    side: str,
     photo_filename: str,
     expires_in: int = Query(default=3600, ge=60, le=86400),
 ) -> dict[str, Any]:
@@ -456,8 +543,9 @@ async def get_mockup_photo_url(
     Args:
         company: Company schema
         location_key: Location identifier
-        time_of_day: "day" or "night"
-        finish: "gold", "silver", or "black"
+        environment: "indoor" or "outdoor"
+        time_of_day: "day" or "night" (ignored for indoor)
+        side: "gold", "silver", or "single_side" (ignored for indoor)
         photo_filename: Photo filename
         expires_in: URL expiry in seconds
 
@@ -468,7 +556,51 @@ async def get_mockup_photo_url(
         storage = _get_storage_client()
         bucket = storage.from_("mockups")
 
-        storage_key = f"{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}"
+        storage_key = _build_mockup_storage_key(
+            company, location_key, environment, time_of_day, side, photo_filename
+        )
+        result = bucket.create_signed_url(storage_key, expires_in)
+
+        if result and "signedURL" in result:
+            return {"url": result["signedURL"], "expires_in": expires_in}
+
+        raise HTTPException(status_code=404, detail="Photo not found")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[STORAGE] Failed to create signed URL: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# Simplified URL route for indoor
+@router.get(
+    "/mockups/{company}/{location_key}/indoor/{photo_filename}/url",
+    response_model=UrlResponse,
+)
+async def get_mockup_photo_url_indoor(
+    company: str,
+    location_key: str,
+    photo_filename: str,
+    expires_in: int = Query(default=3600, ge=60, le=86400),
+) -> dict[str, Any]:
+    """
+    Get signed URL for indoor mockup photo download.
+
+    Args:
+        company: Company schema
+        location_key: Location identifier
+        photo_filename: Photo filename
+        expires_in: URL expiry in seconds
+
+    Returns:
+        Signed URL
+    """
+    try:
+        storage = _get_storage_client()
+        bucket = storage.from_("mockups")
+
+        storage_key = f"{company}/{location_key}/indoor/{photo_filename}"
         result = bucket.create_signed_url(storage_key, expires_in)
 
         if result and "signedURL" in result:

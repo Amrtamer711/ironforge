@@ -23,21 +23,43 @@ MOCKUPS_DIR.mkdir(parents=True, exist_ok=True)
 logger.info(f"[MOCKUP INIT] Mockups directory exists: {MOCKUPS_DIR.exists()}, writable: {os.access(MOCKUPS_DIR, os.W_OK)}")
 
 
-def get_location_photos_dir(company: str, location_key: str, time_of_day: str = "day", finish: str = "gold") -> Path:
+def get_location_photos_dir(
+    company: str,
+    location_key: str,
+    environment: str = "outdoor",
+    time_of_day: str = "day",
+    side: str = "gold"
+) -> Path:
     """Get the directory for a location's mockup photos.
 
-    Structure: mockups/{company}/{location_key}/{time_of_day}/{finish}
-    Example: mockups/backlite_dubai/triple_crown/day/gold
+    Structure:
+    - Outdoor: mockups/{company}/{location_key}/outdoor/{time_of_day}/{side}
+    - Indoor: mockups/{company}/{location_key}/indoor
+
+    Example: mockups/backlite_dubai/triple_crown/outdoor/day/gold
     """
-    return MOCKUPS_DIR / company / location_key / time_of_day / finish
+    if environment == "indoor":
+        return MOCKUPS_DIR / company / location_key / "indoor"
+    else:
+        return MOCKUPS_DIR / company / location_key / "outdoor" / time_of_day / side
 
 
-def save_location_photo(company: str, location_key: str, photo_filename: str, photo_data: bytes, time_of_day: str = "day", finish: str = "gold") -> Path:
+def save_location_photo(
+    company: str,
+    location_key: str,
+    photo_filename: str,
+    photo_data: bytes,
+    environment: str = "outdoor",
+    time_of_day: str = "day",
+    side: str = "gold"
+) -> Path:
     """Save a location photo to disk.
 
-    Structure: mockups/{company}/{location_key}/{time_of_day}/{finish}/{photo_filename}
+    Structure:
+    - Outdoor: mockups/{company}/{location_key}/outdoor/{time_of_day}/{side}/{photo_filename}
+    - Indoor: mockups/{company}/{location_key}/indoor/{photo_filename}
     """
-    location_dir = get_location_photos_dir(company, location_key, time_of_day, finish)
+    location_dir = get_location_photos_dir(company, location_key, environment, time_of_day, side)
 
     logger.info(f"[MOCKUP] Creating directory: {location_dir}")
     location_dir.mkdir(parents=True, exist_ok=True)
@@ -73,9 +95,15 @@ def save_location_photo(company: str, location_key: str, photo_filename: str, ph
     return photo_path
 
 
-def list_location_photos(company: str, location_key: str, time_of_day: str = "day", finish: str = "gold") -> list[str]:
+def list_location_photos(
+    company: str,
+    location_key: str,
+    environment: str = "outdoor",
+    time_of_day: str = "day",
+    side: str = "gold"
+) -> list[str]:
     """List all photo files for a location."""
-    location_dir = get_location_photos_dir(company, location_key, time_of_day, finish)
+    location_dir = get_location_photos_dir(company, location_key, environment, time_of_day, side)
     if not location_dir.exists():
         return []
 
@@ -222,7 +250,7 @@ async def delete_location_photo(
     photo_filename: str,
     company_schema: str,
     time_of_day: str = "day",
-    finish: str = "gold",
+    side: str = "gold",
 ) -> bool:
     """Delete a location photo and its frame data.
 
@@ -234,7 +262,7 @@ async def delete_location_photo(
         photo_filename: Name of the photo file
         company_schema: Company schema to delete from (e.g., "backlite_dubai")
         time_of_day: Time of day variation
-        finish: Finish type
+        side: Side type ("gold", "silver", or "single_side")
 
     Returns:
         True if deleted successfully
@@ -248,14 +276,14 @@ async def delete_location_photo(
             location_key=location_key,
             photo_filename=photo_filename,
             time_of_day=time_of_day,
-            finish=finish,
+            side=side,
         )
 
         if not success:
             logger.warning(f"[MOCKUP] Failed to delete frame from Asset-Management: {location_key}/{photo_filename}")
 
         # Delete local file if exists
-        photo_path = get_location_photos_dir(company_schema, location_key, time_of_day, finish) / photo_filename
+        photo_path = get_location_photos_dir(company_schema, location_key, "outdoor", time_of_day, side) / photo_filename
         if photo_path.exists():
             photo_path.unlink()
 
@@ -267,12 +295,12 @@ async def delete_location_photo(
                 location_key=location_key,
                 photo_filename=photo_filename,
                 time_of_day=time_of_day,
-                finish=finish,
+                side=side,
             )
         except Exception as track_err:
             logger.debug(f"[MOCKUP] Storage soft-delete skipped: {track_err}")
 
-        logger.info(f"[MOCKUP] Deleted photo '{photo_filename}' for location '{location_key}/{time_of_day}/{finish}'")
+        logger.info(f"[MOCKUP] Deleted photo '{photo_filename}' for location '{location_key}/{time_of_day}/{side}'")
         return True
     except Exception as e:
         logger.error(f"[MOCKUP] Error deleting photo: {e}")
@@ -290,7 +318,8 @@ async def generate_mockup_async(
     output_path: Path | None = None,
     specific_photo: str | None = None,
     time_of_day: str = "all",
-    finish: str = "all",
+    side: str = "all",
+    environment: str = "all",
     config_override: dict | None = None,
     company_schemas: list[str] | None = None,
     company_hint: str | None = None,
@@ -308,8 +337,9 @@ async def generate_mockup_async(
         creative_images: List of creative/ad image paths
         output_path: Optional output path
         specific_photo: Optional specific photo filename
-        time_of_day: Time of day variation ("day", "night", "all")
-        finish: Billboard finish ("gold", "silver", "black", "all")
+        time_of_day: Time of day variation ("day", "night", "all") - ignored for indoor
+        side: Billboard side ("gold", "silver", "single_side", "all") - ignored for indoor
+        environment: Environment ("indoor", "outdoor", "all")
         config_override: Optional config dict to override saved frame config
         company_schemas: List of company schemas to search
         company_hint: Optional company to try first for O(1) lookup (from WorkflowContext)
@@ -332,10 +362,12 @@ async def generate_mockup_async(
         if specific_photo:
             # Use specific photo
             selected_tod = time_of_day if time_of_day != "all" else "day"
-            selected_finish = finish if finish != "all" else "gold"
+            selected_side = side if side != "all" else "gold"
+            selected_env = environment if environment != "all" else "outdoor"
 
             photo_path = await service.download_photo(
-                location_key, selected_tod, selected_finish, specific_photo,
+                location_key, selected_tod, selected_side, specific_photo,
+                environment=selected_env,
                 company_hint=company_hint,
             )
             if not photo_path:
@@ -346,17 +378,18 @@ async def generate_mockup_async(
         else:
             # Get random photo
             result = await service.get_random_photo(
-                location_key, time_of_day, finish, company_hint=company_hint
+                location_key, time_of_day, side, environment=environment, company_hint=company_hint
             )
             if not result:
                 logger.error(f"[MOCKUP_ASYNC] No photos available for {location_key}")
                 return None, None
 
-            photo_filename, selected_tod, selected_finish, photo_path = result
+            photo_filename, selected_tod, selected_side, selected_env, photo_path = result
 
         # Get frame data
         frames_data = await service.get_frames(
-            location_key, selected_tod, selected_finish, photo_filename,
+            location_key, selected_tod, selected_side, photo_filename,
+            environment=selected_env,
             company_hint=company_hint,
         )
         if not frames_data:
@@ -368,7 +401,8 @@ async def generate_mockup_async(
 
         # Get config if available
         photo_config = await service.get_config(
-            location_key, selected_tod, selected_finish, photo_filename,
+            location_key, selected_tod, selected_side, photo_filename,
+            environment=selected_env,
             company_hint=company_hint,
         )
 
