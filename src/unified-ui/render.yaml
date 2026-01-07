@@ -27,7 +27,7 @@ services:
       - key: LOG_LEVEL
         value: "INFO"
       # Service URLs for proxy routing
-      - key: SALES_BOT_URL
+      - key: SALES_MODULE_URL
         value: "https://crm-sales-module.onrender.com"
       - key: ASSET_MGMT_URL
         value: "https://crm-asset-management.onrender.com"

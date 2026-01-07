@@ -156,7 +156,7 @@ run-sales: ## Run only sales-module
 dev-ui: run-ui ## Alias for run-ui
 run-ui: ## Run only unified-ui
 	@echo "$(BLUE)Starting unified-ui on port $(UI_PORT)...$(NC)"
-	@cd $(UI_DIR) && PORT=$(UI_PORT) ENVIRONMENT=$(ENV) SALES_BOT_URL=http://localhost:$(SALES_PORT) $(PYTHON) run_service.py
+	@cd $(UI_DIR) && PORT=$(UI_PORT) ENVIRONMENT=$(ENV) SALES_MODULE_URL=http://localhost:$(SALES_PORT) $(PYTHON) run_service.py
 
 dev-assets: run-assets ## Alias for run-assets
 run-assets: ## Run only asset-management

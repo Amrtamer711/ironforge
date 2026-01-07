@@ -65,7 +65,7 @@ services:
         value: "https://crm-security-service.onrender.com"
       - key: ASSET_MGMT_URL
         value: "https://crm-asset-management.onrender.com"
-      - key: UI_SERVICE_URL
+      - key: UNIFIED_UI_URL
         value: "https://crm-unified-ui.onrender.com"
       # Inter-service auth secret
       - key: INTER_SERVICE_SECRET

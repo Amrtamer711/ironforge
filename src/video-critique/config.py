@@ -228,8 +228,8 @@ SECURITY_SERVICE_URL = os.getenv("SECURITY_SERVICE_URL", "https://crm-security-s
 # Asset Management Service URL
 ASSET_MGMT_URL = os.getenv("ASSET_MGMT_URL", "https://crm-asset-management.onrender.com")
 
-# UI Service URL (for channel identity API)
-UI_SERVICE_URL = os.getenv("UI_SERVICE_URL", "https://crm-unified-ui.onrender.com")
+# Unified UI URL (for channel identity API)
+UNIFIED_UI_URL = os.getenv("UNIFIED_UI_URL", "https://crm-unified-ui.onrender.com")
 
 # Inter-service auth secret
 INTER_SERVICE_SECRET = os.getenv("INTER_SERVICE_SECRET", "")

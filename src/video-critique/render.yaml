@@ -60,7 +60,7 @@ envVarGroups:
       - key: HEAD_OF_SALES_EMAIL
         sync: false
       # Inter-service communication
-      - key: UI_SERVICE_URL
+      - key: UNIFIED_UI_URL
         value: "https://crm-unified-ui.onrender.com"
       - key: SECURITY_SERVICE_URL
         value: "https://crm-security-service.onrender.com"

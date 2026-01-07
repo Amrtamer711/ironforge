@@ -115,7 +115,7 @@ async def proxy_to_sales_bot(
     # Build target URL
     # When mounted at /api/sales, path comes in already stripped
     # Forward to /api/{path} on the backend
-    target_url = f"{settings.SALES_BOT_URL}/api/{path}"
+    target_url = f"{settings.SALES_MODULE_URL}/api/{path}"
     if request.query_params:
         target_url += f"?{request.query_params}"
 
@@ -188,7 +188,7 @@ async def proxy_to_sales_bot(
                 detail={
                     "error": "Service unavailable",
                     "details": str(e),
-                    "target": settings.SALES_BOT_URL,
+                    "target": settings.SALES_MODULE_URL,
                 },
             )
     except Exception as e:

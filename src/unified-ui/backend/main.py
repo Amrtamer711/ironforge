@@ -104,7 +104,7 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("[UI] Supabase: Not configured")
 
-    logger.info(f"[UI] Sales Bot URL: {settings.SALES_BOT_URL}")
+    logger.info(f"[UI] Sales Module URL: {settings.SALES_MODULE_URL}")
     logger.info(f"Unified UI running on port {settings.PORT}")
 
     yield
@@ -248,7 +248,7 @@ async def health_check():
         "status": "ok",
         "service": "unified-ui",
         "supabase": supabase is not None,
-        "sales_bot_url": settings.SALES_BOT_URL,
+        "sales_module_url": settings.SALES_MODULE_URL,
         "environment": settings.ENVIRONMENT,
     }
 
