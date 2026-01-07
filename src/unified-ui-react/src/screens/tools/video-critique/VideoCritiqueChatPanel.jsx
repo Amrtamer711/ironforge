@@ -7,6 +7,7 @@ import { Card } from "../../../components/ui/card";
 import { FormField } from "../../../components/ui/form-field";
 import { LoadingEllipsis } from "../../../components/ui/loading-ellipsis";
 import { Modal } from "../../../components/ui/modal";
+import { SelectDropdown } from "../../../components/ui/select-dropdown";
 import * as videoCritiqueApi from "../../../api/videoCritique";
 import { getAuthToken } from "../../../lib/token";
 
@@ -727,22 +728,19 @@ export function VideoCritiqueChatPanel() {
           <div className="space-y-3">
             {(actionFormConfig?.fields || []).map((field) => {
               if (field.type === "select") {
+                const selectOptions = [
+                  { value: "", label: field.placeholder || "Select..." },
+                  ...(field.options || []),
+                ];
                 return (
                   <FormField key={field.id} label={field.label}>
-                    <select
-                      className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                    <SelectDropdown
                       value={actionFormValues[field.id] || ""}
-                      onChange={(e) =>
-                        setActionFormValues((prev) => ({ ...prev, [field.id]: e.target.value }))
+                      options={selectOptions}
+                      onChange={(nextValue) =>
+                        setActionFormValues((prev) => ({ ...prev, [field.id]: nextValue }))
                       }
-                    >
-                      <option value="">Select...</option>
-                      {(field.options || []).map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </FormField>
                 );
               }

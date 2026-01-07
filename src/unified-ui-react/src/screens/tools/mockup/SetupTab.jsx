@@ -3,22 +3,28 @@ import { ChevronDown } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { FormField } from "../../../components/ui/form-field";
+import { MultiSelect } from "../../../components/ui/multi-select";
 import { SoftCard } from "../../../components/ui/soft-card";
 import { LoadingEllipsis } from "../../../components/ui/loading-ellipsis";
+import { SelectDropdown } from "../../../components/ui/select-dropdown";
 import { cn } from "../../../lib/utils";
 
 export function SetupTab({
-  location,
-  setLocation,
+  locations,
+  setLocations,
+  venueType,
+  setVenueType,
   setTemplateKey,
   locationOptions,
   locationsQuery,
   timeOfDay,
   setTimeOfDay,
+  timeOfDayDisabled,
   finish,
   setFinish,
   timeOfDayOptions,
   finishOptions,
+  venueTypeOptions,
   editingTemplate,
   editingTemplateLoading,
   stopEditTemplate,
@@ -95,6 +101,7 @@ export function SetupTab({
   clearAllFrames,
   currentPoints,
   frameCount,
+  useNativeSelects,
 }) {
   return (
     <Card>
@@ -104,23 +111,21 @@ export function SetupTab({
       <CardContent className="space-y-4">
         <div className="space-y-4">
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <FormField label="Location">
-                <select
-                  className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                  value={location}
-                  onChange={(e) => {
-                    setLocation(e.target.value);
+                <MultiSelect
+                  value={locations}
+                  onChange={(next) => {
+                    setLocations(next);
                     setTemplateKey("");
                   }}
-                >
-                  <option value="">Select a location</option>
-                  {locationOptions.map((loc) => (
-                    <option key={loc.key} value={loc.key}>
-                      {loc.name}
-                    </option>
-                  ))}
-                </select>
+                  options={locationOptions.map((loc) => {
+                    const value = loc?.key ?? loc?.id ?? loc?.value ?? loc;
+                    const label = loc?.name ?? loc?.label ?? value;
+                    return { value, label };
+                  })}
+                  placeholder="Select locations"
+                />
                 {locationsQuery.isLoading ? (
                   <div className="mt-1 text-xs text-black/50 dark:text-white/60">
                     <LoadingEllipsis text="Loading locations" />
@@ -128,32 +133,35 @@ export function SetupTab({
                 ) : null}
               </FormField>
 
+              <FormField label="Venue Type">
+                <SelectDropdown
+                  value={venueType}
+                  options={venueTypeOptions}
+                  placeholder="Select venue type"
+                  onChange={(nextValue) => setVenueType(nextValue)}
+                  useNativeSelect={useNativeSelects}
+                />
+              </FormField>
+
               <FormField label="Time of Day">
-                <select
-                  className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                <SelectDropdown
                   value={timeOfDay}
-                  onChange={(e) => setTimeOfDay(e.target.value)}
-                >
-                  {timeOfDayOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  options={timeOfDayOptions}
+                  placeholder="Select time of day"
+                  onChange={(nextValue) => setTimeOfDay(nextValue)}
+                  disabled={timeOfDayDisabled}
+                  useNativeSelect={useNativeSelects}
+                />
               </FormField>
 
               <FormField label="Billboard Finish">
-                <select
-                  className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                <SelectDropdown
                   value={finish}
-                  onChange={(e) => setFinish(e.target.value)}
-                >
-                  {finishOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  options={finishOptions}
+                  placeholder="Select finish"
+                  onChange={(nextValue) => setFinish(nextValue)}
+                  useNativeSelect={useNativeSelects}
+                />
               </FormField>
             </div>
 
@@ -184,9 +192,9 @@ export function SetupTab({
                   <div>
                     <div className="text-sm font-semibold text-black/80 dark:text-white/85">Existing templates</div>
                     <div className="text-xs text-black/55 dark:text-white/60">
-                      {location
+                      {locations.length
                         ? `${templateOptions.length} template${templateOptions.length === 1 ? "" : "s"}`
-                        : "Select a location to load templates."}
+                        : "Select at least one location to load templates."}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-black/50 dark:text-white/55">
@@ -199,7 +207,7 @@ export function SetupTab({
                     {templatesQuery.isLoading ? (
                       <LoadingEllipsis text="Loading templates" className="text-sm text-black/60 dark:text-white/65" />
                     ) : null}
-                    {!templatesQuery.isLoading && (!templateOptions.length || !location) ? (
+                    {!templatesQuery.isLoading && (!templateOptions.length || !locations.length) ? (
                       <div className="text-sm text-black/60 dark:text-white/65">No templates for this selection.</div>
                     ) : null}
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
@@ -567,7 +575,7 @@ export function SetupTab({
           <Button variant="secondary" className="rounded-2xl" onClick={resetCurrentFrame}>
             Reset Current Frame
           </Button>
-          <Button className="rounded-2xl" onClick={saveSetup} disabled={setupSaving || !location || !setupPhoto}>
+          <Button className="rounded-2xl" onClick={saveSetup} disabled={setupSaving || !locations.length || !setupPhoto}>
             {setupSaving ? (
               <LoadingEllipsis text="Saving" />
             ) : editingTemplate ? (

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui
 import { Button } from "../../../components/ui/button";
 import { SearchInput } from "../../../components/ui/search-input";
 import { LoadingEllipsis } from "../../../components/ui/loading-ellipsis";
+import { SelectDropdown } from "../../../components/ui/select-dropdown";
 import { useAuth, canAccessAdmin } from "../../../state/auth";
 import { runtimeConfig } from "../../../lib/runtimeConfig";
 
@@ -158,6 +159,14 @@ export function HistoryTab({ historyQuery, userNamesLoading, visibleProposals, u
     });
     return Array.from(set);
   }, [proposals]);
+  const packageSelectOptions = useMemo(
+    () => [{ value: "", label: "All packages" }, ...packageOptions.map((value) => ({ value, label: value }))],
+    [packageOptions]
+  );
+  const locationSelectOptions = useMemo(
+    () => [{ value: "", label: "All locations" }, ...locationOptions.map((value) => ({ value, label: value }))],
+    [locationOptions]
+  );
 
   const filteredProposals = useMemo(() => {
     const needle = searchTerm.trim().toLowerCase();
@@ -196,44 +205,31 @@ export function HistoryTab({ historyQuery, userNamesLoading, visibleProposals, u
                 placeholder="Search..."
               />
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-                <select
-                  className="w-full sm:w-[200px] rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                <SelectDropdown
                   value={packageFilter}
-                  onChange={(e) => setPackageFilter(e.target.value)}
-                >
-                  <option value="">All packages</option>
-                  {packageOptions.map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className="w-full sm:w-[220px] rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                  options={packageSelectOptions}
+                  onChange={setPackageFilter}
+                  className="sm:w-[200px]"
+                />
+                <SelectDropdown
                   value={locationFilter}
-                  onChange={(e) => setLocationFilter(e.target.value)}
-                >
-                  <option value="">All locations</option>
-                  {locationOptions.map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
+                  options={locationSelectOptions}
+                  onChange={setLocationFilter}
+                  className="sm:w-[220px]"
+                />
               </div>
             </div>
-          <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 overflow-hidden">
-            <div className="max-h-[480px] overflow-y-auto">
-              <div className="overflow-x-auto">
+          <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 w-full min-w-0 overflow-hidden">
+            <div className="max-h-[480px] w-full overflow-auto">
                 <table className="min-w-[760px] w-full text-sm">
-                <thead className="bg-white/60 dark:bg-white/10 text-xs uppercase tracking-wide text-black/45 dark:text-white/50">
+                <thead className="bg-white dark:bg-neutral-900 text-xs uppercase tracking-wide text-black/45 dark:text-white/50 sticky top-0 z-10">
                   <tr>
-                    <th className="px-4 py-3 text-left font-semibold">Client</th>
-                    <th className="px-4 py-3 text-left font-semibold">Locations</th>
-                    <th className="px-4 py-3 text-left font-semibold">Amount</th>
-                    <th className="px-4 py-3 text-left font-semibold">User</th>
-                    <th className="px-4 py-3 text-left font-semibold">Generated</th>
-                    <th className="px-4 py-3 text-left font-semibold">Actions</th>
+                    <th className="sticky top-0 z-10 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">Client</th>
+                    <th className="sticky top-0 z-10 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">Locations</th>
+                    <th className="sticky top-0 z-10 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">Amount</th>
+                    <th className="sticky top-0 z-10 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">User</th>
+                    <th className="sticky top-0 z-10 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">Generated</th>
+                    <th className="sticky top-0 right-0 z-20 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-black/5 dark:divide-white/10">
@@ -247,7 +243,7 @@ export function HistoryTab({ historyQuery, userNamesLoading, visibleProposals, u
                         <td className="px-4 py-3">
                           {p.generatedAt ? new Date(p.generatedAt).toLocaleString() : "—"}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="sticky right-0 z-10 px-4 py-3 bg-white/90 dark:bg-neutral-900/95">
                           {p.fileEntries.length ? (
                             <div className="flex flex-col gap-2">
                               {p.fileEntries.map((file) => {
@@ -300,7 +296,6 @@ export function HistoryTab({ historyQuery, userNamesLoading, visibleProposals, u
                 </tbody>
                 </table>
               </div>
-            </div>
           </div>
             {!filteredProposals.length ? (
               <div className="text-sm text-black/60 dark:text-white/65">No matching proposals.</div>

@@ -6,6 +6,7 @@ import {
   BarElement,
   CategoryScale,
   DoughnutController,
+  PieController,
   BarController,
   Legend,
   LinearScale,
@@ -26,6 +27,7 @@ import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { LoadingEllipsis } from "../../../components/ui/loading-ellipsis";
 import { Modal } from "../../../components/ui/modal";
+import { SelectDropdown } from "../../../components/ui/select-dropdown";
 import { SoftCard } from "../../../components/ui/soft-card";
 import {
   computeQuickStats,
@@ -44,6 +46,7 @@ Chart.register(
   BarElement,
   CategoryScale,
   DoughnutController,
+  PieController,
   BarController,
   Legend,
   LinearScale,
@@ -404,6 +407,18 @@ export function VideoCritiqueDashboard() {
   const [detailsType, setDetailsType] = useState(null);
   const [activeVideographer, setActiveVideographer] = useState(null);
   const yearOptions = getYearOptions(currentYear);
+  const yearSelectOptions = useMemo(
+    () => yearOptions.map((year) => ({ value: year, label: String(year) })),
+    [yearOptions]
+  );
+  const dateModeOptions = useMemo(
+    () => [
+      { value: "month", label: "Month" },
+      { value: "year", label: "Year" },
+      { value: "range", label: "Range" },
+    ],
+    []
+  );
 
   const period = useMemo(() => {
     if (dateMode === "month") {
@@ -543,55 +558,37 @@ export function VideoCritiqueDashboard() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <select
+          <SelectDropdown
             value={dateMode}
-            onChange={(e) => setDateMode(e.target.value)}
-            className="w-full sm:w-[200px] rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-          >
-            <option value="month">Month</option>
-            <option value="year">Year</option>
-            <option value="range">Range</option>
-          </select>
+            options={dateModeOptions}
+            onChange={setDateMode}
+            className="sm:w-[200px]"
+          />
 
           {dateMode === "month" ? (
             <>
-              <select
+              <SelectDropdown
                 value={selectedMonth}
-                onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                className="w-full sm:w-[200px] rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-              >
-                {MONTH_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <select
+                options={MONTH_OPTIONS}
+                onChange={setSelectedMonth}
+                className="sm:w-[200px]"
+              />
+              <SelectDropdown
                 value={selectedYear}
-                onChange={(e) => setSelectedYear(Number(e.target.value))}
-                className="w-full sm:w-[200px] rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-              >
-                {yearOptions.map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </select>
+                options={yearSelectOptions}
+                onChange={setSelectedYear}
+                className="sm:w-[200px]"
+              />
             </>
           ) : null}
 
           {dateMode === "year" ? (
-            <select
+            <SelectDropdown
               value={selectedYear}
-              onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="w-full sm:w-[200px] rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-            >
-              {yearOptions.map((year) => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </select>
+              options={yearSelectOptions}
+              onChange={setSelectedYear}
+              className="sm:w-[200px]"
+            />
           ) : null}
 
           {dateMode === "range" ? (

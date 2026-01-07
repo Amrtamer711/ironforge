@@ -9,6 +9,7 @@ import { SoftCard } from "../../../components/ui/soft-card";
 import { IconActionButton } from "../../../components/ui/icon-action-button";
 import { LoadingEllipsis } from "../../../components/ui/loading-ellipsis";
 import { ConfirmModal, Modal } from "../../../components/ui/modal";
+import { SelectDropdown } from "../../../components/ui/select-dropdown";
 import { adminApi } from "../../../api";
 
 export function CompaniesTab({
@@ -291,6 +292,25 @@ export function CompaniesModal({
   saveCompany,
   savingCompany,
 }) {
+  const parentCompanyOptions = [
+    { value: "", label: "None" },
+    ...companyList
+      .filter((company) => (company.code || company.id) !== companyForm.code)
+      .map((company) => {
+        const value = company.code || company.id || "";
+        return { value, label: company.name || company.code || value || "—" };
+      })
+      .filter((opt) => opt.value),
+  ];
+  const typeOptions = [
+    { value: "company", label: "Company" },
+    { value: "group", label: "Group" },
+  ];
+  const statusOptions = [
+    { value: "active", label: "Active" },
+    { value: "inactive", label: "Inactive" },
+  ];
+
   return (
     <Modal
       open={open}
@@ -320,23 +340,11 @@ export function CompaniesModal({
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <FormField label="Parent company">
-            <select
-              className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-              value={companyForm.parent_id}
-              onChange={(e) => setCompanyForm((f) => ({ ...f, parent_id: e.target.value }))}
-            >
-              <option value="">None</option>
-              {companyList
-                .filter((company) => (company.code || company.id) !== companyForm.code)
-                .map((company, idx) => {
-                  const value = company.code || company.id;
-                  return (
-                    <option key={`${value || "company"}-${idx}`} value={value || ""}>
-                      {company.name || company.code || value}
-                    </option>
-                  );
-                })}
-            </select>
+            <SelectDropdown
+              value={companyForm.parent_id || ""}
+              options={parentCompanyOptions}
+              onChange={(nextValue) => setCompanyForm((f) => ({ ...f, parent_id: nextValue }))}
+            />
           </FormField>
           <FormField label="Country">
             <input
@@ -367,24 +375,18 @@ export function CompaniesModal({
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <FormField label="Type">
-            <select
-              className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+            <SelectDropdown
               value={companyForm.isgroup ? "group" : "company"}
-              onChange={(e) => setCompanyForm((f) => ({ ...f, isgroup: e.target.value === "group" }))}
-            >
-              <option value="company">Company</option>
-              <option value="group">Group</option>
-            </select>
+              options={typeOptions}
+              onChange={(nextValue) => setCompanyForm((f) => ({ ...f, isgroup: nextValue === "group" }))}
+            />
           </FormField>
           <FormField label="Status">
-            <select
-              className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+            <SelectDropdown
               value={companyForm.is_active ? "active" : "inactive"}
-              onChange={(e) => setCompanyForm((f) => ({ ...f, is_active: e.target.value === "active" }))}
-            >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
+              options={statusOptions}
+              onChange={(nextValue) => setCompanyForm((f) => ({ ...f, is_active: nextValue === "active" }))}
+            />
           </FormField>
         </div>
         <div className="flex items-center justify-between gap-2 pt-1">

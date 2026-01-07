@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutGrid, MessageSquare, PanelsTopLeft, Shield, Menu, LogOut, Settings, Video } from "lucide-react";
+import { LayoutGrid, MessageSquare, PanelsTopLeft, Shield, Menu, LogOut, Settings, Video, Package } from "lucide-react";
 
 import { Logo } from "../components/Logo";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -27,10 +27,11 @@ const TOOL_INFO = {
   proposals: { to: "/app/proposals", label: "Proposal Assistant", icon: PanelsTopLeft },
   // costs: { to: "/app/costs", label: "AI Costs", icon: BarChart3 },
   admin: { to: "/app/admin", label: "Admin", icon: Shield },
+  asset_management: { to: "/app/asset-management", label: "Asset Management", icon: Package },
   settings: { to: "/app/settings", label: "Settings", icon: Settings },
 };
 
-const TOOL_ORDER = ["chat", "video_critique", "mockup", "proposals", "admin", "settings"];
+const TOOL_ORDER = ["chat", "mockup", "proposals", "video_critique", "admin", "asset_management", "settings"];
 
 function pageTitle(pathname) {
   if (pathname.includes("/app/video-critique")) return "Video Critique";
@@ -40,6 +41,7 @@ function pageTitle(pathname) {
   if (pathname.includes("/app/notifications")) return "Notifications";
   // if (pathname.includes("/app/costs")) return "AI Costs";
   if (pathname.includes("/app/admin")) return "Admin Panel";
+  if (pathname.includes("/app/asset-management")) return "Asset Management";
   if (pathname.includes("/app/settings")) return "Settings";
   return "Workspace";
 }
@@ -81,6 +83,7 @@ function buildNavItems(modulesData, user) {
 
   if (canAccessAdmin(user)) {
     allowed.add("admin");
+    allowed.add("asset_management");
   }
 
   // if (hasPermission(user, "core:ai_costs:read") || canAccessAdmin(user)) {
@@ -208,10 +211,10 @@ export function AppShell() {
 
       <NotificationsToastStack />
 
-      <div className="w-full px-6 lg:px-10 pb-4 flex-1 flex overflow-hidden">
+      <div className="w-full px-6 lg:px-10 pb-4 flex-1 flex overflow-hidden min-w-0">
         <div
           className={cn(
-            "mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr] flex-1 min-h-0",
+            "mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr] flex-1 min-h-0 min-w-0",
             "transition-[grid-template-columns] duration-500",
             collapsed && "lg:grid-cols-[64px_1fr] 2xl:grid-cols-[72px_1fr]"
           )}
@@ -269,7 +272,7 @@ export function AppShell() {
             </div>
           </aside>
 
-          <main className="min-h-0 h-full">
+          <main className="min-h-0 min-w-0 h-full">
             <Outlet />
           </main>
         </div>
