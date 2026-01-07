@@ -51,13 +51,13 @@
 6. **Add Location UI** - List out the locations for admins
 
 ### Mockups
-7. **Template thumbnails** - Save `xxxx_n_thumb.png` alongside templates for faster loading. Include in response as `thumbnail` field
-8. **Mockup history** - Show history with date + generated image
-9. **Mockup frame edit endpoint** - Endpoint to get frame details/config for editing existing templates
+1. **Template thumbnails** - Save `xxxx_n_thumb.png` alongside templates for faster loading. Include in response as `thumbnail` field
+2. **Mockup history** - Show history with date + generated image
+3. **Mockup frame edit endpoint** - Endpoint to get frame details/config for editing existing templates
    - **Answer**: Yes, use `GET /api/mockup-frames/{company}/{location_key}/frame?time_of_day=day&finish=gold` to get frame data
-10. 502 bad gateway while generating the test preview on render deployment. Not in local.
-11. company_schema : "unknown" in api/locations endpoint
-
+4. 502 bad gateway while generating the test preview on render deployment. Not in local.
+5. company_schema : "unknown" in api/locations endpoint
+6. Save the mockups generated with details in the Generate Page and to be available as links in a history endpoint just like proposal history.
 
 ---
 
