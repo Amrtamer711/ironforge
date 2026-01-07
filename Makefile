@@ -18,7 +18,7 @@ SHELL := /bin/bash
 	infra-bootstrap infra-init infra-plan infra-apply infra-output \
 	platform-argocd-bootstrap platform-argocd-tls-step1 platform-argocd-tls-step2 platform-argocd-url \
 	platform-argocd-repo-creds \
-	platform-unifiedui-apply platform-unifiedui-tls-step1 platform-unifiedui-tls-step2 platform-unifiedui-url \
+	platform-unifiedui-apply platform-unifiedui-url \
 	platform-apex-step1 platform-apex-step2 \
 	tf-bootstrap tf-init tf-plan tf-apply tf-output \
 	argocd-bootstrap argocd-tls-tf-init argocd-tls-step1 argocd-tls-step2 argocd-url
@@ -257,63 +257,12 @@ UNIFIEDUI_APP_MANIFEST ?= $(ROOT_DIR)/src/platform/ArgoCD/applications/unifiedui
 UNIFIEDUI_NAMESPACE ?= unifiedui
 UNIFIEDUI_INGRESS_NAME ?= unified-ui
 
-# DNS/TLS variables (override with VAR=value)
-# Example:
-#   make platform-unifiedui-tls-step1 AWS_PROFILE=your-profile SERVICEPLATFORM_ZONE_NAME=serviceplatform.mmg.global SERVICEPLATFORM_HOSTNAME=serviceplatform.mmg.global
-#
-# Notes:
-# - If you have an existing Route53 hosted zone for the subdomain (e.g. `serviceplatform.mmg.global`), set `SERVICEPLATFORM_ZONE_NAME` to that exact zone and leave `SERVICEPLATFORM_CREATE_ZONE=false`.
-# - If the parent domain is NOT in Route53, you must delegate the subdomain by creating NS records at the parent DNS provider (using the nameservers Terraform prints).
-# - If DNS is managed outside Route53 and you cannot delegate, set `SERVICEPLATFORM_DNS_PROVIDER=external` and manually add the ACM validation + CNAME records that Terraform outputs.
-SERVICEPLATFORM_DNS_PROVIDER ?= route53
-SERVICEPLATFORM_ZONE_NAME ?= serviceplatform.mmg.global
-SERVICEPLATFORM_HOSTNAME ?= serviceplatform.mmg.global
-SERVICEPLATFORM_ZONE_ID ?=
-SERVICEPLATFORM_CREATE_ZONE ?= true
-
 platform-unifiedui-apply: ## Install/refresh the Unified UI Argo CD Application
 	@kubectl apply -f $(UNIFIEDUI_APP_MANIFEST)
 
-platform-unifiedui-tls-step1: infra-init ## Step 1: create Route53 hosted zone + ACM (prints nameservers; you must delegate them in GoDaddy)
-	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) apply \
-	  -var enable_serviceplatform_public_dns=true \
-	  -var serviceplatform_dns_provider=$(SERVICEPLATFORM_DNS_PROVIDER) \
-	  -var create_serviceplatform_public_zone=$(SERVICEPLATFORM_CREATE_ZONE) \
-	  -var serviceplatform_public_zone_id=$(SERVICEPLATFORM_ZONE_ID) \
-	  -var serviceplatform_public_zone_name=$(SERVICEPLATFORM_ZONE_NAME) \
-	  -var serviceplatform_hostname=$(SERVICEPLATFORM_HOSTNAME) \
-	  -var serviceplatform_wait_for_acm_validation=false
-	@echo ""
-	@echo "$(YELLOW)Route53 nameservers (delegate the subdomain from your parent DNS if needed):$(NC)"
-	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) output -json serviceplatform_public_zone_name_servers || true
-	@echo ""
-	@echo "$(YELLOW)If using external DNS (SERVICEPLATFORM_DNS_PROVIDER=external), add these ACM validation records in your DNS provider:$(NC)"
-	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) output -json serviceplatform_acm_dns_validation_records || true
-	@echo ""
-	@echo "$(YELLOW)If using external DNS, also point $(SERVICEPLATFORM_HOSTNAME) at the ALB using this record:$(NC)"
-	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) output -json serviceplatform_external_dns_cname || true
-	@echo ""
-	@echo "$(YELLOW)Then run: make platform-unifiedui-tls-step2$(NC)"
-
-platform-unifiedui-tls-step2: infra-init ## Step 2: finish ACM validation and patch the Unified UI Ingress with TLS annotations
-	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) apply \
-	  -var enable_serviceplatform_public_dns=true \
-	  -var serviceplatform_dns_provider=$(SERVICEPLATFORM_DNS_PROVIDER) \
-	  -var create_serviceplatform_public_zone=$(SERVICEPLATFORM_CREATE_ZONE) \
-	  -var serviceplatform_public_zone_id=$(SERVICEPLATFORM_ZONE_ID) \
-	  -var serviceplatform_public_zone_name=$(SERVICEPLATFORM_ZONE_NAME) \
-	  -var serviceplatform_hostname=$(SERVICEPLATFORM_HOSTNAME) \
-	  -var serviceplatform_wait_for_acm_validation=true
-	@CERT_ARN=$$($(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) output -raw serviceplatform_acm_certificate_arn); \
-	  kubectl -n $(UNIFIEDUI_NAMESPACE) annotate ingress $(UNIFIEDUI_INGRESS_NAME) \
-	    alb.ingress.kubernetes.io/certificate-arn=$$CERT_ARN \
-	    'alb.ingress.kubernetes.io/listen-ports=[{"HTTPS":443},{"HTTP":80}]' \
-	    'alb.ingress.kubernetes.io/ssl-redirect=443' \
-	    --overwrite; \
-	  echo "$(GREEN)Patched Ingress for TLS. Open: https://$(SERVICEPLATFORM_HOSTNAME)$(NC)"
-
-platform-unifiedui-url: ## Print the Unified UI URL (custom hostname)
-	@echo "https://$(SERVICEPLATFORM_HOSTNAME)"
+platform-unifiedui-url: ## Print the Unified UI URL (requires PLATFORM_APEX)
+	@test -n "$(PLATFORM_APEX)" || (echo "$(RED)Missing PLATFORM_APEX (e.g. PLATFORM_APEX=mmg-nova.com)$(NC)" && exit 1)
+	@echo "https://$(PLATFORM_SERVICEPLATFORM_HOSTNAME)"
 
 # =============================================================================
 # PLATFORM - DEDICATED APEX DOMAIN (EKS)

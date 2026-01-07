@@ -24,27 +24,10 @@ kubectl -n unifiedui get ingress unified-ui -o jsonpath='{.status.loadBalancer.i
 
 ## Custom hostname + TLS (Route53 + ACM)
 
-This follows the same flow as Argo CD (request ACM, validate via DNS, then patch the Ingress with TLS annotations).
-
-Choose one of these DNS setups:
-
-- **Dedicated platform apex fully in Route53 (recommended)**:
-  - Use a new apex domain (e.g. `mmgplatform.com`) that you point to Route53 nameservers at the registrar.
-  - Run:
-
-    ```bash
-    make platform-apex-step1 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
-    make platform-apex-step2 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
-    ```
-
-- **Route53 hosted zone for the subdomain** (common when only the subdomain is in Route53):
-  - Use `SERVICEPLATFORM_ZONE_NAME=serviceplatform.mmg.global` (and set `SERVICEPLATFORM_CREATE_ZONE=false` if the zone already exists).
-  - Ensure the parent DNS zone delegates the subdomain via NS records.
-- **External DNS provider** (no Route53 DNS management):
-  - Use `SERVICEPLATFORM_DNS_PROVIDER=external` and create the validation + CNAME records from Terraform outputs in your DNS provider.
+Unified UI uses the dedicated platform apex flow (single hosted zone + single ACM cert) managed by the standalone stack in `src/infrastructure/aws/platform-apex`.
 
 ```bash
-make platform-unifiedui-tls-step1 AWS_PROFILE=your-profile SERVICEPLATFORM_ZONE_NAME=serviceplatform.mmg.global SERVICEPLATFORM_HOSTNAME=serviceplatform.mmg.global
-make platform-unifiedui-tls-step2 AWS_PROFILE=your-profile SERVICEPLATFORM_ZONE_NAME=serviceplatform.mmg.global SERVICEPLATFORM_HOSTNAME=serviceplatform.mmg.global
-make platform-unifiedui-url SERVICEPLATFORM_HOSTNAME=serviceplatform.mmg.global
+make platform-apex-step1 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
+make platform-apex-step2 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
+make platform-unifiedui-url PLATFORM_APEX=mmg-nova.com
 ```

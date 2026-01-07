@@ -122,10 +122,10 @@ kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.pas
 
 Unified UI is deployed by Argo CD from `src/platform/deploy/kustomize/unifiedui`.
 
-To expose it with a custom hostname + TLS (Route53 + ACM), use:
+To expose it with a custom hostname + TLS, use the same dedicated platform apex flow:
 
 ```bash
-make platform-unifiedui-tls-step1 AWS_PROFILE=your-profile SERVICEPLATFORM_ZONE_NAME=serviceplatform.mmg.global SERVICEPLATFORM_HOSTNAME=serviceplatform.mmg.global
-make platform-unifiedui-tls-step2 AWS_PROFILE=your-profile SERVICEPLATFORM_ZONE_NAME=serviceplatform.mmg.global SERVICEPLATFORM_HOSTNAME=serviceplatform.mmg.global
-make platform-unifiedui-url SERVICEPLATFORM_HOSTNAME=serviceplatform.mmg.global
+make platform-apex-step1 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
+make platform-apex-step2 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
+make platform-unifiedui-url PLATFORM_APEX=mmg-nova.com
 ```
