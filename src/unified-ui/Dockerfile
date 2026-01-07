@@ -1,10 +1,30 @@
-# unified-ui FastAPI Backend
-# Replaces Node.js server.js with Python FastAPI
-# Maintains same port and API contract
+# unified-ui FastAPI Backend + React Frontend
+# Multi-stage build: Node.js for frontend, Python for backend
 
+# =============================================================================
+# Stage 1: Build React Frontend
+# =============================================================================
+FROM node:20-slim AS frontend-builder
+
+WORKDIR /frontend
+
+# Copy package files first for better caching
+COPY src/unified-ui/frontend/package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production=false
+
+# Copy frontend source
+COPY src/unified-ui/frontend/ ./
+
+# Build the React app
+RUN npm run build
+
+# =============================================================================
+# Stage 2: Python Backend + Built Frontend
+# =============================================================================
 FROM python:3.11-slim
 
-# Set working directory
 WORKDIR /app
 
 # Install system dependencies
@@ -12,16 +32,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl git \
   && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
-# Use requirements.render.txt for production (git-based SDK install)
-
 COPY src/shared/crm-security /app/shared/crm-security
 COPY src/shared/crm-cache /app/shared/crm-cache
 COPY src/unified-ui/requirements.render.txt /app/requirements.render.txt
+
 # Install Python dependencies
 RUN pip install --no-cache-dir -r /app/requirements.render.txt
 
-COPY src/unified-ui /app
+# Copy backend
+COPY src/unified-ui/backend /app/backend
+COPY src/unified-ui/db /app/db
 
+# Copy built frontend from Stage 1
+COPY --from=frontend-builder /frontend/dist /app/public
 
 # Create directories
 RUN mkdir -p uploads data
@@ -32,7 +55,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV ENVIRONMENT=production
 ENV PORT=3005
 
-# Expose the port (same as Node.js version)
+# Expose the port
 EXPOSE 3005
 
 # Health check

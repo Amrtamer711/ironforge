@@ -9,6 +9,7 @@ import { SoftCard } from "../../../components/ui/soft-card";
 import { IconActionButton } from "../../../components/ui/icon-action-button";
 import { LoadingEllipsis } from "../../../components/ui/loading-ellipsis";
 import { ConfirmModal, Modal } from "../../../components/ui/modal";
+import { SelectDropdown } from "../../../components/ui/select-dropdown";
 import { adminApi } from "../../../api";
 import { buildPermissionValue, parsePermissionParts } from "../../../lib/utils";
 
@@ -31,6 +32,19 @@ export function PermissionsTab({
   mergedPermissionDescriptions,
   setConfirmDelete,
 }) {
+  const moduleSelectOptions = [
+    { value: "", label: "All modules" },
+    ...permissionModuleOptions.map((opt) => ({ value: opt, label: opt })),
+  ];
+  const serviceSelectOptions = [
+    { value: "", label: "All services" },
+    ...permissionFilterServiceOptions.map((opt) => ({ value: opt, label: opt })),
+  ];
+  const actionSelectOptions = [
+    { value: "", label: "All permissions" },
+    ...permissionFilterActionOptions.map((opt) => ({ value: opt, label: opt })),
+  ];
+
   return (
     <Card>
       <CardHeader className="space-y-2">
@@ -52,42 +66,22 @@ export function PermissionsTab({
           </div>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          <select
-            className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+          <SelectDropdown
             value={permissionModuleFilter}
-            onChange={(e) => setPermissionModuleFilter(e.target.value)}
-          >
-            <option value="">All modules</option>
-            {permissionModuleOptions.map((opt, idx) => (
-              <option key={`${opt}-${idx}`} value={opt}>
-                {opt}
-              </option>
-            ))}
-          </select>
-          <select
-            className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+            options={moduleSelectOptions}
+            onChange={setPermissionModuleFilter}
+          />
+          <SelectDropdown
             value={permissionServiceFilter}
-            onChange={(e) => setPermissionServiceFilter(e.target.value)}
-          >
-            <option value="">All services</option>
-            {permissionFilterServiceOptions.map((opt, idx) => (
-              <option key={`${opt}-${idx}`} value={opt}>
-                {opt}
-              </option>
-            ))}
-          </select>
-          <select
-            className="col-span-2 w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none sm:col-span-1"
+            options={serviceSelectOptions}
+            onChange={setPermissionServiceFilter}
+          />
+          <SelectDropdown
             value={permissionActionFilter}
-            onChange={(e) => setPermissionActionFilter(e.target.value)}
-          >
-            <option value="">All permissions</option>
-            {permissionFilterActionOptions.map((opt, idx) => (
-              <option key={`${opt}-${idx}`} value={opt}>
-                {opt}
-              </option>
-            ))}
-          </select>
+            options={actionSelectOptions}
+            onChange={setPermissionActionFilter}
+            className="col-span-2 sm:col-span-1"
+          />
         </div>
       </CardHeader>
       <CardContent className="space-y-3">

@@ -2,20 +2,28 @@
 
 ## Pending
 
+## Authentication
+1. Authentication issue where 401 causes logout within a specific time. maybe token expiry?
+
 ### Questions / Confirmations
 1. **Companies Endpoint** - Confirm if `/dev/companies` path is correct for company details
+2. Permissions CRUD not available in the api/rbac/ path. currently using it from api/dev/ path.
 
 ### Admin Features
 2. **User - multiple Profile sets** - Assign/list multiple profiles per user
 3. **User - multiple Permission sets** - Assign multiple permission sets per user
 4. **Profile to Permission-Set relation** - Link profiles to permission sets
 5. **Hide unused tabs** - Hide teams, sharing rules etc. that are not in use
+6. **Add Location UI** - List out the locations for admins
 
 ### Mockups
-6. **Template thumbnails** - Save `xxxx_n_thumb.png` alongside templates for faster loading. Include in response as `thumbnail` field
-7. **Mockup history** - Show history with date + generated image
-8. **Mockup frame edit endpoint** - Endpoint to get frame details/config for editing existing templates
+7. **Template thumbnails** - Save `xxxx_n_thumb.png` alongside templates for faster loading. Include in response as `thumbnail` field
+8. **Mockup history** - Show history with date + generated image
+9. **Mockup frame edit endpoint** - Endpoint to get frame details/config for editing existing templates
    - **Answer**: Yes, use `GET /api/mockup-frames/{company}/{location_key}/frame?time_of_day=day&finish=gold` to get frame data
+10. 502 bad gateway while generating the test preview on render deployment. Not in local.
+11. company_schema : "unknown" in api/locations endpoint
+
 
 ---
 
@@ -42,3 +50,29 @@
 ```
 
 **Status**: Fixed in commit `5ed9e78`
+
+
+##Authentication Issue
+
+2026-01-07 05:48:20,276 - unified-ui - ERROR - [PROXY AUTH] Error: invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired
+2026-01-07 05:48:20,277 - unified-ui - INFO - [UI] GET /api/sales/mockup/locations -> 401 (51ms)
+INFO:     10.16.95.189:48094 - "GET /api/sales/mockup/locations HTTP/1.1" 401 Unauthorized
+[GET]
+crm-unified-ui.onrender.com/api/base/auth/me clientIP="94.200.129.142" requestID="9d89dc72-b0d9-4d56" responseTimeMS=547 responseBytes=539 userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+[GET]
+crm-unified-ui.onrender.com/api/base/auth/me clientIP="94.200.129.142" requestID="86d712eb-7574-4ae7" responseTimeMS=596 responseBytes=539 userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+2026-01-07 05:48:21,180 - unified-ui - INFO - [RBAC CACHE] Invalidated cache for user acb4874e-d5cc-4cad-acdf-40aa82d09ee5
+2026-01-07 05:48:21,222 - unified-ui - INFO - [UI] User profile fetched: a.tamer@mmg.global -> system_admin with 1 permissions
+2026-01-07 05:48:21,222 - unified-ui - INFO - [UI] GET /api/base/auth/me -> 200 (593ms)
+INFO:     10.16.95.189:48094 - "GET /api/base/auth/me HTTP/1.1" 200 OK
+2026-01-07 05:48:21,839 - unified-ui - INFO - [RBAC CACHE] Invalidated cache for user acb4874e-d5cc-4cad-acdf-40aa82d09ee5
+2026-01-07 05:48:21,887 - unified-ui - INFO - [UI] User profile fetched: a.tamer@mmg.global -> system_admin with 1 permissions
+2026-01-07 05:48:21,887 - unified-ui - INFO - [UI] GET /api/base/auth/me -> 200 (545ms)
+INFO:     10.16.28.5:49346 - "GET /api/base/auth/me HTTP/1.1" 200 OK
+[GET]
+crm-unified-ui.onrender.com/logo.svg clientIP="94.200.129.142" requestID="c4fd97ab-900a-43bb" responseTimeMS=3 responseBytes=858 userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+[GET]
+crm-unified-ui.onrender.com/favicon.ico clientIP="94.200.129.142" requestID="c23fe076-477f-4222" responseTimeMS=3 responseBytes=858 userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+[GET]
+crm-unified-ui.onrender.com/api/base/auth/me clientIP="94.200.129.142" requestID="e78aa9b4-9f8a-47e1" responseTimeMS=40 responseBytes=459 userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
+2026-01-07 05:48:22,128 - unified-ui - ERROR - [UI Auth] Error: Session from session_id claim in JWT does not exist

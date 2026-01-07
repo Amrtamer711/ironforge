@@ -9,6 +9,7 @@ import { SoftCard } from "../../../components/ui/soft-card";
 import { IconActionButton } from "../../../components/ui/icon-action-button";
 import { LoadingEllipsis } from "../../../components/ui/loading-ellipsis";
 import { ConfirmModal, Modal } from "../../../components/ui/modal";
+import { SelectDropdown } from "../../../components/ui/select-dropdown";
 import { adminApi } from "../../../api";
 import { cn, parsePermissions, selectionLabel } from "../../../lib/utils";
 
@@ -86,6 +87,15 @@ export function UsersTab({
   companyFilterOptions,
   profileFilterOptions,
 }) {
+  const companySelectOptions = useMemo(
+    () => [{ value: "", label: "All companies" }, ...companyFilterOptions.map((opt) => ({ ...opt }))],
+    [companyFilterOptions]
+  );
+  const profileSelectOptions = useMemo(
+    () => [{ value: "", label: "All profiles" }, ...profileFilterOptions.map((opt) => ({ ...opt }))],
+    [profileFilterOptions]
+  );
+
   return (
     <Card className="flex-1 min-h-0">
       <CardHeader className="space-y-2">
@@ -111,30 +121,16 @@ export function UsersTab({
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <select
-            className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+          <SelectDropdown
             value={userCompanyFilter}
-            onChange={(e) => setUserCompanyFilter(e.target.value)}
-          >
-            <option value="">All companies</option>
-            {companyFilterOptions.map((opt, idx) => (
-              <option key={`${opt.value}-${idx}`} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          <select
-            className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+            options={companySelectOptions}
+            onChange={setUserCompanyFilter}
+          />
+          <SelectDropdown
             value={userProfileFilter}
-            onChange={(e) => setUserProfileFilter(e.target.value)}
-          >
-            <option value="">All profiles</option>
-            {profileFilterOptions.map((opt, idx) => (
-              <option key={`${opt.value}-${idx}`} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+            options={profileSelectOptions}
+            onChange={setUserProfileFilter}
+          />
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -898,6 +894,23 @@ export function UsersModal({
   saveUser,
   savingUser,
 }) {
+  const companySelectOptions = useMemo(() => {
+    const options = companyList
+      .map((company) => {
+        const value = company.code || company.id || "";
+        return { value, label: company.name || company.code || value || "—" };
+      })
+      .filter((opt) => opt.value);
+    return [{ value: "", label: "Select company" }, ...options];
+  }, [companyList]);
+  const statusOptions = useMemo(
+    () => [
+      { value: "active", label: "Active" },
+      { value: "inactive", label: "Inactive" },
+    ],
+    []
+  );
+
   return (
     <Modal
       open={open}
@@ -930,31 +943,18 @@ export function UsersModal({
           </FormField>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <FormField label="Company">
-              <select
-                className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                value={userForm.company}
-                onChange={(e) => setUserForm((f) => ({ ...f, company: e.target.value }))}
-              >
-                <option value="">Select company</option>
-                {companyList.map((company, idx) => {
-                  const value = company.code || company.id;
-                  return (
-                    <option key={`${value || "company"}-${idx}`} value={value || ""}>
-                      {company.name || company.code || value}
-                    </option>
-                  );
-                })}
-              </select>
+              <SelectDropdown
+                value={userForm.company || ""}
+                options={companySelectOptions}
+                onChange={(nextValue) => setUserForm((f) => ({ ...f, company: nextValue }))}
+              />
             </FormField>
             <FormField label="Status">
-              <select
-                className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+              <SelectDropdown
                 value={userForm.is_active ? "active" : "inactive"}
-                onChange={(e) => setUserForm((f) => ({ ...f, is_active: e.target.value === "active" }))}
-              >
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
+                options={statusOptions}
+                onChange={(nextValue) => setUserForm((f) => ({ ...f, is_active: nextValue === "active" }))}
+              />
             </FormField>
           </div>
           <FormField label="Profiles">

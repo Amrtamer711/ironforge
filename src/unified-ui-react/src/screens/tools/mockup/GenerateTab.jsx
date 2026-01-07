@@ -3,11 +3,12 @@ import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { FormField } from "../../../components/ui/form-field";
 import { LoadingEllipsis } from "../../../components/ui/loading-ellipsis";
+import { SelectDropdown } from "../../../components/ui/select-dropdown";
 import * as mockupApi from "../../../api/mockup";
 import { cn, normalizeFrameConfig } from "../../../lib/utils";
 
 function useGenerateActions({
-  location,
+  locations,
   timeOfDay,
   finish,
   templateOptions,
@@ -15,6 +16,8 @@ function useGenerateActions({
   defaultFrameConfig,
   templateKey: externalTemplateKey,
   setTemplateKey: externalSetTemplateKey,
+  venueType,
+  timeOfDayDisabled,
 }) {
   const [internalTemplateKey, setInternalTemplateKey] = useState("");
   const templateKey = externalTemplateKey ?? internalTemplateKey;
@@ -36,7 +39,7 @@ function useGenerateActions({
     return map;
   }, [getTemplateKey, templateOptions]);
 
-  const canGenerate = location && (creativeFile || aiPrompt.trim()) && !generating;
+  const canGenerate = locations.length && (creativeFile || aiPrompt.trim()) && !generating;
 
   useEffect(() => {
     if (!templateKey) {
@@ -58,7 +61,7 @@ function useGenerateActions({
 
   useEffect(() => {
     if (templateKey) setTemplateKey("");
-  }, [finish, timeOfDay]);
+  }, [finish, timeOfDay, locations, venueType, timeOfDayDisabled]);
 
   useEffect(() => {
     resultsRef.current = lastResults;
@@ -78,15 +81,19 @@ function useGenerateActions({
     try {
       setGenerating(true);
       const formData = new FormData();
-      formData.append("location_key", location);
+      const locationLabel = locations.length ? locations.join(",") : "";
+      const resolvedTimeOfDay = timeOfDayDisabled ? "all" : timeOfDay;
+      formData.append("location_key", locations[0] || "");
+      formData.append("location_keys", JSON.stringify(locations));
+      formData.append("venue_type", venueType);
 
       if (selectedTemplate) {
-        formData.append("time_of_day", selectedTemplate.time_of_day || timeOfDay || "all");
+        formData.append("time_of_day", selectedTemplate.time_of_day || resolvedTimeOfDay || "all");
         formData.append("finish", selectedTemplate.finish || finish || "all");
         formData.append("specific_photo", selectedTemplate.photo);
         formData.append("frame_config", JSON.stringify(genFrameConfig));
       } else {
-        formData.append("time_of_day", timeOfDay || "all");
+        formData.append("time_of_day", resolvedTimeOfDay || "all");
         formData.append("finish", finish || "all");
       }
 
@@ -99,7 +106,7 @@ function useGenerateActions({
       const blob = await mockupApi.generateMockup(formData);
       const url = URL.createObjectURL(blob);
       setLastResults((prev) => {
-        const next = [{ url, location }, ...prev];
+        const next = [{ url, location: locationLabel }, ...prev];
         if (next.length > 3) {
           const removed = next.pop();
           if (removed?.url) URL.revokeObjectURL(removed.url);
@@ -135,17 +142,21 @@ export function GeneratePanel(props) {
 }
 
 export function GenerateTab({
-  location,
-  setLocation,
+  locations,
+  setLocations,
+  venueType,
+  setVenueType,
   setTemplateKey,
   locationOptions,
   locationsQuery,
   timeOfDay,
   setTimeOfDay,
+  timeOfDayDisabled,
   finish,
   setFinish,
   timeOfDayOptions,
   finishOptions,
+  venueTypeOptions,
   templateKey,
   templateOptions,
   templatesQuery,
@@ -165,9 +176,21 @@ export function GenerateTab({
   onGenerate,
   canGenerate,
   lastResults,
+  useNativeSelects,
 }) {
+  const locationSelectOptions = useMemo(
+    () =>
+      locationOptions.map((loc) => {
+        const value = loc?.key ?? loc?.id ?? loc?.value ?? loc;
+        const label = loc?.name ?? loc?.label ?? value;
+        return { value, label };
+      }),
+    [locationOptions]
+  );
+
   function resetForm() {
-    setLocation("");
+    setLocations([]);
+    setVenueType("all");
     setTimeOfDay("all");
     setFinish("all");
     setTemplateKey("");
@@ -182,23 +205,18 @@ export function GenerateTab({
         <CardTitle>Mockup Generator</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <FormField label="Location">
-            <select
-              className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-              value={location}
-              onChange={(e) => {
-                setLocation(e.target.value);
+            <SelectDropdown
+              value={locations[0] || ""}
+              options={locationSelectOptions}
+              placeholder="Select a location"
+              onChange={(nextValue) => {
+                setLocations(nextValue ? [nextValue] : []);
                 setTemplateKey("");
               }}
-            >
-              <option value="">Select a location</option>
-              {locationOptions.map((loc) => (
-                <option key={loc.key} value={loc.key}>
-                  {loc.name}
-                </option>
-              ))}
-            </select>
+              useNativeSelect={useNativeSelects}
+            />
             {locationsQuery.isLoading ? (
               <div className="mt-1 text-xs text-black/50 dark:text-white/60">
                 <LoadingEllipsis text="Loading locations" />
@@ -206,36 +224,36 @@ export function GenerateTab({
             ) : null}
           </FormField>
 
+          <FormField label="Venue Type">
+            <SelectDropdown
+              value={venueType}
+              options={venueTypeOptions}
+              onChange={(nextValue) => setVenueType(nextValue)}
+              useNativeSelect={useNativeSelects}
+            />
+          </FormField>
+
           <FormField label="Time of Day">
-            <select
-              className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+            <SelectDropdown
               value={timeOfDay}
-              onChange={(e) => setTimeOfDay(e.target.value)}
-            >
-              {timeOfDayOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              options={timeOfDayOptions}
+              onChange={(nextValue) => setTimeOfDay(nextValue)}
+              disabled={timeOfDayDisabled}
+              useNativeSelect={useNativeSelects}
+            />
           </FormField>
 
           <FormField label="Billboard Finish">
-            <select
-              className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+            <SelectDropdown
               value={finish}
-              onChange={(e) => setFinish(e.target.value)}
-            >
-              {finishOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              options={finishOptions}
+              onChange={(nextValue) => setFinish(nextValue)}
+              useNativeSelect={useNativeSelects}
+            />
           </FormField>
         </div>
 
-        {location ? (
+        {locations.length ? (
           <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 p-4 shadow-soft space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>

@@ -14,11 +14,25 @@ const TIME_OF_DAY = [
   { value: "night", label: "Night" },
 ];
 
+const TIME_OF_DAY_SETUP = TIME_OF_DAY.filter((opt) => opt.value !== "all");
+
 const FINISHES = [
   { value: "all", label: "All (Default)" },
   { value: "gold", label: "Gold" },
   { value: "silver", label: "Silver" },
 ];
+
+const FINISHES_SETUP = FINISHES.filter((opt) => opt.value !== "all");
+
+const VENUE_TYPES = [
+  { value: "all", label: "All (Default)" },
+  { value: "outdoor", label: "Outdoor" },
+  { value: "indoor", label: "Indoor" },
+];
+
+const VENUE_TYPES_SETUP = VENUE_TYPES.filter((opt) => opt.value !== "all");
+
+const USE_NATIVE_SELECTS = false;
 
 const CANVAS_WIDTH = 1200;
 const CANVAS_HEIGHT = 800;
@@ -72,10 +86,15 @@ export function MockupPage() {
   const canSetup = hasPermission(user, "sales:mockups:setup");
 
   const [mode, setMode] = useState("generate");
-  const [location, setLocation] = useState("");
+  const [locations, setLocations] = useState([]);
+  const [venueType, setVenueType] = useState("all");
   const [timeOfDay, setTimeOfDay] = useState("all");
   const [finish, setFinish] = useState("all");
   const [templateKey, setTemplateKey] = useState("");
+
+  const primaryLocation = locations[0] || "";
+  const timeOfDayDisabled = venueType === "indoor";
+  const effectiveTimeOfDay = timeOfDayDisabled ? "all" : timeOfDay;
 
   const prevModeRef = useRef(mode);
 
@@ -91,7 +110,7 @@ export function MockupPage() {
   const [setupDragActive, setSetupDragActive] = useState(false);
   const [creativeDragActive, setCreativeDragActive] = useState(false);
   const [setupHint, setSetupHint] = useState(
-    "Select a location, upload a billboard photo, then click four corners to define the frame."
+    "Select one or more locations, upload a billboard photo, then click four corners to define the frame."
   );
   const [setupFrameConfig, setSetupFrameConfig] = useState(DEFAULT_FRAME_CONFIG);
   const [greenscreenColor, setGreenscreenColor] = useState("#1CFF1C");
@@ -166,9 +185,15 @@ export function MockupPage() {
   });
 
   const templatesQuery = useQuery({
-    queryKey: ["mockup", "templates", location, timeOfDay, finish],
-    queryFn: () => mockupApi.getTemplates(location, { timeOfDay, finish }),
-    enabled: !!location,
+    queryKey: ["mockup", "templates", primaryLocation, effectiveTimeOfDay, finish, venueType, locations.join("|")],
+    queryFn: () =>
+      mockupApi.getTemplates(primaryLocation, {
+        timeOfDay: effectiveTimeOfDay,
+        finish,
+        venueType,
+        locations,
+      }),
+    enabled: Boolean(primaryLocation),
   });
 
   useEffect(() => {
@@ -205,16 +230,29 @@ export function MockupPage() {
 
   useEffect(() => {
     if (prevModeRef.current !== mode) {
-      setLocation("");
-      setTimeOfDay("all");
-      setFinish("all");
-      setTemplateKey("");
       if (prevModeRef.current === "setup" && editingTemplate) {
         stopEditTemplate();
       }
+      setLocations([]);
+      if (mode === "setup") {
+        setVenueType("");
+        setTimeOfDay("");
+        setFinish("");
+      } else {
+        setVenueType("all");
+        setTimeOfDay("all");
+        setFinish("all");
+      }
+      setTemplateKey("");
     }
     prevModeRef.current = mode;
   }, [editingTemplate, mode]);
+
+  useEffect(() => {
+    if (venueType === "indoor" && timeOfDay) {
+      setTimeOfDay("");
+    }
+  }, [timeOfDay, venueType]);
 
   useEffect(() => {
     setTemplateThumbs((prev) => {
@@ -233,7 +271,7 @@ export function MockupPage() {
 
   useEffect(() => {
     let active = true;
-    if (!location || !templateOptions.length) return () => {};
+    if (!primaryLocation || !templateOptions.length) return () => {};
     const missing = templateOptions.filter((t) => !templateThumbsRef.current[getTemplateKey(t)]);
     if (!missing.length) return () => {};
 
@@ -241,8 +279,8 @@ export function MockupPage() {
       for (const t of missing) {
         let url = "";
         try {
-          url = await mockupApi.getTemplatePhotoBlobUrl(location, t.photo, {
-            timeOfDay: t.time_of_day || timeOfDay,
+          url = await mockupApi.getTemplatePhotoBlobUrl(primaryLocation, t.photo, {
+            timeOfDay: t.time_of_day || effectiveTimeOfDay,
             finish: t.finish || finish,
           });
         } catch {
@@ -268,7 +306,7 @@ export function MockupPage() {
     return () => {
       active = false;
     };
-  }, [location, templateOptions, timeOfDay, finish]);
+  }, [primaryLocation, templateOptions, effectiveTimeOfDay, finish]);
 
   useEffect(() => {
     return () => {
@@ -324,8 +362,8 @@ export function MockupPage() {
     setSetupMessage("");
     setSetupError("");
 
-    if (!location) {
-      setSetupError("Select a location first");
+    if (!locations.length) {
+      setSetupError("Select at least one location first");
       return;
     }
 
@@ -352,8 +390,10 @@ export function MockupPage() {
     try {
       setSetupSaving(true);
       const formData = new FormData();
-      formData.append("location_key", location);
-      formData.append("time_of_day", timeOfDay || "all");
+      formData.append("location_key", primaryLocation);
+      formData.append("location_keys", JSON.stringify(locations));
+      formData.append("venue_type", venueType);
+      formData.append("time_of_day", effectiveTimeOfDay || "all");
       formData.append("finish", finish || "all");
       formData.append("frames_data", JSON.stringify(framesPayload));
       formData.append("photo", setupPhoto);
@@ -376,9 +416,9 @@ export function MockupPage() {
   }
 
   async function deleteTemplate(photo) {
-    if (!location) return;
+    if (!primaryLocation) return;
     try {
-      await mockupApi.deleteSetupPhoto(location, photo);
+      await mockupApi.deleteSetupPhoto(primaryLocation, photo);
       queryClient.invalidateQueries({ queryKey: ["mockup", "templates"] });
     } catch (err) {
       setSetupError(err?.message || "Failed to delete template");
@@ -493,7 +533,7 @@ export function MockupPage() {
   }
 
   async function startEditTemplate(template) {
-    if (!location || !template?.photo) return;
+    if (!primaryLocation || !template?.photo) return;
     setEditingTemplate(template);
     setEditingTemplateLoading(true);
     setSetupError("");
@@ -501,11 +541,19 @@ export function MockupPage() {
     setSetupPhoto(null);
 
     try {
-      if (template.time_of_day) setTimeOfDay(template.time_of_day);
-      if (template.finish) setFinish(template.finish);
+      if (template.time_of_day && template.time_of_day !== "all") {
+        setTimeOfDay(template.time_of_day);
+      } else {
+        setTimeOfDay("");
+      }
+      if (template.finish && template.finish !== "all") {
+        setFinish(template.finish);
+      } else {
+        setFinish("");
+      }
 
-      const photoBlob = await mockupApi.getTemplatePhotoBlob(location, template.photo, {
-        timeOfDay: template.time_of_day || timeOfDay,
+      const photoBlob = await mockupApi.getTemplatePhotoBlob(primaryLocation, template.photo, {
+        timeOfDay: template.time_of_day || effectiveTimeOfDay,
         finish: template.finish || finish,
       });
       if (!photoBlob) throw new Error("Failed to load template image");
@@ -541,8 +589,8 @@ export function MockupPage() {
     setEditingTemplateLoading(false);
     setSetupMessage("");
     setSetupError("");
-    setTimeOfDay("all");
-    setFinish("all");
+    setTimeOfDay("");
+    setFinish("");
     setSetupPhoto(null);
     previewImgRef.current = null;
     setSetupImageReady(false);
@@ -918,7 +966,7 @@ export function MockupPage() {
 
   function updateHintForPhoto() {
     if (!previewImgRef.current) {
-      setSetupHint("Select a location, upload a billboard photo, then click four corners to define the frame.");
+      setSetupHint("Select one or more locations, upload a billboard photo, then click four corners to define the frame.");
       return;
     }
     setSetupHint("Click and drag to draw a box. Use +/Fit to zoom; Shift+drag or middle mouse pans; pinch to zoom.");
@@ -1464,7 +1512,7 @@ export function MockupPage() {
     syncFrameCount();
     setFramesJson("[]");
     setFramesJsonDirty(false);
-    setSetupHint("Select a location, upload a billboard photo, then click four corners to define the frame.");
+    setSetupHint("Select one or more locations, upload a billboard photo, then click four corners to define the frame.");
     drawPreview();
   }
 
@@ -1538,18 +1586,22 @@ export function MockupPage() {
 
         <div className={mode === "generate" ? "block" : "hidden"} aria-hidden={mode !== "generate"}>
           <GenerateTabModule.GeneratePanel
-            location={location}
-            setLocation={setLocation}
+            locations={locations}
+            setLocations={setLocations}
+            venueType={venueType}
+            setVenueType={setVenueType}
             templateKey={templateKey}
             setTemplateKey={setTemplateKey}
             locationOptions={locationOptions}
             locationsQuery={locationsQuery}
             timeOfDay={timeOfDay}
             setTimeOfDay={setTimeOfDay}
+            timeOfDayDisabled={timeOfDayDisabled}
             finish={finish}
             setFinish={setFinish}
             timeOfDayOptions={TIME_OF_DAY}
             finishOptions={FINISHES}
+            venueTypeOptions={VENUE_TYPES}
             templateOptions={templateOptions}
             templatesQuery={templatesQuery}
             templateThumbs={templateThumbs}
@@ -1559,22 +1611,27 @@ export function MockupPage() {
             handleCreativeDragOver={handleCreativeDragOver}
             handleCreativeDragLeave={handleCreativeDragLeave}
             handleCreativeDrop={handleCreativeDrop}
+            useNativeSelects={USE_NATIVE_SELECTS}
           />
         </div>
 
         {mode === "setup" ? (
           <SetupTabModule.SetupTab
-            location={location}
-            setLocation={setLocation}
+            locations={locations}
+            setLocations={setLocations}
+            venueType={venueType}
+            setVenueType={setVenueType}
             setTemplateKey={setTemplateKey}
             locationOptions={locationOptions}
             locationsQuery={locationsQuery}
             timeOfDay={timeOfDay}
             setTimeOfDay={setTimeOfDay}
+            timeOfDayDisabled={timeOfDayDisabled}
             finish={finish}
             setFinish={setFinish}
-            timeOfDayOptions={TIME_OF_DAY}
-            finishOptions={FINISHES}
+            timeOfDayOptions={TIME_OF_DAY_SETUP}
+            finishOptions={FINISHES_SETUP}
+            venueTypeOptions={VENUE_TYPES_SETUP}
             editingTemplate={editingTemplate}
             editingTemplateLoading={editingTemplateLoading}
             stopEditTemplate={stopEditTemplate}
@@ -1651,6 +1708,7 @@ export function MockupPage() {
             clearAllFrames={clearAllFrames}
             currentPoints={currentPoints}
             frameCount={frameCount}
+            useNativeSelects={USE_NATIVE_SELECTS}
           />
         ) : null}
 

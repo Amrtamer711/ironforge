@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui
 import { Button } from "../../../components/ui/button";
 import { FormField } from "../../../components/ui/form-field";
 import { LoadingEllipsis } from "../../../components/ui/loading-ellipsis";
+import { SelectDropdown } from "../../../components/ui/select-dropdown";
 import { runtimeConfig } from "../../../lib/runtimeConfig";
 
 function formatDateForApi(value) {
@@ -313,6 +314,32 @@ export function GenerateTab({
 }) {
   const results = Array.isArray(lastResults) ? lastResults : [];
   const isGenerating = generateMutation.isPending;
+  const locationSelectOptions = useMemo(() => {
+    const options = locationOptions
+      .map((loc) => {
+        const value = loc.location_key || loc.key || loc.id || "";
+        const label = loc.display_name || loc.name || loc.label || value || "—";
+        return { value, label };
+      })
+      .filter((opt) => opt.value);
+    return [{ value: "", label: "Select a location" }, ...options];
+  }, [locationOptions]);
+  const packageTypeOptions = useMemo(
+    () => [
+      { value: "separate", label: "Separate" },
+      { value: "combined", label: "Combined" },
+    ],
+    []
+  );
+  const currencyOptions = useMemo(
+    () => [
+      { value: "AED", label: "AED" },
+      { value: "EUR", label: "EUR" },
+      { value: "USD", label: "USD" },
+      { value: "GBP", label: "GBP" },
+    ],
+    []
+  );
 
   return (
     <Card>
@@ -330,14 +357,7 @@ export function GenerateTab({
             />
           </FormField>
           <FormField label="Package Type">
-            <select
-              className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-              value={packageType}
-              onChange={(e) => setPackageType(e.target.value)}
-            >
-              <option value="separate">Separate</option>
-              <option value="combined">Combined</option>
-            </select>
+            <SelectDropdown value={packageType} options={packageTypeOptions} onChange={setPackageType} />
           </FormField>
         </div>
         {packageType === "combined" ? (
@@ -381,21 +401,11 @@ export function GenerateTab({
                   {packageType === "combined" ? (
                     <div className="grid grid-cols-1 md:grid-cols-[1.4fr_0.6fr_0.9fr_0.7fr_auto] gap-2 items-end">
                       <FormField label="Location">
-                        <select
-                          className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                        <SelectDropdown
                           value={item.location}
-                          onChange={(e) => updateItem(item.id, "location", e.target.value)}
-                        >
-                          <option value="">Select a location</option>
-                          {locationOptions.map((loc) => (
-                            <option
-                              key={loc.location_key || loc.key || loc.id}
-                              value={loc.location_key || loc.key || loc.id}
-                            >
-                              {loc.display_name || loc.name || loc.label || loc.key || loc.id}
-                            </option>
-                          ))}
-                        </select>
+                          options={locationSelectOptions}
+                          onChange={(nextValue) => updateItem(item.id, "location", nextValue)}
+                        />
                       </FormField>
                       <FormField label="Spots">
                         <input
@@ -441,21 +451,11 @@ export function GenerateTab({
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-end">
                       <FormField label="Location">
-                        <select
-                          className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                        <SelectDropdown
                           value={item.location}
-                          onChange={(e) => updateItem(item.id, "location", e.target.value)}
-                        >
-                          <option value="">Select a location</option>
-                          {locationOptions.map((loc) => (
-                            <option
-                              key={loc.location_key || loc.key || loc.id}
-                              value={loc.location_key || loc.key || loc.id}
-                            >
-                              {loc.display_name || loc.name || loc.label || loc.key || loc.id}
-                            </option>
-                          ))}
-                        </select>
+                          options={locationSelectOptions}
+                          onChange={(nextValue) => updateItem(item.id, "location", nextValue)}
+                        />
                       </FormField>
                       <div className="flex items-end justify-between gap-2">
                         <FormField label="Spots" className="flex-1">
@@ -563,16 +563,7 @@ export function GenerateTab({
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <FormField label="Currency">
-            <select
-              className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-            >
-              <option value="AED">AED</option>
-              <option value="EUR">EUR</option>
-              <option value="USD">USD</option>
-              <option value="GBP">GBP</option>
-            </select>
+            <SelectDropdown value={currency} options={currencyOptions} onChange={setCurrency} />
           </FormField>
           <FormField label="Payment Terms">
             <input
