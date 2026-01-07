@@ -52,6 +52,9 @@ services:
       # Sales Module URL (for eligibility checks)
       - key: SALES_MODULE_URL
         value: "https://crm-sales-module.onrender.com"
+      # Unified UI URL (for CORS)
+      - key: UNIFIED_UI_URL
+        value: "https://crm-unified-ui.onrender.com"
       # Inter-service auth secret
       - key: INTER_SERVICE_SECRET
         sync: false
