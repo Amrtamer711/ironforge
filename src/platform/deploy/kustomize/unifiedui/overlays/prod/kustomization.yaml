@@ -9,7 +9,7 @@ resources:
 images:
   - name: unifiedui
     newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/unifiedui
-    newTag: 0.0.0
+    newTag: 0.0.1
 
 patches:
   - target:
