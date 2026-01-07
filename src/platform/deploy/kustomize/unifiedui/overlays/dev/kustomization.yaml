@@ -7,9 +7,9 @@ resources:
 images:
   - name: unifiedui
     newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/unifiedui
-    # Fallback only. The actual version is managed by argocd-image-updater on the Argo CD Application.
-    # This tag must exist in ECR, otherwise new pods will fail with ImagePullBackOff.
-    newTag: demo
+    # Deployed image tag is Git-driven (pure GitOps).
+    # Update this value (commit + push), then Argo CD will roll out the new image.
+    newTag: 63e20315
 
 patches:
   - target:
@@ -33,9 +33,6 @@ patches:
       kind: Deployment
       name: unified-ui
     patch: |-
-      - op: add
-        path: /spec/template/spec/containers/0/imagePullPolicy
-        value: Always
       - op: add
         path: /spec/template/spec/containers/0/env/-
         value:

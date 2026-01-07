@@ -31,3 +31,11 @@ make platform-apex-step1 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
 make platform-apex-step2 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
 make platform-unifiedui-url PLATFORM_APEX=mmg-nova.com
 ```
+
+## Image updates (pure GitOps)
+
+The deployed image tag is controlled in Git:
+
+- `src/platform/deploy/kustomize/unifiedui/overlays/dev/kustomization.yaml` → `images[].newTag`
+
+Update that tag (commit + push), then sync the Argo CD `unifiedui-dev` Application.

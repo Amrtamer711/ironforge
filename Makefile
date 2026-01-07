@@ -17,8 +17,9 @@ SHELL := /bin/bash
 .PHONY: help install dev run stop clean test lint format docker-up docker-down \
 	infra-bootstrap infra-init infra-plan infra-apply infra-output \
 	platform-argocd-bootstrap platform-argocd-tls-step1 platform-argocd-tls-step2 platform-argocd-url \
-	platform-argocd-repo-creds platform-argocd-image-updater-apply platform-argocd-image-updater-irsa platform-argocd-image-updater-token platform-argocd-image-updater-restart \
+	platform-argocd-repo-creds \
 	platform-unifiedui-apply platform-unifiedui-url \
+	platform-unifiedui-set-tag \
 	platform-apex-step1 platform-apex-step2 \
 	tf-bootstrap tf-init tf-plan tf-apply tf-output \
 	argocd-bootstrap argocd-tls-tf-init argocd-tls-step1 argocd-tls-step2 argocd-url
@@ -205,7 +206,6 @@ infra-output: infra-init ## Terraform outputs for AWS infrastructure
 ARGOCD_BOOTSTRAP_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/bootstrap
 ARGOCD_TLS_OVERLAY_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/bootstrap-tls
 ARGOCD_REPO_CREDS_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/repo-credentials
-ARGOCD_IMAGE_UPDATER_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/image-updater
 
 # DNS/TLS variables (override with VAR=value)
 # Example:
@@ -257,23 +257,6 @@ platform-argocd-repo-creds: ## Configure Argo CD repo credentials (required for 
 	@test -f $(ARGOCD_REPO_CREDS_DIR)/gitlab-repo.env || (echo "$(RED)Missing $(ARGOCD_REPO_CREDS_DIR)/gitlab-repo.env (copy from gitlab-repo.env.example)$(NC)" && exit 1)
 	@kubectl apply -k $(ARGOCD_REPO_CREDS_DIR)
 
-platform-argocd-image-updater-apply: ## Install/refresh argocd-image-updater (required for auto-updating image digests)
-	@kubectl apply -k $(ARGOCD_IMAGE_UPDATER_DIR)
-
-platform-argocd-image-updater-irsa: infra-init ## Annotate argocd-image-updater ServiceAccount with the IRSA role ARN from Terraform
-	@ROLE_ARN=$$($(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) output -raw argocd_image_updater_role_arn); \
-	  kubectl -n argocd annotate serviceaccount argocd-image-updater eks.amazonaws.com/role-arn=$$ROLE_ARN --overwrite; \
-	  echo "$(GREEN)Annotated argocd-image-updater ServiceAccount with IRSA role: $$ROLE_ARN$(NC)"
-
-platform-argocd-image-updater-token: ## Create/update argocd-image-updater Argo CD API token secret (set ARGOCD_IMAGE_UPDATER_TOKEN=...)
-	@test -n "$(ARGOCD_IMAGE_UPDATER_TOKEN)" || (echo "$(RED)Missing ARGOCD_IMAGE_UPDATER_TOKEN (Argo CD API token)$(NC)" && exit 1)
-	@kubectl -n argocd create secret generic argocd-image-updater-secret \
-	  --from-literal=argocd.token="$(ARGOCD_IMAGE_UPDATER_TOKEN)" \
-	  --dry-run=client -o yaml | kubectl apply -f -
-
-platform-argocd-image-updater-restart: ## Restart argocd-image-updater
-	@kubectl -n argocd rollout restart deployment/argocd-image-updater
-
 # =============================================================================
 # PLATFORM - UNIFIED UI (EKS)
 # =============================================================================
@@ -281,9 +264,14 @@ platform-argocd-image-updater-restart: ## Restart argocd-image-updater
 UNIFIEDUI_APP_MANIFEST ?= $(ROOT_DIR)/src/platform/ArgoCD/applications/unifiedui-dev.yaml
 UNIFIEDUI_NAMESPACE ?= unifiedui
 UNIFIEDUI_INGRESS_NAME ?= unified-ui
+UNIFIEDUI_KUSTOMIZE_DEV ?= $(ROOT_DIR)/src/platform/deploy/kustomize/unifiedui/overlays/dev/kustomization.yaml
 
 platform-unifiedui-apply: ## Install/refresh the Unified UI Argo CD Application
 	@kubectl apply -f $(UNIFIEDUI_APP_MANIFEST)
+
+platform-unifiedui-set-tag: ## Set the Unified UI dev image tag in Git (TAG=...) for Argo CD to roll out
+	@test -n "$(TAG)" || (echo "$(RED)Missing TAG (example: make platform-unifiedui-set-tag TAG=63e20315)$(NC)" && exit 1)
+	@$(PYTHON) - <<'PY'\nimport pathlib, re, sys\npath = pathlib.Path(\"$(UNIFIEDUI_KUSTOMIZE_DEV)\")\ndata = path.read_text()\nnew = re.sub(r\"^(\\s*newTag:)\\s*.*$\", r\"\\\\1 $(TAG)\", data, flags=re.M)\nif new == data:\n  raise SystemExit(f\"Could not find 'newTag:' in {path}\")\npath.write_text(new)\nprint(f\"Updated {path} to newTag: $(TAG)\")\nPY
 
 platform-unifiedui-url: ## Print the Unified UI URL (requires PLATFORM_APEX)
 	@test -n "$(PLATFORM_APEX)" || (echo "$(RED)Missing PLATFORM_APEX (e.g. PLATFORM_APEX=mmg-nova.com)$(NC)" && exit 1)
