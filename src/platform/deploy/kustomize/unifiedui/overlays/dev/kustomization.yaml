@@ -7,7 +7,9 @@ resources:
 images:
   - name: unifiedui
     newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/unifiedui
-    newTag: demo
+    # Fallback only. The actual version is managed by argocd-image-updater on the Argo CD Application.
+    # This tag may become stale; do not rely on it for updates.
+    newTag: latest
 
 patches:
   - target:

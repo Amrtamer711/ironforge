@@ -163,20 +163,6 @@ kubectl -n argocd get application unifiedui-dev -o jsonpath='{.spec.source.kusto
 kubectl -n unifiedui get deploy unified-ui -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
 ```
 
-## Unified UI releases (SemVer)
+## Unified UI image updates (unique tags)
 
-CI publishes immutable SemVer tags (e.g. `1.2.3`) when you push a git tag (e.g. `v1.2.3`).
-
-- Argo CD Application: `src/platform/ArgoCD/applications/unifiedui-prod.yaml`
-- Kustomize overlay: `src/platform/deploy/kustomize/unifiedui/overlays/prod`
-
-Release flow:
-
-1) Create a git tag and push it (this triggers the image build + push to ECR with the SemVer tag):
-
-```bash
-git tag v1.2.3
-git push origin v1.2.3
-```
-
-2) Update the deployed image version by setting `images[].newTag` in the prod overlay to `1.2.3` and syncing Argo CD.
+CI pushes only unique image tags (commit SHA). `argocd-image-updater` watches the ECR repository and updates the Argo CD `Application` to the newest build tag automatically.
