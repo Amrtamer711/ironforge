@@ -15,6 +15,9 @@ spec:
     repoURL: https://gitlab.com/mmg-global/ironforge.git
     targetRevision: demo
     path: src/platform/deploy/kustomize/unifiedui/overlays/dev
+    kustomize:
+      images:
+        - unifiedui=018881300778.dkr.ecr.eu-north-1.amazonaws.com/unifiedui:demo
   destination:
     server: https://kubernetes.default.svc
     namespace: unifiedui
@@ -24,3 +27,15 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      # Allows us to safely patch ALB TLS annotations (certificate ARN, listener config) without Argo CD reverting them.
+      - RespectIgnoreDifferences=true
+  ignoreDifferences:
+    # TLS is applied by ALB annotations which are environment/account specific (ACM ARN).
+    - group: networking.k8s.io
+      kind: Ingress
+      name: unified-ui
+      namespace: unifiedui
+      jsonPointers:
+        - /metadata/annotations/alb.ingress.kubernetes.io~1certificate-arn
+        - /metadata/annotations/alb.ingress.kubernetes.io~1listen-ports
+        - /metadata/annotations/alb.ingress.kubernetes.io~1ssl-redirect

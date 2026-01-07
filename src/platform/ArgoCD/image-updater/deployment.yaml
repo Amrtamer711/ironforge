@@ -32,6 +32,10 @@ spec:
           env:
             - name: AWS_REGION
               value: eu-north-1
+            - name: HOME
+              value: /tmp
+            - name: AWS_EC2_METADATA_DISABLED
+              value: "true"
             - name: ARGOCD_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -49,5 +53,6 @@ spec:
         - name: config
           configMap:
             name: argocd-image-updater-config
+            defaultMode: 0555
         - name: tmp
           emptyDir: {}
