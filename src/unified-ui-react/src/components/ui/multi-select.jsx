@@ -58,7 +58,7 @@ export function MultiSelect({
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className={cn("min-w-[220px]", contentClassName)}>
-        <div className="max-h-[240px] overflow-y-auto">
+        <div className="max-h-[240px] overflow-y-auto space-y-1">
           {options.length ? (
             options.map((opt) => {
               const isSelected = selectedSet.has(opt.value);
@@ -69,7 +69,7 @@ export function MultiSelect({
                     event.preventDefault();
                     toggleValue(opt.value);
                   }}
-                  className="cursor-pointer"
+                  className="cursor-pointer py-1"
                 >
                   <span
                     className={cn(

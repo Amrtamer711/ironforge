@@ -4,6 +4,10 @@ Network Assets - Schemas and service logic.
 Network assets are individual billboards/screens within a network.
 They are NOT directly sellable (networks are sold as complete units).
 These endpoints are for admin/management features.
+
+Environment field determines mockup directory structure:
+- 'indoor': Simple list of mockups ({key}/indoor/)
+- 'outdoor': Full variations ({key}/outdoor/day/gold/, .../silver/, .../night/gold/, .../silver/)
 """
 
 from datetime import datetime
@@ -33,6 +37,12 @@ class NetworkAssetBase(BaseModel):
     network_id: int = Field(..., description="Parent network ID")
     type_id: int = Field(..., description="Asset type ID")
 
+    # Environment (indoor/outdoor) - determines mockup directory structure
+    environment: str = Field(
+        default="outdoor",
+        description="'indoor' or 'outdoor' - determines mockup directory structure"
+    )
+
     # Physical specs
     series: str | None = Field(default=None, description="Billboard series")
     height: str | None = Field(default=None, description="Height specification")
@@ -48,6 +58,7 @@ class NetworkAssetBase(BaseModel):
     # Location details
     city: str | None = Field(default=None, description="City")
     area: str | None = Field(default=None, description="Area/district")
+    country: str | None = Field(default=None, description="Country")
     address: str | None = Field(default=None, description="Full address")
     gps_lat: float | None = Field(default=None, description="GPS latitude")
     gps_lng: float | None = Field(default=None, description="GPS longitude")
@@ -72,6 +83,7 @@ class NetworkAssetUpdate(BaseModel):
     display_type: str | None = None
     network_id: int | None = None
     type_id: int | None = None
+    environment: str | None = None  # 'indoor' or 'outdoor'
     series: str | None = None
     height: str | None = None
     width: str | None = None
@@ -82,6 +94,7 @@ class NetworkAssetUpdate(BaseModel):
     upload_fee: float | None = None
     city: str | None = None
     area: str | None = None
+    country: str | None = None
     address: str | None = None
     gps_lat: float | None = None
     gps_lng: float | None = None
@@ -214,6 +227,7 @@ class NetworkAssetService:
             display_type=data["display_type"],
             network_id=data["network_id"],
             type_id=data["type_id"],
+            environment=data.get("environment", "outdoor"),
             series=data.get("series"),
             height=data.get("height"),
             width=data.get("width"),
@@ -224,6 +238,7 @@ class NetworkAssetService:
             upload_fee=data.get("upload_fee"),
             city=data.get("city"),
             area=data.get("area"),
+            country=data.get("country"),
             address=data.get("address"),
             gps_lat=data.get("gps_lat"),
             gps_lng=data.get("gps_lng"),

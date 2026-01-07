@@ -1,9 +1,41 @@
 # Frontend Requirements for Amr
 
+---
+
+## DEV TO-DO: Unified Asset Management
+
+### Part 1: Unified Architecture ✅ DONE
+- [x] Merge `standalone_assets` into `networks` with `standalone` flag
+- [x] Add `environment` field to `network_assets` (indoor/outdoor)
+- [x] Add `area`, `country` fields to locations
+- [x] Create unified `locations` VIEW (no `asset_source`)
+- [x] Add `get_mockup_storage_info()` for mockup path resolution
+- [x] Internal API endpoint `/api/internal/mockup-storage-info/{network_key}`
+- [x] Migration scripts (`03_unify_standalone.sql`, `04_add_country_column.sql`)
+
+### Part 2: Eligibility Service ⏳ PENDING
+- [ ] Check if location is **eligible for booking** on given dates
+- [ ] Query `asset_occupations` to find date conflicts
+- [ ] Return availability status for proposals
+- [ ] Endpoint: `GET /api/locations/{location_key}/availability?start_date=X&end_date=Y`
+- [ ] Used by Sales-Module when generating proposals
+
+### Database Migration (for existing DB)
+```bash
+# Run in Supabase SQL Editor:
+1. 03_unify_standalone.sql   # Migrates standalone_assets → networks
+2. 04_add_country_column.sql # Adds country field
+```
+
+---
+
 ## Pending
 
 ## Authentication
 1. Authentication issue where 401 causes logout within a specific time. maybe token expiry?
+
+## General
+1. Font issue when the font is not available in the local system.
 
 ### Questions / Confirmations
 1. **Companies Endpoint** - Confirm if `/dev/companies` path is correct for company details

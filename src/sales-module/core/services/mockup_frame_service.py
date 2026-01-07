@@ -603,6 +603,71 @@ class MockupFrameService:
             self.logger.error(f"[MOCKUP_FRAME_SERVICE] Error checking orientation: {e}")
             return False
 
+    async def get_storage_info(
+        self,
+        location_key: str,
+    ) -> dict | None:
+        """
+        Get mockup storage info for a location.
+
+        This is the key method for working with the unified architecture.
+        Returns storage keys based on network type:
+        - Standalone networks: returns network_key (mockups at network level)
+        - Traditional networks: returns asset_keys (mockups at asset level)
+
+        Args:
+            location_key: Location/network key
+
+        Returns:
+            Dict with:
+            - network_key: str
+            - company: str
+            - is_standalone: bool
+            - storage_keys: list[str] - Keys to use for mockup operations
+            - sample_assets: list[dict] - For traditional: one asset per type
+        """
+        self.logger.info(f"[MOCKUP_FRAME_SERVICE] Getting storage info for {location_key}")
+
+        try:
+            result = await asset_mgmt_client.get_mockup_storage_info(
+                network_key=location_key,
+                companies=self.companies,
+            )
+
+            if result:
+                self.logger.info(
+                    f"[MOCKUP_FRAME_SERVICE] Storage info for {location_key}: "
+                    f"is_standalone={result.get('is_standalone')}, "
+                    f"storage_keys={result.get('storage_keys', [])}"
+                )
+            return result
+
+        except Exception as e:
+            self.logger.error(f"[MOCKUP_FRAME_SERVICE] Error getting storage info: {e}")
+            return None
+
+    async def get_mockup_storage_keys(
+        self,
+        location_key: str,
+    ) -> list[str]:
+        """
+        Get the storage keys for mockup operations.
+
+        Convenience method that returns just the storage keys list.
+        For standalone networks: returns [network_key]
+        For traditional networks: returns [asset_key1, asset_key2, ...]
+
+        Args:
+            location_key: Location/network key
+
+        Returns:
+            List of storage keys for mockup operations
+        """
+        info = await self.get_storage_info(location_key)
+        if info:
+            return info.get("storage_keys", [])
+        return []
+
 
 # Convenience functions for module-level access
 

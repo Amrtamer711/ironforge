@@ -1,7 +1,10 @@
 """
 Packages - Schemas and service logic.
 
-Packages are company-specific bundles of networks and/or individual assets.
+Packages are company-specific bundles of networks.
+
+After migration 02_unify_standalone, all sellable entities are networks,
+so packages now only contain networks (both standalone and traditional).
 """
 
 from datetime import datetime
@@ -21,11 +24,13 @@ logger = config.get_logger("core.packages")
 
 
 class PackageItemBase(BaseModel):
-    """Base package item fields."""
+    """Base package item fields.
 
-    item_type: str = Field(..., description="'network' or 'asset'")
-    network_id: int | None = Field(default=None, description="Network ID (if item_type='network')")
-    location_id: int | None = Field(default=None, description="Location ID (if item_type='asset')")
+    After unification, all package items are networks.
+    """
+
+    item_type: str = Field(default="network", description="Always 'network' after unification")
+    network_id: int = Field(..., description="Network ID (required)")
 
 
 class PackageItem(PackageItemBase):
@@ -37,8 +42,7 @@ class PackageItem(PackageItemBase):
 
     # Optional expanded data
     network_name: str | None = None
-    location_name: str | None = None
-    location_count: int | None = None  # For networks
+    location_count: int | None = None  # Number of assets in the network
 
     class Config:
         from_attributes = True
@@ -175,14 +179,13 @@ class PackageService:
 
         package = self._dict_to_package(result)
 
-        # Add initial items
+        # Add initial items (all items are networks after unification)
         for item_data in data.items:
             db.add_package_item(
                 package_id=package.id,
-                item_type=item_data.item_type,
+                item_type="network",
                 company_schema=company,
                 network_id=item_data.network_id,
-                location_id=item_data.location_id,
             )
 
         # Refresh package with items
@@ -220,19 +223,19 @@ class PackageService:
         self,
         company: str,
         package_id: int,
-        item_type: str,
-        network_id: int | None = None,
-        location_id: int | None = None,
+        network_id: int,
     ) -> PackageItem | None:
-        """Add an item to a package."""
-        logger.info(f"Adding {item_type} item to package {package_id}")
+        """Add a network to a package.
+
+        After unification, all package items are networks.
+        """
+        logger.info(f"Adding network {network_id} to package {package_id}")
 
         result = db.add_package_item(
             package_id=package_id,
-            item_type=item_type,
+            item_type="network",
             company_schema=company,
             network_id=network_id,
-            location_id=location_id,
         )
 
         if not result:
@@ -268,12 +271,10 @@ class PackageService:
         ]
 
     def _calculate_location_count(self, package: Package, company: str) -> int:
-        """Calculate total location count from package items."""
+        """Calculate total location count from package items (all networks)."""
         total = 0
         for item in package.items:
-            if item.item_type == "asset":
-                total += 1
-            elif item.item_type == "network" and item.location_count:
+            if item.location_count:
                 total += item.location_count
         return total
 
@@ -302,11 +303,9 @@ class PackageService:
         return PackageItem(
             id=data["id"],
             package_id=data["package_id"],
-            item_type=data["item_type"],
-            network_id=data.get("network_id"),
-            location_id=data.get("location_id"),
+            item_type=data.get("item_type", "network"),
+            network_id=data["network_id"],
             created_at=data.get("created_at"),
             network_name=data.get("network_name"),
-            location_name=data.get("location_name"),
             location_count=data.get("location_count"),
         )

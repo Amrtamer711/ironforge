@@ -2,9 +2,16 @@
 Networks - Schemas and service logic.
 
 Networks are sellable groupings of assets.
+
+After migration 02_unify_standalone, ALL sellable entities are networks:
+- Traditional networks (standalone=False): Have multiple assets, mockups at asset level
+- Standalone networks (standalone=True): Have location fields directly, mockups at network level
+
+IMPORTANT: The `standalone` flag is INTERNAL ONLY - never exposed to frontend.
 """
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -27,11 +34,32 @@ class NetworkBase(BaseModel):
     name: str = Field(..., description="Display name")
     description: str | None = Field(default=None, description="Description")
 
+    # Network-level attributes (shared)
+    series: str | None = Field(default=None, description="Series/category")
+    sov_percent: Decimal | None = Field(default=None, description="Share of voice percentage")
+    upload_fee: Decimal | None = Field(default=None, description="Upload fee")
+    spot_duration: int | None = Field(default=None, description="Spot duration in seconds")
+    loop_duration: int | None = Field(default=None, description="Loop duration in seconds")
+    number_of_faces: int | None = Field(default=None, description="Number of faces")
+    template_path: str | None = Field(default=None, description="Template path")
+
+    # Location fields (used for standalone networks)
+    display_type: str | None = Field(default=None, description="'digital' or 'static' (standalone only)")
+    height: str | None = Field(default=None, description="Height (standalone only)")
+    width: str | None = Field(default=None, description="Width (standalone only)")
+    city: str | None = Field(default=None, description="City (standalone only)")
+    area: str | None = Field(default=None, description="Area (standalone only)")
+    country: str | None = Field(default=None, description="Country (standalone only)")
+    address: str | None = Field(default=None, description="Address (standalone only)")
+    gps_lat: Decimal | None = Field(default=None, description="GPS latitude (standalone only)")
+    gps_lng: Decimal | None = Field(default=None, description="GPS longitude (standalone only)")
+
 
 class NetworkCreate(NetworkBase):
     """Fields for creating a network."""
 
-    pass
+    # INTERNAL: standalone flag (not exposed to frontend)
+    standalone: bool = Field(default=False, description="INTERNAL: True for standalone networks")
 
 
 class NetworkUpdate(BaseModel):
@@ -41,6 +69,26 @@ class NetworkUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     is_active: bool | None = None
+
+    # Network-level attributes
+    series: str | None = None
+    sov_percent: Decimal | None = None
+    upload_fee: Decimal | None = None
+    spot_duration: int | None = None
+    loop_duration: int | None = None
+    number_of_faces: int | None = None
+    template_path: str | None = None
+
+    # Location fields (standalone only)
+    display_type: str | None = None
+    height: str | None = None
+    width: str | None = None
+    city: str | None = None
+    area: str | None = None
+    country: str | None = None
+    address: str | None = None
+    gps_lat: Decimal | None = None
+    gps_lng: Decimal | None = None
 
 
 class AssetTypeSummary(BaseModel):
@@ -70,6 +118,11 @@ class Network(NetworkBase):
     created_at: datetime | None = None
     updated_at: datetime | None = None
     created_by: str | None = None
+    notes: str | None = None
+
+    # INTERNAL: standalone flag (not exposed to frontend via API)
+    # Used by backend to determine mockup storage location and behavior
+    standalone: bool = Field(default=False, description="INTERNAL: True for standalone networks", exclude=True)
 
     # Optional nested data
     asset_types: list[AssetTypeSummary] | None = None
@@ -152,14 +205,31 @@ class NetworkService:
         created_by: str | None = None,
     ) -> Network:
         """Create a new network."""
-        logger.info(f"Creating network '{data.name}' in {company}")
+        logger.info(f"Creating network '{data.name}' in {company} (standalone={data.standalone})")
+
+        # Build kwargs for optional fields
+        kwargs = {}
+        optional_fields = [
+            "series", "sov_percent", "upload_fee", "spot_duration", "loop_duration",
+            "number_of_faces", "template_path", "display_type", "height", "width",
+            "city", "area", "country", "address", "gps_lat", "gps_lng"
+        ]
+        for field in optional_fields:
+            value = getattr(data, field, None)
+            if value is not None:
+                # Convert Decimal to float for database
+                if isinstance(value, Decimal):
+                    value = float(value)
+                kwargs[field] = value
 
         result = db.create_network(
             network_key=data.network_key,
             name=data.name,
             company_schema=company,
             description=data.description,
+            standalone=data.standalone,
             created_by=created_by,
+            **kwargs,
         )
 
         if not result:
@@ -179,6 +249,11 @@ class NetworkService:
         updates = data.model_dump(exclude_unset=True, exclude_none=True)
         if not updates:
             return self.get_network(company, network_id, include_types=False)
+
+        # Convert Decimal to float for database
+        for key, value in updates.items():
+            if isinstance(value, Decimal):
+                updates[key] = float(value)
 
         result = db.update_network(network_id, company, updates)
         if not result:
@@ -207,4 +282,25 @@ class NetworkService:
             created_at=data.get("created_at"),
             updated_at=data.get("updated_at"),
             created_by=data.get("created_by"),
+            notes=data.get("notes"),
+            # INTERNAL: standalone flag
+            standalone=data.get("standalone", False),
+            # Network-level attributes
+            series=data.get("series"),
+            sov_percent=data.get("sov_percent"),
+            upload_fee=data.get("upload_fee"),
+            spot_duration=data.get("spot_duration"),
+            loop_duration=data.get("loop_duration"),
+            number_of_faces=data.get("number_of_faces"),
+            template_path=data.get("template_path"),
+            # Location fields (standalone only)
+            display_type=data.get("display_type"),
+            height=data.get("height"),
+            width=data.get("width"),
+            city=data.get("city"),
+            area=data.get("area"),
+            country=data.get("country"),
+            address=data.get("address"),
+            gps_lat=data.get("gps_lat"),
+            gps_lng=data.get("gps_lng"),
         )

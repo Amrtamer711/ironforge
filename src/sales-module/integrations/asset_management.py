@@ -805,6 +805,45 @@ class AssetManagementClient:
             logger.debug(f"[ASSET CLIENT] Intro/outro PDF not found: {pdf_name}")
             return None
 
+    # =========================================================================
+    # MOCKUP STORAGE INFO (Unified Architecture Support)
+    # =========================================================================
+
+    async def get_mockup_storage_info(
+        self,
+        network_key: str,
+        companies: list[str] | None = None,
+    ) -> dict | None:
+        """
+        Get mockup storage info for a network.
+
+        This is the key integration point for the unified architecture.
+        Returns the storage keys needed to fetch/store mockups:
+        - For standalone networks: returns network_key (mockups at network level)
+        - For traditional networks: returns asset_keys (mockups at asset level)
+
+        Args:
+            network_key: The network/location key
+            companies: Companies to search in
+
+        Returns:
+            Dict with:
+            - network_key: str
+            - company: str
+            - is_standalone: bool
+            - storage_keys: list[str]  # Keys to use for mockup storage
+            - sample_assets: list[dict]  # For traditional: one asset per type
+        """
+        params: dict[str, Any] = {}
+        if companies:
+            params["companies"] = companies
+
+        return await self._request(
+            "GET",
+            f"/api/internal/mockup-storage-info/{network_key}",
+            params=params,
+        )
+
 
 # Singleton instance for convenience
 asset_mgmt_client = AssetManagementClient()
