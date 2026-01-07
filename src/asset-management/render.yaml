@@ -27,7 +27,7 @@ services:
         value: "INFO"
       # Environment
       - key: ENVIRONMENT
-        value: "production"
+        value: "development"  # Use DEV Supabase credentials
       - key: PORT
         value: "8001"
       # Database backend
@@ -36,19 +36,19 @@ services:
       # Asset Management Supabase (DEV)
       - key: ASSETMGMT_DEV_SUPABASE_URL
         sync: false
-      - key: ASSETMGMT_DEV_SUPABASE_SERVICE_KEY
+      - key: ASSETMGMT_DEV_SUPABASE_SERVICE_ROLE_KEY
         sync: false
       # Asset Management Supabase (PROD)
       - key: ASSETMGMT_PROD_SUPABASE_URL
         sync: false
-      - key: ASSETMGMT_PROD_SUPABASE_SERVICE_KEY
+      - key: ASSETMGMT_PROD_SUPABASE_SERVICE_ROLE_KEY
         sync: false
       # Proxy secret (shared with unified-ui)
       - key: PROXY_SECRET
         sync: false
       # Security Service URL (for SDK calls)
       - key: SECURITY_SERVICE_URL
-        value: "https://security-service.onrender.com"
+        value: "https://crm-security-service.onrender.com"
       # Inter-service auth secret
       - key: INTER_SERVICE_SECRET
         sync: false

@@ -27,13 +27,21 @@ services:
         value: "INFO"
       # Environment (development or production)
       - key: ENVIRONMENT
-        value: "production"
+        value: "development"  # Use DEV Supabase credentials
       # Auth provider (supabase to validate UI-issued JWTs)
       - key: AUTH_PROVIDER
         value: "supabase"
       # Database backend
       - key: DB_BACKEND
         value: "supabase"
+      # Storage backend
+      - key: STORAGE_PROVIDER
+        value: "supabase"
+      # LLM providers
+      - key: LLM_PROVIDER
+        value: "openai"
+      - key: IMAGE_PROVIDER
+        value: "google"
       # Sales Bot Supabase (DEV) - for data storage
       - key: SALESBOT_DEV_SUPABASE_URL
         sync: false
@@ -45,14 +53,18 @@ services:
       - key: SALESBOT_PROD_SUPABASE_SERVICE_ROLE_KEY
         sync: false
       # UI JWT Secret (for validating tokens issued by UI Supabase)
-      - key: UI_JWT_SECRET
+      - key: UI_DEV_JWT_SECRET
+        sync: false
+      - key: UI_PROD_JWT_SECRET
         sync: false
       # Proxy secret (shared with unified-ui to prevent header spoofing)
       - key: PROXY_SECRET
         sync: false
-      # Security Service URL (for SDK calls)
+      # Service URLs
       - key: SECURITY_SERVICE_URL
-        value: "https://security-service.onrender.com"
+        value: "https://crm-security-service.onrender.com"
+      - key: ASSET_MGMT_URL
+        value: "https://crm-asset-management.onrender.com"
       # Inter-service auth secret
       - key: INTER_SERVICE_SECRET
         sync: false

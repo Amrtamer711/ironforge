@@ -21,12 +21,18 @@ services:
     envVars:
       # Environment
       - key: ENVIRONMENT
-        value: "production"
+        value: "development"  # Use DEV Supabase credentials
       - key: PORT
         value: "3005"
-      # Sales Bot URL (update with your actual proposal-bot URL)
+      - key: LOG_LEVEL
+        value: "INFO"
+      # Service URLs for proxy routing
       - key: SALES_BOT_URL
-        value: "https://proposal-bot.onrender.com"
+        value: "https://crm-sales-module.onrender.com"
+      - key: ASSET_MGMT_URL
+        value: "https://crm-asset-management.onrender.com"
+      - key: SECURITY_SERVICE_URL
+        value: "https://crm-security-service.onrender.com"
       # UI Supabase (DEV) - for authentication
       - key: UI_DEV_SUPABASE_URL
         sync: false
@@ -41,12 +47,9 @@ services:
         sync: false
       - key: UI_PROD_SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      # Proxy secret (must match proposal-bot's PROXY_SECRET)
+      # Proxy secret (must match all backend services)
       - key: PROXY_SECRET
         sync: false
-      # Security Service URL (for SDK calls)
-      - key: SECURITY_SERVICE_URL
-        value: "https://security-service.onrender.com"
       # Inter-service auth secret
       - key: INTER_SERVICE_SECRET
         sync: false
