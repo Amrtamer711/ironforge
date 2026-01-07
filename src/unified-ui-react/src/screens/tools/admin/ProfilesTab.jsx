@@ -21,7 +21,7 @@ export function ProfilesTab({
   setConfirmDelete,
 }) {
   return (
-    <Card>
+    <Card className="h-full min-h-0 flex flex-col">
       <CardHeader className="space-y-2">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Profiles</CardTitle>
@@ -37,7 +37,7 @@ export function ProfilesTab({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-4 pt-2">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {filteredProfileOptions.map((p) => (
             <SoftCard key={p.id || p.name} className="p-4 space-y-1">

@@ -97,7 +97,7 @@ export function UsersTab({
   );
 
   return (
-    <Card className="flex-1 min-h-0">
+    <Card className="h-full min-h-0 flex flex-col">
       <CardHeader className="space-y-2">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle>Users</CardTitle>
@@ -133,7 +133,7 @@ export function UsersTab({
           />
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-4 pt-2">
         {usersQuery.isLoading ? (
           <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
         ) : (

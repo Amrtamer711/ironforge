@@ -643,7 +643,7 @@ export function VideoCritiqueChatPanel() {
   return (
     <div className="h-full flex flex-col gap-4 min-h-0">
       <Card className="p-4 overflow-hidden flex-1 min-h-0">
-        <div ref={scrollerRef} className="h-full overflow-y-auto px-2">
+        <div ref={scrollerRef} className="h-full overflow-y-auto px-2 py-2">
           <div className="space-y-3">
             {!historyHydrated && historyQuery.isLoading ? (
               <LoadingEllipsis

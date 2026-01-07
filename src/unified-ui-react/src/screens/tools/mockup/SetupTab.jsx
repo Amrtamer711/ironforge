@@ -104,11 +104,11 @@ export function SetupTab({
   useNativeSelects,
 }) {
   return (
-    <Card>
+    <Card className="h-full min-h-0 flex flex-col">
       <CardHeader>
         <CardTitle>Mockup Setup</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-4">
         <div className="space-y-4">
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -125,6 +125,7 @@ export function SetupTab({
                     return { value, label };
                   })}
                   placeholder="Select locations"
+                  showChips
                 />
                 {locationsQuery.isLoading ? (
                   <div className="mt-1 text-xs text-black/50 dark:text-white/60">

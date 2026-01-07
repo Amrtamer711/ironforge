@@ -188,11 +188,11 @@ export function HistoryTab({ historyQuery, userNamesLoading, visibleProposals, u
   }, [proposals, packageFilter, locationFilter, searchTerm]);
 
   return (
-    <Card>
+    <Card className="h-full min-h-0 flex flex-col">
       <CardHeader className="space-y-2">
         <CardTitle>History</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1 min-h-0 overflow-y-auto">
         {historyQuery.isLoading || userNamesLoading ? (
           <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
         ) : visibleProposals?.length ? (

@@ -223,11 +223,11 @@ export function GenerateTab({
   }
 
   return (
-    <Card>
+    <Card className="h-full min-h-0 flex flex-col">
       <CardHeader>
         <CardTitle>Mockup Generator</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <FormField label="Location">
             <SelectDropdown
@@ -415,7 +415,7 @@ export function GenerateTab({
 
         <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 p-4">
           {!lastResults.length && !generating ? (
-            <div className="text-sm text-black/60 dark:text-white/65">Result will appear here</div>
+            <div className="text-sm text-black/60 dark:text-white/65">Results will appear here</div>
           ) : null}
           {generating ? (
             <LoadingEllipsis text="Processing mockup" className="text-sm text-black/60 dark:text-white/65" />

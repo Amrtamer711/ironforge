@@ -3,6 +3,8 @@
 ---
 
 ## DEV TO-DO: Unified Asset Management
+- [ ] Make the changes to mockup and proposal generation LLM chats with new location structure.
+
 
 ### Part 1: Unified Architecture ✅ DONE
 - [x] Merge `standalone_assets` into `networks` with `standalone` flag
