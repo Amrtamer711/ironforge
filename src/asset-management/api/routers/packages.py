@@ -1,8 +1,11 @@
 """
 Packages endpoints.
 
-Packages are company-specific bundles of networks and/or individual assets.
+Packages are company-specific bundles of networks.
 They are sellable as a single unit.
+
+After migration 02_unify_standalone, all sellable entities are networks,
+so packages now only contain networks (both standalone and traditional).
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -27,9 +30,7 @@ def list_packages(
     """
     List all packages. Requires: assets:packages:read
 
-    Packages are company-specific bundles that can contain:
-    - Entire networks (all locations in the network)
-    - Individual assets (specific locations)
+    Packages are company-specific bundles of networks.
     """
     # Filter to user's accessible companies
     user_companies = user.get("companies", [])
@@ -131,12 +132,13 @@ def delete_package(
 def add_package_item(
     company: str,
     package_id: int,
-    item_type: str = Query(..., description="'network' or 'asset'"),
-    network_id: int | None = Query(default=None, description="Network ID (if item_type='network')"),
-    location_id: int | None = Query(default=None, description="Location ID (if item_type='asset')"),
+    network_id: int = Query(..., description="Network ID to add to the package"),
     user: TrustedUserContext = Depends(require_permission("assets:packages:update")),
 ) -> Package:
-    """Add an item (network or asset) to a package. Requires: assets:packages:update"""
+    """Add a network to a package. Requires: assets:packages:update
+
+    After unification, all package items are networks.
+    """
     # Verify company access
     user_companies = user.get("companies", [])
     if user_companies and company not in user_companies:
@@ -147,14 +149,12 @@ def add_package_item(
     if not package:
         raise HTTPException(status_code=404, detail="Package not found")
 
-    # Add item
-    logger.info(f"User {user.get('id')} adding {item_type} to package {package_id}")
+    # Add network to package
+    logger.info(f"User {user.get('id')} adding network {network_id} to package {package_id}")
     _service.add_item(
         company=company,
         package_id=package_id,
-        item_type=item_type,
         network_id=network_id,
-        location_id=location_id,
     )
 
     # Return updated package
@@ -198,8 +198,7 @@ def get_package_locations(
     """
     Get all locations included in a package (expanded). Requires: assets:packages:read
 
-    This resolves networks to their individual locations and includes
-    directly added assets.
+    This resolves all networks in the package to their individual locations.
     """
     # Verify company access
     user_companies = user.get("companies", [])

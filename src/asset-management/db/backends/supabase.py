@@ -344,6 +344,25 @@ class SupabaseBackend(DatabaseBackend):
         company_schema: str,
         description: str | None = None,
         created_by: str | None = None,
+        # New fields for unified architecture
+        standalone: bool = False,
+        series: str | None = None,
+        sov_percent: float | None = None,
+        upload_fee: float | None = None,
+        spot_duration: int | None = None,
+        loop_duration: int | None = None,
+        number_of_faces: int | None = None,
+        template_path: str | None = None,
+        # Location fields (for standalone networks)
+        display_type: str | None = None,
+        height: str | None = None,
+        width: str | None = None,
+        city: str | None = None,
+        area: str | None = None,
+        address: str | None = None,
+        gps_lat: float | None = None,
+        gps_lng: float | None = None,
+        notes: str | None = None,
     ) -> dict[str, Any] | None:
         client = self._get_client()
         try:
@@ -356,7 +375,32 @@ class SupabaseBackend(DatabaseBackend):
                 "created_at": now,
                 "updated_at": now,
                 "created_by": created_by,
+                # New fields
+                "standalone": standalone,
             }
+            # Add optional fields if provided
+            optional_fields = {
+                "series": series,
+                "sov_percent": sov_percent,
+                "upload_fee": upload_fee,
+                "spot_duration": spot_duration,
+                "loop_duration": loop_duration,
+                "number_of_faces": number_of_faces,
+                "template_path": template_path,
+                "display_type": display_type,
+                "height": height,
+                "width": width,
+                "city": city,
+                "area": area,
+                "address": address,
+                "gps_lat": gps_lat,
+                "gps_lng": gps_lng,
+                "notes": notes,
+            }
+            for field, value in optional_fields.items():
+                if value is not None:
+                    data[field] = value
+
             response = client.schema(company_schema).table("networks").insert(data).execute()
 
             if response.data:
@@ -1402,16 +1446,18 @@ class SupabaseBackend(DatabaseBackend):
         package_id: int,
         item_type: str,
         company_schema: str,
-        network_id: int | None = None,
-        location_id: int | None = None,
+        network_id: int,
     ) -> dict[str, Any] | None:
+        """Add a network to a package.
+
+        After unification, all package items are networks.
+        """
         client = self._get_client()
         try:
             data = {
                 "package_id": package_id,
-                "item_type": item_type,
+                "item_type": "network",  # Always network after unification
                 "network_id": network_id,
-                "location_id": location_id,
                 "created_at": self._now(),
             }
             response = client.schema(company_schema).table("package_items").insert(data).execute()
@@ -1423,15 +1469,14 @@ class SupabaseBackend(DatabaseBackend):
                 _run_async(self._cache_delete_pattern(f"package:{package_id}:*"))
                 _run_async(self._cache_delete_pattern(f"package_items:{package_id}:*"))
 
-                # Enrich with names
-                if network_id:
-                    network = self.get_network(network_id, [company_schema])
-                    if network:
-                        result["network_name"] = network.get("name")
-                if location_id:
-                    location = self.get_location(location_id, [company_schema])
-                    if location:
-                        result["location_name"] = location.get("display_name")
+                # Enrich with network name and location count
+                network = self.get_network(network_id, [company_schema])
+                if network:
+                    result["network_name"] = network.get("name")
+                    # Get location count for this network
+                    assets = self.list_network_assets([company_schema], network_id=network_id)
+                    result["location_count"] = len(assets)
+
                 return result
             return None
         except Exception as e:
@@ -1483,7 +1528,10 @@ class SupabaseBackend(DatabaseBackend):
         package_id: int,
         company_schema: str,
     ) -> list[dict[str, Any]]:
-        """Get package items (cached)."""
+        """Get package items (cached).
+
+        After unification, all package items are networks.
+        """
         cache_key = f"package_items:{package_id}:{company_schema}"
 
         # Try cache first
@@ -1503,19 +1551,16 @@ class SupabaseBackend(DatabaseBackend):
             )
             items = response.data or []
 
-            # Enrich with names and location counts
+            # Enrich with network names and asset counts
             for item in items:
-                if item.get("network_id"):
-                    network = self.get_network(item["network_id"], [company_schema])
+                network_id = item.get("network_id")
+                if network_id:
+                    network = self.get_network(network_id, [company_schema])
                     if network:
                         item["network_name"] = network.get("name")
-                    # Count locations in network
-                    locations = self.list_locations([company_schema], network_id=item["network_id"])
-                    item["location_count"] = len(locations)
-                if item.get("location_id"):
-                    location = self.get_location(item["location_id"], [company_schema])
-                    if location:
-                        item["location_name"] = location.get("display_name")
+                    # Count network assets (locations) in this network
+                    assets = self.list_network_assets([company_schema], network_id=network_id)
+                    item["location_count"] = len(assets)
 
             # Cache the result
             _run_async(self._cache_set(cache_key, items, ttl=PACKAGE_CACHE_TTL))
@@ -1956,3 +2001,83 @@ class SupabaseBackend(DatabaseBackend):
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to delete mockup frame: {e}")
             return False
+
+    # =========================================================================
+    # MOCKUP STORAGE INFO (Unified Architecture)
+    # =========================================================================
+
+    def get_mockup_storage_info(
+        self,
+        network_key: str,
+        company_schemas: list[str],
+    ) -> dict[str, Any] | None:
+        """
+        Get mockup storage info for a network.
+
+        Resolves the correct storage key(s) based on whether the network is
+        standalone or traditional.
+
+        Args:
+            network_key: Network identifier (same as location_key in VIEW)
+            company_schemas: Company schemas to search
+
+        Returns:
+            {
+                "network_key": str,
+                "company": str,
+                "is_standalone": bool,
+                "storage_keys": list[str],  # network_key for standalone, asset_keys for traditional
+                "sample_assets": list[dict],  # For traditional: one per asset_type
+            }
+        """
+        # Get the network
+        network = self.get_network_by_key(network_key, company_schemas)
+        if not network:
+            return None
+
+        company = network.get("company_schema", network.get("company"))
+        is_standalone = network.get("standalone", False)
+        network_id = network["id"]
+
+        if is_standalone:
+            # Standalone networks: mockups at network level
+            return {
+                "network_key": network_key,
+                "company": company,
+                "is_standalone": True,
+                "storage_keys": [network_key],
+                "sample_assets": [],
+            }
+        else:
+            # Traditional networks: mockups at asset level
+            # Get asset types for this network
+            types = self.list_asset_types([company], network_id=network_id)
+
+            sample_assets = []
+            storage_keys = []
+
+            for asset_type in types:
+                # Get first asset of each type
+                assets = self.list_network_assets(
+                    [company],
+                    type_id=asset_type["id"],
+                    limit=1,
+                )
+                if assets:
+                    asset = assets[0]
+                    asset_key = asset["asset_key"]
+                    storage_keys.append(asset_key)
+                    sample_assets.append({
+                        "asset_key": asset_key,
+                        "display_name": asset.get("display_name"),
+                        "type_name": asset_type.get("name"),
+                        "environment": asset.get("environment", "outdoor"),
+                    })
+
+            return {
+                "network_key": network_key,
+                "company": company,
+                "is_standalone": False,
+                "storage_keys": storage_keys,
+                "sample_assets": sample_assets,
+            }

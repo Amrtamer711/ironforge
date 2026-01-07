@@ -1,8 +1,11 @@
 """
 Locations endpoints.
 
-Locations are individual sellable assets (billboards, screens, etc.).
-They can be standalone or part of a network/type hierarchy.
+Locations are sellable entities exposed through the locations VIEW.
+
+After migration 02_unify_standalone, all sellable entities are networks
+(both standalone and traditional). The VIEW provides a unified interface
+for the frontend - no standalone vs traditional distinction exposed.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -39,9 +42,7 @@ def list_locations(
 
     Requires: assets:locations:read permission
 
-    Locations are individual sellable assets. They can be:
-    - Standalone (network_id=NULL) - directly sellable
-    - Part of network/type hierarchy - also sellable individually
+    Locations are sellable entities (all networks after unification).
     """
     # Filter to user's accessible companies
     user_companies = user.get("companies", [])

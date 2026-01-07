@@ -211,6 +211,54 @@ def get_location_by_key_internal(
         )
 
 
+@router.get("/mockup-storage-info/{network_key}")
+def get_mockup_storage_info_internal(
+    network_key: str,
+    companies: list[str] = Query(default=None, description="Company schemas to search"),
+    service: dict = Depends(verify_service_token),
+) -> dict:
+    """
+    Get mockup storage info for a network.
+
+    Returns the storage keys needed to fetch/store mockups:
+    - For standalone networks: returns network_key (mockups at network level)
+    - For traditional networks: returns asset_keys (mockups at asset level)
+
+    This abstracts the unified architecture - callers just use the returned
+    storage_keys without knowing if it's standalone or traditional.
+
+    Response:
+    {
+        "network_key": str,
+        "company": str,
+        "is_standalone": bool,
+        "storage_keys": list[str],  # Keys to use for mockup storage
+        "sample_assets": list[dict]  # For traditional: one asset per type
+    }
+    """
+    caller = service.get("service", "unknown")
+    logger.info(f"[INTERNAL] {caller} fetching mockup storage info for: {network_key}")
+
+    filter_companies = companies or config.COMPANY_SCHEMAS
+
+    try:
+        result = db.get_mockup_storage_info(network_key, filter_companies)
+        if not result:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Network not found: {network_key}"
+            )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[INTERNAL] Failed to get mockup storage info: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve mockup storage info",
+        )
+
+
 @router.get("/health")
 def internal_health_check(
     service: dict = Depends(verify_service_token),

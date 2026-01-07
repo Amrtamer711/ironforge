@@ -1,7 +1,11 @@
 """
 Locations - Schemas and service logic.
 
-Locations are individual sellable assets (billboards, screens, etc.).
+Locations are sellable entities shown in the locations VIEW.
+
+After migration 02_unify_standalone, all sellable entities are networks,
+so the locations VIEW simply exposes networks in a flat format.
+This provides a unified interface for the frontend.
 """
 
 from datetime import datetime
@@ -22,15 +26,19 @@ logger = config.get_logger("core.locations")
 
 
 class LocationBase(BaseModel):
-    """Base location fields."""
+    """Base location fields.
 
-    location_key: str = Field(..., description="Unique key for the location")
+    After unification, all locations are networks (standalone or traditional).
+    The VIEW exposes them in a flat format for the frontend.
+    """
+
+    location_key: str = Field(..., description="Unique key for the location (network_key)")
     display_name: str = Field(..., description="Display name")
     display_type: str = Field(..., description="'digital' or 'static'")
 
-    # Optional hierarchy
-    network_id: int | None = Field(default=None, description="Parent network (NULL for standalone)")
-    type_id: int | None = Field(default=None, description="Parent asset type (NULL for standalone)")
+    # Network reference (points to self in unified VIEW)
+    network_id: int | None = Field(default=None, description="Network ID")
+    type_id: int | None = Field(default=None, description="Asset type ID (NULL in VIEW)")
 
     # Specifications
     series: str | None = None
@@ -45,6 +53,7 @@ class LocationBase(BaseModel):
     # Location info
     address: str | None = None
     city: str | None = None
+    area: str | None = None
     country: str | None = None
     gps_lat: Decimal | None = None
     gps_lng: Decimal | None = None
@@ -80,6 +89,7 @@ class LocationUpdate(BaseModel):
     upload_fee: Decimal | None = None
     address: str | None = None
     city: str | None = None
+    area: str | None = None
     country: str | None = None
     gps_lat: Decimal | None = None
     gps_lng: Decimal | None = None
@@ -197,7 +207,7 @@ class LocationService:
         optional_fields = [
             "series", "height", "width", "number_of_faces", "spot_duration",
             "loop_duration", "sov_percent", "upload_fee", "address", "city",
-            "country", "gps_lat", "gps_lng", "template_path", "notes"
+            "area", "country", "gps_lat", "gps_lng", "template_path", "notes"
         ]
         for field in optional_fields:
             value = getattr(data, field, None)
@@ -275,6 +285,7 @@ class LocationService:
             upload_fee=data.get("upload_fee"),
             address=data.get("address"),
             city=data.get("city"),
+            area=data.get("area"),
             country=data.get("country"),
             gps_lat=data.get("gps_lat"),
             gps_lng=data.get("gps_lng"),
