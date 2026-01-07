@@ -10,11 +10,12 @@
 3. **User - multiple Permission sets** - Assign multiple permission sets per user
 4. **Profile to Permission-Set relation** - Link profiles to permission sets
 5. **Hide unused tabs** - Hide teams, sharing rules etc. that are not in use
+6. **Add Location UI** - List out the locations for admins
 
 ### Mockups
-6. **Template thumbnails** - Save `xxxx_n_thumb.png` alongside templates for faster loading. Include in response as `thumbnail` field
-7. **Mockup history** - Show history with date + generated image
-8. **Mockup frame edit endpoint** - Endpoint to get frame details/config for editing existing templates
+7. **Template thumbnails** - Save `xxxx_n_thumb.png` alongside templates for faster loading. Include in response as `thumbnail` field
+8. **Mockup history** - Show history with date + generated image
+9. **Mockup frame edit endpoint** - Endpoint to get frame details/config for editing existing templates
    - **Answer**: Yes, use `GET /api/mockup-frames/{company}/{location_key}/frame?time_of_day=day&finish=gold` to get frame data
 
 ---

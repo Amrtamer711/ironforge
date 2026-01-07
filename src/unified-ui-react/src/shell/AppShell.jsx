@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutGrid, MessageSquare, PanelsTopLeft, Shield, Menu, LogOut, Settings } from "lucide-react";
+import { LayoutGrid, MessageSquare, PanelsTopLeft, Shield, Menu, LogOut, Settings, Video } from "lucide-react";
 
 import { Logo } from "../components/Logo";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -22,6 +22,7 @@ import { modulesApi } from "../api";
 
 const TOOL_INFO = {
   chat: { to: "/app/chat", label: "AI Chat Assistant", icon: MessageSquare },
+  video_critique: { to: "/app/video-critique", label: "Video Critique", icon: Video },
   mockup: { to: "/app/mockup", label: "Mockup Assistant", icon: LayoutGrid },
   proposals: { to: "/app/proposals", label: "Proposal Assistant", icon: PanelsTopLeft },
   // costs: { to: "/app/costs", label: "AI Costs", icon: BarChart3 },
@@ -29,9 +30,10 @@ const TOOL_INFO = {
   settings: { to: "/app/settings", label: "Settings", icon: Settings },
 };
 
-const TOOL_ORDER = ["chat", "mockup", "proposals", "admin", "settings"];
+const TOOL_ORDER = ["chat", "video_critique", "mockup", "proposals", "admin", "settings"];
 
 function pageTitle(pathname) {
+  if (pathname.includes("/app/video-critique")) return "Video Critique";
   if (pathname.includes("/app/chat")) return "AI Chat";
   if (pathname.includes("/app/mockup")) return "Mockup Studio";
   if (pathname.includes("/app/proposals")) return "Sales Proposals";
@@ -46,7 +48,7 @@ function fallbackModules(user) {
   const modules = [
     {
       name: "sales",
-      tools: ["chat", "mockup", "proposals"],
+      tools: ["chat", "video_critique", "mockup", "proposals"],
       sort_order: 1,
     },
   ];
@@ -72,6 +74,10 @@ function buildNavItems(modulesData, user) {
       allowed.add(tool === "ai_costs" ? "costs" : tool);
     });
   });
+
+  if (allowed.has("chat")) {
+    allowed.add("video_critique");
+  }
 
   if (canAccessAdmin(user)) {
     allowed.add("admin");
@@ -236,7 +242,7 @@ export function AppShell() {
 
             <nav className="px-2 pb-2">
               {navItems.map((item) => {
-                const active = loc.pathname === item.to;
+                const active = loc.pathname === item.to || loc.pathname.startsWith(`${item.to}/`);
                 const Icon = item.icon;
                 return (
                   <button
@@ -311,7 +317,7 @@ export function AppShell() {
 
           <nav className="px-2 pb-3">
             {navItems.map((item) => {
-              const active = loc.pathname === item.to;
+              const active = loc.pathname === item.to || loc.pathname.startsWith(`${item.to}/`);
               const Icon = item.icon;
                 return (
                   <button

@@ -10,6 +10,7 @@ import { MockupPage } from "../screens/tools/MockupPage";
 import { ProposalsPage } from "../screens/tools/ProposalsPage";
 import { AdminPage } from "../screens/tools/AdminPage";
 import { NotificationsPage } from "../screens/tools/NotificationsPage";
+import { VideoCritiqueAssistantPage } from "../screens/tools/video-critique/VideoCritiqueAssistantPage";
 // import { CostDashboardPage } from "../screens/tools/CostDashboardPage";
 import { ProtectedRoute } from "./ProtectedRoute";
 import { SettingsPage } from "../screens/tools/SettingsPage";
@@ -22,6 +23,7 @@ export function AppRoutes() {
       <Route path="/app" element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
         <Route index element={<Navigate to="chat" replace />} />
         <Route path="chat" element={<ChatPage />} />
+        <Route path="video-critique" element={<VideoCritiqueAssistantPage />} />
         <Route path="mockup" element={<MockupPage />} />
         <Route path="proposals" element={<ProposalsPage />} />
         <Route path="notifications" element={<NotificationsPage />} />

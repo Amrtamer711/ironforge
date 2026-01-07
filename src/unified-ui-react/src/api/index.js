@@ -10,3 +10,4 @@ export * as templateApi from "./template";
 export * as boApi from "./bo";
 export * as costsApi from "./costs";
 export * as notificationsApi from "./notifications";
+export * as videoCritiqueApi from "./videoCritique";

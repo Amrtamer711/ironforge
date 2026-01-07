@@ -91,3 +91,5 @@ worldstate
 
 # Argo CD TLS params (local env file)
 src/platform/ArgoCD/bootstrap-tls/argocd-tls.env
+
+src/unified-ui-react/Old Code Archive/
