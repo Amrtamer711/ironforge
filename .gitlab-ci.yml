@@ -72,10 +72,7 @@ variables:
 
     # Push latest only from default branch
     - |
-      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
-        docker tag "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}" "${ECR_REGISTRY}/${ECR_REPO}:latest"
-        docker push "${ECR_REGISTRY}/${ECR_REPO}:latest"
-      fi
+      echo "Skipping branch-based :latest updates (latest is reserved for SemVer releases)"
 
 include:
   - local: "src/unified-ui/ci-cd.yml"
