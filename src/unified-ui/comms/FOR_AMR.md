@@ -38,6 +38,9 @@
 
 ## General
 1. Font issue when the font is not available in the local system.
+2. Examine the document cached log(could be the reason why the chat history loading is taking too long)
+3. Inefficient search for mockup photo in mockup generate ( we already know the configuration we need to look for but we are still looking in all companies)
+
 
 ### Questions / Confirmations
 1. **Companies Endpoint** - Confirm if `/dev/companies` path is correct for company details
