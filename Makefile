@@ -183,11 +183,11 @@ run-video: ## Run only video-critique
 # =============================================================================
 
 infra-bootstrap: ## Create Terraform remote state (S3 + DynamoDB) in AWS
-	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_BOOTSTRAP_DIR) init
-	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_BOOTSTRAP_DIR) apply
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_BOOTSTRAP_DIR) init -input=false
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_BOOTSTRAP_DIR) apply $(TF_AUTO_APPROVE) -input=false
 
 infra-init: ## Terraform init for AWS infrastructure
-	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) init -reconfigure
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) init -reconfigure -input=false
 
 infra-plan: infra-init ## Terraform plan for AWS infrastructure
 	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) plan
@@ -283,7 +283,7 @@ EKS_CLUSTER_NAME ?=
 
 platform-apex-step1: ## Step 1: create hosted zone + request ACM cert (prints Route53 name servers; set them at registrar)
 	@test -n "$(PLATFORM_APEX)" || (echo "$(RED)Missing PLATFORM_APEX (e.g. PLATFORM_APEX=mmg-nova.com)$(NC)" && exit 1)
-	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) init -reconfigure
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) init -migrate-state -force-copy -input=false
 	@# If switching from a previously Terraform-created zone to an existing zone, drop the old zone from state to avoid prevent_destroy errors.
 	@if [ "$(PLATFORM_APEX_CREATE_ZONE)" = "false" ] || [ -n "$(PLATFORM_APEX_HOSTED_ZONE_ID)" ]; then \
 	  $(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) state list 2>/dev/null | grep -Fxq 'aws_route53_zone.platform_apex[0]' && \
@@ -302,7 +302,7 @@ platform-apex-step1: ## Step 1: create hosted zone + request ACM cert (prints Ro
 
 platform-apex-step2: ## Step 2: wait for ACM validation, create Route53 alias records, then enable TLS on Argo CD + Unified UI ingresses
 	@test -n "$(PLATFORM_APEX)" || (echo "$(RED)Missing PLATFORM_APEX (e.g. PLATFORM_APEX=mmg-nova.com)$(NC)" && exit 1)
-	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) init -reconfigure
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) init -migrate-state -force-copy -input=false
 	@# If switching from a previously Terraform-created zone to an existing zone, drop the old zone from state to avoid prevent_destroy errors.
 	@if [ "$(PLATFORM_APEX_CREATE_ZONE)" = "false" ] || [ -n "$(PLATFORM_APEX_HOSTED_ZONE_ID)" ]; then \
 	  $(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) state list 2>/dev/null | grep -Fxq 'aws_route53_zone.platform_apex[0]' && \
