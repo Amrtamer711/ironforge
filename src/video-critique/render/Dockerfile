@@ -1,9 +1,9 @@
 # =============================================================================
-# BASE DOCKERFILE - Video Critique (AWS/ECS/Production)
+# RENDER DEPLOYMENT DOCKERFILE - Video Critique
 # =============================================================================
-# This is the base Dockerfile for production deployments (AWS, ECS, Fargate).
+# This Dockerfile is ONLY used for Render deployments.
 # Do NOT modify for other pipelines - use the appropriate Dockerfile instead:
-# - render/Dockerfile = Render deployments
+# - Dockerfile (root) = AWS/ECS/Production
 # - local/Dockerfile = Local development
 # =============================================================================
 

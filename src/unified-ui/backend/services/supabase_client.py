@@ -16,7 +16,6 @@ Returns None if credentials are not configured (mirrors Node.js null check).
 import logging
 
 from supabase import Client, create_client
-from supabase.lib.client_options import ClientOptions
 
 from backend.config import get_settings
 
@@ -50,15 +49,9 @@ def get_supabase() -> Client | None:
         return None
 
     try:
-        # Use longer timeouts (seconds) to handle slow network conditions
-        options = ClientOptions(
-            postgrest_client_timeout=30,
-            storage_client_timeout=60,  # Storage operations can be slower
-        )
         _client = create_client(
             settings.supabase_url,
             settings.supabase_service_key,
-            options=options,
         )
         logger.info(f"[Supabase] Client created for {settings.supabase_url}")
         return _client

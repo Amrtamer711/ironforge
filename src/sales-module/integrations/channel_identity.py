@@ -36,18 +36,18 @@ import aiohttp
 
 logger = logging.getLogger("proposal-bot")
 
-# UI service URL - where channel identity APIs live
-_ui_service_url: str | None = None
+# Unified UI URL - where channel identity APIs live
+_unified_ui_url: str | None = None
 
 
 def _get_ui_url() -> str:
-    """Get the UI service URL."""
-    global _ui_service_url
-    if _ui_service_url is None:
+    """Get the Unified UI service URL."""
+    global _unified_ui_url
+    if _unified_ui_url is None:
         # In production, services communicate via internal URLs
         # In dev, default to localhost
-        _ui_service_url = os.getenv("UI_SERVICE_URL", "http://localhost:3005")
-    return _ui_service_url
+        _unified_ui_url = os.getenv("UNIFIED_UI_URL", "http://localhost:3005")
+    return _unified_ui_url
 
 
 class ChannelIdentity:

@@ -606,8 +606,8 @@ def _fetch_locations_from_asset_management() -> list[dict]:
     import jwt
     from datetime import datetime, timedelta, timezone
 
-    # Get Asset-Management URL
-    asset_mgmt_url = os.getenv("ASSET_MANAGEMENT_URL", "http://localhost:8001")
+    # Get Asset-Management URL (use ASSET_MGMT_URL to match settings.py)
+    asset_mgmt_url = os.getenv("ASSET_MGMT_URL", "http://localhost:8001")
 
     # Get inter-service secret for JWT auth
     inter_service_secret = os.getenv("INTER_SERVICE_SECRET", "")

@@ -16,7 +16,7 @@ services:
     name: unified-ui
     runtime: docker
     region: singapore
-    dockerfilePath: ./render/Dockerfile
+    dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     envVars:
       # Environment

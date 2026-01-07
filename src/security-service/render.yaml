@@ -16,7 +16,7 @@ services:
     name: security-service
     runtime: docker
     region: singapore
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./render/Dockerfile
     healthCheckPath: /health
     envVars:
       # Python settings
@@ -28,22 +28,28 @@ services:
         value: "INFO"
       # Environment
       - key: ENVIRONMENT
-        value: "production"
+        value: "development"  # Use DEV Supabase credentials
       - key: PORT
         value: "8002"
-      # Security Supabase (DEV)
+      # UI Supabase (DEV) - for user/profile lookups
+      - key: UI_DEV_SUPABASE_URL
+        sync: false
+      - key: UI_DEV_SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # UI Supabase (PROD) - for user/profile lookups
+      - key: UI_PROD_SUPABASE_URL
+        sync: false
+      - key: UI_PROD_SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Security Supabase (DEV) - for audit logs, API keys
       - key: SECURITY_DEV_SUPABASE_URL
         sync: false
-      - key: SECURITY_DEV_SUPABASE_ANON_KEY
+      - key: SECURITY_DEV_SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      - key: SECURITY_DEV_SUPABASE_SERVICE_KEY
-        sync: false
-      # Security Supabase (PROD)
+      # Security Supabase (PROD) - for audit logs, API keys
       - key: SECURITY_PROD_SUPABASE_URL
         sync: false
-      - key: SECURITY_PROD_SUPABASE_ANON_KEY
-        sync: false
-      - key: SECURITY_PROD_SUPABASE_SERVICE_KEY
+      - key: SECURITY_PROD_SUPABASE_SERVICE_ROLE_KEY
         sync: false
       # Inter-service auth
       - key: INTER_SERVICE_SECRET

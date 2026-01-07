@@ -1,10 +1,10 @@
 # =============================================================================
-# Render Blueprint - Unified UI
+# Render Blueprint - Security Service
 # =============================================================================
 # Deploy with: render blueprint apply
 #
-# This deploys the unified-ui FastAPI frontend as a standalone service.
-# Acts as auth gateway + static frontend, proxies /api/sales/* to proposal-bot.
+# This deploys the security-service as a standalone microservice.
+# Handles: API key management, rate limiting, audit logging, RBAC
 #
 # Environment Strategy:
 # - DEV branch → uses *_DEV_* env vars → connects to Dev Supabase projects
@@ -13,48 +13,46 @@
 
 services:
   - type: web
-    name: unified-ui
+    name: security-service
     runtime: docker
     region: singapore
-    dockerfilePath: ./render/Dockerfile
+    dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     envVars:
+      # Python settings
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: LOG_LEVEL
+        value: "INFO"
       # Environment
       - key: ENVIRONMENT
         value: "development"  # Use DEV Supabase credentials
       - key: PORT
-        value: "3005"
-      - key: LOG_LEVEL
-        value: "INFO"
-      # Service URLs for proxy routing
-      - key: SALES_MODULE_URL
-        value: "https://crm-sales-module.onrender.com"
-      - key: ASSET_MGMT_URL
-        value: "https://crm-asset-management.onrender.com"
-      - key: SECURITY_SERVICE_URL
-        value: "https://crm-security-service.onrender.com"
-      # UI Supabase (DEV) - for authentication
+        value: "8002"
+      # UI Supabase (DEV) - for user/profile lookups
       - key: UI_DEV_SUPABASE_URL
-        sync: false
-      - key: UI_DEV_SUPABASE_ANON_KEY
         sync: false
       - key: UI_DEV_SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      # UI Supabase (PROD) - for authentication
+      # UI Supabase (PROD) - for user/profile lookups
       - key: UI_PROD_SUPABASE_URL
-        sync: false
-      - key: UI_PROD_SUPABASE_ANON_KEY
         sync: false
       - key: UI_PROD_SUPABASE_SERVICE_ROLE_KEY
         sync: false
-      # Proxy secret (must match all backend services)
-      - key: PROXY_SECRET
+      # Security Supabase (DEV) - for audit logs, API keys
+      - key: SECURITY_DEV_SUPABASE_URL
         sync: false
-      # Inter-service auth secret
+      - key: SECURITY_DEV_SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Security Supabase (PROD) - for audit logs, API keys
+      - key: SECURITY_PROD_SUPABASE_URL
+        sync: false
+      - key: SECURITY_PROD_SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Inter-service auth
       - key: INTER_SERVICE_SECRET
-        sync: false
-      # CORS origins
-      - key: CORS_ORIGINS
         sync: false
       # Redis Caching
       - key: REDIS_URL

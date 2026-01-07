@@ -1,10 +1,8 @@
 # =============================================================================
-# BASE DOCKERFILE (Reference/Template)
+# RENDER DEPLOYMENT DOCKERFILE
 # =============================================================================
-# This is the base Dockerfile template. Use environment-specific versions:
-# - Dockerfile.render = Render deployments
-# - Dockerfile.aws = AWS deployments (ECS, Fargate)
-# - Dockerfile.local = Local development
+# This Dockerfile is ONLY used for Render deployments.
+# Do NOT modify for other pipelines (AWS, etc.) - use Dockerfile instead.
 # =============================================================================
 
 FROM python:3.11-slim

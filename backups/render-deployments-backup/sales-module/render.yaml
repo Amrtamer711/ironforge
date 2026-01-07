@@ -15,7 +15,7 @@ services:
     name: proposal-bot
     runtime: docker
     region: singapore
-    dockerfilePath: ./render/Dockerfile
+    dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     envVars:
       # Python settings
