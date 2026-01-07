@@ -24,7 +24,7 @@ kubectl -n unifiedui get ingress unified-ui -o jsonpath='{.status.loadBalancer.i
 
 ## Custom hostname + TLS (Route53 + ACM)
 
-Unified UI uses the dedicated platform apex flow (single hosted zone + single ACM cert) managed by the standalone stack in `src/infrastructure/aws/platform-apex`.
+Unified UI uses the dedicated platform apex flow (single hosted zone + single ACM cert) managed by the standalone stack in `src/infrastructure/aws/modules/stacks/platform_apex`.
 
 ```bash
 make platform-apex-step1 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com

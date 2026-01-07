@@ -45,8 +45,8 @@ AWS_PROFILE ?=
 AWS_REGION ?= eu-north-1
 
 TF_AWS_DIR ?= $(ROOT_DIR)/src/infrastructure/aws
-TF_AWS_BOOTSTRAP_DIR ?= $(TF_AWS_DIR)/bootstrap
-TF_AWS_PLATFORM_APEX_DIR ?= $(TF_AWS_DIR)/platform-apex
+TF_AWS_BOOTSTRAP_DIR ?= $(TF_AWS_DIR)/modules/stacks/bootstrap
+TF_AWS_PLATFORM_APEX_DIR ?= $(TF_AWS_DIR)/modules/stacks/platform_apex
 
 # Helper to pass AWS env vars only when set
 TF_AWS_ENV := $(if $(AWS_PROFILE),AWS_PROFILE=$(AWS_PROFILE),) AWS_REGION=$(AWS_REGION)
