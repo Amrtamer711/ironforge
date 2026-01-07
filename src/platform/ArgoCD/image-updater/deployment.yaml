@@ -16,6 +16,17 @@ spec:
         app.kubernetes.io/name: argocd-image-updater
     spec:
       serviceAccountName: argocd-image-updater
+      initContainers:
+        # argocd-image-updater does not bundle `aws` in all images; provide it explicitly so
+        # `registries.conf` can use `credentials: ext:/app/config/ecr-login.sh`.
+        - name: aws-cli
+          image: public.ecr.aws/aws-cli/aws-cli:2.15.57
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -eu
+              cp "$(command -v aws)" /aws-cli/aws
+              chmod 0555 /aws-cli/aws
       containers:
         - name: argocd-image-updater
           image: quay.io/argoprojlabs/argocd-image-updater:v0.18.0
@@ -30,6 +41,8 @@ spec:
             - --argocd-grpc-web
             - --registries-conf-path=/app/config/registries.conf
           env:
+            - name: PATH
+              value: /aws-cli:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
             - name: AWS_REGION
               value: eu-north-1
             - name: HOME
@@ -44,6 +57,9 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /app/config
+            - name: aws-cli
+              mountPath: /aws-cli
+              readOnly: true
             - name: tmp
               mountPath: /tmp
           securityContext:
@@ -54,5 +70,7 @@ spec:
           configMap:
             name: argocd-image-updater-config
             defaultMode: 0555
+        - name: aws-cli
+          emptyDir: {}
         - name: tmp
           emptyDir: {}

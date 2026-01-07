@@ -129,3 +129,36 @@ make platform-apex-step1 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
 make platform-apex-step2 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
 make platform-unifiedui-url PLATFORM_APEX=mmg-nova.com
 ```
+
+### Auto-deploy the latest `demo` image
+
+If your CI overwrites the same tag (e.g. `:demo`), Kubernetes will not “magically” pull the new image unless a rollout is triggered.
+
+This repo is set up to use `argocd-image-updater` with a **digest** strategy so Argo CD rolls out whenever the image digest behind `:demo` changes.
+
+1) Install/refresh the image-updater components:
+
+```bash
+make platform-argocd-image-updater-apply
+```
+
+2) Give image-updater AWS ECR read access via IRSA (Terraform output → ServiceAccount annotation):
+
+```bash
+make platform-argocd-image-updater-irsa AWS_PROFILE=your-profile
+```
+
+3) Create/update the Argo CD API token secret (token value is not stored in git):
+
+```bash
+make platform-argocd-image-updater-token ARGOCD_IMAGE_UPDATER_TOKEN='...'
+make platform-argocd-image-updater-restart
+```
+
+4) Quick checks:
+
+```bash
+kubectl -n argocd logs deploy/argocd-image-updater --tail=200
+kubectl -n argocd get application unifiedui-dev -o jsonpath='{.spec.source.kustomize.images}{"\n"}'
+kubectl -n unifiedui get deploy unified-ui -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+```
