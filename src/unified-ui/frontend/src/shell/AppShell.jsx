@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { LayoutGrid, MessageSquare, PanelsTopLeft, Shield, Menu, LogOut, Settings } from "lucide-react";
+import { LayoutGrid, MessageSquare, PanelsTopLeft, Shield, Menu, LogOut, Settings, Video, Package } from "lucide-react";
 
 import { Logo } from "../components/Logo";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -22,22 +22,26 @@ import { modulesApi } from "../api";
 
 const TOOL_INFO = {
   chat: { to: "/app/chat", label: "AI Chat Assistant", icon: MessageSquare },
+  video_critique: { to: "/app/video-critique", label: "Video Critique", icon: Video },
   mockup: { to: "/app/mockup", label: "Mockup Assistant", icon: LayoutGrid },
   proposals: { to: "/app/proposals", label: "Proposal Assistant", icon: PanelsTopLeft },
   // costs: { to: "/app/costs", label: "AI Costs", icon: BarChart3 },
   admin: { to: "/app/admin", label: "Admin", icon: Shield },
+  asset_management: { to: "/app/asset-management", label: "Asset Management", icon: Package },
   settings: { to: "/app/settings", label: "Settings", icon: Settings },
 };
 
-const TOOL_ORDER = ["chat", "mockup", "proposals", "admin", "settings"];
+const TOOL_ORDER = ["chat", "mockup", "proposals", "video_critique", "admin", "asset_management", "settings"];
 
 function pageTitle(pathname) {
+  if (pathname.includes("/app/video-critique")) return "Video Critique";
   if (pathname.includes("/app/chat")) return "AI Chat";
   if (pathname.includes("/app/mockup")) return "Mockup Studio";
   if (pathname.includes("/app/proposals")) return "Sales Proposals";
   if (pathname.includes("/app/notifications")) return "Notifications";
   // if (pathname.includes("/app/costs")) return "AI Costs";
   if (pathname.includes("/app/admin")) return "Admin Panel";
+  if (pathname.includes("/app/asset-management")) return "Asset Management";
   if (pathname.includes("/app/settings")) return "Settings";
   return "Workspace";
 }
@@ -46,7 +50,7 @@ function fallbackModules(user) {
   const modules = [
     {
       name: "sales",
-      tools: ["chat", "mockup", "proposals"],
+      tools: ["chat", "video_critique", "mockup", "proposals"],
       sort_order: 1,
     },
   ];
@@ -73,8 +77,13 @@ function buildNavItems(modulesData, user) {
     });
   });
 
+  if (allowed.has("chat")) {
+    allowed.add("video_critique");
+  }
+
   if (canAccessAdmin(user)) {
     allowed.add("admin");
+    allowed.add("asset_management");
   }
 
   // if (hasPermission(user, "core:ai_costs:read") || canAccessAdmin(user)) {
@@ -202,10 +211,10 @@ export function AppShell() {
 
       <NotificationsToastStack />
 
-      <div className="w-full px-6 lg:px-10 pb-4 flex-1 flex overflow-hidden">
+      <div className="w-full px-6 lg:px-10 pb-4 flex-1 flex overflow-hidden min-w-0">
         <div
           className={cn(
-            "mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr] flex-1 min-h-0",
+            "mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr] flex-1 min-h-0 min-w-0",
             "transition-[grid-template-columns] duration-500",
             collapsed && "lg:grid-cols-[64px_1fr] 2xl:grid-cols-[72px_1fr]"
           )}
@@ -236,7 +245,7 @@ export function AppShell() {
 
             <nav className="px-2 pb-2">
               {navItems.map((item) => {
-                const active = loc.pathname === item.to;
+                const active = loc.pathname === item.to || loc.pathname.startsWith(`${item.to}/`);
                 const Icon = item.icon;
                 return (
                   <button
@@ -263,7 +272,7 @@ export function AppShell() {
             </div>
           </aside>
 
-          <main className="min-h-0 h-full">
+          <main className="min-h-0 min-w-0 h-full">
             <Outlet />
           </main>
         </div>
@@ -311,7 +320,7 @@ export function AppShell() {
 
           <nav className="px-2 pb-3">
             {navItems.map((item) => {
-              const active = loc.pathname === item.to;
+              const active = loc.pathname === item.to || loc.pathname.startsWith(`${item.to}/`);
               const Icon = item.icon;
                 return (
                   <button

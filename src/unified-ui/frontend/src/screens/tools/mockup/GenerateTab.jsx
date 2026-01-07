@@ -1,13 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Download, ExternalLink } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { FormField } from "../../../components/ui/form-field";
 import { LoadingEllipsis } from "../../../components/ui/loading-ellipsis";
+import { SelectDropdown } from "../../../components/ui/select-dropdown";
 import * as mockupApi from "../../../api/mockup";
 import { cn, normalizeFrameConfig } from "../../../lib/utils";
 
 function useGenerateActions({
-  location,
+  locations,
   timeOfDay,
   finish,
   templateOptions,
@@ -15,6 +17,9 @@ function useGenerateActions({
   defaultFrameConfig,
   templateKey: externalTemplateKey,
   setTemplateKey: externalSetTemplateKey,
+  venueType,
+  timeOfDayDisabled,
+  locationOptions,
 }) {
   const [internalTemplateKey, setInternalTemplateKey] = useState("");
   const templateKey = externalTemplateKey ?? internalTemplateKey;
@@ -36,7 +41,26 @@ function useGenerateActions({
     return map;
   }, [getTemplateKey, templateOptions]);
 
-  const canGenerate = location && (creativeFile || aiPrompt.trim()) && !generating;
+  const locationNameMap = useMemo(() => {
+    const map = new Map();
+    (locationOptions || []).forEach((loc) => {
+      const key = loc?.location_key ?? loc?.key ?? loc?.id ?? loc?.value ?? loc;
+      if (!key) return;
+      const label = loc?.display_name ?? loc?.name ?? loc?.label ?? key;
+      map.set(String(key), label);
+    });
+    return map;
+  }, [locationOptions]);
+
+  const locationLabel = useMemo(() => {
+    if (!locations.length) return "";
+    return locations
+      .map((loc) => locationNameMap.get(String(loc)) || loc)
+      .filter(Boolean)
+      .join(", ");
+  }, [locationNameMap, locations]);
+
+  const canGenerate = locations.length && (creativeFile || aiPrompt.trim()) && !generating;
 
   useEffect(() => {
     if (!templateKey) {
@@ -58,7 +82,7 @@ function useGenerateActions({
 
   useEffect(() => {
     if (templateKey) setTemplateKey("");
-  }, [finish, timeOfDay]);
+  }, [finish, timeOfDay, locations, venueType, timeOfDayDisabled]);
 
   useEffect(() => {
     resultsRef.current = lastResults;
@@ -66,9 +90,7 @@ function useGenerateActions({
 
   useEffect(() => {
     return () => {
-      resultsRef.current.forEach((entry) => {
-        if (entry?.url) URL.revokeObjectURL(entry.url);
-      });
+      revokeResultUrls(resultsRef.current);
     };
   }, []);
 
@@ -78,15 +100,18 @@ function useGenerateActions({
     try {
       setGenerating(true);
       const formData = new FormData();
-      formData.append("location_key", location);
+      const resolvedTimeOfDay = timeOfDayDisabled ? "all" : timeOfDay;
+      formData.append("location_key", locations[0] || "");
+      formData.append("location_keys", JSON.stringify(locations));
+      formData.append("venue_type", venueType);
 
       if (selectedTemplate) {
-        formData.append("time_of_day", selectedTemplate.time_of_day || timeOfDay || "all");
+        formData.append("time_of_day", selectedTemplate.time_of_day || resolvedTimeOfDay || "all");
         formData.append("finish", selectedTemplate.finish || finish || "all");
         formData.append("specific_photo", selectedTemplate.photo);
         formData.append("frame_config", JSON.stringify(genFrameConfig));
       } else {
-        formData.append("time_of_day", timeOfDay || "all");
+        formData.append("time_of_day", resolvedTimeOfDay || "all");
         formData.append("finish", finish || "all");
       }
 
@@ -96,13 +121,18 @@ function useGenerateActions({
         formData.append("creative", creativeFile);
       }
 
-      const blob = await mockupApi.generateMockup(formData);
-      const url = URL.createObjectURL(blob);
+      const response = await mockupApi.generateMockup(formData);
+      const images = await normalizeGeneratedImages(response, locationLabel);
+      const run = {
+        id: crypto.randomUUID(),
+        location: locationLabel,
+        images,
+      };
       setLastResults((prev) => {
-        const next = [{ url, location }, ...prev];
+        const next = [run, ...prev];
         if (next.length > 3) {
           const removed = next.pop();
-          if (removed?.url) URL.revokeObjectURL(removed.url);
+          revokeResultUrls([removed]);
         }
         return next;
       });
@@ -135,17 +165,21 @@ export function GeneratePanel(props) {
 }
 
 export function GenerateTab({
-  location,
-  setLocation,
+  locations,
+  setLocations,
+  venueType,
+  setVenueType,
   setTemplateKey,
   locationOptions,
   locationsQuery,
   timeOfDay,
   setTimeOfDay,
+  timeOfDayDisabled,
   finish,
   setFinish,
   timeOfDayOptions,
   finishOptions,
+  venueTypeOptions,
   templateKey,
   templateOptions,
   templatesQuery,
@@ -165,9 +199,21 @@ export function GenerateTab({
   onGenerate,
   canGenerate,
   lastResults,
+  useNativeSelects,
 }) {
+  const locationSelectOptions = useMemo(
+    () =>
+      locationOptions.map((loc) => {
+        const value = loc?.key ?? loc?.id ?? loc?.value ?? loc;
+        const label = loc?.name ?? loc?.label ?? value;
+        return { value, label };
+      }),
+    [locationOptions]
+  );
+
   function resetForm() {
-    setLocation("");
+    setLocations([]);
+    setVenueType("all");
     setTimeOfDay("all");
     setFinish("all");
     setTemplateKey("");
@@ -182,23 +228,18 @@ export function GenerateTab({
         <CardTitle>Mockup Generator</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <FormField label="Location">
-            <select
-              className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-              value={location}
-              onChange={(e) => {
-                setLocation(e.target.value);
+            <SelectDropdown
+              value={locations[0] || ""}
+              options={locationSelectOptions}
+              placeholder="Select a location"
+              onChange={(nextValue) => {
+                setLocations(nextValue ? [nextValue] : []);
                 setTemplateKey("");
               }}
-            >
-              <option value="">Select a location</option>
-              {locationOptions.map((loc) => (
-                <option key={loc.key} value={loc.key}>
-                  {loc.name}
-                </option>
-              ))}
-            </select>
+              useNativeSelect={useNativeSelects}
+            />
             {locationsQuery.isLoading ? (
               <div className="mt-1 text-xs text-black/50 dark:text-white/60">
                 <LoadingEllipsis text="Loading locations" />
@@ -206,36 +247,36 @@ export function GenerateTab({
             ) : null}
           </FormField>
 
+          <FormField label="Venue Type">
+            <SelectDropdown
+              value={venueType}
+              options={venueTypeOptions}
+              onChange={(nextValue) => setVenueType(nextValue)}
+              useNativeSelect={useNativeSelects}
+            />
+          </FormField>
+
           <FormField label="Time of Day">
-            <select
-              className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+            <SelectDropdown
               value={timeOfDay}
-              onChange={(e) => setTimeOfDay(e.target.value)}
-            >
-              {timeOfDayOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              options={timeOfDayOptions}
+              onChange={(nextValue) => setTimeOfDay(nextValue)}
+              disabled={timeOfDayDisabled}
+              useNativeSelect={useNativeSelects}
+            />
           </FormField>
 
           <FormField label="Billboard Finish">
-            <select
-              className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+            <SelectDropdown
               value={finish}
-              onChange={(e) => setFinish(e.target.value)}
-            >
-              {finishOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+              options={finishOptions}
+              onChange={(nextValue) => setFinish(nextValue)}
+              useNativeSelect={useNativeSelects}
+            />
           </FormField>
         </div>
 
-        {location ? (
+        {locations.length ? (
           <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 p-4 shadow-soft space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -258,11 +299,10 @@ export function GenerateTab({
               {templateOptions.map((t) => {
                 const key = getTemplateKey(t);
                 const isSelected = key === templateKey;
+                const thumb = templateThumbs[key];
                 return (
-                  <button
+                  <div
                     key={key}
-                    type="button"
-                    onClick={() => setTemplateKey(key)}
                     className={cn(
                       "rounded-xl border border-black/5 dark:border-white/10 bg-white/60 dark:bg-white/5 p-3 text-left text-sm transition flex flex-col",
                       isSelected ? "border-2" : "hover:bg-black/5 dark:hover:bg-white/10"
@@ -276,28 +316,39 @@ export function GenerateTab({
                         : undefined
                     }
                   >
-                    <div className="overflow-hidden rounded-lg border border-black/5 dark:border-white/10 bg-black/5">
-                      {templateThumbs[key] ? (
-                        <img
-                          src={templateThumbs[key]}
-                          alt={t.photo}
-                          className="w-full h-40 object-cover"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="h-40 grid place-items-center text-xs text-black/50 dark:text-white/60">
-                          <LoadingEllipsis text="Loading" className="text-xs text-black/50 dark:text-white/60" />
+                    <button type="button" onClick={() => setTemplateKey(key)} className="text-left flex flex-col flex-1">
+                      <div className="overflow-hidden rounded-lg border border-black/5 dark:border-white/10 bg-black/5">
+                        {thumb ? (
+                          <img src={thumb} alt={t.photo} className="w-full h-40 object-cover" loading="lazy" />
+                        ) : (
+                          <div className="h-40 grid place-items-center text-xs text-black/50 dark:text-white/60">
+                            <LoadingEllipsis text="Loading" className="text-xs text-black/50 dark:text-white/60" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-auto pt-2 space-y-1">
+                        <div className="font-semibold truncate">{t.photo}</div>
+                        <div className="text-xs text-black/55 dark:text-white/60">
+                          {t.time_of_day}/{t.finish} - {t.frame_count} frame
+                          {t.frame_count > 1 ? "s" : ""}
                         </div>
+                      </div>
+                    </button>
+                    <div className="pt-2">
+                      {thumb ? (
+                        <Button variant="secondary" size="sm" className="w-full rounded-xl" asChild>
+                          <a href={thumb} target="_blank" rel="noreferrer">
+                            <ExternalLink size={16} className="mr-2" />
+                            Open
+                          </a>
+                        </Button>
+                      ) : (
+                        <Button variant="secondary" size="sm" className="w-full rounded-xl" disabled>
+                          Open
+                        </Button>
                       )}
                     </div>
-                    <div className="mt-auto pt-2 space-y-1">
-                      <div className="font-semibold truncate">{t.photo}</div>
-                      <div className="text-xs text-black/55 dark:text-white/60">
-                        {t.time_of_day}/{t.finish} - {t.frame_count} frame
-                        {t.frame_count > 1 ? "s" : ""}
-                      </div>
-                    </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -370,26 +421,71 @@ export function GenerateTab({
             <LoadingEllipsis text="Processing mockup" className="text-sm text-black/60 dark:text-white/65" />
           ) : null}
           {lastResults.length ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="text-sm font-semibold text-black/80 dark:text-white/85">
                 Last 3 Generated Mockups
               </div>
-              {lastResults.map((entry, index) => (
-                <div key={`mockup-result-${index}`} className="space-y-3">
-                  <img
-                    src={entry.url}
-                    alt="Generated mockup"
-                    className="w-full rounded-xl border border-black/5 dark:border-white/10"
-                  />
-                  <div className="flex gap-2">
-                    <a
-                      href={entry.url}
-                      download={`mockup_${entry.location || "result"}.jpg`}
-                      className="inline-flex items-center justify-center rounded-2xl bg-black text-white px-4 py-2 text-sm dark:bg-white dark:text-black"
-                    >
-                      Download
-                    </a>
-                  </div>
+              {lastResults.map((entry) => (
+                <div key={entry.id} className="space-y-3">
+                  {entry.location ? (
+                    <div className="text-xs text-black/55 dark:text-white/60">
+                      {entry.location}
+                    </div>
+                  ) : null}
+                  {entry.images?.length ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
+                      {entry.images.map((image, idx) => (
+                        <div
+                          key={`${entry.id}-img-${idx}`}
+                          className="rounded-xl border border-black/5 dark:border-white/10 bg-white/60 dark:bg-white/5 p-3 text-sm transition flex flex-col"
+                        >
+                          <a
+                            href={image.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="overflow-hidden rounded-lg border border-black/5 dark:border-white/10 bg-black/5"
+                          >
+                            <img
+                              src={image.url}
+                              alt={image.label || "Generated mockup"}
+                              className="w-full h-40 object-cover"
+                              loading="lazy"
+                            />
+                          </a>
+                          <div className="mt-2 flex items-center gap-2">
+                            <Button asChild size="sm" variant="ghost" className="rounded-xl">
+                              <a href={image.url} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink size={14} className="mr-1" />
+                                Open
+                              </a>
+                            </Button>
+                            <Button size="sm" variant="secondary" className="rounded-xl">
+                              <span
+                                role="link"
+                                tabIndex={0}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  downloadFile(image.url, image.filename);
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    downloadFile(image.url, image.filename);
+                                  }
+                                }}
+                                className="inline-flex items-center"
+                              >
+                                <Download size={14} className="mr-1" />
+                                Download
+                              </span>
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-black/55 dark:text-white/60">No images returned yet.</div>
+                  )}
                 </div>
               ))}
             </div>
@@ -398,4 +494,100 @@ export function GenerateTab({
       </CardContent>
     </Card>
   );
+}
+
+function isBlob(value) {
+  return typeof Blob !== "undefined" && value instanceof Blob;
+}
+
+async function normalizeGeneratedImages(response, locationLabel) {
+  if (!response) return [];
+  if (response instanceof Response) {
+    const blob = await response.blob();
+    return blob ? [buildImageEntry(blob, locationLabel, 1)] : [];
+  }
+  if (isBlob(response)) {
+    return [buildImageEntry(response, locationLabel, 1)];
+  }
+
+  const payload = response;
+  const list =
+    payload?.images ||
+    payload?.image_urls ||
+    payload?.urls ||
+    payload?.results ||
+    payload?.files ||
+    payload?.data ||
+    null;
+  const images = Array.isArray(list) ? list : payload?.url ? [payload.url] : [];
+  if (!images.length) return [];
+
+  return images.map((entry, index) => {
+    if (typeof entry === "string") {
+      return buildUrlEntry(entry, locationLabel, index + 1);
+    }
+    if (isBlob(entry)) {
+      return buildImageEntry(entry, locationLabel, index + 1);
+    }
+    const url = entry?.url || entry?.image_url || entry?.file_url || "";
+    return buildUrlEntry(url, locationLabel, index + 1);
+  });
+}
+
+function buildImageEntry(blob, locationLabel, index) {
+  const url = URL.createObjectURL(blob);
+  const filename = buildDownloadName(url, locationLabel, index);
+  return { url, filename };
+}
+
+function buildUrlEntry(url, locationLabel, index) {
+  if (!url) return { url: "", filename: buildDownloadName("", locationLabel, index) };
+  return { url, filename: buildDownloadName(url, locationLabel, index) };
+}
+
+function buildDownloadName(url, locationLabel, index) {
+  const fromUrl = getNameFromUrl(url);
+  if (fromUrl) return fromUrl;
+  const safeLocation = (locationLabel || "result")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const suffix = index ? `_${index}` : "";
+  return `mockup_${safeLocation || "result"}${suffix}.jpg`;
+}
+
+function getNameFromUrl(url) {
+  if (!url) return "";
+  try {
+    const resolved = new URL(url, window.location.href);
+    const parts = resolved.pathname.split("/").filter(Boolean);
+    return parts.length ? decodeURIComponent(parts[parts.length - 1]) : "";
+  } catch {
+    const fallback = url.split("?")[0].split("#")[0];
+    const parts = fallback.split("/").filter(Boolean);
+    return parts.length ? decodeURIComponent(parts[parts.length - 1]) : "";
+  }
+}
+
+function revokeResultUrls(results) {
+  const list = Array.isArray(results) ? results : [];
+  list.forEach((result) => {
+    (result?.images || []).forEach((image) => {
+      if (image?.url?.startsWith("blob:")) {
+        URL.revokeObjectURL(image.url);
+      }
+    });
+  });
+}
+
+async function downloadFile(url, filename) {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename || "download";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
