@@ -1,5 +1,5 @@
 # =============================================================================
-# CRM Platform - Git Ignore
+# MMG Service Platform - Git Ignore
 # =============================================================================
 
 # Environment files (contain secrets)
@@ -95,3 +95,6 @@ src/platform/ArgoCD/bootstrap-tls/argocd-tls.env
 
 # Argo CD repo credentials (local env file)
 src/platform/ArgoCD/repo-credentials/gitlab-repo.env
+
+# Unified UI ingress hostname params (local env file)
+src/platform/deploy/kustomize/unifiedui/overlays/dev/unifiedui-params.env

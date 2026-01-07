@@ -69,6 +69,26 @@ To avoid “Connection not secure”, terminate TLS at the ALB using an ACM cert
 
 This repo supports two common setups:
 
+- Recommended (lowest friction): dedicate an apex domain for the platform and manage it fully in Route53:
+  1) Create the hosted zone (or use an existing one via `PLATFORM_APEX_HOSTED_ZONE_ID=...`) and request a single ACM cert:
+
+     ```bash
+     make platform-apex-step1 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
+     ```
+
+  2) In your registrar, update the domain’s nameservers to the Route53 values from the command output (skip if Route53 is your registrar).
+  3) Finish ACM validation + create Route53 alias records + apply TLS to both Argo CD and Unified UI:
+
+     ```bash
+     make platform-apex-step2 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
+     ```
+
+  Troubleshooting (duplicate hosted zones): if Route53 shows multiple hosted zones named `mmg-nova.com`, prefer operating by zone id to avoid ambiguity:
+  - Keep the zone that your registrar is using (compare `dig NS mmg-nova.com +short` with each zone’s `NameServers`).
+  - If you want to switch to a manually-created/registration-created hosted zone, pass its id and disable zone creation:
+    - `PLATFORM_APEX_CREATE_ZONE=false PLATFORM_APEX_HOSTED_ZONE_ID=Z...`
+  - If Terraform previously created a zone, `make platform-apex-step1/step2` will automatically drop it from Terraform state when `PLATFORM_APEX_HOSTED_ZONE_ID` is set (so Terraform won’t try to destroy it). You can then delete the unused hosted zone in Route53.
+
 - GoDaddy registrar + Route53 DNS delegation (works for apex hostname, e.g. `argocdmmg.global`):
   1) Create the hosted zone + request ACM cert (prints the nameservers you must set in GoDaddy):
 
@@ -96,4 +116,16 @@ Get the initial admin password:
 
 ```bash
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+## Unified UI (same pattern)
+
+Unified UI is deployed by Argo CD from `src/platform/deploy/kustomize/unifiedui`.
+
+To expose it with a custom hostname + TLS (Route53 + ACM), use:
+
+```bash
+make platform-unifiedui-tls-step1 AWS_PROFILE=your-profile SERVICEPLATFORM_ZONE_NAME=serviceplatform.mmg.global SERVICEPLATFORM_HOSTNAME=serviceplatform.mmg.global
+make platform-unifiedui-tls-step2 AWS_PROFILE=your-profile SERVICEPLATFORM_ZONE_NAME=serviceplatform.mmg.global SERVICEPLATFORM_HOSTNAME=serviceplatform.mmg.global
+make platform-unifiedui-url SERVICEPLATFORM_HOSTNAME=serviceplatform.mmg.global
 ```

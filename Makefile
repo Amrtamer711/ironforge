@@ -18,6 +18,8 @@ SHELL := /bin/bash
 	infra-bootstrap infra-init infra-plan infra-apply infra-output \
 	platform-argocd-bootstrap platform-argocd-tls-step1 platform-argocd-tls-step2 platform-argocd-url \
 	platform-argocd-repo-creds \
+	platform-unifiedui-apply platform-unifiedui-tls-step1 platform-unifiedui-tls-step2 platform-unifiedui-url \
+	platform-apex-step1 platform-apex-step2 \
 	tf-bootstrap tf-init tf-plan tf-apply tf-output \
 	argocd-bootstrap argocd-tls-tf-init argocd-tls-step1 argocd-tls-step2 argocd-url
 
@@ -44,9 +46,11 @@ AWS_REGION ?= eu-north-1
 
 TF_AWS_DIR ?= $(ROOT_DIR)/src/infrastructure/aws
 TF_AWS_BOOTSTRAP_DIR ?= $(TF_AWS_DIR)/bootstrap
+TF_AWS_PLATFORM_APEX_DIR ?= $(TF_AWS_DIR)/platform-apex
 
 # Helper to pass AWS env vars only when set
 TF_AWS_ENV := $(if $(AWS_PROFILE),AWS_PROFILE=$(AWS_PROFILE),) AWS_REGION=$(AWS_REGION)
+TF_AUTO_APPROVE ?= -auto-approve
 
 # Default ports (can be overridden: make dev SALES_PORT=9000)
 SALES_PORT ?= 8000
@@ -244,6 +248,144 @@ platform-argocd-url: ## Print the Argo CD URL (custom hostname)
 platform-argocd-repo-creds: ## Configure Argo CD repo credentials (required for syncing private repos)
 	@test -f $(ARGOCD_REPO_CREDS_DIR)/gitlab-repo.env || (echo "$(RED)Missing $(ARGOCD_REPO_CREDS_DIR)/gitlab-repo.env (copy from gitlab-repo.env.example)$(NC)" && exit 1)
 	@kubectl apply -k $(ARGOCD_REPO_CREDS_DIR)
+
+# =============================================================================
+# PLATFORM - UNIFIED UI (EKS)
+# =============================================================================
+
+UNIFIEDUI_APP_MANIFEST ?= $(ROOT_DIR)/src/platform/ArgoCD/applications/unifiedui-dev.yaml
+UNIFIEDUI_NAMESPACE ?= unifiedui
+UNIFIEDUI_INGRESS_NAME ?= unified-ui
+
+# DNS/TLS variables (override with VAR=value)
+# Example:
+#   make platform-unifiedui-tls-step1 AWS_PROFILE=your-profile SERVICEPLATFORM_ZONE_NAME=serviceplatform.mmg.global SERVICEPLATFORM_HOSTNAME=serviceplatform.mmg.global
+#
+# Notes:
+# - If you have an existing Route53 hosted zone for the subdomain (e.g. `serviceplatform.mmg.global`), set `SERVICEPLATFORM_ZONE_NAME` to that exact zone and leave `SERVICEPLATFORM_CREATE_ZONE=false`.
+# - If the parent domain is NOT in Route53, you must delegate the subdomain by creating NS records at the parent DNS provider (using the nameservers Terraform prints).
+# - If DNS is managed outside Route53 and you cannot delegate, set `SERVICEPLATFORM_DNS_PROVIDER=external` and manually add the ACM validation + CNAME records that Terraform outputs.
+SERVICEPLATFORM_DNS_PROVIDER ?= route53
+SERVICEPLATFORM_ZONE_NAME ?= serviceplatform.mmg.global
+SERVICEPLATFORM_HOSTNAME ?= serviceplatform.mmg.global
+SERVICEPLATFORM_ZONE_ID ?=
+SERVICEPLATFORM_CREATE_ZONE ?= true
+
+platform-unifiedui-apply: ## Install/refresh the Unified UI Argo CD Application
+	@kubectl apply -f $(UNIFIEDUI_APP_MANIFEST)
+
+platform-unifiedui-tls-step1: infra-init ## Step 1: create Route53 hosted zone + ACM (prints nameservers; you must delegate them in GoDaddy)
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) apply \
+	  -var enable_serviceplatform_public_dns=true \
+	  -var serviceplatform_dns_provider=$(SERVICEPLATFORM_DNS_PROVIDER) \
+	  -var create_serviceplatform_public_zone=$(SERVICEPLATFORM_CREATE_ZONE) \
+	  -var serviceplatform_public_zone_id=$(SERVICEPLATFORM_ZONE_ID) \
+	  -var serviceplatform_public_zone_name=$(SERVICEPLATFORM_ZONE_NAME) \
+	  -var serviceplatform_hostname=$(SERVICEPLATFORM_HOSTNAME) \
+	  -var serviceplatform_wait_for_acm_validation=false
+	@echo ""
+	@echo "$(YELLOW)Route53 nameservers (delegate the subdomain from your parent DNS if needed):$(NC)"
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) output -json serviceplatform_public_zone_name_servers || true
+	@echo ""
+	@echo "$(YELLOW)If using external DNS (SERVICEPLATFORM_DNS_PROVIDER=external), add these ACM validation records in your DNS provider:$(NC)"
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) output -json serviceplatform_acm_dns_validation_records || true
+	@echo ""
+	@echo "$(YELLOW)If using external DNS, also point $(SERVICEPLATFORM_HOSTNAME) at the ALB using this record:$(NC)"
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) output -json serviceplatform_external_dns_cname || true
+	@echo ""
+	@echo "$(YELLOW)Then run: make platform-unifiedui-tls-step2$(NC)"
+
+platform-unifiedui-tls-step2: infra-init ## Step 2: finish ACM validation and patch the Unified UI Ingress with TLS annotations
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) apply \
+	  -var enable_serviceplatform_public_dns=true \
+	  -var serviceplatform_dns_provider=$(SERVICEPLATFORM_DNS_PROVIDER) \
+	  -var create_serviceplatform_public_zone=$(SERVICEPLATFORM_CREATE_ZONE) \
+	  -var serviceplatform_public_zone_id=$(SERVICEPLATFORM_ZONE_ID) \
+	  -var serviceplatform_public_zone_name=$(SERVICEPLATFORM_ZONE_NAME) \
+	  -var serviceplatform_hostname=$(SERVICEPLATFORM_HOSTNAME) \
+	  -var serviceplatform_wait_for_acm_validation=true
+	@CERT_ARN=$$($(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) output -raw serviceplatform_acm_certificate_arn); \
+	  kubectl -n $(UNIFIEDUI_NAMESPACE) annotate ingress $(UNIFIEDUI_INGRESS_NAME) \
+	    alb.ingress.kubernetes.io/certificate-arn=$$CERT_ARN \
+	    'alb.ingress.kubernetes.io/listen-ports=[{"HTTPS":443},{"HTTP":80}]' \
+	    'alb.ingress.kubernetes.io/ssl-redirect=443' \
+	    --overwrite; \
+	  echo "$(GREEN)Patched Ingress for TLS. Open: https://$(SERVICEPLATFORM_HOSTNAME)$(NC)"
+
+platform-unifiedui-url: ## Print the Unified UI URL (custom hostname)
+	@echo "https://$(SERVICEPLATFORM_HOSTNAME)"
+
+# =============================================================================
+# PLATFORM - DEDICATED APEX DOMAIN (EKS)
+# =============================================================================
+
+# Dedicated platform apex managed entirely in Route53.
+# This is the lowest-friction setup: one hosted zone, one ACM cert, and two hostnames:
+#   - Argo CD:         argocd.$(PLATFORM_APEX)
+#   - Unified UI:      serviceplatform.$(PLATFORM_APEX)
+PLATFORM_APEX ?=
+PLATFORM_ARGOCD_HOSTNAME ?= argocd.$(PLATFORM_APEX)
+PLATFORM_SERVICEPLATFORM_HOSTNAME ?= serviceplatform.$(PLATFORM_APEX)
+PLATFORM_APEX_CREATE_ZONE ?= true
+PLATFORM_APEX_HOSTED_ZONE_ID ?=
+
+# Optional: set explicitly if you don't want Make to query Terraform state for the cluster name.
+EKS_CLUSTER_NAME ?=
+
+platform-apex-step1: ## Step 1: create hosted zone + request ACM cert (prints Route53 name servers; set them at registrar)
+	@test -n "$(PLATFORM_APEX)" || (echo "$(RED)Missing PLATFORM_APEX (e.g. PLATFORM_APEX=mmg-nova.com)$(NC)" && exit 1)
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) init -reconfigure
+	@# If switching from a previously Terraform-created zone to an existing zone, drop the old zone from state to avoid prevent_destroy errors.
+	@if [ "$(PLATFORM_APEX_CREATE_ZONE)" = "false" ] || [ -n "$(PLATFORM_APEX_HOSTED_ZONE_ID)" ]; then \
+	  $(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) state list 2>/dev/null | grep -Fxq 'aws_route53_zone.platform_apex[0]' && \
+	    $(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) state rm 'aws_route53_zone.platform_apex[0]' >/dev/null || true; \
+	fi
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) apply $(TF_AUTO_APPROVE) -input=false \
+	  -var platform_apex=$(PLATFORM_APEX) \
+	  -var argocd_hostname=$(PLATFORM_ARGOCD_HOSTNAME) \
+	  -var serviceplatform_hostname=$(PLATFORM_SERVICEPLATFORM_HOSTNAME) \
+	  -var create_hosted_zone=$(PLATFORM_APEX_CREATE_ZONE) \
+	  -var hosted_zone_id=$(PLATFORM_APEX_HOSTED_ZONE_ID) \
+	  -var wait_for_acm_validation=false
+	@echo ""
+	@echo "$(YELLOW)Set these nameservers at your registrar for $(PLATFORM_APEX), then run: make platform-apex-step2$(NC)"
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) output -json name_servers
+
+platform-apex-step2: ## Step 2: wait for ACM validation, create Route53 alias records, then enable TLS on Argo CD + Unified UI ingresses
+	@test -n "$(PLATFORM_APEX)" || (echo "$(RED)Missing PLATFORM_APEX (e.g. PLATFORM_APEX=mmg-nova.com)$(NC)" && exit 1)
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) init -reconfigure
+	@# If switching from a previously Terraform-created zone to an existing zone, drop the old zone from state to avoid prevent_destroy errors.
+	@if [ "$(PLATFORM_APEX_CREATE_ZONE)" = "false" ] || [ -n "$(PLATFORM_APEX_HOSTED_ZONE_ID)" ]; then \
+	  $(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) state list 2>/dev/null | grep -Fxq 'aws_route53_zone.platform_apex[0]' && \
+	    $(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) state rm 'aws_route53_zone.platform_apex[0]' >/dev/null || true; \
+	fi
+	@CLUSTER_NAME="$(EKS_CLUSTER_NAME)"; \
+	if [ -z "$$CLUSTER_NAME" ]; then \
+	  CLUSTER_NAME=$$($(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) output -raw eks_cluster_name 2>/dev/null || true); \
+	fi; \
+	if [ -z "$$CLUSTER_NAME" ]; then \
+	  echo "$(RED)Missing EKS cluster name. Set EKS_CLUSTER_NAME=... or ensure terraform state has eks_cluster_name output.$(NC)"; \
+	  exit 1; \
+	fi; \
+		$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) apply $(TF_AUTO_APPROVE) -input=false \
+	  -var platform_apex=$(PLATFORM_APEX) \
+	  -var argocd_hostname=$(PLATFORM_ARGOCD_HOSTNAME) \
+	  -var serviceplatform_hostname=$(PLATFORM_SERVICEPLATFORM_HOSTNAME) \
+	  -var create_hosted_zone=$(PLATFORM_APEX_CREATE_ZONE) \
+	  -var hosted_zone_id=$(PLATFORM_APEX_HOSTED_ZONE_ID) \
+	  -var wait_for_acm_validation=true \
+	  -var cluster_name=$$CLUSTER_NAME; \
+	CERT_ARN=$$($(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) output -raw acm_certificate_arn); \
+	  echo "ARGOCD_HOSTNAME=$(PLATFORM_ARGOCD_HOSTNAME)" > $(ARGOCD_TLS_OVERLAY_DIR)/argocd-tls.env; \
+	  echo "ARGOCD_ACM_CERT_ARN=$$CERT_ARN" >> $(ARGOCD_TLS_OVERLAY_DIR)/argocd-tls.env; \
+	  kubectl apply -k $(ARGOCD_TLS_OVERLAY_DIR); \
+	  kubectl -n $(UNIFIEDUI_NAMESPACE) annotate ingress $(UNIFIEDUI_INGRESS_NAME) \
+	    alb.ingress.kubernetes.io/certificate-arn=$$CERT_ARN \
+	    'alb.ingress.kubernetes.io/listen-ports=[{"HTTPS":443},{"HTTP":80}]' \
+	    'alb.ingress.kubernetes.io/ssl-redirect=443' \
+	    --overwrite; \
+	  echo "$(GREEN)Open Argo CD: https://$(PLATFORM_ARGOCD_HOSTNAME)$(NC)"; \
+	  echo "$(GREEN)Open Unified UI: https://$(PLATFORM_SERVICEPLATFORM_HOSTNAME)$(NC)"
 
 # Backwards-compatible aliases
 tf-bootstrap: infra-bootstrap ## Alias for infra-bootstrap
