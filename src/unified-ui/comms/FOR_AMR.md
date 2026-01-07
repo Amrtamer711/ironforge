@@ -5,6 +5,9 @@
 ## Authentication
 1. Authentication issue where 401 causes logout within a specific time. maybe token expiry?
 
+## General
+1. Font issue when the font is not available in the local system.
+
 ### Questions / Confirmations
 1. **Companies Endpoint** - Confirm if `/dev/companies` path is correct for company details
 2. Permissions CRUD not available in the api/rbac/ path. currently using it from api/dev/ path.

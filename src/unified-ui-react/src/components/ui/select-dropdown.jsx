@@ -85,7 +85,7 @@ export function SelectDropdown({
         </button>
       </PopoverTrigger>
       <PopoverContent align="start" className={cn("min-w-[220px]", contentClassName)}>
-        <div className="max-h-[240px] overflow-y-auto">
+        <div className="max-h-[240px] overflow-y-auto space-y-1">
           {options.length ? (
             options.map((opt) => {
               const isSelected = opt.value === value;
@@ -98,7 +98,7 @@ export function SelectDropdown({
                     onChange?.(opt.value);
                   }}
                   className={cn(
-                    "cursor-pointer gap-0",
+                    "cursor-pointer gap-0 py-1",
                     isSelected && "bg-black/5 dark:bg-white/10 font-semibold"
                   )}
                 >

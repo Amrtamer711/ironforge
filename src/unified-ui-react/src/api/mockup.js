@@ -37,8 +37,8 @@ export async function testPreview(formData) {
 }
 
 export async function generateMockup(formData) {
-  // returns image blob like old mockup.js
-  return apiBlob("/api/sales/mockup/generate", { method: "POST", body: formData });
+  // Returns either a Response (image blob) or JSON payload with multiple images.
+  return apiRequest("/api/sales/mockup/generate", { method: "POST", body: formData });
 }
 
 export function getTemplatePhotoUrl(location, photo) {
