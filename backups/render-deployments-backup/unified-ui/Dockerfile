@@ -1,12 +1,3 @@
-# =============================================================================
-# BASE DOCKERFILE (Reference/Template)
-# =============================================================================
-# This is the base Dockerfile template. Use environment-specific versions:
-# - Dockerfile.render = Render deployments
-# - Dockerfile.aws = AWS deployments (ECS, Fargate)
-# - Dockerfile.local = Local development
-# =============================================================================
-#
 # unified-ui FastAPI Backend + React Frontend
 # Multi-stage build: Node.js for frontend, Python for backend
 

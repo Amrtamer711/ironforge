@@ -1,10 +1,13 @@
 # =============================================================================
-# BASE DOCKERFILE - Video Critique (AWS/ECS/Production)
+# LOCAL DEVELOPMENT DOCKERFILE
 # =============================================================================
-# This is the base Dockerfile for production deployments (AWS, ECS, Fargate).
-# Do NOT modify for other pipelines - use the appropriate Dockerfile instead:
-# - render/Dockerfile = Render deployments
-# - local/Dockerfile = Local development
+# This Dockerfile is for local development and testing.
+# Do NOT modify for other pipelines - use the appropriate Dockerfile instead.
+# - Dockerfile.render = Render
+# - Dockerfile.aws = AWS (ECS, Fargate)
+# =============================================================================
+#
+# Security Service Dockerfile
 # =============================================================================
 
 FROM python:3.11-slim
@@ -31,7 +34,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONPATH=/app
 
 # Default port
-ENV PORT=8003
+ENV PORT=8002
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

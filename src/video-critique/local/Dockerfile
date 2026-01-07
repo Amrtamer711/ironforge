@@ -1,10 +1,10 @@
 # =============================================================================
-# BASE DOCKERFILE - Video Critique (AWS/ECS/Production)
+# LOCAL DEVELOPMENT DOCKERFILE - Video Critique
 # =============================================================================
-# This is the base Dockerfile for production deployments (AWS, ECS, Fargate).
+# This Dockerfile is for local development and testing.
 # Do NOT modify for other pipelines - use the appropriate Dockerfile instead:
+# - Dockerfile (root) = AWS/ECS/Production
 # - render/Dockerfile = Render deployments
-# - local/Dockerfile = Local development
 # =============================================================================
 
 FROM python:3.11-slim

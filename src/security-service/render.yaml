@@ -16,7 +16,7 @@ services:
     name: security-service
     runtime: docker
     region: singapore
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./render/Dockerfile
     healthCheckPath: /health
     envVars:
       # Python settings

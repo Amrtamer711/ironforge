@@ -1,32 +1,36 @@
 # =============================================================================
-# MMG Service Platform - PRODUCTION Docker Compose
+# MMG Service Platform - DEVELOPMENT/STAGING Docker Compose
 # =============================================================================
-# FOR: AWS, ECS, Fargate, or any production container orchestration
-# DOCKERFILE: Uses root Dockerfile in each service directory
+# FOR: Development/staging environments (cloud or self-hosted dev servers)
+# DOCKERFILE: Uses render/Dockerfile to mirror Render deployments
 #
 # DO NOT USE FOR:
 # - Local development (use docker-compose.local.yml)
-# - Render deployments (use render.yaml in each service)
+# - Production deployments (use docker-compose.yml)
+#
+# This is useful for:
+# - Staging environments that mirror production
+# - Dev servers on cloud (AWS dev, GCP dev, etc.)
+# - CI/CD testing pipelines
+# - Pre-production verification
 #
 # QUICK START (run from repo root):
-#   docker-compose -f docker/docker-compose.yml up -d
-#   docker-compose -f docker/docker-compose.yml up -d --build
+#   docker-compose -f docker/docker-compose.dev.yml --env-file .env.development up -d
+#   docker-compose -f docker/docker-compose.dev.yml --env-file .env.development up -d --build
 #
 # SELECTIVE SERVICES (using profiles):
-#   docker-compose -f docker/docker-compose.yml --profile sales up -d
-#   docker-compose -f docker/docker-compose.yml --profile ui up -d
-#   docker-compose -f docker/docker-compose.yml --profile assets up -d
-#   docker-compose -f docker/docker-compose.yml --profile security up -d
-#   docker-compose -f docker/docker-compose.yml --profile all up -d
-#
-# WITH ENV FILE:
-#   docker-compose -f docker/docker-compose.yml --env-file .env.production up -d
+#   docker-compose -f docker/docker-compose.dev.yml --profile sales up -d
+#   docker-compose -f docker/docker-compose.dev.yml --profile ui up -d
+#   docker-compose -f docker/docker-compose.dev.yml --profile assets up -d
+#   docker-compose -f docker/docker-compose.dev.yml --profile security up -d
+#   docker-compose -f docker/docker-compose.dev.yml --profile video up -d
+#   docker-compose -f docker/docker-compose.dev.yml --profile all up -d
 #
 # MANAGEMENT:
-#   docker-compose -f docker/docker-compose.yml logs -f
-#   docker-compose -f docker/docker-compose.yml ps
-#   docker-compose -f docker/docker-compose.yml down
-#   docker-compose -f docker/docker-compose.yml down -v
+#   docker-compose -f docker/docker-compose.dev.yml logs -f
+#   docker-compose -f docker/docker-compose.dev.yml ps
+#   docker-compose -f docker/docker-compose.dev.yml down
+#   docker-compose -f docker/docker-compose.dev.yml down -v
 #
 # ACCESS POINTS (default ports):
 #   - Unified UI:        http://localhost:3005
@@ -44,29 +48,29 @@ services:
   proposal-bot:
     build:
       context: ../src/sales-module
-      dockerfile: Dockerfile  # Root Dockerfile for production
+      dockerfile: render/Dockerfile  # Render-style Dockerfile for dev/staging
       args:
-        - ENVIRONMENT=${ENVIRONMENT:-production}
-    image: ${SALES_IMAGE:-crm-proposal-bot:latest}
-    container_name: ${SALES_CONTAINER_NAME:-proposal-bot-prod}
-    restart: ${RESTART_POLICY:-unless-stopped}
+        - ENVIRONMENT=${ENVIRONMENT:-development}
+    image: ${SALES_IMAGE:-crm-proposal-bot:dev}
+    container_name: ${SALES_CONTAINER_NAME:-proposal-bot-dev}
+    restart: unless-stopped
     profiles:
       - all
       - sales
     ports:
       - "${SALES_PORT:-8000}:8000"
     env_file:
-      - ${SALES_ENV_FILE:-../.env.production}
+      - ${SALES_ENV_FILE:-../.env.development}
     environment:
-      ENVIRONMENT: ${ENVIRONMENT:-production}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
       PORT: 8000
       DB_BACKEND: supabase
       STORAGE_PROVIDER: supabase
       AUTH_PROVIDER: supabase
       PROXY_SECRET: ${PROXY_SECRET}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     volumes:
-      - ${SALES_DATA_VOLUME:-sales-data}:/data
+      - ${SALES_DATA_VOLUME:-sales-data-dev}:/data
       - ${SALES_UPLOADS_PATH:-../src/sales-module/uploads}:/app/uploads
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -76,14 +80,6 @@ services:
       start_period: ${HEALTHCHECK_START_PERIOD:-30s}
     networks:
       - crm-network
-    deploy:
-      resources:
-        limits:
-          cpus: "${SALES_CPU_LIMIT:-2}"
-          memory: ${SALES_MEMORY_LIMIT:-2G}
-        reservations:
-          cpus: "${SALES_CPU_RESERVE:-0.5}"
-          memory: ${SALES_MEMORY_RESERVE:-512M}
 
   # ===========================================================================
   # Unified UI Frontend (FastAPI) - Auth Gateway + SPA
@@ -91,12 +87,12 @@ services:
   unified-ui:
     build:
       context: ../src/unified-ui
-      dockerfile: Dockerfile  # Root Dockerfile for production
+      dockerfile: render/Dockerfile  # Render-style Dockerfile for dev/staging
       args:
-        - ENVIRONMENT=${ENVIRONMENT:-production}
-    image: ${UI_IMAGE:-crm-unified-ui:latest}
-    container_name: ${UI_CONTAINER_NAME:-unified-ui-prod}
-    restart: ${RESTART_POLICY:-unless-stopped}
+        - ENVIRONMENT=${ENVIRONMENT:-development}
+    image: ${UI_IMAGE:-crm-unified-ui:dev}
+    container_name: ${UI_CONTAINER_NAME:-unified-ui-dev}
+    restart: unless-stopped
     profiles:
       - all
       - ui
@@ -107,15 +103,15 @@ services:
         condition: service_healthy
         required: false
     env_file:
-      - ${UI_ENV_FILE:-../.env.production}
+      - ${UI_ENV_FILE:-../.env.development}
     environment:
-      ENVIRONMENT: ${ENVIRONMENT:-production}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
       PORT: 3005
       SALES_BOT_URL: ${SALES_BOT_URL:-http://proposal-bot:8000}
       ASSET_MGMT_URL: ${ASSET_MGMT_URL:-http://asset-management:8001}
       SECURITY_SERVICE_URL: ${SECURITY_SERVICE_URL:-http://security-service:8002}
       PROXY_SECRET: ${PROXY_SECRET}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     volumes:
       - ${UI_UPLOADS_PATH:-../src/unified-ui/uploads}:/app/uploads
     healthcheck:
@@ -126,14 +122,6 @@ services:
       start_period: ${HEALTHCHECK_START_PERIOD:-15s}
     networks:
       - crm-network
-    deploy:
-      resources:
-        limits:
-          cpus: "${UI_CPU_LIMIT:-1}"
-          memory: ${UI_MEMORY_LIMIT:-1G}
-        reservations:
-          cpus: "${UI_CPU_RESERVE:-0.25}"
-          memory: ${UI_MEMORY_RESERVE:-256M}
 
   # ===========================================================================
   # Asset Management Backend (FastAPI)
@@ -141,25 +129,25 @@ services:
   asset-management:
     build:
       context: ../src/asset-management
-      dockerfile: Dockerfile  # Root Dockerfile for production
+      dockerfile: render/Dockerfile  # Render-style Dockerfile for dev/staging
       args:
-        - ENVIRONMENT=${ENVIRONMENT:-production}
-    image: ${ASSETS_IMAGE:-crm-asset-management:latest}
-    container_name: ${ASSETS_CONTAINER_NAME:-asset-management-prod}
-    restart: ${RESTART_POLICY:-unless-stopped}
+        - ENVIRONMENT=${ENVIRONMENT:-development}
+    image: ${ASSETS_IMAGE:-crm-asset-management:dev}
+    container_name: ${ASSETS_CONTAINER_NAME:-asset-management-dev}
+    restart: unless-stopped
     profiles:
       - all
       - assets
     ports:
       - "${ASSETS_PORT:-8001}:8001"
     env_file:
-      - ${ASSETS_ENV_FILE:-../.env.production}
+      - ${ASSETS_ENV_FILE:-../.env.development}
     environment:
-      ENVIRONMENT: ${ENVIRONMENT:-production}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
       PORT: 8001
       DB_BACKEND: supabase
       PROXY_SECRET: ${PROXY_SECRET}
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
       interval: ${HEALTHCHECK_INTERVAL:-30s}
@@ -168,14 +156,6 @@ services:
       start_period: ${HEALTHCHECK_START_PERIOD:-30s}
     networks:
       - crm-network
-    deploy:
-      resources:
-        limits:
-          cpus: "${ASSETS_CPU_LIMIT:-1}"
-          memory: ${ASSETS_MEMORY_LIMIT:-1G}
-        reservations:
-          cpus: "${ASSETS_CPU_RESERVE:-0.25}"
-          memory: ${ASSETS_MEMORY_RESERVE:-256M}
 
   # ===========================================================================
   # Security Service (FastAPI) - Auth/RBAC/Audit
@@ -183,24 +163,24 @@ services:
   security-service:
     build:
       context: ../src/security-service
-      dockerfile: Dockerfile  # Root Dockerfile for production
+      dockerfile: render/Dockerfile  # Render-style Dockerfile for dev/staging
       args:
-        - ENVIRONMENT=${ENVIRONMENT:-production}
-    image: ${SECURITY_IMAGE:-crm-security-service:latest}
-    container_name: ${SECURITY_CONTAINER_NAME:-security-service-prod}
-    restart: ${RESTART_POLICY:-unless-stopped}
+        - ENVIRONMENT=${ENVIRONMENT:-development}
+    image: ${SECURITY_IMAGE:-crm-security-service:dev}
+    container_name: ${SECURITY_CONTAINER_NAME:-security-service-dev}
+    restart: unless-stopped
     profiles:
       - all
       - security
     ports:
       - "${SECURITY_PORT:-8002}:8002"
     env_file:
-      - ${SECURITY_ENV_FILE:-../.env.production}
+      - ${SECURITY_ENV_FILE:-../.env.development}
     environment:
-      ENVIRONMENT: ${ENVIRONMENT:-production}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
       PORT: 8002
       SERVICE_NAME: security-service
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
       interval: ${HEALTHCHECK_INTERVAL:-30s}
@@ -209,14 +189,6 @@ services:
       start_period: ${HEALTHCHECK_START_PERIOD:-30s}
     networks:
       - crm-network
-    deploy:
-      resources:
-        limits:
-          cpus: "${SECURITY_CPU_LIMIT:-1}"
-          memory: ${SECURITY_MEMORY_LIMIT:-1G}
-        reservations:
-          cpus: "${SECURITY_CPU_RESERVE:-0.25}"
-          memory: ${SECURITY_MEMORY_RESERVE:-256M}
 
   # ===========================================================================
   # Video Critique (FastAPI)
@@ -224,24 +196,24 @@ services:
   video-critique:
     build:
       context: ../src/video-critique
-      dockerfile: Dockerfile  # Root Dockerfile for production
+      dockerfile: render/Dockerfile  # Render-style Dockerfile for dev/staging
       args:
-        - ENVIRONMENT=${ENVIRONMENT:-production}
-    image: ${VIDEO_IMAGE:-crm-video-critique:latest}
-    container_name: ${VIDEO_CONTAINER_NAME:-video-critique-prod}
-    restart: ${RESTART_POLICY:-unless-stopped}
+        - ENVIRONMENT=${ENVIRONMENT:-development}
+    image: ${VIDEO_IMAGE:-crm-video-critique:dev}
+    container_name: ${VIDEO_CONTAINER_NAME:-video-critique-dev}
+    restart: unless-stopped
     profiles:
       - all
       - video
     ports:
       - "${VIDEO_PORT:-8003}:8003"
     env_file:
-      - ${VIDEO_ENV_FILE:-../.env.production}
+      - ${VIDEO_ENV_FILE:-../.env.development}
     environment:
-      ENVIRONMENT: ${ENVIRONMENT:-production}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
       PORT: 8003
       DB_BACKEND: supabase
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
       interval: ${HEALTHCHECK_INTERVAL:-30s}
@@ -250,21 +222,13 @@ services:
       start_period: ${HEALTHCHECK_START_PERIOD:-30s}
     networks:
       - crm-network
-    deploy:
-      resources:
-        limits:
-          cpus: "${VIDEO_CPU_LIMIT:-1}"
-          memory: ${VIDEO_MEMORY_LIMIT:-1G}
-        reservations:
-          cpus: "${VIDEO_CPU_RESERVE:-0.25}"
-          memory: ${VIDEO_MEMORY_RESERVE:-256M}
 
 # =============================================================================
 # VOLUMES
 # =============================================================================
 volumes:
-  sales-data:
-    name: ${SALES_DATA_VOLUME_NAME:-crm-sales-data-prod}
+  sales-data-dev:
+    name: ${SALES_DATA_VOLUME_NAME:-crm-sales-data-dev}
 
 # =============================================================================
 # NETWORKS
@@ -272,7 +236,4 @@ volumes:
 networks:
   crm-network:
     driver: bridge
-    name: ${NETWORK_NAME:-crm-network-prod}
-    ipam:
-      config:
-        - subnet: ${NETWORK_SUBNET:-172.28.0.0/16}
+    name: ${NETWORK_NAME:-crm-network-dev}

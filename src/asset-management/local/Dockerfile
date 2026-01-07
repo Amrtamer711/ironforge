@@ -1,20 +1,18 @@
 # =============================================================================
-# BASE DOCKERFILE - Video Critique (AWS/ECS/Production)
+# LOCAL DEVELOPMENT DOCKERFILE
 # =============================================================================
-# This is the base Dockerfile for production deployments (AWS, ECS, Fargate).
-# Do NOT modify for other pipelines - use the appropriate Dockerfile instead:
-# - render/Dockerfile = Render deployments
-# - local/Dockerfile = Local development
+# This Dockerfile is for local development and testing.
+# Do NOT modify for other pipelines - use the appropriate Dockerfile instead.
+# - Dockerfile.render = Render
+# - Dockerfile.aws = AWS (ECS, Fargate)
 # =============================================================================
 
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies (git required for pip to clone SDK repos)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    git \
+# Install git for pip to clone dependencies from GitHub
+RUN apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -27,15 +25,14 @@ COPY . .
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONPATH=/app
 
 # Default port
-ENV PORT=8003
+ENV PORT=8001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${PORT}/health || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:${PORT}/health')"
 
 # Run the application
 CMD ["sh", "-c", "uvicorn api.server:app --host 0.0.0.0 --port ${PORT}"]
