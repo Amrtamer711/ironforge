@@ -2,8 +2,12 @@
 
 ## Pending
 
+## Authentication
+1. Authentication issue where 401 causes logout within a specific time. maybe token expiry?
+
 ### Questions / Confirmations
 1. **Companies Endpoint** - Confirm if `/dev/companies` path is correct for company details
+2. Permissions CRUD not available in the api/rbac/ path. currently using it from api/dev/ path.
 
 ### Admin Features
 2. **User - multiple Profile sets** - Assign/list multiple profiles per user
@@ -18,6 +22,8 @@
 9. **Mockup frame edit endpoint** - Endpoint to get frame details/config for editing existing templates
    - **Answer**: Yes, use `GET /api/mockup-frames/{company}/{location_key}/frame?time_of_day=day&finish=gold` to get frame data
 10. 502 bad gateway while generating the test preview on render deployment. Not in local.
+11. company_schema : "unknown" in api/locations endpoint
+
 
 ---
 
