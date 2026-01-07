@@ -47,6 +47,22 @@ variables:
     - docker build -f "src/unified-ui/Dockerfile" -t "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}" .
     - docker push "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}"
 
+    # Push immutable SemVer tags on Git tag pipelines (e.g. v1.2.3 or 1.2.3)
+    - |
+      if [ -n "${CI_COMMIT_TAG:-}" ]; then
+        SEMVER="${CI_COMMIT_TAG#v}"
+        if echo "$SEMVER" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+          echo "Pushing SemVer tag: ${SEMVER}"
+          docker tag "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}" "${ECR_REGISTRY}/${ECR_REPO}:${SEMVER}"
+          docker push "${ECR_REGISTRY}/${ECR_REPO}:${SEMVER}"
+          # Also update :latest on release tags
+          docker tag "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}" "${ECR_REGISTRY}/${ECR_REPO}:latest"
+          docker push "${ECR_REGISTRY}/${ECR_REPO}:latest"
+        else
+          echo "CI_COMMIT_TAG '${CI_COMMIT_TAG}' is not SemVer; skipping SemVer push"
+        fi
+      fi
+
     # Push a stable env tag from the demo branch (used by argocd-image-updater to track the latest digest)
     - |
       if [ "$CI_COMMIT_BRANCH" = "demo" ]; then
