@@ -94,8 +94,18 @@ export function MockupPage() {
   const [templateKey, setTemplateKey] = useState("");
 
   const primaryLocation = locations[0] || "";
-  const timeOfDayDisabled = venueType === "indoor";
+  const isIndoor = venueType === "indoor";
+  const timeOfDayDisabled = isIndoor;
+  const sideDisabled = isIndoor;
   const effectiveTimeOfDay = timeOfDayDisabled ? "all" : timeOfDay;
+
+  // Clear time/side when switching to indoor
+  useEffect(() => {
+    if (venueType === "indoor") {
+      if (timeOfDay) setTimeOfDay("");
+      if (side) setSide("");
+    }
+  }, [venueType]);
 
   const prevModeRef = useRef(mode);
 
@@ -1599,6 +1609,7 @@ export function MockupPage() {
               timeOfDay={timeOfDay}
               setTimeOfDay={setTimeOfDay}
               timeOfDayDisabled={timeOfDayDisabled}
+              sideDisabled={sideDisabled}
               side={side}
               setSide={setSide}
               timeOfDayOptions={TIME_OF_DAY}
@@ -1630,6 +1641,7 @@ export function MockupPage() {
                 timeOfDay={timeOfDay}
                 setTimeOfDay={setTimeOfDay}
                 timeOfDayDisabled={timeOfDayDisabled}
+                sideDisabled={sideDisabled}
                 side={side}
                 setSide={setSide}
                 timeOfDayOptions={TIME_OF_DAY_SETUP}
