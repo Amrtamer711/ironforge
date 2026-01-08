@@ -6,18 +6,14 @@ export async function getLocations() {
   return apiRequest("/api/sales/mockup/locations");
 }
 
-export async function getTemplates(location, { timeOfDay, side, venueType, locations } = {}) {
+export async function getTemplates(location, { timeOfDay, side, venueType } = {}) {
   const params = new URLSearchParams();
   if (timeOfDay) params.set("time_of_day", timeOfDay);
   if (side) params.set("side", side);
   if (venueType) params.set("venue_type", venueType);
 
-  const locationList = Array.isArray(locations) ? locations : Array.isArray(location) ? location : [];
-  if (locationList.length) {
-    params.set("location_keys", JSON.stringify(locationList));
-  }
-
   const primaryLocation = Array.isArray(location) ? location[0] : location;
+  if (!primaryLocation) return [];
   return apiRequest(`/api/sales/mockup/templates/${encodeURIComponent(primaryLocation)}?${params.toString()}`);
 }
 

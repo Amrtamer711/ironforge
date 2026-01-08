@@ -216,15 +216,16 @@ export function SetupTab({
                     ) : null}
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
                       {templateOptions.map((t) => {
+                        const templateKey = getTemplateKey(t);
                         return (
                           <div
-                            key={`${t.photo}-${t.time_of_day}-${t.side}`}
+                            key={templateKey}
                             className="rounded-xl border border-black/5 dark:border-white/10 bg-white/60 dark:bg-white/5 p-3 text-sm transition flex flex-col"
                           >
                             <div className="overflow-hidden rounded-lg border border-black/5 dark:border-white/10 bg-black/5">
-                              {templateThumbs[getTemplateKey(t)] ? (
+                              {templateThumbs[templateKey] ? (
                                 <img
-                                  src={templateThumbs[getTemplateKey(t)]}
+                                  src={templateThumbs[templateKey]}
                                   alt={t.photo}
                                   className="w-full h-40 object-cover"
                                   loading="lazy"
