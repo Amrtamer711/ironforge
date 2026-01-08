@@ -549,9 +549,11 @@ async def generate_mockup_api(
     location_key: str = Form(...),
     time_of_day: str = Form("all"),
     side: str = Form("all"),
+    environment: str = Form("outdoor"),
     ai_prompt: str | None = Form(None),
     creative: UploadFile | None = File(None),
     specific_photo: str | None = Form(None),
+    storage_key: str | None = Form(None),
     frame_config: str | None = Form(None),
     user: AuthUser = Depends(require_permission("sales:mockups:generate"))
 ):
@@ -562,6 +564,13 @@ async def generate_mockup_api(
     because it has REST-specific requirements (specific_photo selection, frame_config override)
     that the coordinator doesn't support. The coordinator is designed for orchestrating
     chat/Slack workflows with automatic strategy selection.
+
+    Args:
+        location_key: Network key (e.g., "dubai_mall")
+        storage_key: Optional storage key for traditional networks
+                    (e.g., "dubai_mall/digital_screens/mall_screen_a").
+                    If not provided, defaults to location_key.
+        environment: "indoor" or "outdoor" (default "outdoor")
 
     Requires sales:mockups:generate permission.
     """
@@ -587,14 +596,26 @@ async def generate_mockup_api(
             except json.JSONDecodeError:
                 logger.warning("[MOCKUP API] Invalid frame config JSON, ignoring")
 
-        # Validate location and get company schema
-        if location_key not in config.LOCATION_METADATA:
-            raise HTTPException(status_code=400, detail=f"Invalid location: {location_key}")
+        # Determine the actual storage key to use for generation
+        # For traditional networks, storage_key comes from templates endpoint
+        # For standalone networks, storage_key is same as location_key
+        effective_storage_key = storage_key or location_key
 
-        location_data = db.get_location_by_key(location_key, user.companies)
+        # Extract network_key from storage_key for validation
+        # Storage key format: "network_key" (standalone) or "network_key/type_key/asset_key" (traditional)
+        network_key = effective_storage_key.split("/")[0]
+
+        # Validate network exists and user has access
+        location_data = db.get_location_by_key(network_key, user.companies)
         if not location_data:
-            raise HTTPException(status_code=403, detail=f"Location '{location_key}' not found in your accessible companies")
-        company_schema = location_data.get("company") or location_data.get("company_schema")
+            # Fallback: check config.LOCATION_METADATA for backward compatibility
+            if network_key not in config.LOCATION_METADATA:
+                raise HTTPException(status_code=400, detail=f"Invalid location: {network_key}")
+            company_schema = None
+        else:
+            company_schema = location_data.get("company") or location_data.get("company_schema")
+
+        logger.info(f"[MOCKUP API] Generate request: network={network_key}, storage_key={effective_storage_key}, env={environment}")
 
         # Determine mode: AI generation or upload
         if ai_prompt:
@@ -626,11 +647,13 @@ async def generate_mockup_api(
 
         # Generate mockup (pass as list) with time_of_day, side, specific_photo, and config override
         # Pass company_hint for O(1) asset lookup (we already know which company owns this location)
+        # Use effective_storage_key for traditional networks (e.g., "dubai_mall/digital_screens/mall_screen_a")
         result_path, photo_used = await mockup_generator.generate_mockup_async(
-            location_key,
+            effective_storage_key,  # Use storage key, not just network key
             [creative_path],
             time_of_day=time_of_day,
             side=side,
+            environment=environment,  # Pass environment for indoor/outdoor filtering
             specific_photo=specific_photo,
             config_override=config_dict,
             company_schemas=user.companies,
