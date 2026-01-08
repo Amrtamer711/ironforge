@@ -35,9 +35,9 @@ const TOOL_ORDER = ["chat", "mockup", "proposals", "video_critique", "admin", "a
 
 function pageTitle(pathname) {
   if (pathname.includes("/app/video-critique")) return "Video Critique";
-  if (pathname.includes("/app/chat")) return "AI Chat";
-  if (pathname.includes("/app/mockup")) return "Mockup Studio";
-  if (pathname.includes("/app/proposals")) return "Sales Proposals";
+  if (pathname.includes("/app/chat")) return "AI Chat Assistant";
+  if (pathname.includes("/app/mockup")) return "Mockup Assistant";
+  if (pathname.includes("/app/proposals")) return "Proposal Assistant";
   if (pathname.includes("/app/notifications")) return "Notifications";
   // if (pathname.includes("/app/costs")) return "AI Costs";
   if (pathname.includes("/app/admin")) return "Admin Panel";
@@ -137,10 +137,10 @@ export function AppShell() {
         <div className="w-full px-6 lg:px-10">
           <div className="mmg-header-card mt-4 rounded-2xl bg-white/65 dark:bg-white/5 backdrop-blur-md shadow-soft ring-1 ring-black/5 dark:ring-white/10">
             <div className="flex items-center justify-between px-4 py-2 gap-3">
-              <div className="flex items-center gap-3">
+              <div className="flex items-end gap-3">
                 <Logo size={64} />
-                <div className="hidden sm:block text-sm text-black/50 dark:text-white/60">|</div>
-                <div className="hidden sm:block text-sm font-medium text-black/70 dark:text-white/70">
+                <div className="hidden sm:block text-sm leading-none text-black/50 dark:text-white/60 relative -top-px">|</div>
+                <div className="hidden sm:block text-sm font-medium leading-none text-black/70 dark:text-white/70">
                   {pageTitle(loc.pathname)}
                 </div>
               </div>

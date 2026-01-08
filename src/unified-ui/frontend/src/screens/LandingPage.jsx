@@ -81,7 +81,7 @@ export function LandingPage() {
         </section>
 
         <footer className="mt-10 text-xs text-black/45 dark:text-white/55">
-          MMG Unified UI
+          MMG Nova
         </footer>
       </main>
 
