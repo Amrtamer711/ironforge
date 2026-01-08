@@ -1,0 +1,20 @@
+build_sales_module:
+  extends: .build_push_ecr_template
+  variables:
+    SERVICE_NAME: "sales-module"
+    SERVICE_DIR: "src/sales-module"
+    ECR_REPO: "proposal-bot"
+    DOCKERFILE_PATH: "src/sales-module/Dockerfile"
+    BUILD_CONTEXT: "src/sales-module"
+  rules:
+    # Only run on demo branch and only if this service (or shared libs it vendors) changed
+    - if: '$CI_COMMIT_BRANCH == "demo"'
+      changes:
+        - src/sales-module/**/*
+        - src/shared/**/*
+      when: on_success
+
+    # Optional manual run
+    - if: '$CI_COMMIT_BRANCH == "demo"'
+      when: manual
+      allow_failure: true

@@ -47,4 +47,4 @@ patches:
         path: /spec/template/spec/containers/0/env/-
         value:
           name: SALES_MODULE_URL
-          value: http://proposal-bot.sales.svc.cluster.local:8000
+          value: http://proposal-bot.backends.svc.cluster.local:8000

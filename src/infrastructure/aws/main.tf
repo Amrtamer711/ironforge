@@ -108,6 +108,7 @@ variable "ecr_repository_names" {
     "accountsreceivable",
     "salesordermanagement",
     "testapprepo",
+    "proposal-bot",
     "unifiedui"
   ]
 }
