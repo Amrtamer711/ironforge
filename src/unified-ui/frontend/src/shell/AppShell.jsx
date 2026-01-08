@@ -172,7 +172,7 @@ export function AppShell() {
                         <span className="text-xs font-semibold">{initials}</span>
                       </div>
                       <div className="hidden sm:flex flex-col items-start leading-tight">
-                        <span className="text-sm font-medium">{user?.name}</span>
+                        <span className="mmg-brand-gold text-sm font-medium">{user?.name}</span>
                         <span className="text-xs text-black/50 dark:text-white/60">{user?.email}</span>
                       </div>
                     </button>

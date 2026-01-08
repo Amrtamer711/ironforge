@@ -227,10 +227,13 @@ body[data-brand-theme="brand"] {
   --bg: 246 246 246;
   background:
     radial-gradient(1100px 780px at 6% -12%, rgb(var(--brand-secondary-2) / 0.18), transparent 58%),
-    radial-gradient(900px 680px at 95% 0%, rgb(var(--brand-secondary-3) / 0.16), transparent 60%),
     radial-gradient(1200px 800px at 40% -10%, rgb(var(--brand-secondary-1) / 0.12), transparent 62%),
     radial-gradient(1000px 700px at 75% 85%, rgb(var(--brand-secondary-4) / 0.12), transparent 62%),
     rgb(var(--bg));
+}
+
+body[data-brand-theme="brand"] .mmg-brand-gold {
+  color: rgb(var(--brand-secondary-4));
 }
 
 /* Brand-aware shells & cards --------------------------------------*/
@@ -252,12 +255,15 @@ body[data-brand-theme] .mmg-header-card {
 body[data-brand-theme="brand"] .mmg-header-card {
   background: linear-gradient(
     120deg,
-    rgb(var(--brand-secondary-1) / 0.18) 0%,
-    rgb(var(--brand-secondary-2) / 0.16) 38%,
-    rgb(var(--brand-secondary-3) / 0.16) 72%,
-    rgb(var(--brand-secondary-4) / 0.16) 90%,
+    rgb(var(--brand-secondary-2) / 0.18) 0%,
+    rgb(var(--brand-secondary-4) / 0.16) 58%,
     rgb(var(--brand-card-bg)) 100%
   );
+  border-color: rgb(var(--brand-secondary-4) / 0.32);
+  --tw-ring-color: rgb(var(--brand-secondary-4) / 0.4);
+  box-shadow:
+    0 18px 45px rgb(var(--brand-secondary-4) / 0.16),
+    0 0 0 1px rgb(var(--brand-secondary-4) / 0.28);
 }
 
 body[data-brand-theme] .mmg-card {
@@ -278,6 +284,8 @@ body[data-brand-theme="brand"] .mmg-card {
     rgb(var(--brand-secondary-3) / 0.1) 78%,
     rgb(var(--brand-secondary-4) / 0.12) 110%
   );
+  border-color: rgb(var(--brand-secondary-4) / 0.24);
+  --tw-ring-color: rgb(var(--brand-secondary-4) / 0.32);
 }
 
 .dark body[data-brand-theme] .mmg-card {
@@ -288,6 +296,11 @@ body[data-brand-theme="brand"] .mmg-card {
   );
   border-color: rgba(255, 255, 255, 0.08);
   --tw-ring-color: rgb(var(--brand-accent) / 0.32);
+}
+
+.dark body[data-brand-theme="brand"] .mmg-card {
+  border-color: rgb(var(--brand-secondary-4) / 0.48);
+  --tw-ring-color: rgb(var(--brand-secondary-4) / 0.52);
 }
 
 /* Primary buttons pick up the accent when brand theme is active */
@@ -326,7 +339,6 @@ body[data-brand-theme] .mmg-btn-primary:active {
 .dark body[data-brand-theme="brand"] {
   background:
     radial-gradient(1100px 760px at 8% -12%, rgb(var(--brand-secondary-2) / 0.35), transparent 58%),
-    radial-gradient(1000px 720px at 95% 0%, rgb(var(--brand-secondary-3) / 0.28), transparent 60%),
     radial-gradient(1200px 860px at 60% 100%, rgb(var(--brand-secondary-4) / 0.2), transparent 62%),
     radial-gradient(1200px 800px at 10% 0%, rgba(255,255,255,0.08), transparent 55%),
     radial-gradient(900px 650px at 90% 10%, rgba(255,255,255,0.06), transparent 50%),
@@ -389,6 +401,22 @@ body[data-brand-theme] {
   --nav-fg: #fff;
 }
 
+body[data-brand-theme="brand"] {
+  --nav-border: rgb(var(--brand-secondary-4) / 0.24);
+  --nav-hover-bg: rgb(var(--brand-secondary-4) / 0.12);
+  --nav-hover-border: rgb(var(--brand-secondary-4) / 0.42);
+  --nav-active-bg: rgb(var(--brand-secondary-4) / 0.22);
+  --nav-active-border: rgb(var(--brand-secondary-4) / 0.64);
+}
+
+.dark body[data-brand-theme="brand"] {
+  --nav-border: rgb(var(--brand-secondary-4) / 0.48);
+  --nav-hover-bg: rgb(var(--brand-secondary-4) / 0.28);
+  --nav-hover-border: rgb(var(--brand-secondary-4) / 0.68);
+  --nav-active-bg: rgb(var(--brand-secondary-4) / 0.42);
+  --nav-active-border: rgb(var(--brand-secondary-4) / 0.86);
+}
+
 /* Button / tabs readability in dark mode brand */
 .dark body[data-brand-theme] .mmg-btn-primary {
   color: rgb(var(--brand-on-primary));
@@ -443,6 +471,17 @@ body[data-brand-theme] .mmg-btn-primary:focus-visible {
   box-shadow:
     0 18px 40px rgb(var(--brand-accent) / 0.2),
     0 0 0 1px rgb(var(--brand-accent) / 0.22);
+}
+
+.dark body[data-brand-theme="brand"] .mmg-header-card {
+  background: radial-gradient(circle at top left, rgb(var(--brand-secondary-2) / 0.22), transparent 55%),
+              radial-gradient(circle at top right, rgb(var(--brand-secondary-4) / 0.18), transparent 60%),
+              rgba(15, 15, 17, 0.9);
+  border-color: rgb(var(--brand-secondary-4) / 0.45);
+  --tw-ring-color: rgb(var(--brand-secondary-4) / 0.55);
+  box-shadow:
+    0 18px 40px rgb(var(--brand-secondary-4) / 0.26),
+    0 0 0 1px rgb(var(--brand-secondary-4) / 0.32);
 }
 
 body[data-brand-theme] .mmg-nav-icon {

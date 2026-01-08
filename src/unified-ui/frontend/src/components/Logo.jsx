@@ -11,7 +11,7 @@ export function Logo({ size = 128 }) {
         alt=""
         className="shrink-0 filter invert dark:invert-0"
       />
-      <span className="font-semibold text-lg leading-none tracking-tight hidden sm:inline-flex">
+      <span className="mmg-brand-gold font-semibold text-lg leading-none tracking-tight hidden sm:inline-flex">
         Nova
       </span>
     </div>
