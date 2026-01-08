@@ -16,26 +16,18 @@ patches:
       kind: Deployment
       name: security-service
     patch: |-
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: security-service
-      spec:
-        template:
-          spec:
-            containers:
-              - name: security-service
-                envFrom:
-                  - secretRef:
-                      name: security-service-env
-                      optional: true
-                env:
-                  - name: PORT
-                    value: "8002"
-                    valueFrom: null
-                  - name: ENVIRONMENT
-                    value: development
-                    valueFrom: null
-                  - name: SERVICE_NAME
-                    value: security-service
-                    valueFrom: null
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - secretRef:
+              name: security-service-env
+              optional: true
+      - op: replace
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: PORT
+            value: "8002"
+          - name: ENVIRONMENT
+            value: development
+          - name: SERVICE_NAME
+            value: security-service
