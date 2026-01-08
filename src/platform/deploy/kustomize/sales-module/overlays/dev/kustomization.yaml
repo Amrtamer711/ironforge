@@ -10,3 +10,14 @@ images:
     # Deployed image tag is Git-driven (pure GitOps).
     # This is updated by CI via Merge Request (see `gitops_mr_sales_dev`).
     newTag: c790ef7e
+
+patches:
+  - target:
+      kind: Deployment
+      name: proposal-bot
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - secretRef:
+              name: proposal-bot-env
