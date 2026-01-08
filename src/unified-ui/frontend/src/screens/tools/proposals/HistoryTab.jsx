@@ -188,15 +188,15 @@ export function HistoryTab({ historyQuery, userNamesLoading, visibleProposals, u
   }, [proposals, packageFilter, locationFilter, searchTerm]);
 
   return (
-    <Card>
+    <Card className="h-full flex flex-col">
       <CardHeader className="space-y-2">
         <CardTitle>History</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1 min-h-0 flex flex-col">
         {historyQuery.isLoading || userNamesLoading ? (
           <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
         ) : visibleProposals?.length ? (
-          <div className="space-y-3">
+          <div className="flex-1 min-h-0 flex flex-col gap-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <SearchInput
                 value={searchTerm}
@@ -219,84 +219,84 @@ export function HistoryTab({ historyQuery, userNamesLoading, visibleProposals, u
                 />
               </div>
             </div>
-          <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 w-full min-w-0 overflow-hidden">
-            <div className="max-h-[480px] w-full overflow-auto">
+            <div className="flex-1 min-h-0 rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 w-full min-w-0 overflow-hidden">
+              <div className="h-full w-full min-w-0 overflow-auto">
                 <table className="min-w-[760px] w-full text-sm">
-                <thead className="bg-white dark:bg-neutral-900 text-xs uppercase tracking-wide text-black/45 dark:text-white/50 sticky top-0 z-10">
-                  <tr>
-                    <th className="sticky top-0 z-10 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">Client</th>
-                    <th className="sticky top-0 z-10 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">Locations</th>
-                    <th className="sticky top-0 z-10 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">Amount</th>
-                    <th className="sticky top-0 z-10 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">User</th>
-                    <th className="sticky top-0 z-10 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">Generated</th>
-                    <th className="sticky top-0 right-0 z-20 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-black/5 dark:divide-white/10">
-                  {(filteredProposals || []).map((p) => {
-                    return (
-                      <tr key={p.id} className="text-black/80 dark:text-white/85">
-                        <td className="px-4 py-3 font-semibold">{p.clientName}</td>
-                        <td className="px-4 py-3">{p.locationText}</td>
-                        <td className="px-4 py-3">{p.totalAmount}</td>
-                        <td className="px-4 py-3">{p.userName}</td>
-                        <td className="px-4 py-3">
-                          {p.generatedAt ? new Date(p.generatedAt).toLocaleString() : "—"}
-                        </td>
-                        <td className="sticky right-0 z-10 px-4 py-3 bg-white/90 dark:bg-neutral-900/95">
-                          {p.fileEntries.length ? (
-                            <div className="flex flex-col gap-2">
-                              {p.fileEntries.map((file) => {
-                                const resolvedUrl = resolveProposalUrl(file.url);
-                                const nameFromUrl = getNameFromUrl(resolvedUrl);
-                                const fallbackName = file.type === "pdf" ? "proposal.pdf" : "proposal.pptx";
-                                const displayName = nameFromUrl || fallbackName;
-                                return (
-                                  <div key={`${file.type}-${file.url}`} className="flex flex-wrap items-center gap-2">
-                                    <span className="text-[11px] uppercase tracking-wide text-black/50 dark:text-white/60">
-                                      {file.type}
-                                    </span>
-                                    <Button asChild size="sm" variant="ghost" className="rounded-xl">
-                                      <a href={resolvedUrl} target="_blank" rel="noopener noreferrer">
-                                        <ExternalLink size={14} className="mr-1" />
-                                        Open
-                                      </a>
-                                    </Button>
-                                    <Button size="sm" variant="secondary" className="rounded-xl">
-                                      <span
-                                        role="link"
-                                        tabIndex={0}
-                                        onClick={(e) => {
-                                          e.preventDefault();
-                                          downloadFile(resolvedUrl, displayName);
-                                        }}
-                                        onKeyDown={(e) => {
-                                          if (e.key === "Enter" || e.key === " ") {
+                  <thead className="bg-white dark:bg-neutral-900 text-xs uppercase tracking-wide text-black/45 dark:text-white/50 sticky top-0 z-10">
+                    <tr>
+                      <th className="sticky top-0 z-10 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">Client</th>
+                      <th className="sticky top-0 z-10 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">Locations</th>
+                      <th className="sticky top-0 z-10 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">Amount</th>
+                      <th className="sticky top-0 z-10 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">User</th>
+                      <th className="sticky top-0 z-10 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">Generated</th>
+                      <th className="sticky top-0 right-0 z-20 px-4 py-3 text-left font-semibold bg-white dark:bg-neutral-900">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-black/5 dark:divide-white/10">
+                    {(filteredProposals || []).map((p) => {
+                      return (
+                        <tr key={p.id} className="text-black/80 dark:text-white/85">
+                          <td className="px-4 py-3 font-semibold">{p.clientName}</td>
+                          <td className="px-4 py-3">{p.locationText}</td>
+                          <td className="px-4 py-3">{p.totalAmount}</td>
+                          <td className="px-4 py-3">{p.userName}</td>
+                          <td className="px-4 py-3">
+                            {p.generatedAt ? new Date(p.generatedAt).toLocaleString() : "—"}
+                          </td>
+                          <td className="sticky right-0 z-10 px-4 py-3 bg-white/90 dark:bg-neutral-900/95">
+                            {p.fileEntries.length ? (
+                              <div className="flex flex-col gap-2">
+                                {p.fileEntries.map((file) => {
+                                  const resolvedUrl = resolveProposalUrl(file.url);
+                                  const nameFromUrl = getNameFromUrl(resolvedUrl);
+                                  const fallbackName = file.type === "pdf" ? "proposal.pdf" : "proposal.pptx";
+                                  const displayName = nameFromUrl || fallbackName;
+                                  return (
+                                    <div key={`${file.type}-${file.url}`} className="flex flex-wrap items-center gap-2">
+                                      <span className="text-[11px] uppercase tracking-wide text-black/50 dark:text-white/60">
+                                        {file.type}
+                                      </span>
+                                      <Button asChild size="sm" variant="ghost" className="rounded-xl">
+                                        <a href={resolvedUrl} target="_blank" rel="noopener noreferrer">
+                                          <ExternalLink size={14} className="mr-1" />
+                                          Open
+                                        </a>
+                                      </Button>
+                                      <Button size="sm" variant="secondary" className="rounded-xl">
+                                        <span
+                                          role="link"
+                                          tabIndex={0}
+                                          onClick={(e) => {
                                             e.preventDefault();
                                             downloadFile(resolvedUrl, displayName);
-                                          }
-                                        }}
-                                        className="inline-flex items-center"
-                                      >
-                                        <Download size={14} className="mr-1" />
-                                        Download
-                                      </span>
-                                    </Button>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-black/50 dark:text-white/55">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === "Enter" || e.key === " ") {
+                                              e.preventDefault();
+                                              downloadFile(resolvedUrl, displayName);
+                                            }
+                                          }}
+                                          className="inline-flex items-center"
+                                        >
+                                          <Download size={14} className="mr-1" />
+                                          Download
+                                        </span>
+                                      </Button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-black/50 dark:text-white/55">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
                 </table>
               </div>
-          </div>
+            </div>
             {!filteredProposals.length ? (
               <div className="text-sm text-black/60 dark:text-white/65">No matching proposals.</div>
             ) : null}

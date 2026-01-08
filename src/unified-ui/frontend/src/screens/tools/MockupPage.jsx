@@ -1558,7 +1558,7 @@ export function MockupPage() {
 
   return (
     <div className="h-full min-h-0 flex flex-col">
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-4 px-2 py-1">
+      <div className="flex-1 min-h-0 flex flex-col gap-4">
         <div className="flex items-center gap-3">
           <Button
             variant={mode === "generate" ? "default" : "ghost"}
@@ -1585,136 +1585,140 @@ export function MockupPage() {
           </Button>
         </div>
 
-        <div className={mode === "generate" ? "block" : "hidden"} aria-hidden={mode !== "generate"}>
-          <GenerateTabModule.GeneratePanel
-            locations={locations}
-            setLocations={setLocations}
-            venueType={venueType}
-            setVenueType={setVenueType}
-            templateKey={templateKey}
-            setTemplateKey={setTemplateKey}
-            locationOptions={locationOptions}
-            locationsQuery={locationsQuery}
-            timeOfDay={timeOfDay}
-            setTimeOfDay={setTimeOfDay}
-            timeOfDayDisabled={timeOfDayDisabled}
-            side={side}
-            setSide={setSide}
-            timeOfDayOptions={TIME_OF_DAY}
-            sideOptions={SIDES}
-            venueTypeOptions={VENUE_TYPES}
-            templateOptions={templateOptions}
-            templatesQuery={templatesQuery}
-            templateThumbs={templateThumbs}
-            getTemplateKey={getTemplateKey}
-            defaultFrameConfig={DEFAULT_FRAME_CONFIG}
-            creativeDragActive={creativeDragActive}
-            handleCreativeDragOver={handleCreativeDragOver}
-            handleCreativeDragLeave={handleCreativeDragLeave}
-            handleCreativeDrop={handleCreativeDrop}
-            useNativeSelects={USE_NATIVE_SELECTS}
-          />
-        </div>
+        <div className="flex-1 min-h-0">
+          <div className={mode === "generate" ? "h-full" : "hidden"} aria-hidden={mode !== "generate"}>
+            <GenerateTabModule.GeneratePanel
+              locations={locations}
+              setLocations={setLocations}
+              venueType={venueType}
+              setVenueType={setVenueType}
+              templateKey={templateKey}
+              setTemplateKey={setTemplateKey}
+              locationOptions={locationOptions}
+              locationsQuery={locationsQuery}
+              timeOfDay={timeOfDay}
+              setTimeOfDay={setTimeOfDay}
+              timeOfDayDisabled={timeOfDayDisabled}
+              side={side}
+              setSide={setSide}
+              timeOfDayOptions={TIME_OF_DAY}
+              sideOptions={SIDES}
+              venueTypeOptions={VENUE_TYPES}
+              templateOptions={templateOptions}
+              templatesQuery={templatesQuery}
+              templateThumbs={templateThumbs}
+              getTemplateKey={getTemplateKey}
+              defaultFrameConfig={DEFAULT_FRAME_CONFIG}
+              creativeDragActive={creativeDragActive}
+              handleCreativeDragOver={handleCreativeDragOver}
+              handleCreativeDragLeave={handleCreativeDragLeave}
+              handleCreativeDrop={handleCreativeDrop}
+              useNativeSelects={USE_NATIVE_SELECTS}
+            />
+          </div>
 
-        {mode === "setup" ? (
-          <SetupTabModule.SetupTab
-            locations={locations}
-            setLocations={setLocations}
-            venueType={venueType}
-            setVenueType={setVenueType}
-            setTemplateKey={setTemplateKey}
-            locationOptions={locationOptions}
-            locationsQuery={locationsQuery}
-            timeOfDay={timeOfDay}
-            setTimeOfDay={setTimeOfDay}
-            timeOfDayDisabled={timeOfDayDisabled}
-            side={side}
-            setSide={setSide}
-            timeOfDayOptions={TIME_OF_DAY_SETUP}
-            sideOptions={SIDES_SETUP}
-            venueTypeOptions={VENUE_TYPES_SETUP}
-            editingTemplate={editingTemplate}
-            editingTemplateLoading={editingTemplateLoading}
-            stopEditTemplate={stopEditTemplate}
-            templatesOpen={templatesOpen}
-            setTemplatesOpen={setTemplatesOpen}
-            templateOptions={templateOptions}
-            templatesQuery={templatesQuery}
-            templateThumbs={templateThumbs}
-            getTemplateKey={getTemplateKey}
-            startEditTemplate={startEditTemplate}
-            deleteTemplate={deleteTemplate}
-            setupPhoto={setupPhoto}
-            setSetupPhoto={setSetupPhoto}
-            handleSetupPhoto={handleSetupPhoto}
-            handleSetupDragOver={handleSetupDragOver}
-            handleSetupDragLeave={handleSetupDragLeave}
-            handleSetupDrop={handleSetupDrop}
-            setupDragActive={setupDragActive}
-            handleSetupPhotoClear={handleSetupPhotoClear}
-            framesJson={framesJson}
-            setFramesJson={setFramesJson}
-            setFramesJsonDirty={setFramesJsonDirty}
-            applyFramesJsonToCanvas={applyFramesJsonToCanvas}
-            buildFramesPayload={buildFramesPayload}
-            setupImageReady={setupImageReady}
-            greenscreenOpen={greenscreenOpen}
-            setGreenscreenOpen={setGreenscreenOpen}
-            greenscreenColor={greenscreenColor}
-            setGreenscreenColor={setGreenscreenColor}
-            colorTolerance={colorTolerance}
-            setColorTolerance={setColorTolerance}
-            RangeField={RangeField}
-            handleGreenscreenDetect={handleGreenscreenDetect}
-            canDetectGreenscreen={canDetectGreenscreen}
-            hasActiveFrame={hasActiveFrame}
-            frameSettingsOpen={frameSettingsOpen}
-            setFrameSettingsOpen={setFrameSettingsOpen}
-            setupFrameConfig={setupFrameConfig}
-            handleSetupFrameConfigChange={handleSetupFrameConfigChange}
-            FrameConfigControls={FrameConfigControls}
-            previewOpen={previewOpen}
-            setPreviewOpen={setPreviewOpen}
-            testPreviewMode={testPreviewMode}
-            setTestPreviewMode={setTestPreviewMode}
-            testPreviewImgRef={testPreviewImgRef}
-            testPreviewUrlRef={testPreviewUrlRef}
-            previewImgRef={previewImgRef}
-            drawPreview={drawPreview}
-            activeTestCreativeFile={activeTestCreativeFile}
-            updateTestCreativeForActive={updateTestCreativeForActive}
-            generateTestPreview={generateTestPreview}
-            testPreviewing={testPreviewing}
-            activeFrameIndex={activeFrameIndex}
-            canvasRef={canvasRef}
-            canvasWidth={CANVAS_WIDTH}
-            canvasHeight={CANVAS_HEIGHT}
-            handleCanvasPointerDown={handleCanvasPointerDown}
-            handleCanvasPointerMove={handleCanvasPointerMove}
-            handleCanvasPointerUp={handleCanvasPointerUp}
-            handleCanvasWheel={handleCanvasWheel}
-            setupHint={setupHint}
-            handleZoomOut={handleZoomOut}
-            handleZoomIn={handleZoomIn}
-            handleFitToScreen={handleFitToScreen}
-            zoomPercent={zoomPercent}
-            pixelUpscale={pixelUpscale}
-            setPixelUpscale={setPixelUpscale}
-            setupError={setupError}
-            setupMessage={setupMessage}
-            addFrame={addFrame}
-            resetCurrentFrame={resetCurrentFrame}
-            saveSetup={saveSetup}
-            setupSaving={setupSaving}
-            clearAllFrames={clearAllFrames}
-            currentPoints={currentPoints}
-            frameCount={frameCount}
-            useNativeSelects={USE_NATIVE_SELECTS}
-          />
-        ) : null}
+          {mode === "setup" ? (
+            <div className="h-full">
+              <SetupTabModule.SetupTab
+                locations={locations}
+                setLocations={setLocations}
+                venueType={venueType}
+                setVenueType={setVenueType}
+                setTemplateKey={setTemplateKey}
+                locationOptions={locationOptions}
+                locationsQuery={locationsQuery}
+                timeOfDay={timeOfDay}
+                setTimeOfDay={setTimeOfDay}
+                timeOfDayDisabled={timeOfDayDisabled}
+                side={side}
+                setSide={setSide}
+                timeOfDayOptions={TIME_OF_DAY_SETUP}
+                sideOptions={SIDES_SETUP}
+                venueTypeOptions={VENUE_TYPES_SETUP}
+                editingTemplate={editingTemplate}
+                editingTemplateLoading={editingTemplateLoading}
+                stopEditTemplate={stopEditTemplate}
+                templatesOpen={templatesOpen}
+                setTemplatesOpen={setTemplatesOpen}
+                templateOptions={templateOptions}
+                templatesQuery={templatesQuery}
+                templateThumbs={templateThumbs}
+                getTemplateKey={getTemplateKey}
+                startEditTemplate={startEditTemplate}
+                deleteTemplate={deleteTemplate}
+                setupPhoto={setupPhoto}
+                setSetupPhoto={setSetupPhoto}
+                handleSetupPhoto={handleSetupPhoto}
+                handleSetupDragOver={handleSetupDragOver}
+                handleSetupDragLeave={handleSetupDragLeave}
+                handleSetupDrop={handleSetupDrop}
+                setupDragActive={setupDragActive}
+                handleSetupPhotoClear={handleSetupPhotoClear}
+                framesJson={framesJson}
+                setFramesJson={setFramesJson}
+                setFramesJsonDirty={setFramesJsonDirty}
+                applyFramesJsonToCanvas={applyFramesJsonToCanvas}
+                buildFramesPayload={buildFramesPayload}
+                setupImageReady={setupImageReady}
+                greenscreenOpen={greenscreenOpen}
+                setGreenscreenOpen={setGreenscreenOpen}
+                greenscreenColor={greenscreenColor}
+                setGreenscreenColor={setGreenscreenColor}
+                colorTolerance={colorTolerance}
+                setColorTolerance={setColorTolerance}
+                RangeField={RangeField}
+                handleGreenscreenDetect={handleGreenscreenDetect}
+                canDetectGreenscreen={canDetectGreenscreen}
+                hasActiveFrame={hasActiveFrame}
+                frameSettingsOpen={frameSettingsOpen}
+                setFrameSettingsOpen={setFrameSettingsOpen}
+                setupFrameConfig={setupFrameConfig}
+                handleSetupFrameConfigChange={handleSetupFrameConfigChange}
+                FrameConfigControls={FrameConfigControls}
+                previewOpen={previewOpen}
+                setPreviewOpen={setPreviewOpen}
+                testPreviewMode={testPreviewMode}
+                setTestPreviewMode={setTestPreviewMode}
+                testPreviewImgRef={testPreviewImgRef}
+                testPreviewUrlRef={testPreviewUrlRef}
+                previewImgRef={previewImgRef}
+                drawPreview={drawPreview}
+                activeTestCreativeFile={activeTestCreativeFile}
+                updateTestCreativeForActive={updateTestCreativeForActive}
+                generateTestPreview={generateTestPreview}
+                testPreviewing={testPreviewing}
+                activeFrameIndex={activeFrameIndex}
+                canvasRef={canvasRef}
+                canvasWidth={CANVAS_WIDTH}
+                canvasHeight={CANVAS_HEIGHT}
+                handleCanvasPointerDown={handleCanvasPointerDown}
+                handleCanvasPointerMove={handleCanvasPointerMove}
+                handleCanvasPointerUp={handleCanvasPointerUp}
+                handleCanvasWheel={handleCanvasWheel}
+                setupHint={setupHint}
+                handleZoomOut={handleZoomOut}
+                handleZoomIn={handleZoomIn}
+                handleFitToScreen={handleFitToScreen}
+                zoomPercent={zoomPercent}
+                pixelUpscale={pixelUpscale}
+                setPixelUpscale={setPixelUpscale}
+                setupError={setupError}
+                setupMessage={setupMessage}
+                addFrame={addFrame}
+                resetCurrentFrame={resetCurrentFrame}
+                saveSetup={saveSetup}
+                setupSaving={setupSaving}
+                clearAllFrames={clearAllFrames}
+                currentPoints={currentPoints}
+                frameCount={frameCount}
+                useNativeSelects={USE_NATIVE_SELECTS}
+              />
+            </div>
+          ) : null}
 
-        <div className={mode === "history" ? "block" : "hidden"} aria-hidden={mode !== "history"}>
-          <HistoryTabModule.HistoryPanel enabled={historyEnabled} />
+          <div className={mode === "history" ? "h-full" : "hidden"} aria-hidden={mode !== "history"}>
+            <HistoryTabModule.HistoryPanel enabled={historyEnabled} />
+          </div>
         </div>
       </div>
     </div>

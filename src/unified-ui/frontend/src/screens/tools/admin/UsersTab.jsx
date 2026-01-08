@@ -96,121 +96,132 @@ export function UsersTab({
     [profileFilterOptions]
   );
 
-  return (
-    <Card className="flex-1 min-h-0">
-      <CardHeader className="space-y-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle>Users</CardTitle>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <SearchInput
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              className="w-full sm:w-[220px]"
-            />
-            {/* <div className="flex w-full justify-end gap-1 md:w-auto">
-              <Button variant="ghost" size="sm" className="rounded-xl" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
-                Prev
-              </Button>
-              <Button variant="ghost" size="sm" className="rounded-xl" disabled={!hasNext} onClick={() => setPage((p) => p + 1)}>
-                Next
-              </Button>
-            </div> */}
-            <Button variant="secondary" className="rounded-2xl self-start sm:self-auto" onClick={openNewUserModal}>
-              Add user
+  const headerContent = (
+    <>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <CardTitle>Users</CardTitle>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <SearchInput
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            className="w-full sm:w-[220px]"
+          />
+          {/* <div className="flex w-full justify-end gap-1 md:w-auto">
+            <Button variant="ghost" size="sm" className="rounded-xl" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+              Prev
             </Button>
-          </div>
+            <Button variant="ghost" size="sm" className="rounded-xl" disabled={!hasNext} onClick={() => setPage((p) => p + 1)}>
+              Next
+            </Button>
+          </div> */}
+          <Button variant="secondary" className="rounded-2xl self-start sm:self-auto" onClick={openNewUserModal}>
+            Add user
+          </Button>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <SelectDropdown
-            value={userCompanyFilter}
-            options={companySelectOptions}
-            onChange={setUserCompanyFilter}
-          />
-          <SelectDropdown
-            value={userProfileFilter}
-            options={profileSelectOptions}
-            onChange={setUserProfileFilter}
-          />
-        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <SelectDropdown
+          value={userCompanyFilter}
+          options={companySelectOptions}
+          onChange={setUserCompanyFilter}
+        />
+        <SelectDropdown
+          value={userProfileFilter}
+          options={profileSelectOptions}
+          onChange={setUserProfileFilter}
+        />
+      </div>
+    </>
+  );
+
+  return (
+    <Card className="h-full min-h-0 flex flex-col">
+      <CardHeader className="hidden md:block space-y-2">
+        {headerContent}
       </CardHeader>
-      <CardContent className="space-y-4">
-        {usersQuery.isLoading ? (
-          <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {users.map((u) => {
-              const profileLabels = Array.isArray(u.profiles)
-                ? u.profiles.map((p) => p?.display_name || p?.name || p).filter(Boolean)
-                : [u.profiles?.display_name || u.profiles?.name || u.profile || u.profile_name].filter(Boolean);
-              const profileText = profileLabels.length
-                ? profileLabels.length > 2
-                  ? `${profileLabels[0]}, +${profileLabels.length - 1}`
-                  : profileLabels.join(", ")
-                : "—";
-              const isSelfCard = Boolean(
-                (u.id && user?.id && u.id === user.id) ||
-                  (u.user_id && user?.user_id && u.user_id === user.user_id) ||
-                  (u.email && user?.email && u.email === user.email)
-              );
-              const rawActive = u.is_active ?? u.isActive ?? u.active;
-              const hasActiveFlag = typeof rawActive === "boolean";
-              const isActive = hasActiveFlag ? rawActive : true;
-              const deactivateLabel = isActive ? "Deactivate" : "Reactivate";
-              return (
-                <SoftCard key={u.id || u.user_id || u.email} className="p-4 space-y-2">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="text-base font-semibold">{u.name || "—"}</div>
-                        {hasActiveFlag && !isActive ? (
-                          <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/20 dark:text-red-200">
-                            Inactive
-                          </span>
-                        ) : null}
+      <CardContent className="flex-1 min-h-0 overflow-y-auto p-0">
+        <div className="space-y-2 p-5 pb-3 md:hidden">
+          {headerContent}
+        </div>
+        <div className="space-y-4 p-5 pt-1">
+          {usersQuery.isLoading ? (
+            <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {users.map((u) => {
+                const profileLabels = Array.isArray(u.profiles)
+                  ? u.profiles.map((p) => p?.display_name || p?.name || p).filter(Boolean)
+                  : [u.profiles?.display_name || u.profiles?.name || u.profile || u.profile_name].filter(Boolean);
+                const profileText = profileLabels.length
+                  ? profileLabels.length > 2
+                    ? `${profileLabels[0]}, +${profileLabels.length - 1}`
+                    : profileLabels.join(", ")
+                  : "—";
+                const isSelfCard = Boolean(
+                  (u.id && user?.id && u.id === user.id) ||
+                    (u.user_id && user?.user_id && u.user_id === user.user_id) ||
+                    (u.email && user?.email && u.email === user.email)
+                );
+                const rawActive = u.is_active ?? u.isActive ?? u.active;
+                const hasActiveFlag = typeof rawActive === "boolean";
+                const isActive = hasActiveFlag ? rawActive : true;
+                const deactivateLabel = isActive ? "Deactivate" : "Reactivate";
+                return (
+                  <SoftCard key={u.id || u.user_id || u.email} className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-base font-semibold">{u.name || "—"}</div>
+                          {hasActiveFlag && !isActive ? (
+                            <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-500/20 dark:text-red-200">
+                              Inactive
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="text-sm text-black/55 dark:text-white/60">{u.email}</div>
                       </div>
-                      <div className="text-sm text-black/55 dark:text-white/60">{u.email}</div>
+                      <div className="flex items-center gap-2">
+                        <IconActionButton onClick={() => selectUser(u)} title="Edit user" aria-label="Edit user">
+                          <Pencil size={16} />
+                        </IconActionButton>
+                        <IconActionButton
+                          variant="ghost"
+                          onClick={() =>
+                            setConfirmDelete({
+                              open: true,
+                              type: "user",
+                              payload: { id: u.id || u.user_id, isActive },
+                              label: `${deactivateLabel} user "${u.email}"?`,
+                            })
+                          }
+                          disabled={isSelfCard}
+                          title={isSelfCard ? "You cannot deactivate yourself" : `${deactivateLabel} user`}
+                          aria-label={`${deactivateLabel} user`}
+                          className={
+                            isActive
+                              ? undefined
+                              : "text-emerald-600 hover:text-emerald-700 dark:text-emerald-300"
+                          }
+                        >
+                          {isActive ? <UserRoundX size={16} /> : <UserRoundCheck size={16} />}
+                        </IconActionButton>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <IconActionButton onClick={() => selectUser(u)} title="Edit user" aria-label="Edit user">
-                        <Pencil size={16} />
-                      </IconActionButton>
-                      <IconActionButton
-                        variant="ghost"
-                        onClick={() =>
-                          setConfirmDelete({
-                            open: true,
-                            type: "user",
-                            payload: { id: u.id || u.user_id, isActive },
-                            label: `${deactivateLabel} user "${u.email}"?`,
-                          })
-                        }
-                        disabled={isSelfCard}
-                        title={isSelfCard ? "You cannot deactivate yourself" : `${deactivateLabel} user`}
-                        aria-label={`${deactivateLabel} user`}
-                        className={
-                          isActive
-                            ? undefined
-                            : "text-emerald-600 hover:text-emerald-700 dark:text-emerald-300"
-                        }
-                      >
-                        {isActive ? <UserRoundX size={16} /> : <UserRoundCheck size={16} />}
-                      </IconActionButton>
+                    <div className="text-sm text-black/55 dark:text-white/60">
+                      Profiles: <span className="font-semibold">{profileText}</span>
                     </div>
-                  </div>
-                  <div className="text-sm text-black/55 dark:text-white/60">
-                    Profiles: <span className="font-semibold">{profileText}</span>
-                  </div>
-                  <div className="text-sm text-black/55 dark:text-white/60">
-                    Company:{" "}
-                    <span className="font-semibold">
-                      {u.company?.name || companyLookup.get(u.company?.code || u.company_code || u.company_id) || "—"}
-                    </span>
-                  </div>
-                </SoftCard>
-              );
-            })}
-          </div>
-        )}
+                    <div className="text-sm text-black/55 dark:text-white/60">
+                      Company:{" "}
+                      <span className="font-semibold">
+                        {u.company?.name || companyLookup.get(u.company?.code || u.company_code || u.company_id) || "—"}
+                      </span>
+                    </div>
+                  </SoftCard>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

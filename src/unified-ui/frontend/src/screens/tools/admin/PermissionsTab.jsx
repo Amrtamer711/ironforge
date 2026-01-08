@@ -45,116 +45,127 @@ export function PermissionsTab({
     ...permissionFilterActionOptions.map((opt) => ({ value: opt, label: opt })),
   ];
 
+  const headerContent = (
+    <>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <CardTitle>Permissions</CardTitle>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+          <SearchInput
+            value={permissionSearch}
+            onChange={(e) => setPermissionSearch(e.target.value)}
+            className="w-full sm:w-[220px]"
+          />
+          <Button
+            className="rounded-2xl self-start sm:self-auto"
+            variant="secondary"
+            onClick={() => openPermissionModal("add", "")}
+          >
+            Add permission
+          </Button>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <SelectDropdown
+          value={permissionModuleFilter}
+          options={moduleSelectOptions}
+          onChange={setPermissionModuleFilter}
+        />
+        <SelectDropdown
+          value={permissionServiceFilter}
+          options={serviceSelectOptions}
+          onChange={setPermissionServiceFilter}
+        />
+        <SelectDropdown
+          value={permissionActionFilter}
+          options={actionSelectOptions}
+          onChange={setPermissionActionFilter}
+          className="col-span-2 sm:col-span-1"
+        />
+      </div>
+    </>
+  );
+
   return (
-    <Card>
-      <CardHeader className="space-y-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle>Permissions</CardTitle>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <SearchInput
-              value={permissionSearch}
-              onChange={(e) => setPermissionSearch(e.target.value)}
-              className="w-full sm:w-[220px]"
-            />
-            <Button
-              className="rounded-2xl self-start sm:self-auto"
-              variant="secondary"
-              onClick={() => openPermissionModal("add", "")}
-            >
-              Add permission
-            </Button>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          <SelectDropdown
-            value={permissionModuleFilter}
-            options={moduleSelectOptions}
-            onChange={setPermissionModuleFilter}
-          />
-          <SelectDropdown
-            value={permissionServiceFilter}
-            options={serviceSelectOptions}
-            onChange={setPermissionServiceFilter}
-          />
-          <SelectDropdown
-            value={permissionActionFilter}
-            options={actionSelectOptions}
-            onChange={setPermissionActionFilter}
-            className="col-span-2 sm:col-span-1"
-          />
-        </div>
+    <Card className="h-full min-h-0 flex flex-col">
+      <CardHeader className="hidden md:block space-y-2">
+        {headerContent}
       </CardHeader>
-      <CardContent className="space-y-3">
-        {permissionsQuery.isLoading ? (
-          <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
-        ) : filteredPermissionList.length ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {filteredPermissionList.map((p) => {
-              const parts = parsePermissionParts(p);
-              const description = mergedPermissionDescriptions[p];
-              return (
-                <SoftCard key={p} className="p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="grid grid-cols-1 gap-1 text-sm">
-                      <div className="flex flex-wrap items-baseline gap-1">
-                        <span className="text-xs uppercase tracking-wide text-black/50 dark:text-white/60">Module</span>
-                        <span className="font-semibold text-black/85 dark:text-white/85">{parts.module}</span>
+      <CardContent className="flex-1 min-h-0 overflow-y-auto p-0">
+        <div className="space-y-2 p-5 pb-3 md:hidden">
+          {headerContent}
+        </div>
+        <div className="space-y-3 p-5 pt-1">
+          {permissionsQuery.isLoading ? (
+            <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
+          ) : filteredPermissionList.length ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {filteredPermissionList.map((p) => {
+                const parts = parsePermissionParts(p);
+                const description = mergedPermissionDescriptions[p];
+                return (
+                  <SoftCard key={p} className="p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="grid grid-cols-1 gap-1 text-sm">
+                        <div className="flex flex-wrap items-baseline gap-1">
+                          <span className="text-xs uppercase tracking-wide text-black/50 dark:text-white/60">Module</span>
+                          <span className="font-semibold text-black/85 dark:text-white/85">{parts.module}</span>
+                        </div>
+                        <div className="flex flex-wrap items-baseline gap-1">
+                          <span className="text-xs uppercase tracking-wide text-black/50 dark:text-white/60">
+                            Service
+                          </span>
+                          <span className="font-semibold text-black/85 dark:text-white/85">{parts.service}</span>
+                        </div>
+                        <div className="flex flex-wrap items-baseline gap-1">
+                          <span className="text-xs uppercase tracking-wide text-black/50 dark:text-white/60">
+                            Permission
+                          </span>
+                          <span className="font-semibold text-black/85 dark:text-white/85">{parts.action}</span>
+                        </div>
                       </div>
-                      <div className="flex flex-wrap items-baseline gap-1">
+                      <div className="flex items-center gap-2">
+                        <IconActionButton
+                          onClick={() => openPermissionModal("edit", p)}
+                          title="Edit permission"
+                          aria-label="Edit permission"
+                        >
+                          <Pencil size={16} />
+                        </IconActionButton>
+                        <IconActionButton
+                          variant="ghost"
+                          onClick={() =>
+                            setConfirmDelete({
+                              open: true,
+                              type: "permission",
+                              payload: p,
+                              label: `Delete permission "${p}"?`,
+                            })
+                          }
+                          title="Delete permission"
+                          aria-label="Delete permission"
+                        >
+                          <Trash2 size={16} />
+                        </IconActionButton>
+                      </div>
+                    </div>
+                    {description ? (
+                      <div className="mt-2 flex items-baseline gap-1 text-sm min-w-0">
                         <span className="text-xs uppercase tracking-wide text-black/50 dark:text-white/60">
-                          Service
+                          Description
                         </span>
-                        <span className="font-semibold text-black/85 dark:text-white/85">{parts.service}</span>
+                        <span className="text-black/60 dark:text-white/65 truncate">{description}</span>
                       </div>
-                      <div className="flex flex-wrap items-baseline gap-1">
-                        <span className="text-xs uppercase tracking-wide text-black/50 dark:text-white/60">
-                          Permission
-                        </span>
-                        <span className="font-semibold text-black/85 dark:text-white/85">{parts.action}</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <IconActionButton
-                        onClick={() => openPermissionModal("edit", p)}
-                        title="Edit permission"
-                        aria-label="Edit permission"
-                      >
-                        <Pencil size={16} />
-                      </IconActionButton>
-                      <IconActionButton
-                        variant="ghost"
-                        onClick={() =>
-                          setConfirmDelete({
-                            open: true,
-                            type: "permission",
-                            payload: p,
-                            label: `Delete permission "${p}"?`,
-                          })
-                        }
-                        title="Delete permission"
-                        aria-label="Delete permission"
-                      >
-                        <Trash2 size={16} />
-                      </IconActionButton>
-                    </div>
-                  </div>
-                  {description ? (
-                    <div className="mt-2 flex items-baseline gap-1 text-sm min-w-0">
-                      <span className="text-xs uppercase tracking-wide text-black/50 dark:text-white/60">
-                        Description
-                      </span>
-                      <span className="text-black/60 dark:text-white/65 truncate">{description}</span>
-                    </div>
-                  ) : null}
-                </SoftCard>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-sm text-black/60 dark:text-white/65">
-            {permissionSearch.trim() ? "No matching permissions." : "No permissions available."}
-          </div>
-        )}
+                    ) : null}
+                  </SoftCard>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-sm text-black/60 dark:text-white/65">
+              {permissionSearch.trim() ? "No matching permissions." : "No permissions available."}
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

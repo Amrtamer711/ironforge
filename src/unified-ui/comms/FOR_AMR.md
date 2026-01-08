@@ -35,6 +35,7 @@
 
 ## Authentication
 1. Authentication issue where 401 causes logout within a specific time. maybe token expiry?
+2. Change the Auth redirect to new mmg-nova.com in supabase
 
 ## General
 1. Font issue when the font is not available in the local system.
