@@ -55,7 +55,7 @@ async def check_location_eligibility(
         - proposal_missing_fields: List of fields that need to be filled
         - template_exists: True if template exists in storage
         - mockup_eligible: True if mockup frames exist
-        - mockup_variants: List of available time_of_day/finish combinations
+        - mockup_variants: List of available time_of_day/side combinations
     """
     logger.info(
         f"[INTERNAL] Location eligibility check from {calling_service}: {location_key}"
@@ -141,7 +141,7 @@ async def check_template_exists(
     "/eligibility/mockup-variants/{location_key}",
     response_model=list[MockupVariant],
     summary="Get mockup variants",
-    description="Get available mockup variants (time_of_day/finish combos) for a location.",
+    description="Get available mockup variants (time_of_day/side combos) for a location.",
 )
 async def get_mockup_variants(
     location_key: str,
@@ -155,7 +155,7 @@ async def get_mockup_variants(
     """
     Get available mockup variants for a location.
 
-    Returns a list of time_of_day/finish combinations that have mockup frames
+    Returns a list of time_of_day/side combinations that have mockup frames
     available for the specified location.
     """
     service = get_eligibility_service(company_schemas)

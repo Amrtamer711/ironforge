@@ -125,7 +125,7 @@ class MockupCoordinator:
         self,
         location_name: str,
         time_of_day: str = "all",
-        finish: str = "all",
+        side: str = "all",
         user_id: str = None,
         uploaded_creatives: list[Path] = None,
         ai_prompts: list[str] = None,
@@ -142,7 +142,7 @@ class MockupCoordinator:
         Args:
             location_name: Display name or key of location
             time_of_day: Time filter ("day", "night", "all")
-            finish: Finish filter ("matte", "gloss", "all")
+            side: Side filter ("gold", "silver", "all")
             user_id: User identifier
             uploaded_creatives: List of uploaded creative paths
             ai_prompts: List of AI prompts
@@ -163,17 +163,17 @@ class MockupCoordinator:
             >>> result, creatives, meta, error = await coordinator.generate_mockup(
             ...     location_name="Dubai Gateway",
             ...     time_of_day="all",
-            ...     finish="all",
+            ...     side="all",
             ...     user_id="user123",
             ...     uploaded_creatives=[Path("creative.jpg")]
             ... )
         """
         # Normalize parameters
         time_of_day = (time_of_day or "all").strip().lower()
-        finish = (finish or "all").strip().lower()
+        side = (side or "all").strip().lower()
 
         self.logger.info(f"[COORDINATOR] Generating mockup for {location_name}")
-        self.logger.info(f"[COORDINATOR] Time: {time_of_day}, Finish: {finish}")
+        self.logger.info(f"[COORDINATOR] Time: {time_of_day}, Side: {side}")
 
         # Resolve location (async)
         location_key, error_msg = await self.resolve_location(location_name)
@@ -220,7 +220,7 @@ class MockupCoordinator:
                 location_key=location_key,
                 location_name=location_name,
                 time_of_day=time_of_day,
-                finish=finish,
+                side=side,
                 user_companies=self.user_companies,
                 **request_params  # Includes user_id, uploaded_creatives, ai_prompts
             )

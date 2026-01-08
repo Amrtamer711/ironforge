@@ -32,7 +32,7 @@ class MockupStrategy(ABC):
         location_key: str,
         location_name: str,
         time_of_day: str,
-        finish: str,
+        side: str,
         user_id: str,
         user_companies: list[str],
         **kwargs
@@ -44,7 +44,7 @@ class MockupStrategy(ABC):
             location_key: Canonical location key
             location_name: Display name of location
             time_of_day: Time of day filter ("day", "night", "all")
-            finish: Finish filter ("matte", "gloss", "all")
+            side: Side filter ("gold", "silver", "all")
             user_id: User identifier
             user_companies: List of company schemas user can access
             **kwargs: Strategy-specific parameters
@@ -64,7 +64,7 @@ class MockupStrategy(ABC):
             ...     location_key="dubai_gateway",
             ...     location_name="Dubai Gateway",
             ...     time_of_day="all",
-            ...     finish="all",
+            ...     side="all",
             ...     user_id="user123",
             ...     user_companies=["backlite_dubai"],
             ...     uploaded_creatives=[Path("creative.jpg")]

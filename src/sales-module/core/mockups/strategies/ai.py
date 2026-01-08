@@ -65,7 +65,7 @@ class AIMockupStrategy(MockupStrategy):
         location_key: str,
         location_name: str,
         time_of_day: str,
-        finish: str,
+        side: str,
         user_id: str,
         user_companies: list[str],
         **kwargs
@@ -77,7 +77,7 @@ class AIMockupStrategy(MockupStrategy):
             location_key: Canonical location key
             location_name: Display name
             time_of_day: Time filter
-            finish: Finish filter
+            side: Side filter
             user_id: User identifier
             user_companies: User's accessible companies
             **kwargs: Must include 'ai_prompts' (list[str])
@@ -106,7 +106,7 @@ class AIMockupStrategy(MockupStrategy):
             location_key,
             num_prompts,
             time_of_day,
-            finish
+            side
         )
 
         if not is_valid:
@@ -121,7 +121,7 @@ class AIMockupStrategy(MockupStrategy):
                 ai_prompts=ai_prompts,
                 location_key=location_key,
                 time_of_day=time_of_day,
-                finish=finish,
+                side=side,
                 user_id=user_id,
                 company_schemas=user_companies,
                 company_hint=self.company_hint,
@@ -135,7 +135,7 @@ class AIMockupStrategy(MockupStrategy):
                 "location_key": location_key,
                 "location_name": location_name,
                 "time_of_day": time_of_day,
-                "finish": finish,
+                "side": side,
                 "mode": self.get_mode_name(),
                 "num_frames": num_prompts
             }

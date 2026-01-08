@@ -11,7 +11,7 @@ Usage:
     result_path, creatives, meta, error = await generate_mockup(
         location_name="Dubai Gateway",
         time_of_day="all",
-        finish="all",
+        side="all",
         user_id="user123",
         user_companies=["backlite_dubai"],
         uploaded_creatives=[Path("creative.jpg")],
@@ -62,7 +62,7 @@ __all__ = [
 async def generate_mockup(
     location_name: str,
     time_of_day: str = "all",
-    finish: str = "all",
+    side: str = "all",
     user_id: str = None,
     user_companies: list[str] = None,
     uploaded_creatives: list[Path] = None,
@@ -82,7 +82,7 @@ async def generate_mockup(
     Args:
         location_name: Display name or key of location
         time_of_day: Time filter ("day", "night", "all")
-        finish: Finish filter ("matte", "gloss", "all")
+        side: Side filter ("gold", "silver", "all")
         user_id: User identifier (required for followup mode)
         user_companies: List of company schemas user can access
         uploaded_creatives: List of uploaded creative paths (for upload mode)
@@ -148,7 +148,7 @@ async def generate_mockup(
     return await coordinator.generate_mockup(
         location_name=location_name,
         time_of_day=time_of_day,
-        finish=finish,
+        side=side,
         user_id=user_id,
         uploaded_creatives=uploaded_creatives,
         ai_prompts=ai_prompts,

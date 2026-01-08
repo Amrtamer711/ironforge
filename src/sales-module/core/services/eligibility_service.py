@@ -31,10 +31,10 @@ def _get_logger():
 
 
 class MockupVariant(BaseModel):
-    """A single mockup variant (time_of_day + finish combo)."""
+    """A single mockup variant (time_of_day + side combo)."""
 
     time_of_day: str = Field(..., description="'day' or 'night'")
-    finish: str = Field(..., description="'gold', 'silver', or 'black'")
+    side: str = Field(..., description="'gold', 'silver', or 'black'")
 
 
 class LocationEligibilityResult(BaseModel):
@@ -216,7 +216,7 @@ class EligibilityService:
         # For mockup eligibility, check if any mockup frames exist (via Asset-Management)
         mockup_variations = await self.mockup_frame_service.list_variations(network_key)
         result.mockup_frame_count = sum(
-            len(finishes) for finishes in mockup_variations.values()
+            len(sides) for sides in mockup_variations.values()
         )
         result.mockup_eligible = result.mockup_frame_count > 0
 
@@ -353,15 +353,15 @@ class EligibilityService:
         Build list of MockupVariant from variations dict.
 
         Args:
-            variations: Dict of time_of_day -> list of finishes
+            variations: Dict of time_of_day -> list of sides
 
         Returns:
             List of MockupVariant
         """
         variants = []
-        for time_of_day, finishes in variations.items():
-            for finish in finishes:
-                variants.append(MockupVariant(time_of_day=time_of_day, finish=finish))
+        for time_of_day, sides in variations.items():
+            for side in sides:
+                variants.append(MockupVariant(time_of_day=time_of_day, side=side))
         return variants
 
 

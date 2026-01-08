@@ -19,7 +19,7 @@ logger = config.logger
 async def handle_mockup_generation(
     location_name: str,
     time_of_day: str,
-    finish: str,
+    side: str,
     ai_prompts: list[str],
     user_id: str,
     channel: str,
@@ -44,7 +44,7 @@ async def handle_mockup_generation(
     Args:
         location_name: Display name or key of the location
         time_of_day: Time of day filter (e.g., "day", "night", "all")
-        finish: Finish type filter (e.g., "matte", "gloss", "all")
+        side: Side type filter (e.g., "gold", "silver", "all")
         ai_prompts: List of AI prompts for generation
         user_id: User identifier
         channel: Channel/conversation ID
@@ -64,7 +64,7 @@ async def handle_mockup_generation(
 
     # Normalize parameters
     time_of_day = (time_of_day or "all").strip().lower()
-    finish = (finish or "all").strip().lower()
+    side = (side or "all").strip().lower()
 
     # Clean and validate AI prompts
     if not isinstance(ai_prompts, list):
@@ -86,7 +86,7 @@ async def handle_mockup_generation(
     result_path, creative_paths, metadata, error = await coordinator.generate_mockup(
         location_name=location_name,
         time_of_day=time_of_day,
-        finish=finish,
+        side=side,
         user_id=user_id,
         uploaded_creatives=uploaded_creatives,
         ai_prompts=ai_prompts,
@@ -122,8 +122,8 @@ async def handle_mockup_generation(
     num_frames = metadata.get("num_frames", 1)
 
     variation_info = ""
-    if time_of_day != "all" or finish != "all":
-        variation_info = f" ({time_of_day}/{finish})"
+    if time_of_day != "all" or side != "all":
+        variation_info = f" ({time_of_day}/{side})"
 
     frames_info = f" ({num_frames} frame(s))" if num_frames > 1 else ""
 
@@ -152,7 +152,7 @@ async def handle_mockup_generation(
     await channel_adapter.upload_file(
         channel_id=channel,
         file_path=str(result_path),
-        title=f"mockup_{metadata.get('location_key', location_name)}_{time_of_day}_{finish}.jpg",
+        title=f"mockup_{metadata.get('location_key', location_name)}_{time_of_day}_{side}.jpg",
         comment=comment
     )
 

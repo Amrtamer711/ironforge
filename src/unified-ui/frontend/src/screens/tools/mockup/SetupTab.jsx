@@ -20,10 +20,10 @@ export function SetupTab({
   timeOfDay,
   setTimeOfDay,
   timeOfDayDisabled,
-  finish,
-  setFinish,
+  side,
+  setSide,
   timeOfDayOptions,
-  finishOptions,
+  sideOptions,
   venueTypeOptions,
   editingTemplate,
   editingTemplateLoading,
@@ -154,12 +154,12 @@ export function SetupTab({
                 />
               </FormField>
 
-              <FormField label="Billboard Finish">
+              <FormField label="Billboard Side">
                 <SelectDropdown
-                  value={finish}
-                  options={finishOptions}
-                  placeholder="Select finish"
-                  onChange={(nextValue) => setFinish(nextValue)}
+                  value={side}
+                  options={sideOptions}
+                  placeholder="Select side"
+                  onChange={(nextValue) => setSide(nextValue)}
                   useNativeSelect={useNativeSelects}
                 />
               </FormField>
@@ -169,7 +169,7 @@ export function SetupTab({
               <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/50 dark:bg-white/5 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm">
                   <span className="font-semibold">Editing template:</span> {editingTemplate.photo} (
-                  {editingTemplate.time_of_day}/{editingTemplate.finish})
+                  {editingTemplate.time_of_day}/{editingTemplate.side})
                 </div>
                 <div className="flex items-center gap-2">
                   {editingTemplateLoading ? (
@@ -214,7 +214,7 @@ export function SetupTab({
                       {templateOptions.map((t) => {
                         return (
                           <div
-                            key={`${t.photo}-${t.time_of_day}-${t.finish}`}
+                            key={`${t.photo}-${t.time_of_day}-${t.side}`}
                             className="rounded-xl border border-black/5 dark:border-white/10 bg-white/60 dark:bg-white/5 p-3 text-sm transition flex flex-col"
                           >
                             <div className="overflow-hidden rounded-lg border border-black/5 dark:border-white/10 bg-black/5">
@@ -234,7 +234,7 @@ export function SetupTab({
                             <div className="mt-auto pt-2 space-y-2">
                               <div className="font-semibold truncate">{t.photo}</div>
                               <div className="text-xs text-black/55 dark:text-white/60">
-                                {t.time_of_day}/{t.finish} - {t.frame_count} frame
+                                {t.time_of_day}/{t.side} - {t.frame_count} frame
                                 {t.frame_count > 1 ? "s" : ""}
                               </div>
                               {/* Template actions hidden until fully implemented. */}

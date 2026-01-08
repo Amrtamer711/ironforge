@@ -72,7 +72,7 @@ class MockupFrameService:
 
     Responsibilities:
     - Get mockup frames for a location/photo combination
-    - List available mockup variations (time_of_day/finish combos)
+    - List available mockup variations (time_of_day/side combos)
     - Download mockup photos to temp files for processing
     - Check mockup availability
 
@@ -189,7 +189,7 @@ class MockupFrameService:
             company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
-            Dict mapping time_of_day to list of finishes, e.g.:
+            Dict mapping time_of_day to list of sides, e.g.:
             {"day": ["gold", "silver"], "night": ["gold"]}
         """
         self.logger.info(f"[MOCKUP_FRAME_SERVICE] Listing variations for {location_key}")

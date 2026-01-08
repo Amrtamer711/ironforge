@@ -16,13 +16,14 @@ const TIME_OF_DAY = [
 
 const TIME_OF_DAY_SETUP = TIME_OF_DAY.filter((opt) => opt.value !== "all");
 
-const FINISHES = [
+const SIDES = [
   { value: "all", label: "All (Default)" },
   { value: "gold", label: "Gold" },
   { value: "silver", label: "Silver" },
+  { value: "single_side", label: "Single Side" },
 ];
 
-const FINISHES_SETUP = FINISHES.filter((opt) => opt.value !== "all");
+const SIDES_SETUP = SIDES.filter((opt) => opt.value !== "all");
 
 const VENUE_TYPES = [
   { value: "all", label: "All (Default)" },
@@ -89,7 +90,7 @@ export function MockupPage() {
   const [locations, setLocations] = useState([]);
   const [venueType, setVenueType] = useState("all");
   const [timeOfDay, setTimeOfDay] = useState("all");
-  const [finish, setFinish] = useState("all");
+  const [side, setSide] = useState("all");
   const [templateKey, setTemplateKey] = useState("");
 
   const primaryLocation = locations[0] || "";
@@ -185,11 +186,11 @@ export function MockupPage() {
   });
 
   const templatesQuery = useQuery({
-    queryKey: ["mockup", "templates", primaryLocation, effectiveTimeOfDay, finish, venueType, locations.join("|")],
+    queryKey: ["mockup", "templates", primaryLocation, effectiveTimeOfDay, side, venueType, locations.join("|")],
     queryFn: () =>
       mockupApi.getTemplates(primaryLocation, {
         timeOfDay: effectiveTimeOfDay,
-        finish,
+        side,
         venueType,
         locations,
       }),
@@ -237,11 +238,11 @@ export function MockupPage() {
       if (mode === "setup") {
         setVenueType("");
         setTimeOfDay("");
-        setFinish("");
+        setSide("");
       } else {
         setVenueType("all");
         setTimeOfDay("all");
-        setFinish("all");
+        setSide("all");
       }
       setTemplateKey("");
     }
@@ -281,7 +282,7 @@ export function MockupPage() {
         try {
           url = await mockupApi.getTemplatePhotoBlobUrl(primaryLocation, t.photo, {
             timeOfDay: t.time_of_day || effectiveTimeOfDay,
-            finish: t.finish || finish,
+            side: t.side || side,
           });
         } catch {
           url = "";
@@ -306,7 +307,7 @@ export function MockupPage() {
     return () => {
       active = false;
     };
-  }, [primaryLocation, templateOptions, effectiveTimeOfDay, finish]);
+  }, [primaryLocation, templateOptions, effectiveTimeOfDay, side]);
 
   useEffect(() => {
     return () => {
@@ -394,7 +395,7 @@ export function MockupPage() {
       formData.append("location_keys", JSON.stringify(locations));
       formData.append("venue_type", venueType);
       formData.append("time_of_day", effectiveTimeOfDay || "all");
-      formData.append("finish", finish || "all");
+      formData.append("side", side || "all");
       formData.append("frames_data", JSON.stringify(framesPayload));
       formData.append("photo", setupPhoto);
 
@@ -546,15 +547,15 @@ export function MockupPage() {
       } else {
         setTimeOfDay("");
       }
-      if (template.finish && template.finish !== "all") {
-        setFinish(template.finish);
+      if (template.side && template.side !== "all") {
+        setSide(template.side);
       } else {
-        setFinish("");
+        setSide("");
       }
 
       const photoBlob = await mockupApi.getTemplatePhotoBlob(primaryLocation, template.photo, {
         timeOfDay: template.time_of_day || effectiveTimeOfDay,
-        finish: template.finish || finish,
+        side: template.side || side,
       });
       if (!photoBlob) throw new Error("Failed to load template image");
       const photoUrl = URL.createObjectURL(photoBlob);
@@ -590,7 +591,7 @@ export function MockupPage() {
     setSetupMessage("");
     setSetupError("");
     setTimeOfDay("");
-    setFinish("");
+    setSide("");
     setSetupPhoto(null);
     previewImgRef.current = null;
     setSetupImageReady(false);
@@ -1597,10 +1598,10 @@ export function MockupPage() {
             timeOfDay={timeOfDay}
             setTimeOfDay={setTimeOfDay}
             timeOfDayDisabled={timeOfDayDisabled}
-            finish={finish}
-            setFinish={setFinish}
+            side={side}
+            setSide={setSide}
             timeOfDayOptions={TIME_OF_DAY}
-            finishOptions={FINISHES}
+            sideOptions={SIDES}
             venueTypeOptions={VENUE_TYPES}
             templateOptions={templateOptions}
             templatesQuery={templatesQuery}
@@ -1627,10 +1628,10 @@ export function MockupPage() {
             timeOfDay={timeOfDay}
             setTimeOfDay={setTimeOfDay}
             timeOfDayDisabled={timeOfDayDisabled}
-            finish={finish}
-            setFinish={setFinish}
+            side={side}
+            setSide={setSide}
             timeOfDayOptions={TIME_OF_DAY_SETUP}
-            finishOptions={FINISHES_SETUP}
+            sideOptions={SIDES_SETUP}
             venueTypeOptions={VENUE_TYPES_SETUP}
             editingTemplate={editingTemplate}
             editingTemplateLoading={editingTemplateLoading}
@@ -1897,7 +1898,7 @@ function RangeField({ label, value, min, max, step = 1, suffix = "", helper, onC
 }
 
 function getTemplateKey(template) {
-  return `${template.photo}::${template.time_of_day || "all"}::${template.finish || "all"}`;
+  return `${template.photo}::${template.time_of_day || "all"}::${template.side || "all"}`;
 }
 
 function detectGreenScreen(imageData, { color, tolerance, depthMultiplier, existingFrames }) {

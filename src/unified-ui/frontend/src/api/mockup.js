@@ -6,10 +6,10 @@ export async function getLocations() {
   return apiRequest("/api/sales/mockup/locations");
 }
 
-export async function getTemplates(location, { timeOfDay, finish, venueType, locations } = {}) {
+export async function getTemplates(location, { timeOfDay, side, venueType, locations } = {}) {
   const params = new URLSearchParams();
   if (timeOfDay) params.set("time_of_day", timeOfDay);
-  if (finish) params.set("finish", finish);
+  if (side) params.set("side", side);
   if (venueType) params.set("venue_type", venueType);
 
   const locationList = Array.isArray(locations) ? locations : Array.isArray(location) ? location : [];
@@ -51,17 +51,17 @@ export async function getHistory() {
   return apiRequest("/api/sales/mockup/history");
 }
 
-export async function getTemplatePhotoBlob(location, photo, { timeOfDay, finish } = {}) {
+export async function getTemplatePhotoBlob(location, photo, { timeOfDay, side } = {}) {
   if (!location || !photo) return null;
   const params = new URLSearchParams();
   if (timeOfDay) params.set("time_of_day", timeOfDay);
-  if (finish) params.set("finish", finish);
+  if (side) params.set("side", side);
   const query = params.toString();
   const path = `/api/sales/mockup/photo/${encodeURIComponent(location)}/${encodeURIComponent(photo)}${query ? `?${query}` : ""}`;
   return apiBlob(path);
 }
 
-export async function getTemplatePhotoBlobUrl(location, photo, { timeOfDay, finish } = {}) {
-  const blob = await getTemplatePhotoBlob(location, photo, { timeOfDay, finish });
+export async function getTemplatePhotoBlobUrl(location, photo, { timeOfDay, side } = {}) {
+  const blob = await getTemplatePhotoBlob(location, photo, { timeOfDay, side });
   return blob ? URL.createObjectURL(blob) : "";
 }

@@ -591,7 +591,7 @@ class SQLiteBackend(DatabaseBackend):
         company_schema: str,  # Ignored in SQLite - single database
         created_by: str | None = None,
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         config: dict | None = None,
     ) -> str:
         conn = self._connect()
@@ -627,10 +627,10 @@ class SQLiteBackend(DatabaseBackend):
 
             conn.execute(
                 """
-                INSERT INTO mockup_frames (location_key, time_of_day, finish, photo_filename, frames_data, created_at, created_by, config_json)
+                INSERT INTO mockup_frames (location_key, time_of_day, side, photo_filename, frames_data, created_at, created_by, config_json)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (location_key, time_of_day, finish, final_filename, json.dumps(frames_data), datetime.now().isoformat(), created_by, config_json),
+                (location_key, time_of_day, side, final_filename, json.dumps(frames_data), datetime.now().isoformat(), created_by, config_json),
             )
 
             conn.execute("COMMIT")
@@ -649,14 +649,14 @@ class SQLiteBackend(DatabaseBackend):
         photo_filename: str,
         company_schema: str,  # Ignored in SQLite - single database
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
     ) -> None:
         conn = self._connect()
         try:
             conn.execute("BEGIN")
             conn.execute(
-                "DELETE FROM mockup_frames WHERE location_key = ? AND time_of_day = ? AND finish = ? AND photo_filename = ?",
-                (location_key, time_of_day, finish, photo_filename)
+                "DELETE FROM mockup_frames WHERE location_key = ? AND time_of_day = ? AND side = ? AND photo_filename = ?",
+                (location_key, time_of_day, side, photo_filename)
             )
             conn.execute("COMMIT")
             logger.info(f"[SQLITE] Deleted mockup frame: {location_key}/{photo_filename}")
@@ -675,7 +675,7 @@ class SQLiteBackend(DatabaseBackend):
         self,
         location_key: str,
         time_of_day: str,
-        finish: str,
+        side: str,
         photo_used: str,
         creative_type: str,
         company_schema: str,  # Ignored in SQLite - single database
@@ -689,10 +689,10 @@ class SQLiteBackend(DatabaseBackend):
             conn.execute("BEGIN")
             conn.execute(
                 """
-                INSERT INTO mockup_usage (generated_at, location_key, time_of_day, finish, photo_used, creative_type, ai_prompt, template_selected, success, user_ip)
+                INSERT INTO mockup_usage (generated_at, location_key, time_of_day, side, photo_used, creative_type, ai_prompt, template_selected, success, user_ip)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (datetime.now().isoformat(), location_key, time_of_day, finish, photo_used, creative_type, ai_prompt, 1 if template_selected else 0, 1 if success else 0, user_ip),
+                (datetime.now().isoformat(), location_key, time_of_day, side, photo_used, creative_type, ai_prompt, 1 if template_selected else 0, 1 if success else 0, user_ip),
             )
             conn.execute("COMMIT")
             logger.debug(f"[SQLITE] Logged mockup usage: {location_key}/{photo_used}")

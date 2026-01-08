@@ -64,7 +64,7 @@ class UploadMockupStrategy(MockupStrategy):
         location_key: str,
         location_name: str,
         time_of_day: str,
-        finish: str,
+        side: str,
         user_id: str,
         user_companies: list[str],
         **kwargs
@@ -76,7 +76,7 @@ class UploadMockupStrategy(MockupStrategy):
             location_key: Canonical location key
             location_name: Display name
             time_of_day: Time filter
-            finish: Finish filter
+            side: Side filter
             user_id: User identifier
             user_companies: User's accessible companies
             **kwargs: Must include 'uploaded_creatives' (list[Path])
@@ -99,7 +99,7 @@ class UploadMockupStrategy(MockupStrategy):
             location_key,
             len(uploaded_creatives),
             time_of_day,
-            finish
+            side
         )
 
         if not is_valid:
@@ -112,7 +112,7 @@ class UploadMockupStrategy(MockupStrategy):
                 location_key,
                 uploaded_creatives,
                 time_of_day=time_of_day,
-                finish=finish,
+                side=side,
                 company_schemas=user_companies,
                 company_hint=self.company_hint,
             )
@@ -125,7 +125,7 @@ class UploadMockupStrategy(MockupStrategy):
                 "location_key": location_key,
                 "location_name": location_name,
                 "time_of_day": time_of_day,
-                "finish": finish,
+                "side": side,
                 "mode": self.get_mode_name(),
                 "num_frames": frame_count or 1
             }

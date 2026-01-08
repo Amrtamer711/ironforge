@@ -70,7 +70,7 @@ class MockupFrame:
     photo_filename: str
     frames_data: list[dict]
     time_of_day: str = "day"
-    finish: str = "gold"
+    side: str = "gold"
     created_at: str | None = None
     created_by: str | None = None
     config: dict | None = None
@@ -261,7 +261,7 @@ class DatabaseBackend(ABC):
         company_schema: str,
         created_by: str | None = None,
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         config: dict | None = None,
     ) -> str:
         """Save mockup frame data to company-specific schema. Returns the final filename."""
@@ -274,7 +274,7 @@ class DatabaseBackend(ABC):
         photo_filename: str,
         company_schema: str,
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
     ) -> None:
         """Delete a mockup frame from company-specific schema."""
         pass
@@ -288,7 +288,7 @@ class DatabaseBackend(ABC):
         self,
         location_key: str,
         time_of_day: str,
-        finish: str,
+        side: str,
         photo_used: str,
         creative_type: str,
         company_schema: str,

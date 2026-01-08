@@ -11,7 +11,7 @@ import { cn, normalizeFrameConfig } from "../../../lib/utils";
 function useGenerateActions({
   locations,
   timeOfDay,
-  finish,
+  side,
   templateOptions,
   getTemplateKey,
   defaultFrameConfig,
@@ -82,7 +82,7 @@ function useGenerateActions({
 
   useEffect(() => {
     if (templateKey) setTemplateKey("");
-  }, [finish, timeOfDay, locations, venueType, timeOfDayDisabled]);
+  }, [side, timeOfDay, locations, venueType, timeOfDayDisabled]);
 
   useEffect(() => {
     resultsRef.current = lastResults;
@@ -107,12 +107,12 @@ function useGenerateActions({
 
       if (selectedTemplate) {
         formData.append("time_of_day", selectedTemplate.time_of_day || resolvedTimeOfDay || "all");
-        formData.append("finish", selectedTemplate.finish || finish || "all");
+        formData.append("side", selectedTemplate.side || side || "all");
         formData.append("specific_photo", selectedTemplate.photo);
         formData.append("frame_config", JSON.stringify(genFrameConfig));
       } else {
         formData.append("time_of_day", resolvedTimeOfDay || "all");
-        formData.append("finish", finish || "all");
+        formData.append("side", side || "all");
       }
 
       if (aiPrompt.trim()) {
@@ -175,10 +175,10 @@ export function GenerateTab({
   timeOfDay,
   setTimeOfDay,
   timeOfDayDisabled,
-  finish,
-  setFinish,
+  side,
+  setSide,
   timeOfDayOptions,
-  finishOptions,
+  sideOptions,
   venueTypeOptions,
   templateKey,
   templateOptions,
@@ -215,7 +215,7 @@ export function GenerateTab({
     setLocations([]);
     setVenueType("all");
     setTimeOfDay("all");
-    setFinish("all");
+    setSide("all");
     setTemplateKey("");
     setCreativeFile(null);
     setAiPrompt("");
@@ -266,11 +266,11 @@ export function GenerateTab({
             />
           </FormField>
 
-          <FormField label="Billboard Finish">
+          <FormField label="Billboard Side">
             <SelectDropdown
-              value={finish}
-              options={finishOptions}
-              onChange={(nextValue) => setFinish(nextValue)}
+              value={side}
+              options={sideOptions}
+              onChange={(nextValue) => setSide(nextValue)}
               useNativeSelect={useNativeSelects}
             />
           </FormField>
@@ -329,7 +329,7 @@ export function GenerateTab({
                       <div className="mt-auto pt-2 space-y-1">
                         <div className="font-semibold truncate">{t.photo}</div>
                         <div className="text-xs text-black/55 dark:text-white/60">
-                          {t.time_of_day}/{t.finish} - {t.frame_count} frame
+                          {t.time_of_day}/{t.side} - {t.frame_count} frame
                           {t.frame_count > 1 ? "s" : ""}
                         </div>
                       </div>
