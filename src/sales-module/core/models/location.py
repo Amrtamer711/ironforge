@@ -106,7 +106,7 @@ class Location(BaseModel):
             location_key=data.get("location_key", ""),
             display_name=data.get("display_name", data.get("location_key", "")),
             display_type=data.get("display_type", "unknown"),
-            company_schema=data.get("company_schema", "unknown"),
+            company_schema=data.get("company_schema") or data.get("company") or "unknown",
             series=data.get("series"),
             city=data.get("city"),
             area=data.get("area"),
