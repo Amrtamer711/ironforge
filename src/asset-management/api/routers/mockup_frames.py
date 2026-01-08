@@ -26,8 +26,9 @@ router = APIRouter(
 class MockupFrameInfo(BaseModel):
     """Mockup frame info."""
     location_key: str
+    environment: str = "outdoor"  # "indoor" or "outdoor"
     time_of_day: str
-    finish: str
+    side: str  # "gold", "silver", or "single_side"
     photo_filename: str
     frames_data: list[dict[str, Any]]
     config: dict[str, Any] | None = None
@@ -36,8 +37,9 @@ class MockupFrameInfo(BaseModel):
 class MockupFrameDetail(BaseModel):
     """Detailed mockup frame response."""
     location_key: str
+    environment: str = "outdoor"  # "indoor" or "outdoor"
     time_of_day: str
-    finish: str
+    side: str  # "gold", "silver", or "single_side"
     photo_filename: str
     frames_data: list[dict[str, Any]]
     config: dict[str, Any] | None = None
@@ -76,8 +78,9 @@ async def list_mockup_frames(company: str, location_key: str) -> list[dict[str, 
 async def get_mockup_frame(
     company: str,
     location_key: str,
+    environment: str = Query(default="outdoor"),
     time_of_day: str = Query(default="day"),
-    finish: str = Query(default="gold"),
+    side: str = Query(default="gold"),
     photo_filename: str | None = Query(default=None),
 ) -> dict[str, Any] | None:
     """
@@ -88,8 +91,9 @@ async def get_mockup_frame(
     Args:
         company: Company schema
         location_key: Location identifier
-        time_of_day: "day" or "night"
-        finish: "gold", "silver", or "black"
+        environment: "indoor" or "outdoor" (default outdoor)
+        time_of_day: "day" or "night" (ignored for indoor)
+        side: "gold", "silver", or "single_side" (ignored for indoor)
         photo_filename: Specific photo (optional)
 
     Returns:
@@ -97,15 +101,16 @@ async def get_mockup_frame(
     """
     logger.info(
         f"[MOCKUP_FRAMES] Getting frame for {company}/{location_key} "
-        f"({time_of_day}/{finish}/{photo_filename or 'any'})"
+        f"({environment}/{time_of_day}/{side}/{photo_filename or 'any'})"
     )
 
     try:
         frame = db.get_mockup_frame(
             location_key=location_key,
             company=company,
+            environment=environment,
             time_of_day=time_of_day,
-            finish=finish,
+            side=side,
             photo_filename=photo_filename,
         )
 
@@ -124,10 +129,32 @@ class SaveResponse(BaseModel):
     success: bool
     photo_filename: str
     location_key: str
+    environment: str
     time_of_day: str
-    finish: str
+    side: str
     frames_count: int
     storage_url: str | None = None
+
+
+def _build_mockup_storage_key(
+    company: str,
+    location_key: str,
+    environment: str,
+    time_of_day: str,
+    side: str,
+    filename: str,
+) -> str:
+    """
+    Build mockup storage key based on environment.
+
+    Structure:
+    - Outdoor: {company}/{location_key}/outdoor/{time_of_day}/{side}/{filename}
+    - Indoor: {company}/{location_key}/indoor/{filename}
+    """
+    if environment == "indoor":
+        return f"{company}/{location_key}/indoor/{filename}"
+    else:
+        return f"{company}/{location_key}/outdoor/{time_of_day}/{side}/{filename}"
 
 
 @router.post("/{company}/{location_key}", response_model=SaveResponse)
@@ -135,8 +162,9 @@ async def save_mockup_frame(
     company: str,
     location_key: str,
     frames_data: str = Form(..., description="JSON array of frame data"),
+    environment: str = Form(default="outdoor"),
     time_of_day: str = Form(default="day"),
-    finish: str = Form(default="gold"),
+    side: str = Form(default="gold"),
     photo: UploadFile = File(...),
     config_json: str | None = Form(default=None),
     created_by: str | None = Form(default=None),
@@ -148,8 +176,9 @@ async def save_mockup_frame(
         company: Company schema (e.g., "backlite_dubai")
         location_key: Location identifier
         frames_data: JSON array of frame coordinate data
-        time_of_day: "day" or "night"
-        finish: "gold" or "silver"
+        environment: "indoor" or "outdoor" (default outdoor)
+        time_of_day: "day" or "night" (ignored for indoor)
+        side: "gold", "silver", or "single_side" (ignored for indoor)
         photo: The billboard photo file
         config_json: Optional JSON config
         created_by: User email who created this
@@ -159,14 +188,23 @@ async def save_mockup_frame(
     """
     logger.info(
         f"[MOCKUP_FRAMES] Saving frame for {company}/{location_key} "
-        f"({time_of_day}/{finish}/{photo.filename})"
+        f"({environment}/{time_of_day}/{side}/{photo.filename})"
     )
 
-    # Validate time_of_day and finish
-    if time_of_day not in {"day", "night"}:
-        raise HTTPException(status_code=400, detail=f"Invalid time_of_day: {time_of_day}")
-    if finish not in {"gold", "silver"}:
-        raise HTTPException(status_code=400, detail=f"Invalid finish: {finish}")
+    # Validate environment
+    if environment not in {"indoor", "outdoor"}:
+        raise HTTPException(status_code=400, detail=f"Invalid environment: {environment}")
+
+    # Validate time_of_day and side for outdoor
+    if environment == "outdoor":
+        if time_of_day not in {"day", "night"}:
+            raise HTTPException(status_code=400, detail=f"Invalid time_of_day: {time_of_day}")
+        if side not in {"gold", "silver", "single_side"}:
+            raise HTTPException(status_code=400, detail=f"Invalid side: {side}")
+    else:
+        # For indoor, set defaults (they're ignored in path)
+        time_of_day = "day"
+        side = "gold"
 
     try:
         # Parse frames data
@@ -188,8 +226,9 @@ async def save_mockup_frame(
             photo_filename=photo.filename,
             frames_data=frames,
             company_schema=company,
+            environment=environment,
             time_of_day=time_of_day,
-            finish=finish,
+            side=side,
             created_by=created_by,
             config=config_dict,
         )
@@ -200,7 +239,9 @@ async def save_mockup_frame(
             from db.database import _backend
             if hasattr(_backend, '_get_client'):
                 client = _backend._get_client()
-                storage_key = f"{company}/{location_key}/{time_of_day}/{finish}/{final_filename}"
+                storage_key = _build_mockup_storage_key(
+                    company, location_key, environment, time_of_day, side, final_filename
+                )
                 content_type = photo.content_type or "image/jpeg"
 
                 # Upload to mockups bucket
@@ -224,8 +265,9 @@ async def save_mockup_frame(
             "success": True,
             "photo_filename": final_filename,
             "location_key": location_key,
+            "environment": environment,
             "time_of_day": time_of_day,
-            "finish": finish,
+            "side": side,
             "frames_count": len(frames),
             "storage_url": storage_url,
         }
@@ -251,8 +293,9 @@ async def delete_mockup_frame(
     company: str,
     location_key: str,
     photo_filename: str = Query(..., description="Photo filename to delete"),
+    environment: str = Query(default="outdoor"),
     time_of_day: str = Query(default="day"),
-    finish: str = Query(default="gold"),
+    side: str = Query(default="gold"),
 ) -> dict[str, Any]:
     """
     Delete a mockup frame.
@@ -261,15 +304,16 @@ async def delete_mockup_frame(
         company: Company schema
         location_key: Location identifier
         photo_filename: Photo filename to delete
-        time_of_day: "day" or "night"
-        finish: "gold", "silver", or "black"
+        environment: "indoor" or "outdoor" (default outdoor)
+        time_of_day: "day" or "night" (ignored for indoor)
+        side: "gold", "silver", or "single_side" (ignored for indoor)
 
     Returns:
         Delete result
     """
     logger.info(
         f"[MOCKUP_FRAMES] Deleting frame for {company}/{location_key} "
-        f"({time_of_day}/{finish}/{photo_filename})"
+        f"({environment}/{time_of_day}/{side}/{photo_filename})"
     )
 
     try:
@@ -277,8 +321,9 @@ async def delete_mockup_frame(
             location_key=location_key,
             company=company,
             photo_filename=photo_filename,
+            environment=environment,
             time_of_day=time_of_day,
-            finish=finish,
+            side=side,
         )
 
         if success:

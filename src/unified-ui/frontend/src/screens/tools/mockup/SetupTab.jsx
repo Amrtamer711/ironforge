@@ -3,22 +3,28 @@ import { ChevronDown } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { FormField } from "../../../components/ui/form-field";
+import { MultiSelect } from "../../../components/ui/multi-select";
 import { SoftCard } from "../../../components/ui/soft-card";
 import { LoadingEllipsis } from "../../../components/ui/loading-ellipsis";
+import { SelectDropdown } from "../../../components/ui/select-dropdown";
 import { cn } from "../../../lib/utils";
 
 export function SetupTab({
-  location,
-  setLocation,
+  locations,
+  setLocations,
+  venueType,
+  setVenueType,
   setTemplateKey,
   locationOptions,
   locationsQuery,
   timeOfDay,
   setTimeOfDay,
-  finish,
-  setFinish,
+  timeOfDayDisabled,
+  side,
+  setSide,
   timeOfDayOptions,
-  finishOptions,
+  sideOptions,
+  venueTypeOptions,
   editingTemplate,
   editingTemplateLoading,
   stopEditTemplate,
@@ -95,6 +101,7 @@ export function SetupTab({
   clearAllFrames,
   currentPoints,
   frameCount,
+  useNativeSelects,
 }) {
   return (
     <Card>
@@ -104,23 +111,21 @@ export function SetupTab({
       <CardContent className="space-y-4">
         <div className="space-y-4">
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <FormField label="Location">
-                <select
-                  className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                  value={location}
-                  onChange={(e) => {
-                    setLocation(e.target.value);
+                <MultiSelect
+                  value={locations}
+                  onChange={(next) => {
+                    setLocations(next);
                     setTemplateKey("");
                   }}
-                >
-                  <option value="">Select a location</option>
-                  {locationOptions.map((loc) => (
-                    <option key={loc.key} value={loc.key}>
-                      {loc.name}
-                    </option>
-                  ))}
-                </select>
+                  options={locationOptions.map((loc) => {
+                    const value = loc?.key ?? loc?.id ?? loc?.value ?? loc;
+                    const label = loc?.name ?? loc?.label ?? value;
+                    return { value, label };
+                  })}
+                  placeholder="Select locations"
+                />
                 {locationsQuery.isLoading ? (
                   <div className="mt-1 text-xs text-black/50 dark:text-white/60">
                     <LoadingEllipsis text="Loading locations" />
@@ -128,32 +133,35 @@ export function SetupTab({
                 ) : null}
               </FormField>
 
-              <FormField label="Time of Day">
-                <select
-                  className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                  value={timeOfDay}
-                  onChange={(e) => setTimeOfDay(e.target.value)}
-                >
-                  {timeOfDayOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+              <FormField label="Venue Type">
+                <SelectDropdown
+                  value={venueType}
+                  options={venueTypeOptions}
+                  placeholder="Select venue type"
+                  onChange={(nextValue) => setVenueType(nextValue)}
+                  useNativeSelect={useNativeSelects}
+                />
               </FormField>
 
-              <FormField label="Billboard Finish">
-                <select
-                  className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                  value={finish}
-                  onChange={(e) => setFinish(e.target.value)}
-                >
-                  {finishOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+              <FormField label="Time of Day">
+                <SelectDropdown
+                  value={timeOfDay}
+                  options={timeOfDayOptions}
+                  placeholder="Select time of day"
+                  onChange={(nextValue) => setTimeOfDay(nextValue)}
+                  disabled={timeOfDayDisabled}
+                  useNativeSelect={useNativeSelects}
+                />
+              </FormField>
+
+              <FormField label="Billboard Side">
+                <SelectDropdown
+                  value={side}
+                  options={sideOptions}
+                  placeholder="Select side"
+                  onChange={(nextValue) => setSide(nextValue)}
+                  useNativeSelect={useNativeSelects}
+                />
               </FormField>
             </div>
 
@@ -161,7 +169,7 @@ export function SetupTab({
               <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/50 dark:bg-white/5 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
                 <div className="text-sm">
                   <span className="font-semibold">Editing template:</span> {editingTemplate.photo} (
-                  {editingTemplate.time_of_day}/{editingTemplate.finish})
+                  {editingTemplate.time_of_day}/{editingTemplate.side})
                 </div>
                 <div className="flex items-center gap-2">
                   {editingTemplateLoading ? (
@@ -184,9 +192,9 @@ export function SetupTab({
                   <div>
                     <div className="text-sm font-semibold text-black/80 dark:text-white/85">Existing templates</div>
                     <div className="text-xs text-black/55 dark:text-white/60">
-                      {location
+                      {locations.length
                         ? `${templateOptions.length} template${templateOptions.length === 1 ? "" : "s"}`
-                        : "Select a location to load templates."}
+                        : "Select at least one location to load templates."}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-black/50 dark:text-white/55">
@@ -199,14 +207,14 @@ export function SetupTab({
                     {templatesQuery.isLoading ? (
                       <LoadingEllipsis text="Loading templates" className="text-sm text-black/60 dark:text-white/65" />
                     ) : null}
-                    {!templatesQuery.isLoading && (!templateOptions.length || !location) ? (
+                    {!templatesQuery.isLoading && (!templateOptions.length || !locations.length) ? (
                       <div className="text-sm text-black/60 dark:text-white/65">No templates for this selection.</div>
                     ) : null}
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
                       {templateOptions.map((t) => {
                         return (
                           <div
-                            key={`${t.photo}-${t.time_of_day}-${t.finish}`}
+                            key={`${t.photo}-${t.time_of_day}-${t.side}`}
                             className="rounded-xl border border-black/5 dark:border-white/10 bg-white/60 dark:bg-white/5 p-3 text-sm transition flex flex-col"
                           >
                             <div className="overflow-hidden rounded-lg border border-black/5 dark:border-white/10 bg-black/5">
@@ -226,7 +234,7 @@ export function SetupTab({
                             <div className="mt-auto pt-2 space-y-2">
                               <div className="font-semibold truncate">{t.photo}</div>
                               <div className="text-xs text-black/55 dark:text-white/60">
-                                {t.time_of_day}/{t.finish} - {t.frame_count} frame
+                                {t.time_of_day}/{t.side} - {t.frame_count} frame
                                 {t.frame_count > 1 ? "s" : ""}
                               </div>
                               {/* Template actions hidden until fully implemented. */}
@@ -298,7 +306,7 @@ export function SetupTab({
                   </label>
                 )}
               </FormField>
-              <FormField label="Frames JSON">
+              <FormField label="Frames Data">
                 <textarea
                   className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10 dark:focus:ring-white/15 min-h-[120px] font-mono"
                   value={framesJson}
@@ -567,7 +575,7 @@ export function SetupTab({
           <Button variant="secondary" className="rounded-2xl" onClick={resetCurrentFrame}>
             Reset Current Frame
           </Button>
-          <Button className="rounded-2xl" onClick={saveSetup} disabled={setupSaving || !location || !setupPhoto}>
+          <Button className="rounded-2xl" onClick={saveSetup} disabled={setupSaving || !locations.length || !setupPhoto}>
             {setupSaving ? (
               <LoadingEllipsis text="Saving" />
             ) : editingTemplate ? (

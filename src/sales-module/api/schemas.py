@@ -23,10 +23,11 @@ class TimeOfDay(str, Enum):
     ALL = "all"
 
 
-class FinishType(str, Enum):
-    """Valid finish types for mockups."""
+class SideType(str, Enum):
+    """Valid side types for mockups."""
     GOLD = "gold"
     SILVER = "silver"
+    SINGLE_SIDE = "single_side"
     ALL = "all"
 
 
@@ -109,7 +110,7 @@ class MockupGenerateRequest(BaseModel):
     """Request for mockup generation."""
     location_key: str = Field(..., min_length=1, max_length=100, description="Location identifier")
     time_of_day: TimeOfDay = Field(default=TimeOfDay.ALL, description="Time of day variant")
-    finish: FinishType = Field(default=FinishType.ALL, description="Finish type variant")
+    side: SideType = Field(default=SideType.ALL, description="Side type variant")
     ai_prompt: str | None = Field(None, max_length=2000, description="AI prompt for generation")
     specific_photo: str | None = Field(None, max_length=255, description="Specific photo filename")
     frame_config: dict[str, Any] | None = Field(None, description="Override frame config")
@@ -128,7 +129,7 @@ class SaveFrameRequest(BaseModel):
     """Request to save a mockup frame."""
     location_key: str = Field(..., min_length=1, max_length=100)
     time_of_day: TimeOfDay = Field(default=TimeOfDay.DAY)
-    finish: FinishType = Field(default=FinishType.GOLD)
+    side: SideType = Field(default=SideType.GOLD)
     frames: list[FrameData] = Field(..., min_length=1, description="List of frames with points")
     config: dict[str, Any] | None = Field(None, description="Global config for all frames")
 

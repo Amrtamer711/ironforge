@@ -947,7 +947,7 @@ async def store_mockup_file(
     filename: str,
     location_key: str,
     time_of_day: str = "day",
-    finish: str = "gold",
+    side: str = "gold",
     file_type: str = "mockup_image",
     content_type: str | None = None,
     user_id: str | None = None,
@@ -962,7 +962,7 @@ async def store_mockup_file(
         filename: Filename for the mockup
         location_key: Location identifier (e.g., "DUBAI_MALL_01")
         time_of_day: "day" or "night"
-        finish: Billboard finish (e.g., "gold", "silver")
+        side: Billboard side (e.g., "gold", "silver")
         file_type: Type (e.g., "mockup_image", "location_photo")
         content_type: MIME type
         user_id: User who created the mockup (optional)
@@ -1019,10 +1019,10 @@ async def store_mockup_file(
     if not content_type:
         content_type = get_mime_type(filename)
 
-    # Generate storage key: {location_key}/{time_of_day}/{finish}/{file_id}_{filename}
+    # Generate storage key: {location_key}/{time_of_day}/{side}/{file_id}_{filename}
     # Note: bucket is already "mockups", so don't include it in the key
     safe_filename = "".join(c if c.isalnum() or c in "._-" else "_" for c in filename)
-    storage_key = f"{location_key}/{time_of_day}/{finish}/{file_id}_{safe_filename}"
+    storage_key = f"{location_key}/{time_of_day}/{side}/{file_id}_{safe_filename}"
     bucket = StorageType.MOCKUPS.value
 
     try:
@@ -1048,7 +1048,7 @@ async def store_mockup_file(
             "file_id": file_id,
             "location_key": location_key,
             "time_of_day": time_of_day,
-            "finish": finish,
+            "side": side,
             "photo_filename": filename,
             "original_filename": filename,
             "storage_provider": storage.provider_name,
@@ -1212,7 +1212,7 @@ async def soft_delete_mockup_by_location(
     location_key: str,
     photo_filename: str,
     time_of_day: str = "day",
-    finish: str = "gold",
+    side: str = "gold",
 ) -> bool:
     """
     Soft-delete a mockup file by location info (for delete_location_photo).
@@ -1221,7 +1221,7 @@ async def soft_delete_mockup_by_location(
         location_key: Location identifier
         photo_filename: Original photo filename
         time_of_day: "day" or "night"
-        finish: Billboard finish
+        side: Billboard side
 
     Returns:
         True if deleted
@@ -1240,7 +1240,7 @@ async def soft_delete_mockup_by_location(
         ).eq(
             "time_of_day", time_of_day
         ).eq(
-            "finish", finish
+            "side", side
         ).eq(
             "is_deleted", False
         ).execute()

@@ -752,7 +752,7 @@ class SupabaseBackend(DatabaseBackend):
         company_schema: str,
         created_by: str | None = None,
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         config: dict | None = None,
     ) -> str:
         """Save mockup frame to company-specific schema."""
@@ -786,7 +786,7 @@ class SupabaseBackend(DatabaseBackend):
             client.schema(company_schema).table("mockup_frames").insert({
                 "location_key": location_key,
                 "time_of_day": time_of_day,
-                "finish": finish,
+                "side": side,
                 "photo_filename": final_filename,
                 "frames_data": json.dumps(frames_data),
                 "created_at": datetime.now().isoformat(),
@@ -809,12 +809,12 @@ class SupabaseBackend(DatabaseBackend):
         photo_filename: str,
         company_schema: str,
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
     ) -> None:
         """Delete mockup frame from company-specific schema."""
         try:
             client = self._get_client()
-            client.schema(company_schema).table("mockup_frames").delete().eq("location_key", location_key).eq("time_of_day", time_of_day).eq("finish", finish).eq("photo_filename", photo_filename).execute()
+            client.schema(company_schema).table("mockup_frames").delete().eq("location_key", location_key).eq("time_of_day", time_of_day).eq("side", side).eq("photo_filename", photo_filename).execute()
 
             # Invalidate frames cache for this location
             _run_async(self._cache_delete_pattern(f"frames:{location_key.lower()}:*"))
@@ -832,7 +832,7 @@ class SupabaseBackend(DatabaseBackend):
         self,
         location_key: str,
         time_of_day: str,
-        finish: str,
+        side: str,
         photo_used: str,
         creative_type: str,
         company_schema: str,
@@ -848,7 +848,7 @@ class SupabaseBackend(DatabaseBackend):
                 "generated_at": datetime.now().isoformat(),
                 "location_key": location_key,
                 "time_of_day": time_of_day,
-                "finish": finish,
+                "side": side,
                 "photo_used": photo_used,
                 "creative_type": creative_type,
                 "ai_prompt": ai_prompt,

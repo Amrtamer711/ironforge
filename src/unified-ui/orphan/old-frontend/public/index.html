@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MMG - Unified Platform</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <!-- Floating Particles -->
+  <div class="particle particle-1"></div>
+  <div class="particle particle-2"></div>
+  <div class="particle particle-3"></div>
+  <div class="particle particle-4"></div>
+  <div class="particle particle-5"></div>
+  <div class="particle particle-6"></div>
+  <div class="particle particle-7"></div>
+
+  <!-- Cursor Glow Effect -->
+  <div class="cursor-glow" id="cursorGlow"></div>
+
+  <!-- Loading Screen - Shown while checking auth -->
+  <div id="loadingScreen" class="loading-screen">
+    <div class="loading-spinner"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════════
+       LANDING PAGE - Shown before login
+       ═══════════════════════════════════════════════════════════════════════════════ -->
+  <div id="landingPage" class="landing-page" style="display: none;">
+    <!-- Landing Header -->
+    <header class="landing-header">
+      <div class="landing-header-content">
+        <div class="landing-logo">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none" class="logo-icon">
+            <defs>
+              <linearGradient id="landingLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#3381ff"/>
+                <stop offset="50%" stop-color="#06b6d4"/>
+                <stop offset="100%" stop-color="#a855f7"/>
+              </linearGradient>
+            </defs>
+            <circle cx="24" cy="24" r="22" stroke="url(#landingLogoGrad)" stroke-width="2" fill="none" opacity="0.6"/>
+            <circle cx="24" cy="24" r="18" fill="url(#landingLogoGrad)" fill-opacity="0.2"/>
+            <path d="M12 18L24 12L36 18L24 24L12 18Z" fill="white" fill-opacity="0.95"/>
+            <path d="M12 22L24 28L36 22" stroke="white" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.7"/>
+            <path d="M12 26L24 32L36 26" stroke="white" stroke-width="2.5" stroke-linecap="round" fill="none" opacity="0.4"/>
+          </svg>
+          <span class="landing-logo-text">MMG</span>
+        </div>
+        <nav class="landing-nav">
+          <a href="#features" class="landing-nav-link">Features</a>
+          <a href="#solutions" class="landing-nav-link">Solutions</a>
+          <a href="#about" class="landing-nav-link">About</a>
+          <button class="btn btn-primary" id="landingLoginBtn">Sign In</button>
+        </nav>
+      </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="landing-hero">
+      <div class="landing-hero-content">
+        <div class="landing-hero-badge">
+          <span class="badge-dot"></span>
+          <span>Enterprise AI Platform</span>
+        </div>
+        <h1 class="landing-hero-title">
+          The Future of
+          <span class="gradient-text">Business Intelligence</span>
+        </h1>
+        <p class="landing-hero-subtitle">
+          Unified AI-powered platform for sales proposals, mockup generation,
+          and intelligent business automation. Transform your workflow with
+          next-generation tools.
+        </p>
+        <div class="landing-hero-actions">
+          <button class="btn btn-primary btn-lg" id="heroGetStartedBtn">
+            Get Started
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </button>
+          <button class="btn btn-secondary btn-lg" id="heroDemoBtn">
+            Watch Demo
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+          </button>
+        </div>
+        <div class="landing-hero-stats">
+          <div class="stat-item">
+            <span class="stat-value">500+</span>
+            <span class="stat-label">Enterprise Clients</span>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="stat-item">
+            <span class="stat-value">10M+</span>
+            <span class="stat-label">AI Interactions</span>
+          </div>
+          <div class="stat-divider"></div>
+          <div class="stat-item">
+            <span class="stat-value">99.9%</span>
+            <span class="stat-label">Uptime</span>
+          </div>
+        </div>
+      </div>
+      <div class="landing-hero-visual">
+        <div class="hero-visual-card">
+          <div class="visual-card-header">
+            <div class="visual-dots">
+              <span></span><span></span><span></span>
+            </div>
+            <span class="visual-title">AI Assistant</span>
+          </div>
+          <div class="visual-card-body">
+            <div class="chat-preview">
+              <div class="chat-message assistant">
+                <div class="chat-avatar">AI</div>
+                <div class="chat-bubble">How can I help you with your sales proposal today?</div>
+              </div>
+              <div class="chat-message user">
+                <div class="chat-bubble">Generate a proposal for ABC Corp</div>
+              </div>
+              <div class="chat-message assistant">
+                <div class="chat-avatar">AI</div>
+                <div class="chat-bubble typing">
+                  <span></span><span></span><span></span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="landing-features">
+      <div class="landing-section-header">
+        <h2>Powerful Features</h2>
+        <p>Everything you need to accelerate your business</p>
+      </div>
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <h3>AI Chat Assistant</h3>
+          <p>ChatGPT-style interface for natural language interactions with your business data and tools.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <path d="M3 9h18M9 21V9"/>
+            </svg>
+          </div>
+          <h3>Mockup Generator</h3>
+          <p>Create stunning billboard mockups with AI-powered creative generation and smart compositing.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+            </svg>
+          </div>
+          <h3>Sales Proposals</h3>
+          <p>Generate professional sales proposals automatically with AI-driven content and formatting.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </div>
+          <h3>Role-Based Access</h3>
+          <p>Secure multi-role authentication supporting sales persons, heads of sales, and administrators.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="landing-footer">
+      <div class="landing-footer-content">
+        <div class="footer-brand">
+          <svg width="32" height="32" viewBox="0 0 48 48" fill="none">
+            <circle cx="24" cy="24" r="18" fill="url(#landingLogoGrad)" fill-opacity="0.3"/>
+            <path d="M12 18L24 12L36 18L24 24L12 18Z" fill="white" fill-opacity="0.9"/>
+          </svg>
+          <span>MMG Platform</span>
+        </div>
+        <p class="footer-copyright">2024 MMG. All rights reserved.</p>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════════
+       LOGIN MODAL
+       ═══════════════════════════════════════════════════════════════════════════════ -->
+  <div class="modal" id="loginModal">
+    <div class="modal-content" style="max-width: 420px;">
+      <div class="modal-header" style="flex-direction: column; align-items: center; text-align: center; border-bottom: none; padding: 2rem 2rem 1rem;">
+        <svg width="64" height="64" viewBox="0 0 48 48" fill="none" style="margin-bottom: 1.5rem; filter: drop-shadow(0 0 30px rgba(51, 129, 255, 0.5));">
+          <defs>
+            <linearGradient id="loginGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#3381ff"/>
+              <stop offset="50%" stop-color="#06b6d4"/>
+              <stop offset="100%" stop-color="#a855f7"/>
+            </linearGradient>
+          </defs>
+          <rect width="48" height="48" rx="14" fill="url(#loginGrad)"/>
+          <path d="M14 17L24 12L34 17L24 22L14 17Z" fill="white" fill-opacity="0.95"/>
+          <path d="M14 22L24 27L34 22" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-opacity="0.8"/>
+          <path d="M14 27L24 32L34 27" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-opacity="0.6"/>
+        </svg>
+        <h2 style="font-size: 1.5rem; font-weight: 700; margin-bottom: 0.5rem;">Welcome to MMG</h2>
+        <p id="authSubtitle" style="color: var(--neural-500); font-size: 0.9rem;">Sign in with your company account</p>
+      </div>
+      <div class="modal-body" style="padding: 1.5rem 2rem 2rem;">
+        <!-- Microsoft SSO Button (Production) -->
+        <div id="ssoLoginSection">
+          <button type="button" id="microsoftSsoBtn" class="btn btn-lg" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 12px; background: #2f2f2f; border: 1px solid #444; color: white; padding: 14px 24px; font-size: 1rem;">
+            <!-- Microsoft Logo -->
+            <svg width="21" height="21" viewBox="0 0 21 21" fill="none">
+              <rect width="10" height="10" fill="#f25022"/>
+              <rect x="11" width="10" height="10" fill="#7fba00"/>
+              <rect y="11" width="10" height="10" fill="#00a4ef"/>
+              <rect x="11" y="11" width="10" height="10" fill="#ffb900"/>
+            </svg>
+            Sign in with Microsoft
+          </button>
+          <p style="text-align: center; color: var(--neural-500); font-size: 0.85rem; margin-top: 1.5rem;">
+            Use your company Microsoft account to sign in.
+            <br>
+            <span style="font-size: 0.8rem;">New users require administrator approval.</span>
+          </p>
+        </div>
+
+        <!-- Dev Mode Login Form (hidden in production) -->
+        <div id="devLoginSection" style="display: none;">
+          <form id="loginForm">
+            <div class="form-group" style="margin-top: 0;">
+              <label for="emailInput">Email</label>
+              <input type="email" id="emailInput" class="form-control" placeholder="your@email.com" autocomplete="email" required>
+            </div>
+            <div class="form-group">
+              <label for="passwordInput">Password</label>
+              <div class="password-input-wrapper" style="position: relative;">
+                <input type="password" id="passwordInput" class="form-control" placeholder="Enter your password" autocomplete="current-password" required style="padding-right: 2.5rem;">
+                <button type="button" class="password-toggle" onclick="togglePasswordVisibility('passwordInput', this)" style="position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer; color: var(--neural-500); padding: 0;">
+                  <svg class="eye-open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                  <svg class="eye-closed" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display: none;">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg" style="width: 100%; margin-top: 1.5rem;">
+              Sign In
+            </button>
+          </form>
+          <p class="login-help-text" id="devModeHint">
+            <small>Dev mode: Use <code>admin@mmg.com</code> / <code>admin123</code></small>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════════
+       MAIN APP SHELL - Shown after login
+       ═══════════════════════════════════════════════════════════════════════════════ -->
+  <div id="app" class="app-shell" style="display: none;">
+    <!-- App Header -->
+    <header class="app-header">
+      <div class="app-header-content">
+        <div class="app-logo" id="mobileSidebarLogoToggle" type="button" aria-label="Toggle menu">
+          <svg width="36" height="36" viewBox="0 0 48 48" fill="none" class="logo-icon">
+            <defs>
+              <linearGradient id="appLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#3381ff"/>
+                <stop offset="50%" stop-color="#06b6d4"/>
+                <stop offset="100%" stop-color="#a855f7"/>
+              </linearGradient>
+            </defs>
+            <circle cx="24" cy="24" r="18" fill="url(#appLogoGrad)" fill-opacity="0.2"/>
+            <path d="M12 18L24 12L36 18L24 24L12 18Z" fill="white" fill-opacity="0.95"/>
+            <path d="M12 22L24 28L36 22" stroke="white" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.7"/>
+          </svg>
+          <span class="app-logo-text">MMG</span>
+        </div>
+        <div class="app-header-center">
+          <span class="current-module">Sales Department</span>
+        </div>
+        <div class="app-header-actions">
+          <div class="user-menu" id="userMenu">
+            <button class="user-menu-btn" id="userMenuBtn">
+              <div class="user-avatar">
+                <span id="userInitials">SA</span>
+              </div>
+              <span class="user-name" id="userName">Sales Admin</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            <div class="user-dropdown" id="userDropdown">
+              <div class="dropdown-header">
+                <span class="dropdown-email" id="userEmail">admin@mmg.com</span>
+                <div class="user-roles" id="userRoles">
+                  <span class="role-badge role-admin">Admin</span>
+                  <span class="role-badge role-hos">HoS</span>
+                </div>
+              </div>
+              <div class="dropdown-divider"></div>
+              <button class="dropdown-item" id="settingsBtn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                Settings
+              </button>
+              <button class="dropdown-item" id="logoutBtn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                  <polyline points="16 17 21 12 16 7"/>
+                  <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- App Body -->
+    <div class="app-body">
+      <!-- Sidebar -->
+      <aside class="app-sidebar" id="appSidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Tools</div>
+          <nav class="sidebar-nav">
+            <button class="sidebar-nav-item active" data-tool="chat">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              <span>AI Chat</span>
+            </button>
+            <button class="sidebar-nav-item" data-tool="mockup">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <path d="M3 9h18M9 21V9"/>
+              </svg>
+              <span>Mockup Generator</span>
+            </button>
+            <button class="sidebar-nav-item" data-tool="proposals">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/>
+              </svg>
+              <span>Proposals</span>
+            </button>
+            <button class="sidebar-nav-item admin-only" data-tool="admin" id="adminNavItem" style="display: none;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+              <span>Admin</span>
+            </button>
+          </nav>
+        </div>
+
+        <!-- Tool Settings (contextual, changes based on active tool) -->
+        <div class="sidebar-section sidebar-tool-settings" id="toolSettings">
+          <div class="sidebar-section-title">Settings</div>
+
+          <!-- Chat Settings (model configured server-side) -->
+          <div class="tool-settings-panel" id="chatSettings">
+            <div class="settings-info">
+              <p class="settings-label">AI Chat</p>
+              <p class="settings-description">Chat with AI to generate proposals, mockups, and more.</p>
+            </div>
+          </div>
+
+          <!-- Mockup Settings -->
+          <div class="tool-settings-panel" id="mockupSettings" style="display: none;">
+            <div class="settings-group">
+              <label class="settings-label">Mode</label>
+              <div class="mode-toggle">
+                <button class="mode-toggle-btn active" data-mode="setup">Setup</button>
+                <button class="mode-toggle-btn" data-mode="generate">Generate</button>
+              </div>
+            </div>
+            <div class="settings-group">
+              <label class="settings-label">Location</label>
+              <select class="form-control form-control-sm" id="mockupLocation">
+                <option value="">Select location...</option>
+              </select>
+            </div>
+            <div class="settings-group">
+              <label class="settings-label">Time of Day</label>
+              <select class="form-control form-control-sm" id="mockupTimeOfDay">
+                <option value="all">All</option>
+                <option value="day">Day</option>
+                <option value="night">Night</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Proposals Settings -->
+          <div class="tool-settings-panel" id="proposalsSettings" style="display: none;">
+            <div class="settings-group">
+              <label class="settings-label">Template</label>
+              <select class="form-control form-control-sm" id="proposalTemplate">
+                <option value="standard">Standard</option>
+                <option value="premium">Premium</option>
+                <option value="enterprise">Enterprise</option>
+              </select>
+            </div>
+            <div class="settings-group">
+              <label class="settings-label">Currency</label>
+              <select class="form-control form-control-sm" id="proposalCurrency">
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+                <option value="GBP">GBP</option>
+                <option value="AED">AED</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sidebar Footer -->
+        <div class="sidebar-footer">
+          <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="Collapse Sidebar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 19l-7-7 7-7M18 19l-7-7 7-7"/>
+            </svg>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="app-main" id="appMain">
+        <!-- Chat Tool (Default) -->
+        <div class="tool-panel active" id="chatPanel">
+          <div class="chat-container">
+            <div class="chat-messages" id="chatMessages">
+              <div class="chat-welcome">
+                <!-- Animated orbs background -->
+                <div class="welcome-orbs">
+                  <div class="welcome-orb orb-1"></div>
+                  <div class="welcome-orb orb-2"></div>
+                  <div class="welcome-orb orb-3"></div>
+                </div>
+                
+                <!-- Main logo animation -->
+                <div class="welcome-logo-container">
+                  <div class="welcome-logo-ring ring-outer"></div>
+                  <div class="welcome-logo-ring ring-middle"></div>
+                  <div class="welcome-logo-ring ring-inner"></div>
+                  <div class="welcome-logo-core">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                      <path d="M2 17l10 5 10-5"/>
+                      <path d="M2 12l10 5 10-5"/>
+                    </svg>
+                  </div>
+                </div>
+                
+                <div class="welcome-text-container">
+                  <h2 class="welcome-title">
+                    <span class="welcome-greeting">Good <span id="timeGreeting">day</span>,</span>
+                    <span class="welcome-question">How can I help?</span>
+                  </h2>
+                  <p class="welcome-subtitle">Your AI assistant for proposals, mockups & business intelligence</p>
+                </div>
+                
+                <div class="welcome-suggestions">
+                  <button class="suggestion-btn" data-prompt="Generate a sales proposal">
+                    <div class="suggestion-icon">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                      </svg>
+                    </div>
+                    <div class="suggestion-content">
+                      <span class="suggestion-title">Sales Proposal</span>
+                      <span class="suggestion-desc">Generate professional proposals</span>
+                    </div>
+                    <div class="suggestion-arrow">→</div>
+                  </button>
+                  
+                  <button class="suggestion-btn" data-prompt="Create a billboard mockup">
+                    <div class="suggestion-icon icon-cyan">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <circle cx="8.5" cy="8.5" r="1.5"/>
+                        <path d="M21 15l-5-5L5 21"/>
+                      </svg>
+                    </div>
+                    <div class="suggestion-content">
+                      <span class="suggestion-title">Billboard Mockup</span>
+                      <span class="suggestion-desc">Create stunning visuals</span>
+                    </div>
+                    <div class="suggestion-arrow">→</div>
+                  </button>
+                  
+                  <button class="suggestion-btn" data-prompt="Check booking orders">
+                    <div class="suggestion-icon icon-purple">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+                        <rect x="9" y="3" width="6" height="4" rx="1"/>
+                        <path d="M9 14l2 2 4-4"/>
+                      </svg>
+                    </div>
+                    <div class="suggestion-content">
+                      <span class="suggestion-title">Booking Orders</span>
+                      <span class="suggestion-desc">Review & manage BOs</span>
+                    </div>
+                    <div class="suggestion-arrow">→</div>
+                  </button>
+                  
+                  <button class="suggestion-btn" data-prompt="Review client history">
+                    <div class="suggestion-icon icon-green">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                      </svg>
+                    </div>
+                    <div class="suggestion-content">
+                      <span class="suggestion-title">Client History</span>
+                      <span class="suggestion-desc">Explore past interactions</span>
+                    </div>
+                    <div class="suggestion-arrow">→</div>
+                  </button>
+                </div>
+                
+                <div class="welcome-footer">
+                  <div class="welcome-tip">
+                    <span class="tip-icon">💡</span>
+                    <span>Pro tip: Upload files by clicking the paperclip or drag & drop</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="chat-input-container">
+              <!-- File upload preview area -->
+              <div class="chat-file-preview" id="chatFilePreview" style="display: none;">
+                <div class="file-preview-item" id="filePreviewItem">
+                  <span class="file-preview-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                    </svg>
+                  </span>
+                  <span class="file-preview-name" id="filePreviewName">file.pdf</span>
+                  <button class="file-preview-remove" id="removeFileBtn" title="Remove file">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="18" y1="6" x2="6" y2="18"/>
+                      <line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div class="chat-input-wrapper">
+                <input type="file" id="chatFileInput" accept="image/*,.pdf,.xlsx,.xls,.csv,.docx,.doc" style="display: none;">
+                <button class="chat-attach-btn" id="chatAttachBtn" title="Attach file">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                  </svg>
+                </button>
+                <textarea
+                  class="chat-input"
+                  id="chatInput"
+                  placeholder="Type your message..."
+                  rows="1"
+                ></textarea>
+                <button class="chat-send-btn" id="chatSendBtn" disabled>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="22" y1="2" x2="11" y2="13"/>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                  </svg>
+                </button>
+              </div>
+              <p class="chat-disclaimer">AI can make mistakes. Verify important information.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mockup Tool -->
+        <div class="tool-panel" id="mockupPanel">
+          <div class="mockup-studio">
+            <!-- Header -->
+            <div class="mockup-header">
+              <h2>Mockup Studio</h2>
+              <p>Configure billboard frames and generate mockups</p>
+            </div>
+
+            <!-- Mode Toggle (Setup visible only to admin/hos) -->
+            <div class="mockup-mode-toggle">
+              <button class="mockup-mode-btn" id="mockupSetupModeBtn" data-mode="setup" style="display: none;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+                Setup Mode
+              </button>
+              <button class="mockup-mode-btn active" id="mockupGenerateModeBtn" data-mode="generate">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                </svg>
+                Generate Mode
+              </button>
+            </div>
+
+            <!-- ==================== SETUP MODE (Admin/HoS Only) ==================== -->
+            <div class="mockup-mode-content" id="mockupSetupMode" style="display: none;">
+              <div class="mockup-content">
+                <!-- Left Side: Setup Controls -->
+                <div class="mockup-settings">
+                  <div class="setup-info-banner">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="10"/>
+                      <line x1="12" y1="16" x2="12" y2="12"/>
+                      <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                    <span>Configure billboard frames by clicking 4 corners</span>
+                  </div>
+
+                  <!-- Location Selection -->
+                  <div class="mockup-form-group">
+                    <label for="setupLocationSelect">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                        <circle cx="12" cy="10" r="3"/>
+                      </svg>
+                      Location
+                    </label>
+                    <select id="setupLocationSelect" class="mockup-select">
+                      <option value="">Select a location...</option>
+                    </select>
+                  </div>
+
+                  <!-- Time of Day -->
+                  <div class="mockup-form-group">
+                    <label for="setupTimeOfDay">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="5"/>
+                        <line x1="12" y1="1" x2="12" y2="3"/>
+                        <line x1="12" y1="21" x2="12" y2="23"/>
+                      </svg>
+                      Time of Day
+                    </label>
+                    <select id="setupTimeOfDay" class="mockup-select">
+                      <option value="all">All (Default)</option>
+                      <option value="day">Day</option>
+                      <option value="night">Night</option>
+                    </select>
+                  </div>
+
+                  <!-- Billboard Finish -->
+                  <div class="mockup-form-group">
+                    <label for="setupFinish">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <path d="M3 9h18"/>
+                      </svg>
+                      Billboard Finish
+                    </label>
+                    <select id="setupFinish" class="mockup-select">
+                      <option value="all">All (Default)</option>
+                      <option value="gold">Gold</option>
+                      <option value="silver">Silver</option>
+                    </select>
+                  </div>
+
+                  <!-- Photo Upload -->
+                  <div class="mockup-form-group">
+                    <label>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                      </svg>
+                      Billboard Photo
+                    </label>
+                    <div class="mockup-upload-zone" id="setupUploadZone">
+                      <input type="file" id="setupPhotoUpload" accept="image/*" hidden>
+                      <div class="upload-icon">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                          <polyline points="17 8 12 3 7 8"/>
+                          <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                      </div>
+                      <p>Upload billboard photo</p>
+                      <small>JPG, PNG up to 20MB</small>
+                    </div>
+                  </div>
+
+                  <!-- Green Screen Toggle -->
+                  <div class="mockup-form-group">
+                    <label class="toggle-label">
+                      <input type="checkbox" id="setupGreenscreenToggle">
+                      <span class="toggle-switch"></span>
+                      <span>Auto-detect Green Screen</span>
+                    </label>
+                  </div>
+
+                  <!-- Green Screen Options (shown when toggle enabled) -->
+                  <div class="setup-greenscreen-options" id="setupGreenscreenOptions" style="display: none;">
+                    <div class="mockup-form-group">
+                      <label for="setupGreenscreenColor">Green Screen Color</label>
+                      <div class="color-picker-row">
+                        <input type="color" id="setupGreenscreenColor" value="#1CFF1C">
+                        <input type="text" id="setupGreenscreenHex" value="#1CFF1C" placeholder="#1CFF1C" class="mockup-input">
+                      </div>
+                      <small class="mockup-hint">Shift+click on canvas to pick color</small>
+                    </div>
+                    <div class="mockup-form-group">
+                      <label for="setupColorTolerance">
+                        Color Tolerance: <span id="setupToleranceValue">40</span>
+                      </label>
+                      <input type="range" id="setupColorTolerance" min="10" max="100" value="40" class="mockup-range">
+                    </div>
+                    <button class="btn btn-secondary" id="setupDetectBtn" disabled>Detect Green Screen</button>
+                  </div>
+
+                  <div class="mockup-divider"></div>
+
+                  <!-- Frame Configuration (shown after points selected) -->
+                  <div class="setup-frame-config" id="setupFrameConfig" style="display: none;">
+                    <h4>Frame Settings</h4>
+                    <div class="frame-config-grid">
+                      <div class="mockup-form-group">
+                        <label for="setupBrightness">Brightness: <span id="setupBrightnessValue">100</span>%</label>
+                        <input type="range" id="setupBrightness" min="50" max="200" value="100" class="mockup-range">
+                      </div>
+                      <div class="mockup-form-group">
+                        <label for="setupContrast">Contrast: <span id="setupContrastValue">100</span>%</label>
+                        <input type="range" id="setupContrast" min="50" max="200" value="100" class="mockup-range">
+                      </div>
+                      <div class="mockup-form-group">
+                        <label for="setupSaturation">Saturation: <span id="setupSaturationValue">100</span>%</label>
+                        <input type="range" id="setupSaturation" min="0" max="200" value="100" class="mockup-range">
+                      </div>
+                      <div class="mockup-form-group">
+                        <label for="setupEdgeBlur">Edge Blur: <span id="setupEdgeBlurValue">1</span>px</label>
+                        <input type="range" id="setupEdgeBlur" min="1" max="20" value="1" class="mockup-range">
+                      </div>
+                      <div class="mockup-form-group">
+                        <label for="setupOverlayOpacity">Overlay: <span id="setupOverlayValue">0</span>%</label>
+                        <input type="range" id="setupOverlayOpacity" min="0" max="50" value="0" class="mockup-range">
+                      </div>
+                      <div class="mockup-form-group">
+                        <label for="setupEdgeSmoother">Edge Smoother: <span id="setupEdgeSmootherValue">3</span>x</label>
+                        <input type="range" id="setupEdgeSmoother" min="1" max="20" value="3" class="mockup-range">
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Action Buttons -->
+                  <div class="setup-actions">
+                    <button class="btn btn-primary" id="setupAddFrameBtn" disabled>Add Frame</button>
+                    <button class="btn btn-secondary" id="setupResetFrameBtn">Reset Current</button>
+                    <button class="btn btn-success" id="setupSaveAllBtn" disabled>Save All Frames</button>
+                    <button class="btn btn-danger" id="setupClearAllBtn">Clear All</button>
+                  </div>
+
+                  <!-- Frames Info -->
+                  <div class="setup-frames-info" id="setupFramesInfo" style="display: none;">
+                    <strong>Frames configured: <span id="setupFrameCount">0</span></strong>
+                  </div>
+                </div>
+
+                <!-- Right Side: Canvas Preview -->
+                <div class="mockup-result-area">
+                  <div class="setup-canvas-container">
+                    <canvas id="setupCanvas" width="1200" height="800"></canvas>
+                    <div class="setup-hint" id="setupHint">
+                      <p>1. Select a location above</p>
+                      <p>2. Upload a billboard photo</p>
+                      <p>3. Click 4 corners of the billboard screen</p>
+                      <p>4. Adjust settings and save</p>
+                    </div>
+                  </div>
+
+                  <!-- Existing Photos Grid -->
+                  <div class="setup-photos-section" id="setupPhotosSection" style="display: none;">
+                    <h4>Existing Photos</h4>
+                    <div class="setup-photos-grid" id="setupPhotosGrid"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ==================== GENERATE MODE (All Users) ==================== -->
+            <div class="mockup-mode-content" id="mockupGenerateMode">
+              <div class="mockup-content">
+                <!-- Left Side: Settings -->
+                <div class="mockup-settings">
+                <!-- Location Selection -->
+                <div class="mockup-form-group">
+                  <label for="mockupLocationSelect">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                      <circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    Location
+                  </label>
+                  <select id="mockupLocationSelect" class="mockup-select">
+                    <option value="">Select a location...</option>
+                  </select>
+                </div>
+
+                <!-- Time of Day -->
+                <div class="mockup-form-group">
+                  <label for="mockupTimeOfDay">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="5"/>
+                      <line x1="12" y1="1" x2="12" y2="3"/>
+                      <line x1="12" y1="21" x2="12" y2="23"/>
+                      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+                      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                      <line x1="1" y1="12" x2="3" y2="12"/>
+                      <line x1="21" y1="12" x2="23" y2="12"/>
+                      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+                      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                    </svg>
+                    Time of Day
+                  </label>
+                  <select id="mockupTimeOfDay" class="mockup-select">
+                    <option value="all">All (Auto)</option>
+                    <option value="day">Day</option>
+                    <option value="night">Night</option>
+                  </select>
+                </div>
+
+                <!-- Billboard Finish -->
+                <div class="mockup-form-group">
+                  <label for="mockupFinish">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                      <path d="M3 9h18"/>
+                    </svg>
+                    Billboard Finish
+                  </label>
+                  <select id="mockupFinish" class="mockup-select">
+                    <option value="all">All (Auto)</option>
+                    <option value="gold">Gold</option>
+                    <option value="silver">Silver</option>
+                  </select>
+                </div>
+
+                <!-- Template Selection (appears after location selected) -->
+                <div class="mockup-form-group" id="templateSelectGroup" style="display: none;">
+                  <label for="mockupTemplate">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                      <circle cx="8.5" cy="8.5" r="1.5"/>
+                      <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                    Template (Optional)
+                  </label>
+                  <select id="mockupTemplate" class="mockup-select">
+                    <option value="">Random template</option>
+                  </select>
+                  <small class="mockup-hint">Leave blank for random selection</small>
+                </div>
+
+                <!-- Divider -->
+                <div class="mockup-divider"></div>
+
+                <!-- Creative Upload -->
+                <div class="mockup-form-group">
+                  <label>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="17 8 12 3 7 8"/>
+                      <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    Upload Creative
+                  </label>
+                  <div class="mockup-upload-zone" id="mockupUploadZone">
+                    <input type="file" id="mockupCreativeUpload" accept="image/*" hidden>
+                    <div class="upload-icon">
+                      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                      </svg>
+                    </div>
+                    <p>Drop image here or click to upload</p>
+                    <small>JPG, PNG, GIF up to 10MB</small>
+                  </div>
+                  <div class="mockup-file-preview" id="mockupFilePreview" style="display: none;">
+                    <img id="mockupPreviewImg" src="" alt="Preview">
+                    <button class="mockup-clear-btn" id="mockupClearFile">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- OR Divider -->
+                <div class="mockup-or-divider">
+                  <span>OR</span>
+                </div>
+
+                <!-- AI Prompt -->
+                <div class="mockup-form-group">
+                  <label for="mockupAiPrompt">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/>
+                      <path d="M16 14v1a4 4 0 0 1-8 0v-1"/>
+                      <line x1="12" y1="19" x2="12" y2="22"/>
+                      <line x1="8" y1="22" x2="16" y2="22"/>
+                    </svg>
+                    AI-Generated Creative
+                  </label>
+                  <textarea
+                    id="mockupAiPrompt"
+                    class="mockup-textarea"
+                    placeholder="Describe your billboard ad...&#10;e.g., Luxury watch ad with gold typography on dark background, elegant and professional"
+                    rows="3"
+                  ></textarea>
+                  <small class="mockup-hint">AI will generate a billboard creative based on your description</small>
+                </div>
+
+                <!-- Generate Button -->
+                <button class="mockup-generate-btn" id="mockupGenerateBtn" disabled>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                  </svg>
+                  Generate Mockup
+                </button>
+              </div>
+
+              <!-- Right Side: Result -->
+              <div class="mockup-result-area">
+                <!-- Loading State -->
+                <div class="mockup-loading" id="mockupLoading" style="display: none;">
+                  <div class="mockup-spinner"></div>
+                  <p>Generating your mockup...</p>
+                  <small id="mockupLoadingDetail">This may take a moment</small>
+                </div>
+
+                <!-- Empty State -->
+                <div class="mockup-empty" id="mockupEmpty">
+                  <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                  <h3>No mockup generated yet</h3>
+                  <p>Select a location and upload your creative or enter an AI prompt to generate a billboard mockup.</p>
+                </div>
+
+                <!-- Result Display -->
+                <div class="mockup-result-display" id="mockupResultDisplay" style="display: none;">
+                  <img id="mockupResultImage" src="" alt="Generated Mockup">
+                  <div class="mockup-result-actions">
+                    <a class="mockup-download-btn" id="mockupDownloadBtn" download="mockup.jpg">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                      </svg>
+                      Download
+                    </a>
+                    <button class="mockup-regenerate-btn" id="mockupRegenerateBtn">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="23 4 23 10 17 10"/>
+                        <polyline points="1 20 1 14 7 14"/>
+                        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                      </svg>
+                      Regenerate
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- End Generate Mode -->
+          </div>
+          </div>
+        </div>
+
+        <!-- Proposals Tool -->
+        <div class="tool-panel" id="proposalsPanel">
+          <div class="proposals-container">
+            <div class="proposals-header">
+              <h2>Sales Proposals</h2>
+              <button class="btn btn-primary" id="newProposalBtn">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                New Proposal
+              </button>
+            </div>
+            <div class="proposals-list" id="proposalsList">
+              <p class="empty-state">No proposals yet. Create your first one!</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Admin Panel -->
+        <div class="tool-panel" id="adminPanel">
+          <div class="admin-placeholder">
+            <p>Loading admin panel...</p>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Toast Notifications -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Scripts -->
+  <!-- Supabase Client Library -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Supabase config loaded from server -->
+  <script src="/api/base/config.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/modules.js"></script>
+  <script src="/js/sidebar.js"></script>
+  <script src="/js/chat.js"></script>
+  <script src="/js/mockup.js"></script>
+  <script src="/js/admin.js"></script>
+  <script src="/js/app.js"></script>
+  <script>
+    // Cursor glow effect
+    const cursorGlow = document.getElementById('cursorGlow');
+    let mouseX = 0, mouseY = 0;
+    let glowX = 0, glowY = 0;
+
+    document.addEventListener('mousemove', (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
+      cursorGlow.classList.add('active');
+    });
+
+    document.addEventListener('mouseleave', () => {
+      cursorGlow.classList.remove('active');
+    });
+
+    function animateGlow() {
+      glowX += (mouseX - glowX) * 0.1;
+      glowY += (mouseY - glowY) * 0.1;
+      cursorGlow.style.left = glowX + 'px';
+      cursorGlow.style.top = glowY + 'px';
+      requestAnimationFrame(animateGlow);
+    }
+    animateGlow();
+
+    // Add ripple class to buttons
+    document.querySelectorAll('.btn').forEach(btn => {
+      btn.classList.add('ripple');
+    });
+  </script>
+</body>
+</html>

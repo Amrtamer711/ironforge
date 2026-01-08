@@ -208,12 +208,12 @@ class _DatabaseNamespace:
         company_schema: str,
         created_by: str | None = None,
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         config: dict | None = None,
     ) -> str:
         return self._backend.save_mockup_frame(
             location_key, photo_filename, frames_data, company_schema,
-            created_by, time_of_day, finish, config
+            created_by, time_of_day, side, config
         )
 
     def delete_mockup_frame(
@@ -222,10 +222,10 @@ class _DatabaseNamespace:
         photo_filename: str,
         company_schema: str,
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
     ) -> None:
         return self._backend.delete_mockup_frame(
-            location_key, photo_filename, company_schema, time_of_day, finish
+            location_key, photo_filename, company_schema, time_of_day, side
         )
 
     # =========================================================================
@@ -236,7 +236,7 @@ class _DatabaseNamespace:
         self,
         location_key: str,
         time_of_day: str,
-        finish: str,
+        side: str,
         photo_used: str,
         creative_type: str,
         company_schema: str,
@@ -246,7 +246,7 @@ class _DatabaseNamespace:
         user_ip: str | None = None,
     ) -> None:
         return self._backend.log_mockup_usage(
-            location_key, time_of_day, finish, photo_used,
+            location_key, time_of_day, side, photo_used,
             creative_type, company_schema, ai_prompt, template_selected, success, user_ip
         )
 

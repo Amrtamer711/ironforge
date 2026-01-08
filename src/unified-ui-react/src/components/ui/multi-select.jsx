@@ -17,6 +17,7 @@ export function MultiSelect({
   placeholder = "Select...",
   disabled = false,
   maxLabelCount = 2,
+  showChips = false,
   className,
   contentClassName,
 }) {
@@ -39,57 +40,76 @@ export function MultiSelect({
   const displayText = formatSelection(selectedLabels, placeholder, maxLabelCount);
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          disabled={disabled}
-          className={cn(
-            "w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none",
-            "flex items-center justify-between gap-2 text-left",
-            "disabled:opacity-60 disabled:cursor-not-allowed",
-            className
-          )}
-        >
-          <span className={cn("truncate", !selectedLabels.length && "text-black/50 dark:text-white/55")}>
-            {displayText}
-          </span>
-          <ChevronDown size={16} className="text-black/50 dark:text-white/60" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className={cn("min-w-[220px]", contentClassName)}>
-        <div className="max-h-[240px] overflow-y-auto space-y-1">
-          {options.length ? (
-            options.map((opt) => {
-              const isSelected = selectedSet.has(opt.value);
-              return (
-                <DropdownMenuItem
-                  key={opt.value}
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    toggleValue(opt.value);
-                  }}
-                  className="cursor-pointer py-1"
-                >
-                  <span
-                    className={cn(
-                      "h-4 w-4 rounded-full flex items-center justify-center transition-colors",
-                      isSelected
-                        ? "bg-black text-white dark:bg-white dark:text-black shadow-soft"
-                        : "bg-black/5 dark:bg-white/10 text-black/40 dark:text-white/40"
-                    )}
+    <div>
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            disabled={disabled}
+            className={cn(
+              "w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none",
+              "flex items-center justify-between gap-2 text-left",
+              "disabled:opacity-60 disabled:cursor-not-allowed",
+              className
+            )}
+          >
+            <span className={cn("truncate", !selectedLabels.length && "text-black/50 dark:text-white/55")}>
+              {displayText}
+            </span>
+            <ChevronDown size={16} className="text-black/50 dark:text-white/60" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className={cn("min-w-[220px]", contentClassName)}>
+          <div className="max-h-[240px] overflow-y-auto space-y-1">
+            {options.length ? (
+              options.map((opt) => {
+                const isSelected = selectedSet.has(opt.value);
+                return (
+                  <DropdownMenuItem
+                    key={opt.value}
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      toggleValue(opt.value);
+                    }}
+                    className="cursor-pointer py-1"
                   >
-                    <Check size={10} className={isSelected ? "opacity-100" : "opacity-0"} />
-                  </span>
-                  <span className="min-w-0 truncate">{opt.label}</span>
-                </DropdownMenuItem>
-              );
-            })
-          ) : (
-            <div className="px-3 py-2 text-sm text-black/60 dark:text-white/65">No options available.</div>
-          )}
+                    <span
+                      className={cn(
+                        "h-4 w-4 rounded-full flex items-center justify-center transition-colors",
+                        isSelected
+                          ? "bg-black text-white dark:bg-white dark:text-black shadow-soft"
+                          : "bg-black/5 dark:bg-white/10 text-black/40 dark:text-white/40"
+                      )}
+                    >
+                      <Check size={10} className={isSelected ? "opacity-100" : "opacity-0"} />
+                    </span>
+                    <span className="min-w-0 truncate">{opt.label}</span>
+                  </DropdownMenuItem>
+                );
+              })
+            ) : (
+              <div className="px-3 py-2 text-sm text-black/60 dark:text-white/65">No options available.</div>
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
+      {showChips && selectedLabels.length ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {options
+            .filter((opt) => selectedSet.has(opt.value))
+            .map((opt) => {
+            const label = opt?.label ?? String(opt.value);
+            return (
+              <span
+                key={opt.value}
+                className="inline-flex items-center rounded-lg border border-black/5 dark:border-white/10 bg-black/5 dark:bg-white/10 px-2 py-0.5 text-[11px] text-black/70 dark:text-white/75"
+              >
+                {label}
+              </span>
+            );
+          })}
         </div>
-      </PopoverContent>
-    </Popover>
+      ) : null}
+    </div>
   );
 }

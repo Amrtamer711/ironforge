@@ -178,7 +178,7 @@ def sample_mockup_data() -> dict[str, Any]:
     return {
         "location_key": "test-location",
         "time_of_day": "day",
-        "finish": "gold",
+        "side": "gold",
     }
 
 

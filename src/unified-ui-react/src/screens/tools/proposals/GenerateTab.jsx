@@ -342,11 +342,11 @@ export function GenerateTab({
   );
 
   return (
-    <Card>
+    <Card className="h-full min-h-0 flex flex-col">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Generate Proposal</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <FormField label="Client">
             <input
@@ -601,7 +601,7 @@ export function GenerateTab({
 
         <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 p-4 space-y-3">
           {!results.length && !isGenerating ? (
-            <div className="text-sm text-black/60 dark:text-white/65">Result will appear here</div>
+            <div className="text-sm text-black/60 dark:text-white/65">Results will appear here</div>
           ) : null}
           {isGenerating ? (
             <LoadingEllipsis text="Processing proposal" className="text-sm text-black/60 dark:text-white/65" />

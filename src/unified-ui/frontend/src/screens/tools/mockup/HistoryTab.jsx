@@ -58,9 +58,9 @@ export function HistoryTab({ historyQuery, historyItems }) {
                 item.location_id ||
                 "Mockup";
               const timeLabel = item.time_of_day || item.timeOfDay || "";
-              const finishLabel = item.finish || item.billboard_finish || "";
+              const sideLabel = item.side || item.billboard_side || "";
               const createdAt = item.created_at || item.generated_at || item.date_generated || "";
-              const downloadName = ["mockup", locationLabel || "result", timeLabel || "all", finishLabel || "all"]
+              const downloadName = ["mockup", locationLabel || "result", timeLabel || "all", sideLabel || "all"]
                 .filter(Boolean)
                 .join("_");
 
@@ -95,10 +95,10 @@ export function HistoryTab({ historyQuery, historyItems }) {
                         <span className="font-semibold text-black/80 dark:text-white/85">{timeLabel}</span>
                       </div>
                     ) : null}
-                    {finishLabel ? (
+                    {sideLabel ? (
                       <div className="flex flex-wrap items-baseline gap-1">
-                        <span className="uppercase tracking-wide text-xs text-black/45 dark:text-white/50">Finish</span>
-                        <span className="font-semibold text-black/80 dark:text-white/85">{finishLabel}</span>
+                        <span className="uppercase tracking-wide text-xs text-black/45 dark:text-white/50">Side</span>
+                        <span className="font-semibold text-black/80 dark:text-white/85">{sideLabel}</span>
                       </div>
                     ) : null}
                   </div>

@@ -10,7 +10,7 @@ export const DropdownMenuContent = React.forwardRef(({ className, sideOffset = 8
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 min-w-[220px] overflow-hidden rounded-2xl p-1",
+        "z-[90] min-w-[220px] overflow-hidden rounded-2xl p-1",
         "bg-white/75 dark:bg-black/40 backdrop-blur-md shadow-soft2",
         "ring-1 ring-black/5 dark:ring-white/10",
         className

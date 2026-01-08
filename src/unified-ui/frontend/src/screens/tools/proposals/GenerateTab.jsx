@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui
 import { Button } from "../../../components/ui/button";
 import { FormField } from "../../../components/ui/form-field";
 import { LoadingEllipsis } from "../../../components/ui/loading-ellipsis";
+import { SelectDropdown } from "../../../components/ui/select-dropdown";
 import { runtimeConfig } from "../../../lib/runtimeConfig";
 
 function formatDateForApi(value) {
@@ -313,6 +314,32 @@ export function GenerateTab({
 }) {
   const results = Array.isArray(lastResults) ? lastResults : [];
   const isGenerating = generateMutation.isPending;
+  const locationSelectOptions = useMemo(() => {
+    const options = locationOptions
+      .map((loc) => {
+        const value = loc.location_key || loc.key || loc.id || "";
+        const label = loc.display_name || loc.name || loc.label || value || "—";
+        return { value, label };
+      })
+      .filter((opt) => opt.value);
+    return [{ value: "", label: "Select a location" }, ...options];
+  }, [locationOptions]);
+  const packageTypeOptions = useMemo(
+    () => [
+      { value: "separate", label: "Separate" },
+      { value: "combined", label: "Combined" },
+    ],
+    []
+  );
+  const currencyOptions = useMemo(
+    () => [
+      { value: "AED", label: "AED" },
+      { value: "EUR", label: "EUR" },
+      { value: "USD", label: "USD" },
+      { value: "GBP", label: "GBP" },
+    ],
+    []
+  );
 
   return (
     <Card>
@@ -330,14 +357,7 @@ export function GenerateTab({
             />
           </FormField>
           <FormField label="Package Type">
-            <select
-              className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-              value={packageType}
-              onChange={(e) => setPackageType(e.target.value)}
-            >
-              <option value="separate">Separate</option>
-              <option value="combined">Combined</option>
-            </select>
+            <SelectDropdown value={packageType} options={packageTypeOptions} onChange={setPackageType} />
           </FormField>
         </div>
         {packageType === "combined" ? (
@@ -378,30 +398,39 @@ export function GenerateTab({
                   key={item.id}
                   className="rounded-xl border border-black/5 dark:border-white/10 bg-white/60 dark:bg-white/5 p-3 space-y-3"
                 >
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-end">
-                    <FormField label="Location">
-                      <select
-                        className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                        value={item.location}
-                        onChange={(e) => updateItem(item.id, "location", e.target.value)}
-                      >
-                        <option value="">Select a location</option>
-                        {locationOptions.map((loc) => (
-                          <option
-                            key={loc.location_key || loc.key || loc.id}
-                            value={loc.location_key || loc.key || loc.id}
-                          >
-                            {loc.display_name || loc.name || loc.label || loc.key || loc.id}
-                          </option>
-                        ))}
-                      </select>
-                    </FormField>
-                    <div className="flex items-end justify-between gap-2">
-                      <FormField label="Spots" className="flex-1">
+                  {packageType === "combined" ? (
+                    <div className="grid grid-cols-1 md:grid-cols-[1.4fr_0.6fr_0.9fr_0.7fr_auto] gap-2 items-end">
+                      <FormField label="Location">
+                        <SelectDropdown
+                          value={item.location}
+                          options={locationSelectOptions}
+                          onChange={(nextValue) => updateItem(item.id, "location", nextValue)}
+                        />
+                      </FormField>
+                      <FormField label="Spots">
                         <input
                           className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
                           value={item.spots}
                           onChange={(e) => updateItem(item.id, "spots", e.target.value)}
+                          type="number"
+                          min="1"
+                          step="1"
+                          placeholder="1"
+                        />
+                      </FormField>
+                      <FormField label="Start Date">
+                        <input
+                          className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                          value={item.periods[0]?.startDate || ""}
+                          onChange={(e) => updatePeriod(item.id, item.periods[0]?.id, "startDate", e.target.value)}
+                          type="date"
+                        />
+                      </FormField>
+                      <FormField label="Duration (weeks)">
+                        <input
+                          className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                          value={item.periods[0]?.duration || ""}
+                          onChange={(e) => updatePeriod(item.id, item.periods[0]?.id, "duration", e.target.value)}
                           type="number"
                           min="1"
                           step="1"
@@ -419,7 +448,40 @@ export function GenerateTab({
                         <Trash2 size={16} />
                       </Button>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-end">
+                      <FormField label="Location">
+                        <SelectDropdown
+                          value={item.location}
+                          options={locationSelectOptions}
+                          onChange={(nextValue) => updateItem(item.id, "location", nextValue)}
+                        />
+                      </FormField>
+                      <div className="flex items-end justify-between gap-2">
+                        <FormField label="Spots" className="flex-1">
+                          <input
+                            className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                            value={item.spots}
+                            onChange={(e) => updateItem(item.id, "spots", e.target.value)}
+                            type="number"
+                            min="1"
+                            step="1"
+                            placeholder="1"
+                          />
+                        </FormField>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="rounded-xl h-10 w-10"
+                          onClick={() => removeItem(item.id)}
+                          disabled={items.length === 1}
+                          title="Remove location"
+                        >
+                          <Trash2 size={16} />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
                   {isStatic ? (
                     <FormField label="Production Fee">
@@ -435,32 +497,10 @@ export function GenerateTab({
                     </FormField>
                   ) : null}
 
-                {packageType === "combined" ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 items-end">
-                    <FormField label="Start Date">
-                      <input
-                        className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                        value={item.periods[0]?.startDate || ""}
-                        onChange={(e) => updatePeriod(item.id, item.periods[0]?.id, "startDate", e.target.value)}
-                        type="date"
-                      />
-                    </FormField>
-                    <FormField label="Duration (weeks)">
-                      <input
-                        className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-                        value={item.periods[0]?.duration || ""}
-                        onChange={(e) => updatePeriod(item.id, item.periods[0]?.id, "duration", e.target.value)}
-                        type="number"
-                        min="1"
-                        step="1"
-                        placeholder="1"
-                      />
-                    </FormField>
-                  </div>
-                ) : (
+                {packageType !== "combined" ? (
                   <>
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-xs font-semibold text-black/60 dark:text-white/60">Line Items</div>
+                      <div className="text-xs font-semibold text-black/60 dark:text-white/60">Line Items</div>
                       <Button variant="secondary" size="sm" className="rounded-xl" onClick={() => addPeriod(item.id)}>
                         Add Line Item
                       </Button>
@@ -515,7 +555,7 @@ export function GenerateTab({
                       ))}
                     </div>
                   </>
-                )}
+                ) : null}
               </div>
             );
             })}
@@ -523,16 +563,7 @@ export function GenerateTab({
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <FormField label="Currency">
-            <select
-              className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value)}
-            >
-              <option value="AED">AED</option>
-              <option value="EUR">EUR</option>
-              <option value="USD">USD</option>
-              <option value="GBP">GBP</option>
-            </select>
+            <SelectDropdown value={currency} options={currencyOptions} onChange={setCurrency} />
           </FormField>
           <FormField label="Payment Terms">
             <input
@@ -617,13 +648,13 @@ export function GenerateTab({
                             {resultMeta?.packageType || "—"}
                           </span>
                         </div>
-                        <div className="flex flex-wrap items-baseline gap-1">
-                          <span className="uppercase tracking-wide text-black/45 dark:text-white/50">Total Amount</span>
-                          <span className="font-semibold text-black/80 dark:text-white/85">{totalAmountLabel}</span>
-                        </div>
                         <div className="flex flex-wrap items-baseline gap-1 sm:col-span-2">
                           <span className="uppercase tracking-wide text-black/45 dark:text-white/50">Locations</span>
                           <span className="font-semibold text-black/80 dark:text-white/85">{resultLocation}</span>
+                        </div>
+                        <div className="flex flex-wrap items-baseline gap-1">
+                          <span className="uppercase tracking-wide text-black/45 dark:text-white/50">Total Amount</span>
+                          <span className="font-semibold text-black/80 dark:text-white/85">{totalAmountLabel}</span>
                         </div>
                       </div>
 

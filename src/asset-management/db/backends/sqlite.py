@@ -19,21 +19,42 @@ logger = logging.getLogger("asset-management")
 
 
 # SQLite schema for asset management tables
+# Unified architecture: standalone assets are merged into networks table
 SCHEMA = """
--- Networks table
+-- Networks table (unified architecture: includes standalone flag and location fields)
 CREATE TABLE IF NOT EXISTS networks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     network_key TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     description TEXT,
     company TEXT NOT NULL,
+    -- Unified architecture: standalone flag (INTERNAL ONLY)
+    standalone INTEGER DEFAULT 0,
+    -- Location fields (used for standalone networks)
+    display_type TEXT CHECK(display_type IS NULL OR display_type IN ('digital', 'static')),
+    series TEXT,
+    height TEXT,
+    width TEXT,
+    number_of_faces INTEGER DEFAULT 1,
+    spot_duration INTEGER,
+    loop_duration INTEGER,
+    sov_percent REAL,
+    upload_fee REAL,
+    city TEXT,
+    area TEXT,
+    country TEXT,
+    address TEXT,
+    gps_lat REAL,
+    gps_lng REAL,
+    template_path TEXT,
+    notes TEXT,
     is_active INTEGER DEFAULT 1,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
     created_by TEXT
 );
 
--- Asset types table
+-- Asset types table (for traditional networks only)
 CREATE TABLE IF NOT EXISTS asset_types (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     type_key TEXT NOT NULL,
@@ -50,14 +71,15 @@ CREATE TABLE IF NOT EXISTS asset_types (
     UNIQUE(type_key, network_id)
 );
 
--- Locations table
-CREATE TABLE IF NOT EXISTS locations (
+-- Network assets table (physical display units within a network)
+CREATE TABLE IF NOT EXISTS network_assets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     location_key TEXT NOT NULL UNIQUE,
     display_name TEXT NOT NULL,
     display_type TEXT NOT NULL CHECK(display_type IN ('digital', 'static')),
-    network_id INTEGER,
+    network_id INTEGER NOT NULL,
     type_id INTEGER,
+    environment TEXT DEFAULT 'outdoor' CHECK(environment IN ('indoor', 'outdoor')),
     series TEXT,
     height TEXT,
     width TEXT,
@@ -68,6 +90,7 @@ CREATE TABLE IF NOT EXISTS locations (
     upload_fee REAL,
     address TEXT,
     city TEXT,
+    area TEXT,
     country TEXT,
     gps_lat REAL,
     gps_lng REAL,
@@ -95,43 +118,79 @@ CREATE TABLE IF NOT EXISTS packages (
     created_by TEXT
 );
 
--- Package items junction table
+-- Package items table (unified: only networks allowed)
 CREATE TABLE IF NOT EXISTS package_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     package_id INTEGER NOT NULL,
-    item_type TEXT NOT NULL CHECK(item_type IN ('network', 'asset')),
-    network_id INTEGER,
-    location_id INTEGER,
+    item_type TEXT NOT NULL DEFAULT 'network' CHECK(item_type = 'network'),
+    network_id INTEGER NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (package_id) REFERENCES packages(id) ON DELETE CASCADE,
-    FOREIGN KEY (network_id) REFERENCES networks(id),
-    FOREIGN KEY (location_id) REFERENCES locations(id)
+    FOREIGN KEY (network_id) REFERENCES networks(id)
 );
 
 -- Mockup frames table
 CREATE TABLE IF NOT EXISTS mockup_frames (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     location_key TEXT NOT NULL,
+    environment TEXT NOT NULL DEFAULT 'outdoor' CHECK(environment IN ('indoor', 'outdoor')),
     time_of_day TEXT NOT NULL DEFAULT 'day' CHECK(time_of_day IN ('day', 'night')),
-    finish TEXT NOT NULL DEFAULT 'gold' CHECK(finish IN ('gold', 'silver', 'black')),
+    side TEXT NOT NULL DEFAULT 'gold' CHECK(side IN ('gold', 'silver', 'single_side')),
     photo_filename TEXT NOT NULL,
     frames_data TEXT NOT NULL DEFAULT '[]',
     config TEXT,
     company TEXT NOT NULL,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(location_key, time_of_day, finish, photo_filename, company)
+    created_by TEXT,
+    UNIQUE(location_key, environment, time_of_day, side, photo_filename, company)
 );
+
+-- Locations VIEW (unified: shows networks as sellable locations)
+-- This mirrors the Supabase locations VIEW
+CREATE VIEW IF NOT EXISTS locations AS
+SELECT
+    n.id,
+    n.network_key AS location_key,
+    n.name AS display_name,
+    n.display_type,
+    n.id AS network_id,
+    NULL AS type_id,
+    n.series,
+    n.height,
+    n.width,
+    n.number_of_faces,
+    n.spot_duration,
+    n.loop_duration,
+    n.sov_percent,
+    n.upload_fee,
+    n.city,
+    n.area,
+    n.country,
+    n.address,
+    n.gps_lat,
+    n.gps_lng,
+    n.template_path,
+    n.is_active,
+    n.created_at,
+    n.updated_at,
+    n.created_by,
+    n.notes,
+    n.company
+FROM networks n
+WHERE n.is_active = 1;
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_networks_company ON networks(company);
 CREATE INDEX IF NOT EXISTS idx_networks_key ON networks(network_key);
+CREATE INDEX IF NOT EXISTS idx_networks_standalone ON networks(standalone);
 CREATE INDEX IF NOT EXISTS idx_asset_types_network ON asset_types(network_id);
 CREATE INDEX IF NOT EXISTS idx_asset_types_company ON asset_types(company);
-CREATE INDEX IF NOT EXISTS idx_locations_network ON locations(network_id);
-CREATE INDEX IF NOT EXISTS idx_locations_type ON locations(type_id);
-CREATE INDEX IF NOT EXISTS idx_locations_company ON locations(company);
-CREATE INDEX IF NOT EXISTS idx_locations_key ON locations(location_key);
+CREATE INDEX IF NOT EXISTS idx_network_assets_network ON network_assets(network_id);
+CREATE INDEX IF NOT EXISTS idx_network_assets_type ON network_assets(type_id);
+CREATE INDEX IF NOT EXISTS idx_network_assets_company ON network_assets(company);
+CREATE INDEX IF NOT EXISTS idx_network_assets_key ON network_assets(location_key);
+CREATE INDEX IF NOT EXISTS idx_network_assets_environment ON network_assets(environment);
 CREATE INDEX IF NOT EXISTS idx_packages_company ON packages(company);
 CREATE INDEX IF NOT EXISTS idx_package_items_package ON package_items(package_id);
 CREATE INDEX IF NOT EXISTS idx_mockup_frames_location ON mockup_frames(location_key);
@@ -210,16 +269,65 @@ class SQLiteBackend(DatabaseBackend):
         company_schema: str,
         description: str | None = None,
         created_by: str | None = None,
+        # Unified architecture fields
+        standalone: bool = False,
+        display_type: str | None = None,
+        series: str | None = None,
+        height: str | None = None,
+        width: str | None = None,
+        number_of_faces: int | None = None,
+        spot_duration: int | None = None,
+        loop_duration: int | None = None,
+        sov_percent: float | None = None,
+        upload_fee: float | None = None,
+        city: str | None = None,
+        area: str | None = None,
+        country: str | None = None,
+        address: str | None = None,
+        gps_lat: float | None = None,
+        gps_lng: float | None = None,
+        template_path: str | None = None,
+        notes: str | None = None,
     ) -> dict[str, Any] | None:
         conn = self._connect()
         try:
             now = self._now()
+            # Build dynamic insert with all unified fields
+            fields = ["network_key", "name", "description", "company", "standalone",
+                      "created_at", "updated_at", "created_by"]
+            values = [network_key, name, description, company_schema, 1 if standalone else 0,
+                      now, now, created_by]
+
+            # Add optional fields
+            optional = {
+                "display_type": display_type,
+                "series": series,
+                "height": height,
+                "width": width,
+                "number_of_faces": number_of_faces,
+                "spot_duration": spot_duration,
+                "loop_duration": loop_duration,
+                "sov_percent": sov_percent,
+                "upload_fee": upload_fee,
+                "city": city,
+                "area": area,
+                "country": country,
+                "address": address,
+                "gps_lat": gps_lat,
+                "gps_lng": gps_lng,
+                "template_path": template_path,
+                "notes": notes,
+            }
+            for field, value in optional.items():
+                if value is not None:
+                    fields.append(field)
+                    values.append(value)
+
+            placeholders = ", ".join("?" * len(values))
+            field_names = ", ".join(fields)
             cursor = conn.execute(
-                """
-                INSERT INTO networks (network_key, name, description, company, created_at, updated_at, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (network_key, name, description, company_schema, now, now, created_by),
+                f"INSERT INTO networks ({field_names}) VALUES ({placeholders})",
+                values,
             )
             network_id = cursor.lastrowid
             return self.get_network(network_id, [company_schema])
@@ -507,7 +615,7 @@ class SQLiteBackend(DatabaseBackend):
             conn.close()
 
     # =========================================================================
-    # LOCATIONS
+    # LOCATIONS (Unified: locations = networks)
     # =========================================================================
 
     def create_location(
@@ -521,59 +629,46 @@ class SQLiteBackend(DatabaseBackend):
         created_by: str | None = None,
         **kwargs,
     ) -> dict[str, Any] | None:
-        conn = self._connect()
-        try:
-            now = self._now()
-            columns = [
-                "location_key", "display_name", "display_type", "company",
-                "network_id", "type_id", "created_at", "updated_at", "created_by"
-            ]
-            values = [
-                location_key, display_name, display_type, company_schema,
-                network_id, type_id, now, now, created_by
-            ]
-
-            # Add optional fields
-            optional_fields = [
-                "series", "height", "width", "number_of_faces", "spot_duration",
-                "loop_duration", "sov_percent", "upload_fee", "address", "city",
-                "country", "gps_lat", "gps_lng", "template_path", "notes"
-            ]
-            for field in optional_fields:
-                if field in kwargs and kwargs[field] is not None:
-                    columns.append(field)
-                    values.append(kwargs[field])
-
-            placeholders = ",".join("?" * len(values))
-            columns_str = ", ".join(columns)
-
-            cursor = conn.execute(
-                f"INSERT INTO locations ({columns_str}) VALUES ({placeholders})",
-                values,
-            )
-            location_id = cursor.lastrowid
-            return self.get_location(location_id, [company_schema])
-        except sqlite3.IntegrityError as e:
-            logger.error(f"[SQLITE] Failed to create location: {e}")
-            return None
-        finally:
-            conn.close()
+        """Create a location (which is a standalone network in unified architecture)."""
+        # In unified architecture, creating a location = creating a standalone network
+        return self.create_network(
+            network_key=location_key,
+            name=display_name,
+            company_schema=company_schema,
+            created_by=created_by,
+            standalone=True,
+            display_type=display_type,
+            series=kwargs.get("series"),
+            height=kwargs.get("height"),
+            width=kwargs.get("width"),
+            number_of_faces=kwargs.get("number_of_faces"),
+            spot_duration=kwargs.get("spot_duration"),
+            loop_duration=kwargs.get("loop_duration"),
+            sov_percent=kwargs.get("sov_percent"),
+            upload_fee=kwargs.get("upload_fee"),
+            city=kwargs.get("city"),
+            area=kwargs.get("area"),
+            country=kwargs.get("country"),
+            address=kwargs.get("address"),
+            gps_lat=kwargs.get("gps_lat"),
+            gps_lng=kwargs.get("gps_lng"),
+            template_path=kwargs.get("template_path"),
+            notes=kwargs.get("notes"),
+        )
 
     def get_location(
         self,
         location_id: int,
         company_schemas: list[str],
     ) -> dict[str, Any] | None:
+        """Get a location by ID (locations = networks in unified architecture)."""
         conn = self._connect()
         try:
             placeholders = ",".join("?" * len(company_schemas))
             cursor = conn.execute(
                 f"""
-                SELECT l.*, n.name as network_name, at.name as type_name
-                FROM locations l
-                LEFT JOIN networks n ON l.network_id = n.id
-                LEFT JOIN asset_types at ON l.type_id = at.id
-                WHERE l.id = ? AND l.company IN ({placeholders}) AND l.is_active = 1
+                SELECT * FROM locations
+                WHERE id = ? AND company IN ({placeholders})
                 """,
                 (location_id, *company_schemas),
             )
@@ -590,16 +685,14 @@ class SQLiteBackend(DatabaseBackend):
         location_key: str,
         company_schemas: list[str],
     ) -> dict[str, Any] | None:
+        """Get a location by key (locations = networks in unified architecture)."""
         conn = self._connect()
         try:
             placeholders = ",".join("?" * len(company_schemas))
             cursor = conn.execute(
                 f"""
-                SELECT l.*, n.name as network_name, at.name as type_name
-                FROM locations l
-                LEFT JOIN networks n ON l.network_id = n.id
-                LEFT JOIN asset_types at ON l.type_id = at.id
-                WHERE l.location_key = ? AND l.company IN ({placeholders}) AND l.is_active = 1
+                SELECT * FROM locations
+                WHERE location_key = ? AND company IN ({placeholders})
                 """,
                 (location_key, *company_schemas),
             )
@@ -620,33 +713,28 @@ class SQLiteBackend(DatabaseBackend):
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
+        """List locations (locations = networks in unified architecture)."""
         conn = self._connect()
         try:
             placeholders = ",".join("?" * len(company_schemas))
             params = list(company_schemas)
             filters = []
 
-            if not include_inactive:
-                filters.append("l.is_active = 1")
+            # Note: locations VIEW already filters is_active=1
+            # network_id filter: if provided, filter by network_id (which equals id in locations)
             if network_id is not None:
-                filters.append("l.network_id = ?")
+                filters.append("network_id = ?")
                 params.append(network_id)
-            if type_id is not None:
-                filters.append("l.type_id = ?")
-                params.append(type_id)
 
-            where_clause = f"l.company IN ({placeholders})"
+            where_clause = f"company IN ({placeholders})"
             if filters:
                 where_clause += " AND " + " AND ".join(filters)
 
             cursor = conn.execute(
                 f"""
-                SELECT l.*, n.name as network_name, at.name as type_name
-                FROM locations l
-                LEFT JOIN networks n ON l.network_id = n.id
-                LEFT JOIN asset_types at ON l.type_id = at.id
+                SELECT * FROM locations
                 WHERE {where_clause}
-                ORDER BY l.display_name
+                ORDER BY display_name
                 LIMIT ? OFFSET ?
                 """,
                 (*params, limit, offset),
@@ -664,6 +752,7 @@ class SQLiteBackend(DatabaseBackend):
         company_schema: str,
         updates: dict[str, Any],
     ) -> dict[str, Any] | None:
+        """Update a location (updates the networks table in unified architecture)."""
         if not updates:
             return self.get_location(location_id, [company_schema])
 
@@ -675,7 +764,7 @@ class SQLiteBackend(DatabaseBackend):
 
             conn.execute(
                 f"""
-                UPDATE locations
+                UPDATE networks
                 SET {set_clause}
                 WHERE id = ? AND company = ?
                 """,
@@ -691,17 +780,18 @@ class SQLiteBackend(DatabaseBackend):
         company_schema: str,
         hard_delete: bool = False,
     ) -> bool:
+        """Delete a location (deletes from networks table in unified architecture)."""
         conn = self._connect()
         try:
             if hard_delete:
                 cursor = conn.execute(
-                    "DELETE FROM locations WHERE id = ? AND company = ?",
+                    "DELETE FROM networks WHERE id = ? AND company = ?",
                     (location_id, company_schema),
                 )
             else:
                 cursor = conn.execute(
                     """
-                    UPDATE locations
+                    UPDATE networks
                     SET is_active = 0, updated_at = ?
                     WHERE id = ? AND company = ?
                     """,
@@ -852,30 +942,29 @@ class SQLiteBackend(DatabaseBackend):
     def add_package_item(
         self,
         package_id: int,
-        item_type: str,
         company_schema: str,
-        network_id: int | None = None,
-        location_id: int | None = None,
+        network_id: int,
     ) -> dict[str, Any] | None:
+        """Add a network to a package. Unified architecture: only networks allowed."""
         conn = self._connect()
         try:
             now = self._now()
             cursor = conn.execute(
                 """
-                INSERT INTO package_items (package_id, item_type, network_id, location_id, created_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO package_items (package_id, item_type, network_id, created_at)
+                VALUES (?, 'network', ?, ?)
                 """,
-                (package_id, item_type, network_id, location_id, now),
+                (package_id, network_id, now),
             )
             item_id = cursor.lastrowid
 
             # Fetch the created item with expanded info
             cursor = conn.execute(
                 """
-                SELECT pi.*, n.name as network_name, l.display_name as location_name
+                SELECT pi.*, n.name as network_name,
+                       (SELECT COUNT(*) FROM network_assets WHERE network_id = pi.network_id AND is_active = 1) as location_count
                 FROM package_items pi
                 LEFT JOIN networks n ON pi.network_id = n.id
-                LEFT JOIN locations l ON pi.location_id = l.id
                 WHERE pi.id = ?
                 """,
                 (item_id,),
@@ -912,15 +1001,15 @@ class SQLiteBackend(DatabaseBackend):
         package_id: int,
         company_schema: str,
     ) -> list[dict[str, Any]]:
+        """Get all items in a package. Unified architecture: all items are networks."""
         conn = self._connect()
         try:
             cursor = conn.execute(
                 """
-                SELECT pi.*, n.name as network_name, l.display_name as location_name,
-                       (SELECT COUNT(*) FROM locations WHERE network_id = pi.network_id AND is_active = 1) as location_count
+                SELECT pi.*, n.name as network_name,
+                       (SELECT COUNT(*) FROM network_assets WHERE network_id = pi.network_id AND is_active = 1) as location_count
                 FROM package_items pi
                 LEFT JOIN networks n ON pi.network_id = n.id
-                LEFT JOIN locations l ON pi.location_id = l.id
                 WHERE pi.package_id = ?
                 """,
                 (package_id,),
@@ -934,31 +1023,22 @@ class SQLiteBackend(DatabaseBackend):
         package_id: int,
         company_schema: str,
     ) -> list[dict[str, Any]]:
+        """Get all networks in a package.
+
+        Unified architecture: packages contain networks (both standalone and traditional).
+        Returns the networks themselves, not expanded to individual assets.
+        """
         conn = self._connect()
         try:
-            # Get all locations: direct assets + locations from included networks
             cursor = conn.execute(
                 """
-                SELECT DISTINCT l.*, n.name as network_name, at.name as type_name
-                FROM locations l
-                LEFT JOIN networks n ON l.network_id = n.id
-                LEFT JOIN asset_types at ON l.type_id = at.id
-                WHERE l.is_active = 1 AND (
-                    -- Direct asset references
-                    l.id IN (
-                        SELECT location_id FROM package_items
-                        WHERE package_id = ? AND item_type = 'asset'
-                    )
-                    OR
-                    -- Locations belonging to included networks
-                    l.network_id IN (
-                        SELECT network_id FROM package_items
-                        WHERE package_id = ? AND item_type = 'network'
-                    )
-                )
-                ORDER BY l.display_name
+                SELECT DISTINCT n.*
+                FROM networks n
+                INNER JOIN package_items pi ON n.id = pi.network_id
+                WHERE pi.package_id = ? AND n.is_active = 1
+                ORDER BY n.name
                 """,
-                (package_id, package_id),
+                (package_id,),
             )
             results = self._rows_to_list(cursor.fetchall())
             for r in results:
@@ -1203,7 +1283,7 @@ class SQLiteBackend(DatabaseBackend):
                 """
                 SELECT * FROM mockup_frames
                 WHERE location_key = ? AND company = ?
-                ORDER BY time_of_day, finish, photo_filename
+                ORDER BY environment, time_of_day, side, photo_filename
                 """,
                 (location_key, company_schema),
             )
@@ -1222,8 +1302,9 @@ class SQLiteBackend(DatabaseBackend):
         photo_filename: str,
         frames_data: list[dict],
         company_schema: str,
+        environment: str = "outdoor",
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         created_by: str | None = None,
         config: dict | None = None,
     ) -> str:
@@ -1262,15 +1343,15 @@ class SQLiteBackend(DatabaseBackend):
 
             conn.execute(
                 """
-                INSERT INTO mockup_frames (location_key, company, time_of_day, finish, photo_filename, frames_data, created_at, created_by, config)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO mockup_frames (location_key, company, environment, time_of_day, side, photo_filename, frames_data, created_at, created_by, config)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (location_key, company_schema, time_of_day, finish, final_filename,
+                (location_key, company_schema, environment, time_of_day, side, final_filename,
                  json.dumps(frames_data), datetime.now().isoformat(), created_by, config_json),
             )
 
             conn.execute("COMMIT")
-            logger.info(f"[SQLITE] Saved mockup frame: {company_schema}.{location_key}/{final_filename}")
+            logger.info(f"[SQLITE] Saved mockup frame: {company_schema}.{location_key}/{environment}/{final_filename}")
             return final_filename
         except Exception as e:
             conn.execute("ROLLBACK")
@@ -1283,33 +1364,58 @@ class SQLiteBackend(DatabaseBackend):
         self,
         location_key: str,
         company: str,
+        environment: str = "outdoor",
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         photo_filename: str | None = None,
     ) -> dict[str, Any] | None:
         """Get specific mockup frame data."""
         conn = self._connect()
         try:
-            if photo_filename:
-                cursor = conn.execute(
-                    """
-                    SELECT * FROM mockup_frames
-                    WHERE location_key = ? AND company = ?
-                    AND time_of_day = ? AND finish = ? AND photo_filename = ?
-                    LIMIT 1
-                    """,
-                    (location_key, company, time_of_day, finish, photo_filename),
-                )
+            if environment == "indoor":
+                # For indoor, ignore time_of_day and side
+                if photo_filename:
+                    cursor = conn.execute(
+                        """
+                        SELECT * FROM mockup_frames
+                        WHERE location_key = ? AND company = ?
+                        AND environment = ? AND photo_filename = ?
+                        LIMIT 1
+                        """,
+                        (location_key, company, environment, photo_filename),
+                    )
+                else:
+                    cursor = conn.execute(
+                        """
+                        SELECT * FROM mockup_frames
+                        WHERE location_key = ? AND company = ?
+                        AND environment = ?
+                        LIMIT 1
+                        """,
+                        (location_key, company, environment),
+                    )
             else:
-                cursor = conn.execute(
-                    """
-                    SELECT * FROM mockup_frames
-                    WHERE location_key = ? AND company = ?
-                    AND time_of_day = ? AND finish = ?
-                    LIMIT 1
-                    """,
-                    (location_key, company, time_of_day, finish),
-                )
+                # For outdoor, match all fields
+                if photo_filename:
+                    cursor = conn.execute(
+                        """
+                        SELECT * FROM mockup_frames
+                        WHERE location_key = ? AND company = ?
+                        AND environment = ? AND time_of_day = ? AND side = ? AND photo_filename = ?
+                        LIMIT 1
+                        """,
+                        (location_key, company, environment, time_of_day, side, photo_filename),
+                    )
+                else:
+                    cursor = conn.execute(
+                        """
+                        SELECT * FROM mockup_frames
+                        WHERE location_key = ? AND company = ?
+                        AND environment = ? AND time_of_day = ? AND side = ?
+                        LIMIT 1
+                        """,
+                        (location_key, company, environment, time_of_day, side),
+                    )
 
             row = cursor.fetchone()
             result = self._row_to_dict(row)
@@ -1326,20 +1432,33 @@ class SQLiteBackend(DatabaseBackend):
         location_key: str,
         company: str,
         photo_filename: str,
+        environment: str = "outdoor",
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
     ) -> bool:
         """Delete a mockup frame."""
         conn = self._connect()
         try:
-            conn.execute(
-                """
-                DELETE FROM mockup_frames
-                WHERE location_key = ? AND company = ?
-                AND photo_filename = ? AND time_of_day = ? AND finish = ?
-                """,
-                (location_key, company, photo_filename, time_of_day, finish),
-            )
+            if environment == "indoor":
+                # For indoor, ignore time_of_day and side
+                conn.execute(
+                    """
+                    DELETE FROM mockup_frames
+                    WHERE location_key = ? AND company = ?
+                    AND photo_filename = ? AND environment = ?
+                    """,
+                    (location_key, company, photo_filename, environment),
+                )
+            else:
+                # For outdoor, match all fields
+                conn.execute(
+                    """
+                    DELETE FROM mockup_frames
+                    WHERE location_key = ? AND company = ?
+                    AND photo_filename = ? AND environment = ? AND time_of_day = ? AND side = ?
+                    """,
+                    (location_key, company, photo_filename, environment, time_of_day, side),
+                )
             conn.commit()
             return True
         except Exception as e:

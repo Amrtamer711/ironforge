@@ -613,7 +613,7 @@ SALES_TABLES: dict[str, Table] = {
             Column("user_id", ColumnType.TEXT),
             Column("location_key", ColumnType.TEXT, nullable=False),
             Column("time_of_day", ColumnType.TEXT, nullable=False, default="day"),
-            Column("finish", ColumnType.TEXT, nullable=False, default="gold"),
+            Column("side", ColumnType.TEXT, nullable=False, default="gold"),
             Column("photo_filename", ColumnType.TEXT, nullable=False),
             Column("frames_data", ColumnType.TEXT, nullable=False),
             Column("created_at", ColumnType.TEXT, nullable=False),
@@ -624,7 +624,7 @@ SALES_TABLES: dict[str, Table] = {
             Index("idx_mockup_frames_user", ["user_id"]),
             Index("idx_mockup_frames_location", ["location_key"]),
         ],
-        unique_constraints=[["location_key", "time_of_day", "finish", "photo_filename"]],
+        unique_constraints=[["location_key", "time_of_day", "side", "photo_filename"]],
     ),
 
     # -------------------------------------------------------------------------
@@ -638,7 +638,7 @@ SALES_TABLES: dict[str, Table] = {
             Column("generated_at", ColumnType.TEXT, nullable=False),
             Column("location_key", ColumnType.TEXT, nullable=False),
             Column("time_of_day", ColumnType.TEXT, nullable=False),
-            Column("finish", ColumnType.TEXT, nullable=False),
+            Column("side", ColumnType.TEXT, nullable=False),
             Column("photo_used", ColumnType.TEXT, nullable=False),
             Column("creative_type", ColumnType.TEXT, nullable=False,
                    check="creative_type IN ('uploaded', 'ai_generated')"),

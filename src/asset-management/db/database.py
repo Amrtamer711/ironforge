@@ -119,9 +119,50 @@ class _DatabaseNamespace:
         company_schema: str,
         description: str | None = None,
         created_by: str | None = None,
+        # Unified architecture fields
+        standalone: bool = False,
+        display_type: str | None = None,
+        series: str | None = None,
+        height: str | None = None,
+        width: str | None = None,
+        number_of_faces: int | None = None,
+        spot_duration: int | None = None,
+        loop_duration: int | None = None,
+        sov_percent: float | None = None,
+        upload_fee: float | None = None,
+        city: str | None = None,
+        area: str | None = None,
+        country: str | None = None,
+        address: str | None = None,
+        gps_lat: float | None = None,
+        gps_lng: float | None = None,
+        template_path: str | None = None,
+        notes: str | None = None,
     ) -> dict[str, Any] | None:
         return self._backend.create_network(
-            network_key, name, company_schema, description, created_by
+            network_key=network_key,
+            name=name,
+            company_schema=company_schema,
+            description=description,
+            created_by=created_by,
+            standalone=standalone,
+            display_type=display_type,
+            series=series,
+            height=height,
+            width=width,
+            number_of_faces=number_of_faces,
+            spot_duration=spot_duration,
+            loop_duration=loop_duration,
+            sov_percent=sov_percent,
+            upload_fee=upload_fee,
+            city=city,
+            area=area,
+            country=country,
+            address=address,
+            gps_lat=gps_lat,
+            gps_lng=gps_lng,
+            template_path=template_path,
+            notes=notes,
         )
 
     def get_network(
@@ -334,13 +375,14 @@ class _DatabaseNamespace:
     def add_package_item(
         self,
         package_id: int,
-        item_type: str,
         company_schema: str,
-        network_id: int | None = None,
-        location_id: int | None = None,
+        network_id: int,
     ) -> dict[str, Any] | None:
+        """Add a network to a package. Unified architecture: only networks allowed."""
         return self._backend.add_package_item(
-            package_id, item_type, company_schema, network_id, location_id
+            package_id=package_id,
+            company_schema=company_schema,
+            network_id=network_id,
         )
 
     def remove_package_item(
@@ -429,28 +471,30 @@ class _DatabaseNamespace:
         photo_filename: str,
         frames_data: list[dict],
         company_schema: str,
+        environment: str = "outdoor",
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         created_by: str | None = None,
         config: dict | None = None,
     ) -> str:
         """Save mockup frame data. Returns auto-numbered filename."""
         return self._backend.save_mockup_frame(
             location_key, photo_filename, frames_data, company_schema,
-            time_of_day, finish, created_by, config
+            environment, time_of_day, side, created_by, config
         )
 
     def get_mockup_frame(
         self,
         location_key: str,
         company: str,
+        environment: str = "outdoor",
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
         photo_filename: str | None = None,
     ) -> dict[str, Any] | None:
         """Get specific mockup frame data."""
         return self._backend.get_mockup_frame(
-            location_key, company, time_of_day, finish, photo_filename
+            location_key, company, environment, time_of_day, side, photo_filename
         )
 
     def delete_mockup_frame(
@@ -458,12 +502,13 @@ class _DatabaseNamespace:
         location_key: str,
         company: str,
         photo_filename: str,
+        environment: str = "outdoor",
         time_of_day: str = "day",
-        finish: str = "gold",
+        side: str = "gold",
     ) -> bool:
         """Delete a mockup frame."""
         return self._backend.delete_mockup_frame(
-            location_key, company, photo_filename, time_of_day, finish
+            location_key, company, photo_filename, environment, time_of_day, side
         )
 
 

@@ -1025,7 +1025,7 @@ class ToolRouter:
         await handle_mockup_generation(
             location_name=location_name,
             time_of_day=args.get("time_of_day", "").strip().lower() or "all",
-            finish=args.get("finish", "").strip().lower() or "all",
+            side=args.get("side", "").strip().lower() or "all",
             ai_prompts=args.get("ai_prompts", []) or [],
             user_id=user_id,
             channel=channel,

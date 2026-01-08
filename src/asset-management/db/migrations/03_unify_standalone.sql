@@ -1,5 +1,5 @@
 -- =============================================================================
--- MIGRATION 02: UNIFY STANDALONE ASSETS INTO NETWORKS
+-- MIGRATION 03: UNIFY STANDALONE ASSETS INTO NETWORKS
 -- =============================================================================
 -- This migration eliminates the standalone_assets table by merging everything
 -- into the networks table with a `standalone` flag.
@@ -217,10 +217,13 @@ BEGIN
     -- =========================================================================
     RAISE NOTICE '  Step 8: Updating locations VIEW...';
 
+    -- Drop existing view first (required when changing columns)
+    EXECUTE format('DROP VIEW IF EXISTS %I.locations', v_schema);
+
     -- The new locations VIEW only shows networks (both standalone and traditional)
     -- IMPORTANT: standalone flag is NOT exposed in the VIEW
     EXECUTE format('
-        CREATE OR REPLACE VIEW %I.locations AS
+        CREATE VIEW %I.locations AS
         SELECT
             n.id,
             n.network_key AS location_key,
@@ -340,6 +343,9 @@ DROP VIEW IF EXISTS public.all_packages;
 --
 -- =============================================================================
 
-RAISE NOTICE '=== Migration 02: Unify Standalone complete! ===';
-RAISE NOTICE 'IMPORTANT: Run verification queries to confirm migration success.';
-RAISE NOTICE 'Archived tables (_standalone_assets_archived) can be dropped after 30 days.';
+DO $$
+BEGIN
+    RAISE NOTICE '=== Migration 02: Unify Standalone complete! ===';
+    RAISE NOTICE 'IMPORTANT: Run verification queries to confirm migration success.';
+    RAISE NOTICE 'Archived tables (_standalone_assets_archived) can be dropped after 30 days.';
+END $$;

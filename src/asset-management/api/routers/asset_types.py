@@ -23,13 +23,13 @@ def list_asset_types(
     companies: list[str] = Query(default=None, description="Filter by company schemas"),
     network_id: int | None = Query(default=None, description="Filter by network"),
     active_only: bool = Query(default=True, description="Only return active types"),
-    user: TrustedUserContext = Depends(require_permission("assets:locations:read")),
+    user: TrustedUserContext = Depends(require_permission("assets:asset_types:read")),
 ) -> list[AssetType]:
     """
-    List all asset types. Requires: assets:locations:read
+    List all asset types. Requires: assets:asset_types:read
 
     Asset types are organizational categories (NOT sellable).
-    They belong to networks and contain locations.
+    They belong to networks and group network assets.
     """
     # Filter to user's accessible companies
     user_companies = user.get("companies", [])
@@ -47,10 +47,10 @@ def list_asset_types(
 def get_asset_type(
     company: str,
     type_id: int,
-    include_locations: bool = Query(default=False, description="Include locations"),
-    user: TrustedUserContext = Depends(require_permission("assets:locations:read")),
+    include_locations: bool = Query(default=False, description="Include network assets"),
+    user: TrustedUserContext = Depends(require_permission("assets:asset_types:read")),
 ) -> AssetType:
-    """Get a specific asset type. Requires: assets:locations:read"""
+    """Get a specific asset type. Requires: assets:asset_types:read"""
     # Verify company access
     user_companies = user.get("companies", [])
     if user_companies and company not in user_companies:
@@ -70,9 +70,9 @@ def get_asset_type(
 def create_asset_type(
     company: str,
     data: AssetTypeCreate,
-    user: TrustedUserContext = Depends(require_permission("assets:locations:create")),
+    user: TrustedUserContext = Depends(require_permission("assets:asset_types:create")),
 ) -> AssetType:
-    """Create a new asset type within a network. Requires: assets:locations:create"""
+    """Create a new asset type within a network. Requires: assets:asset_types:create"""
     # Verify company access
     user_companies = user.get("companies", [])
     if user_companies and company not in user_companies:
@@ -90,9 +90,9 @@ def update_asset_type(
     company: str,
     type_id: int,
     data: AssetTypeUpdate,
-    user: TrustedUserContext = Depends(require_permission("assets:locations:update")),
+    user: TrustedUserContext = Depends(require_permission("assets:asset_types:update")),
 ) -> AssetType:
-    """Update an existing asset type. Requires: assets:locations:update"""
+    """Update an existing asset type. Requires: assets:asset_types:update"""
     # Verify company access
     user_companies = user.get("companies", [])
     if user_companies and company not in user_companies:
@@ -113,9 +113,9 @@ def update_asset_type(
 def delete_asset_type(
     company: str,
     type_id: int,
-    user: TrustedUserContext = Depends(require_permission("assets:locations:delete")),
+    user: TrustedUserContext = Depends(require_permission("assets:asset_types:delete")),
 ) -> dict:
-    """Delete an asset type (soft delete). Requires: assets:locations:delete"""
+    """Delete an asset type (soft delete). Requires: assets:asset_types:delete"""
     # Verify company access
     user_companies = user.get("companies", [])
     if user_companies and company not in user_companies:

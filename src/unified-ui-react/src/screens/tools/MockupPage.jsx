@@ -1556,35 +1556,35 @@ export function MockupPage() {
   }
 
   return (
-    <div className="h-full min-h-0 flex flex-col">
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-4 px-2 py-1">
-        <div className="flex items-center gap-3">
+    <div className="h-full min-h-0 flex flex-col gap-3">
+      <div className="flex items-center gap-3 overflow-x-auto">
+        <Button
+          variant={mode === "generate" ? "default" : "ghost"}
+          onClick={() => setMode("generate")}
+          className="rounded-2xl shrink-0"
+        >
+          Generate
+        </Button>
+        {canSetup ? (
           <Button
-            variant={mode === "generate" ? "default" : "ghost"}
-            onClick={() => setMode("generate")}
-            className="rounded-2xl"
+            variant={mode === "setup" ? "default" : "ghost"}
+            onClick={() => setMode("setup")}
+            className="rounded-2xl shrink-0"
           >
-            Generate
+            Setup
           </Button>
-          {canSetup ? (
-            <Button
-              variant={mode === "setup" ? "default" : "ghost"}
-              onClick={() => setMode("setup")}
-              className="rounded-2xl"
-            >
-              Setup
-            </Button>
-          ) : null}
-          <Button
-            variant={mode === "history" ? "default" : "ghost"}
-            onClick={() => setMode("history")}
-            className="rounded-2xl"
-          >
-            History
-          </Button>
-        </div>
+        ) : null}
+        <Button
+          variant={mode === "history" ? "default" : "ghost"}
+          onClick={() => setMode("history")}
+          className="rounded-2xl shrink-0"
+        >
+          History
+        </Button>
+      </div>
 
-        <div className={mode === "generate" ? "block" : "hidden"} aria-hidden={mode !== "generate"}>
+      <div className="flex-1 min-h-0">
+        <div className={mode === "generate" ? "h-full min-h-0" : "hidden"} aria-hidden={mode !== "generate"}>
           <GenerateTabModule.GeneratePanel
             locations={locations}
             setLocations={setLocations}
@@ -1615,7 +1615,7 @@ export function MockupPage() {
           />
         </div>
 
-        {mode === "setup" ? (
+        <div className={mode === "setup" ? "h-full min-h-0" : "hidden"} aria-hidden={mode !== "setup"}>
           <SetupTabModule.SetupTab
             locations={locations}
             setLocations={setLocations}
@@ -1710,9 +1710,9 @@ export function MockupPage() {
             frameCount={frameCount}
             useNativeSelects={USE_NATIVE_SELECTS}
           />
-        ) : null}
+        </div>
 
-        <div className={mode === "history" ? "block" : "hidden"} aria-hidden={mode !== "history"}>
+        <div className={mode === "history" ? "h-full min-h-0" : "hidden"} aria-hidden={mode !== "history"}>
           <HistoryTabModule.HistoryPanel enabled={historyEnabled} />
         </div>
       </div>

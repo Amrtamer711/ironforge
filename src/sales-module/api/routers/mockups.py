@@ -25,7 +25,7 @@ router = APIRouter(tags=["mockups"])
 
 # Valid enum values for form parameters
 VALID_TIME_OF_DAY = {"day", "night", "all"}
-VALID_FINISH = {"gold", "silver", "all"}
+VALID_SIDE = {"gold", "silver", "all"}
 
 
 @router.get("/mockup")
@@ -65,7 +65,7 @@ async def get_mockup_locations(user: AuthUser = Depends(require_permission("sale
 async def save_mockup_frame(
     location_key: str = Form(..., min_length=1, max_length=100),
     time_of_day: str = Form("day"),
-    finish: str = Form("gold"),
+    side: str = Form("gold"),
     frames_data: str = Form(..., max_length=50000),
     photo: UploadFile = File(...),
     config_json: str | None = Form(None, max_length=10000),
@@ -77,8 +77,8 @@ async def save_mockup_frame(
     # Validate enum parameters
     if time_of_day not in VALID_TIME_OF_DAY:
         raise HTTPException(status_code=400, detail=f"Invalid time_of_day: {time_of_day}. Must be one of: {VALID_TIME_OF_DAY}")
-    if finish not in VALID_FINISH:
-        raise HTTPException(status_code=400, detail=f"Invalid finish: {finish}. Must be one of: {VALID_FINISH}")
+    if side not in VALID_SIDE:
+        raise HTTPException(status_code=400, detail=f"Invalid side: {side}. Must be one of: {VALID_SIDE}")
 
     # Validate file upload
     try:
@@ -93,7 +93,7 @@ async def save_mockup_frame(
     logger.info("[MOCKUP API] ====== SAVE FRAME REQUEST ======")
     logger.info(f"[MOCKUP API] RECEIVED location_key: '{location_key}'")
     logger.info(f"[MOCKUP API] RECEIVED time_of_day: '{time_of_day}'")
-    logger.info(f"[MOCKUP API] RECEIVED finish: '{finish}'")
+    logger.info(f"[MOCKUP API] RECEIVED side: '{side}'")
     logger.info(f"[MOCKUP API] RECEIVED photo filename: '{photo.filename}' ({len(photo_data)} bytes)")
     logger.info("[MOCKUP API] ====================================")
 
@@ -141,7 +141,7 @@ async def save_mockup_frame(
             raise HTTPException(status_code=500, detail=f"Location '{location_key}' has no company assigned")
 
         # Save via Asset-Management API (handles database + storage)
-        logger.info(f"[MOCKUP API] Saving {len(frames)} frame(s) via asset-management for {company_schema}.{location_key}/{time_of_day}/{finish}")
+        logger.info(f"[MOCKUP API] Saving {len(frames)} frame(s) via asset-management for {company_schema}.{location_key}/{time_of_day}/{side}")
         from integrations.asset_management import asset_mgmt_client
         result = await asset_mgmt_client.save_mockup_frame(
             company=company_schema,
@@ -150,7 +150,7 @@ async def save_mockup_frame(
             photo_filename=photo.filename,
             frames_data=frames,
             time_of_day=time_of_day,
-            finish=finish,
+            side=side,
             created_by=user.email,
             config=config_dict,
         )
@@ -161,7 +161,7 @@ async def save_mockup_frame(
 
         # Save photo to disk with the final auto-numbered filename
         logger.info(f"[MOCKUP API] Saving photo to disk: {final_filename}")
-        photo_path = mockup_generator.save_location_photo(company_schema, location_key, final_filename, photo_data, time_of_day, finish)
+        photo_path = mockup_generator.save_location_photo(company_schema, location_key, final_filename, photo_data, time_of_day, side)
         logger.info(f"[MOCKUP API] ✓ Photo saved to disk at: {photo_path}")
 
         # Verify the file exists immediately after saving
@@ -171,9 +171,9 @@ async def save_mockup_frame(
         else:
             logger.error(f"[MOCKUP API] ✗ VERIFICATION FAILED: File does not exist at {photo_path}")
 
-        logger.info(f"[MOCKUP API] ✓ Complete: Saved {len(frames)} frame(s) for {location_key}/{time_of_day}/{finish}/{final_filename}")
+        logger.info(f"[MOCKUP API] ✓ Complete: Saved {len(frames)} frame(s) for {location_key}/{time_of_day}/{side}/{final_filename}")
 
-        return {"success": True, "photo": final_filename, "time_of_day": time_of_day, "finish": finish, "frames_count": len(frames)}
+        return {"success": True, "photo": final_filename, "time_of_day": time_of_day, "side": side, "frames_count": len(frames)}
 
     except json.JSONDecodeError as e:
         logger.error(f"[MOCKUP API] JSON decode error: {e}", exc_info=True)
@@ -266,22 +266,22 @@ async def test_preview_mockup(
 
 
 @router.get("/api/mockup/photos/{location_key}")
-async def list_mockup_photos(location_key: str, time_of_day: str = "all", finish: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:read"))):
-    """List all photos for a location with specific time_of_day and finish. Requires sales:mockups:read permission."""
+async def list_mockup_photos(location_key: str, time_of_day: str = "all", side: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:read"))):
+    """List all photos for a location with specific time_of_day and side. Requires sales:mockups:read permission."""
     try:
         # Use MockupFrameService to fetch from Asset-Management (searches all companies)
         service = MockupFrameService(companies=user.companies)
         all_photos = set()
 
-        if time_of_day == "all" or finish == "all":
+        if time_of_day == "all" or side == "all":
             # Get all variations and aggregate photos
             variations = await service.list_variations(location_key)
             for tod in variations:
-                for fin in variations[tod]:
-                    photos = await service.list_photos(location_key, tod, fin)
+                for sid in variations[tod]:
+                    photos = await service.list_photos(location_key, tod, sid)
                     all_photos.update(photos)
         else:
-            photos = await service.list_photos(location_key, time_of_day, finish)
+            photos = await service.list_photos(location_key, time_of_day, side)
             all_photos.update(photos)
 
         return {"photos": sorted(all_photos)}
@@ -291,52 +291,52 @@ async def list_mockup_photos(location_key: str, time_of_day: str = "all", finish
 
 
 @router.get("/api/mockup/templates/{location_key}")
-async def list_mockup_templates(location_key: str, time_of_day: str = "all", finish: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:read"))):
+async def list_mockup_templates(location_key: str, time_of_day: str = "all", side: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:read"))):
     """List all templates (photos with frame configs) for a location. Requires sales:mockups:read permission."""
     try:
         templates = []
-        seen_photos = set()  # Track unique photo/tod/finish combos
+        seen_photos = set()  # Track unique photo/tod/side combos
 
         # Use MockupFrameService to fetch from Asset-Management (searches all companies)
         service = MockupFrameService(companies=user.companies)
 
-        if time_of_day == "all" or finish == "all":
+        if time_of_day == "all" or side == "all":
             # Get all variations and their photos
             variations = await service.list_variations(location_key)
             for tod in variations:
-                for fin in variations[tod]:
-                    photos = await service.list_photos(location_key, tod, fin)
+                for sid in variations[tod]:
+                    photos = await service.list_photos(location_key, tod, sid)
                     for photo in photos:
-                        key = (photo, tod, fin)
+                        key = (photo, tod, sid)
                         if key in seen_photos:
                             continue
                         seen_photos.add(key)
 
-                        frames_data = await service.get_frames(location_key, tod, fin, photo)
+                        frames_data = await service.get_frames(location_key, tod, sid, photo)
                         if frames_data:
                             frame_config = frames_data[0].get("config", {}) if frames_data else {}
                             templates.append({
                                 "photo": photo,
                                 "time_of_day": tod,
-                                "finish": fin,
+                                "side": sid,
                                 "frame_count": len(frames_data),
                                 "config": frame_config
                             })
         else:
-            photos = await service.list_photos(location_key, time_of_day, finish)
+            photos = await service.list_photos(location_key, time_of_day, side)
             for photo in photos:
-                key = (photo, time_of_day, finish)
+                key = (photo, time_of_day, side)
                 if key in seen_photos:
                     continue
                 seen_photos.add(key)
 
-                frames_data = await service.get_frames(location_key, time_of_day, finish, photo)
+                frames_data = await service.get_frames(location_key, time_of_day, side, photo)
                 if frames_data:
                     frame_config = frames_data[0].get("config", {}) if frames_data else {}
                     templates.append({
                         "photo": photo,
                         "time_of_day": time_of_day,
-                        "finish": finish,
+                        "side": side,
                         "frame_count": len(frames_data),
                         "config": frame_config
                     })
@@ -352,7 +352,7 @@ async def get_mockup_photo(
     location_key: str,
     photo_filename: str,
     time_of_day: str = "all",
-    finish: str = "all",
+    side: str = "all",
     background_tasks: BackgroundTasks = None,
     user: AuthUser = Depends(require_permission("sales:mockups:read")),
 ):
@@ -361,23 +361,23 @@ async def get_mockup_photo(
     location_key = sanitize_path_component(location_key)
     photo_filename = sanitize_path_component(photo_filename)
 
-    logger.info(f"[PHOTO GET] Request for photo: {location_key}/{photo_filename} (time_of_day={time_of_day}, finish={finish})")
+    logger.info(f"[PHOTO GET] Request for photo: {location_key}/{photo_filename} (time_of_day={time_of_day}, side={side})")
 
     # Use MockupFrameService to fetch from Asset-Management (searches all companies)
     service = MockupFrameService(companies=user.companies)
 
-    if time_of_day == "all" or finish == "all":
+    if time_of_day == "all" or side == "all":
         # Search across all variations
         variations = await service.list_variations(location_key)
         logger.info(f"[PHOTO GET] Available variations: {variations}")
 
         for tod in variations:
-            for fin in variations[tod]:
+            for sid in variations[tod]:
                 # Check if this photo exists in this variation
-                photos = await service.list_photos(location_key, tod, fin)
+                photos = await service.list_photos(location_key, tod, sid)
                 if photo_filename in photos:
                     # Download the photo
-                    photo_path = await service.download_photo(location_key, tod, fin, photo_filename)
+                    photo_path = await service.download_photo(location_key, tod, sid, photo_filename)
                     if photo_path and photo_path.exists():
                         file_size = os.path.getsize(photo_path)
                         logger.info(f"[PHOTO GET] ✓ FOUND: {photo_path} ({file_size} bytes)")
@@ -388,8 +388,8 @@ async def get_mockup_photo(
 
                         return FileResponse(photo_path, filename=photo_filename)
     else:
-        # Direct lookup with specific time_of_day and finish
-        photo_path = await service.download_photo(location_key, time_of_day, finish, photo_filename)
+        # Direct lookup with specific time_of_day and side
+        photo_path = await service.download_photo(location_key, time_of_day, side, photo_filename)
         if photo_path and photo_path.exists():
             file_size = os.path.getsize(photo_path)
             logger.info(f"[PHOTO GET] ✓ FOUND: {photo_path} ({file_size} bytes)")
@@ -405,7 +405,7 @@ async def get_mockup_photo(
 
 
 @router.delete("/api/mockup/photo/{location_key}/{photo_filename}")
-async def delete_mockup_photo(location_key: str, photo_filename: str, time_of_day: str = "all", finish: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:setup"))):
+async def delete_mockup_photo(location_key: str, photo_filename: str, time_of_day: str = "all", side: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:setup"))):
     """Delete a photo and its frame. Requires admin role."""
     from generators import mockup as mockup_generator
 
@@ -421,22 +421,22 @@ async def delete_mockup_photo(location_key: str, photo_filename: str, time_of_da
         company_schema = location_data.get("company") or location_data.get("company_schema")
 
         # If "all" is specified, find and delete the photo from whichever variation it's in
-        if time_of_day == "all" or finish == "all":
+        if time_of_day == "all" or side == "all":
             # Use MockupFrameService to find the photo's variation (searches all companies)
             service = MockupFrameService(companies=user.companies)
             variations = await service.list_variations(location_key)
             for tod in variations:
-                for fin in variations[tod]:
-                    photos = await service.list_photos(location_key, tod, fin)
+                for sid in variations[tod]:
+                    photos = await service.list_photos(location_key, tod, sid)
                     if photo_filename in photos:
-                        success = await mockup_generator.delete_location_photo(location_key, photo_filename, company_schema, tod, fin)
+                        success = await mockup_generator.delete_location_photo(location_key, photo_filename, company_schema, tod, sid)
                         if success:
                             return {"success": True}
                         else:
                             raise HTTPException(status_code=500, detail="Failed to delete photo")
             raise HTTPException(status_code=404, detail="Photo not found")
         else:
-            success = await mockup_generator.delete_location_photo(location_key, photo_filename, company_schema, time_of_day, finish)
+            success = await mockup_generator.delete_location_photo(location_key, photo_filename, company_schema, time_of_day, side)
             if success:
                 return {"success": True}
             else:
@@ -453,7 +453,7 @@ async def generate_mockup_api(
     request: Request,
     location_key: str = Form(...),
     time_of_day: str = Form("all"),
-    finish: str = Form("all"),
+    side: str = Form("all"),
     ai_prompt: str | None = Form(None),
     creative: UploadFile | None = File(None),
     specific_photo: str | None = Form(None),
@@ -529,13 +529,13 @@ async def generate_mockup_api(
         else:
             raise HTTPException(status_code=400, detail="Either ai_prompt or creative file must be provided")
 
-        # Generate mockup (pass as list) with time_of_day, finish, specific_photo, and config override
+        # Generate mockup (pass as list) with time_of_day, side, specific_photo, and config override
         # Pass company_hint for O(1) asset lookup (we already know which company owns this location)
         result_path, photo_used = await mockup_generator.generate_mockup_async(
             location_key,
             [creative_path],
             time_of_day=time_of_day,
-            finish=finish,
+            side=side,
             specific_photo=specific_photo,
             config_override=config_dict,
             company_schemas=user.companies,
@@ -547,7 +547,7 @@ async def generate_mockup_api(
             db.log_mockup_usage(
                 location_key=location_key,
                 time_of_day=time_of_day,
-                finish=finish,
+                side=side,
                 photo_used=specific_photo or "random",
                 creative_type=creative_type or "unknown",
                 company_schema=company_schema,
@@ -562,7 +562,7 @@ async def generate_mockup_api(
         db.log_mockup_usage(
             location_key=location_key,
             time_of_day=time_of_day,
-            finish=finish,
+            side=side,
             photo_used=photo_used,
             creative_type=creative_type,
             company_schema=company_schema,
@@ -596,7 +596,7 @@ async def generate_mockup_api(
         return FileResponse(
             result_path,
             media_type="image/jpeg",
-            filename=f"mockup_{location_key}_{time_of_day}_{finish}.jpg",
+            filename=f"mockup_{location_key}_{time_of_day}_{side}.jpg",
             background=background_tasks
         )
 
@@ -641,7 +641,7 @@ async def generate_mockup_api(
             db.log_mockup_usage(
                 location_key=location_key,
                 time_of_day=time_of_day,
-                finish=finish,
+                side=side,
                 photo_used=specific_photo or "random",
                 creative_type=creative_type or "unknown",
                 company_schema=company_schema if 'company_schema' in locals() else "unknown",

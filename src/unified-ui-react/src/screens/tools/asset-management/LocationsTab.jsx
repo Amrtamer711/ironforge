@@ -151,14 +151,14 @@ export function LocationsTab({ locations, locationsQuery }) {
 
   return (
     <>
-      <Card>
+      <Card className="h-full min-h-0 flex flex-col">
         <CardHeader className="space-y-1">
           <CardTitle>Locations</CardTitle>
           <div className="text-xs text-black/55 dark:text-white/60">
             {rows.length} location{rows.length === 1 ? "" : "s"}
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex-1 min-h-0 overflow-y-auto pt-2">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-4 mb-3">
             <SearchInput
               value={searchTerm}

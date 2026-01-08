@@ -28,7 +28,7 @@ async def _generate_mockup_queued(
     location_key: str,
     creative_paths: list,
     time_of_day: str,
-    finish: str,
+    side: str,
     specific_photo: str = None,
     config_override: dict = None,
     company_schemas: list = None,
@@ -42,7 +42,7 @@ async def _generate_mockup_queued(
         location_key: Location identifier
         creative_paths: List of creative file paths
         time_of_day: Time of day variation
-        finish: Finish type
+        side: Side type
         specific_photo: Optional specific photo to use
         config_override: Optional config override
         company_schemas: List of company schemas to search for mockup data
@@ -65,7 +65,7 @@ async def _generate_mockup_queued(
                 location_key,
                 creative_paths,
                 time_of_day=time_of_day,
-                finish=finish,
+                side=side,
                 specific_photo=specific_photo,
                 config_override=config_override,
                 company_schemas=company_schemas,
@@ -86,7 +86,7 @@ async def _generate_ai_mockup_queued(
     ai_prompts: list[str],
     location_key: str,
     time_of_day: str,
-    finish: str,
+    side: str,
     user_id: str | None = None,
     company_schemas: list = None,
     company_hint: str = None,
@@ -100,7 +100,7 @@ async def _generate_ai_mockup_queued(
         ai_prompts: List of user creative briefs (1 for tiled, N for multi-frame)
         location_key: Location identifier
         time_of_day: Time of day variation
-        finish: Finish type
+        side: Side type
         user_id: Optional Slack user ID for cost tracking
         company_schemas: List of company schemas to search for mockup data
         company_hint: Optional company to try first for O(1) asset lookups
@@ -144,7 +144,7 @@ async def _generate_ai_mockup_queued(
                 location_key,
                 ai_creative_paths,
                 time_of_day=time_of_day,
-                finish=finish,
+                side=side,
                 company_schemas=company_schemas,
                 company_hint=company_hint,
             )
@@ -1215,7 +1215,7 @@ async def main_llm_loop(
                                 location_key=location_key,
                                 photo_filename=frame.get("photo_filename", ""),
                                 time_of_day=frame.get("time_of_day", "day"),
-                                finish=frame.get("finish", "gold"),
+                                side=frame.get("side", "gold"),
                             )
                             if success:
                                 deleted_count += 1

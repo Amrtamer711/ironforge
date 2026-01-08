@@ -64,7 +64,7 @@ class MockupValidator:
         location_key: str,
         creative_count: int,
         time_of_day: str = "all",
-        finish: str = "all"
+        side: str = "all"
     ) -> tuple[bool, int, str | None]:
         """
         Validate creative count matches frame count.
@@ -77,7 +77,7 @@ class MockupValidator:
             location_key: Canonical location key
             creative_count: Number of creatives/prompts provided
             time_of_day: Time of day filter
-            finish: Finish filter
+            side: Side filter
 
         Returns:
             Tuple of (is_valid, required_frame_count, error_message)
@@ -88,7 +88,7 @@ class MockupValidator:
         frame_count = await self._get_location_frame_count(
             location_key,
             time_of_day,
-            finish
+            side
         )
 
         if frame_count is None:
@@ -110,7 +110,7 @@ class MockupValidator:
         mockup_history: dict[str, Any],
         location_key: str,
         time_of_day: str = "all",
-        finish: str = "all"
+        side: str = "all"
     ) -> tuple[bool, str | None]:
         """
         Validate mockup history for follow-up requests.
@@ -119,7 +119,7 @@ class MockupValidator:
             mockup_history: User's mockup history dict
             location_key: Target location key
             time_of_day: Time of day filter
-            finish: Finish filter
+            side: Side filter
 
         Returns:
             Tuple of (is_valid, error_message)
@@ -148,7 +148,7 @@ class MockupValidator:
         frame_count = await self._get_location_frame_count(
             location_key,
             time_of_day,
-            finish
+            side
         )
 
         if frame_count is None:
@@ -171,7 +171,7 @@ class MockupValidator:
         self,
         location_key: str,
         time_of_day: str = "all",
-        finish: str = "all",
+        side: str = "all",
     ) -> int | None:
         """Get the number of frames for a specific location configuration.
 
@@ -181,7 +181,7 @@ class MockupValidator:
         Args:
             location_key: The location key to look up
             time_of_day: Filter by time of day ("day", "night", "all")
-            finish: Filter by finish type ("gold", "matte", "all")
+            side: Filter by side type ("gold", "silver", "all")
 
         Returns:
             Number of frames, or None if location not found or no mockups configured
@@ -196,14 +196,14 @@ class MockupValidator:
         # Filter locally to find matching frame
         for frame in frames:
             frame_tod = frame.get("time_of_day", "day")
-            frame_finish = frame.get("finish", "gold")
+            frame_side = frame.get("side", "gold")
 
             # Check time_of_day filter
             if time_of_day != "all" and frame_tod != time_of_day:
                 continue
 
-            # Check finish filter
-            if finish != "all" and frame_finish != finish:
+            # Check side filter
+            if side != "all" and frame_side != side:
                 continue
 
             # Found a matching frame - return its frame count

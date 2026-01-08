@@ -1,0 +1,1366 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Download, ExternalLink, FileText, Paperclip, Send } from "lucide-react";
+
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
+import { FormField } from "../../../components/ui/form-field";
+import { LoadingEllipsis } from "../../../components/ui/loading-ellipsis";
+import { Modal } from "../../../components/ui/modal";
+import { SelectDropdown } from "../../../components/ui/select-dropdown";
+import * as videoCritiqueApi from "../../../api/videoCritique";
+import { getAuthToken } from "../../../lib/token";
+
+export function VideoCritiqueChatPanel() {
+  const [conversationId, setConversationId] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [value, setValue] = useState("");
+  const [pendingFile, setPendingFile] = useState(null);
+  const [pendingVideoUpload, setPendingVideoUpload] = useState(null);
+  const [streaming, setStreaming] = useState(false);
+  const [historyHydrated, setHistoryHydrated] = useState(false);
+  const [actionModalOpen, setActionModalOpen] = useState(false);
+  const [actionFormConfig, setActionFormConfig] = useState(null);
+  const [actionFormValues, setActionFormValues] = useState({});
+  const [actionContext, setActionContext] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionSubmitting, setActionSubmitting] = useState(false);
+
+  const fileRef = useRef(null);
+  const scrollerRef = useRef(null);
+  const endRef = useRef(null);
+  const abortRef = useRef(null);
+  const stickToBottomRef = useRef(true);
+
+  const historyQuery = useQuery({
+    queryKey: ["video-critique", "history"],
+    queryFn: videoCritiqueApi.getHistory,
+    enabled: true,
+  });
+
+  const canSend = useMemo(
+    () => (value.trim().length > 0 || Boolean(pendingFile)) && !streaming,
+    [value, pendingFile, streaming]
+  );
+
+  useEffect(() => {
+    if (historyHydrated) return;
+    if (historyQuery.isLoading) return;
+
+    const history = historyQuery.data;
+    if (history && (history.messages?.length || history.session_id || history.conversation_id)) {
+      setConversationId(history.session_id || history.conversation_id || null);
+      const msgs = (history.messages || []).map(normalizeHistoryMessage);
+      setMessages(msgs.length ? msgs : [createGreeting()]);
+    } else {
+      setMessages([createGreeting()]);
+    }
+    setHistoryHydrated(true);
+  }, [historyQuery.data, historyQuery.isLoading, historyHydrated]);
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const updateStickiness = () => {
+      const threshold = 120;
+      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+      stickToBottomRef.current = atBottom;
+    };
+    updateStickiness();
+    el.addEventListener("scroll", updateStickiness, { passive: true });
+    return () => el.removeEventListener("scroll", updateStickiness);
+  }, []);
+
+  const scrollToBottom = React.useCallback((behavior = "smooth", force = false) => {
+    if (!force && !stickToBottomRef.current) return;
+    endRef.current?.scrollIntoView({ behavior, block: "end" });
+  }, []);
+
+  useEffect(() => {
+    const behavior = streaming ? "auto" : "smooth";
+    requestAnimationFrame(() => scrollToBottom(behavior));
+  }, [messages, streaming, scrollToBottom]);
+
+  useEffect(() => {
+    if (historyHydrated) {
+      requestAnimationFrame(() => scrollToBottom("auto", true));
+    }
+  }, [historyHydrated, scrollToBottom]);
+
+  useEffect(() => () => abortRef.current?.abort?.(), []);
+
+  const canSubmitActionForm = useMemo(() => {
+    if (!actionFormConfig?.fields?.length) return false;
+    return actionFormConfig.fields.every((field) => {
+      if (!field.required) return true;
+      const value = actionFormValues?.[field.id];
+      return value != null && String(value).trim() !== "";
+    });
+  }, [actionFormConfig, actionFormValues]);
+
+  function resetActionForm() {
+    setActionModalOpen(false);
+    setActionFormConfig(null);
+    setActionFormValues({});
+    setActionContext(null);
+    setActionLoading(false);
+    setActionSubmitting(false);
+  }
+
+  async function openActionForm({ formType, workflowId }) {
+    setActionModalOpen(true);
+    setActionLoading(true);
+    setActionContext({ formType, workflowId });
+    setActionFormConfig(null);
+    setActionFormValues({});
+
+    try {
+      const config = await videoCritiqueApi.getFormConfig(formType);
+      setActionFormConfig(config);
+      const initialValues = {};
+      (config?.fields || []).forEach((field) => {
+        initialValues[field.id] = field.default_value || "";
+      });
+      setActionFormValues(initialValues);
+    } catch (e) {
+      setActionFormConfig({
+        title: "Action",
+        submit_text: "Submit",
+        fields: [],
+        error: e?.message || "Failed to load form.",
+      });
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  function appendAssistantMessage(content, extra = {}) {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content,
+        files: [],
+        status: null,
+        ...extra,
+      },
+    ]);
+  }
+
+  async function handleActionClick(action) {
+    if (!action) return;
+    if (action.url) return;
+    const actionId = action.action_id || action.id;
+    const workflowId = action.workflow_id || action.workflowId;
+    if (!actionId || !workflowId) {
+      appendAssistantMessage("Missing action details. Please try again.");
+      return;
+    }
+
+    try {
+      setActionSubmitting(true);
+      const result = await videoCritiqueApi.sendAction({ actionId, workflowId });
+      if (result?.requires_form) {
+        setActionSubmitting(false);
+        await openActionForm({
+          formType: result.form_type || action.form_type,
+          workflowId: result.workflow_id || workflowId,
+        });
+        return;
+      }
+      appendAssistantMessage(result?.message || "Action completed.");
+    } catch (e) {
+      appendAssistantMessage(e?.message || "Unable to complete that action.");
+    } finally {
+      setActionSubmitting(false);
+    }
+  }
+
+  async function submitActionForm() {
+    if (!actionContext?.formType || !actionContext?.workflowId) return;
+    if (!canSubmitActionForm) return;
+    setActionSubmitting(true);
+    try {
+      const result = await videoCritiqueApi.submitForm({
+        formType: actionContext.formType,
+        workflowId: actionContext.workflowId,
+        category: actionFormValues.category,
+        reason: actionFormValues.reason,
+      });
+      resetActionForm();
+      appendAssistantMessage(result?.message || "Form submitted.");
+    } catch (e) {
+      appendAssistantMessage(e?.message || "Unable to submit the form.");
+      setActionSubmitting(false);
+    }
+  }
+
+  async function send() {
+    if (!canSend) return;
+
+    const userText = value.trim();
+    const file = pendingFile;
+    const awaitingTaskNumber = Boolean(pendingVideoUpload) && !file;
+    const outgoingMessage = userText || (file ? `Please review this file: ${file.name}` : "");
+
+    if (file && pendingVideoUpload) {
+      setPendingVideoUpload(null);
+    }
+
+    const userMsgId = crypto.randomUUID();
+    const userAttachment =
+      file
+        ? [
+            {
+              file_id: `local-${Date.now()}`,
+              filename: file.name,
+              preview_url: URL.createObjectURL(file),
+            },
+          ]
+        : [];
+
+    const userMsg = {
+      id: userMsgId,
+      role: "user",
+      content: userText,
+      files: userAttachment,
+      status: null,
+    };
+
+    const assistantMsgId = crypto.randomUUID();
+    const assistantMsg = {
+      id: assistantMsgId,
+      role: "assistant",
+      content: "",
+      files: [],
+      status: awaitingTaskNumber ? null : "Reviewing...",
+    };
+
+    setMessages((m) => [...m, userMsg, assistantMsg]);
+    setValue("");
+    setPendingFile(null);
+    stickToBottomRef.current = true;
+    requestAnimationFrame(() => scrollToBottom("auto", true));
+
+    try {
+      let fileIds = [];
+
+      if (awaitingTaskNumber) {
+        const taskNumber = extractTaskNumber(userText);
+        if (!taskNumber) {
+          setMessages((prev) =>
+            prev.map((mm) =>
+              mm.id === assistantMsgId
+                ? { ...mm, status: null, content: "Please provide a task number to upload this video." }
+                : mm
+            )
+          );
+          return;
+        }
+
+        setStreaming(true);
+        const uploaded = await videoCritiqueApi.uploadVideo({
+          file: pendingVideoUpload,
+          taskNumber,
+        });
+        setMessages((prev) =>
+          prev.map((mm) =>
+            mm.id === assistantMsgId
+              ? { ...mm, status: null, content: uploaded?.message || "Video uploaded." }
+              : mm
+          )
+        );
+        setPendingVideoUpload(null);
+        return;
+      }
+
+      if (file && isVideoFile(file)) {
+        const taskNumber = extractTaskNumber(userText);
+        if (taskNumber) {
+          setStreaming(true);
+          const uploaded = await videoCritiqueApi.uploadVideo({
+            file,
+            taskNumber,
+          });
+          setMessages((prev) =>
+            prev.map((mm) =>
+              mm.id === assistantMsgId
+                ? { ...mm, status: null, content: uploaded?.message || "Video uploaded." }
+                : mm
+            )
+          );
+          return;
+        }
+
+        setPendingVideoUpload(file);
+        setMessages((prev) =>
+          prev.map((mm) =>
+            mm.id === assistantMsgId
+              ? { ...mm, status: null, content: "Video received. Which task number is this for?" }
+              : mm
+          )
+        );
+        return;
+      }
+
+      if (file && isImageFile(file)) {
+        setStreaming(true);
+        const uploaded = await videoCritiqueApi.uploadFile({
+          file,
+          message: userText || undefined,
+          sessionId: conversationId,
+        });
+
+        if (uploaded?.session_id) {
+          setConversationId((prev) => prev || uploaded.session_id);
+        }
+
+        if (uploaded?.file_id) {
+          const resolved = {
+            file_id: uploaded.file_id,
+            filename: file.name,
+            file_url: uploaded.file_url || uploaded.url || "",
+          };
+          setMessages((prev) =>
+            prev.map((mm) =>
+              mm.id === userMsgId
+                ? {
+                    ...mm,
+                    files: [
+                      {
+                        ...resolved,
+                        preview_url: mm.files?.[0]?.preview_url || mm.files?.[0]?.url || "",
+                      },
+                    ],
+                  }
+                : mm
+            )
+          );
+        }
+
+        setMessages((prev) =>
+          prev.map((mm) =>
+            mm.id === assistantMsgId
+              ? { ...mm, status: null, content: uploaded?.response || uploaded?.message || "File received." }
+              : mm
+          )
+        );
+        return;
+      }
+
+      if (file) {
+        setStreaming(true);
+        const uploaded = await videoCritiqueApi.uploadAttachment({ file });
+        if (!uploaded?.file_id) throw new Error("Upload failed");
+
+        fileIds = [uploaded.file_id];
+        const resolved = {
+          file_id: uploaded.file_id,
+          filename: file.name,
+          file_url: uploaded.file_url || uploaded.url || "",
+        };
+        setMessages((prev) =>
+          prev.map((mm) =>
+            mm.id === userMsgId
+              ? {
+                  ...mm,
+                  files: [
+                    {
+                      ...resolved,
+                      preview_url: mm.files?.[0]?.preview_url || mm.files?.[0]?.url || "",
+                    },
+                  ],
+                }
+              : mm
+          )
+        );
+      }
+
+      if (!file && userText.startsWith("/")) {
+        setStreaming(true);
+        const trimmed = userText.replace(/^\/+/, "");
+        const parts = trimmed.split(/\\s+/);
+        const command = parts.shift() || "";
+        const args = parts.join(" ");
+        const result = await videoCritiqueApi.sendCommand({
+          command,
+          args,
+          sessionId: conversationId,
+        });
+
+        if (result?.session_id) {
+          setConversationId((prev) => prev || result.session_id);
+        }
+
+        setMessages((prev) =>
+          prev.map((mm) =>
+            mm.id === assistantMsgId
+              ? {
+                  ...mm,
+                  status: null,
+                  content: result?.response || result?.error || "Command failed.",
+                }
+              : mm
+          )
+        );
+        return;
+      }
+
+      setStreaming(true);
+      abortRef.current?.abort?.();
+      const ctrl = new AbortController();
+      abortRef.current = ctrl;
+
+      let fullContent = "";
+      let currentMessageId = null;
+      let filesReceived = false;
+
+      await videoCritiqueApi.streamMessage({
+        sessionId: conversationId,
+        message: outgoingMessage,
+        fileIds,
+        signal: ctrl.signal,
+        onEvent: (evt) => {
+          if (evt?.session_id || evt?.conversation_id) {
+            setConversationId((prev) => prev || evt.session_id || evt.conversation_id);
+          }
+
+          if (evt?.type === "error" || evt?.error) {
+            const errorMessage = evt?.message || evt?.error || "Stream error";
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId ? { ...mm, status: null, content: `Error: ${errorMessage}` } : mm
+              )
+            );
+            return;
+          }
+
+          if (evt?.type === "status") {
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId ? { ...mm, status: evt.content || "Processing..." } : mm
+              )
+            );
+            if (evt.message_id) currentMessageId = evt.message_id;
+            return;
+          }
+
+          if (evt?.type === "delete") {
+            if (evt.message_id && evt.message_id === currentMessageId) {
+              fullContent = "";
+              currentMessageId = null;
+              setMessages((prev) =>
+                prev.map((mm) =>
+                  mm.id === assistantMsgId ? { ...mm, status: "Reviewing...", content: "" } : mm
+                )
+              );
+            }
+            return;
+          }
+
+          if (evt?.type === "tool_call") {
+            const toolName = evt.name || evt.tool?.name || "processing";
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId ? { ...mm, status: `Processing ${toolName}...` } : mm
+              )
+            );
+            return;
+          }
+
+          const pdfFilename = evt?.result?.pdf_filename || evt?.pdf_filename;
+          const decorateFile = (fileValue) => {
+            if (!fileValue) return fileValue;
+            if (!pdfFilename) return fileValue;
+            if (fileValue.pdf_filename) return fileValue;
+            return { ...fileValue, pdf_filename: pdfFilename };
+          };
+          if (pdfFilename) {
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId && !mm.pdf_filename
+                  ? { ...mm, pdf_filename: pdfFilename }
+                  : mm
+              )
+            );
+          }
+
+          if (evt?.type === "delta" && evt.content) {
+            fullContent += evt.content;
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId ? { ...mm, status: null, content: fullContent } : mm
+              )
+            );
+            return;
+          }
+
+          if (evt?.type === "text_done") {
+            fullContent = evt.content || fullContent;
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId ? { ...mm, status: null, content: fullContent } : mm
+              )
+            );
+            return;
+          }
+
+          if ((evt?.type === "chunk" || evt?.type === "content") && evt.content) {
+            if (evt.message_id && evt.message_id !== currentMessageId) currentMessageId = evt.message_id;
+            fullContent = evt.type === "content" ? evt.content : fullContent + evt.content;
+
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId ? { ...mm, status: null, content: fullContent } : mm
+              )
+            );
+            return;
+          }
+
+          if (evt?.content && !evt.type) {
+            fullContent += evt.content;
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId ? { ...mm, status: null, content: fullContent } : mm
+              )
+            );
+            return;
+          }
+
+          if (evt?.type === "actions" && evt.actions) {
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId
+                  ? { ...mm, actions: evt.actions }
+                  : mm
+              )
+            );
+            return;
+          }
+
+          if (evt?.actions) {
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId
+                  ? { ...mm, actions: evt.actions }
+                  : mm
+              )
+            );
+            return;
+          }
+
+          if (evt?.type === "files" && evt.files) {
+            filesReceived = true;
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId
+                  ? { ...mm, files: [...(mm.files || []), ...evt.files.map(decorateFile)] }
+                  : mm
+              )
+            );
+            if (!fullContent) {
+              const withComment = evt.files.find((item) => item.comment);
+              if (withComment?.comment) {
+                fullContent = withComment.comment;
+                setMessages((prev) =>
+                  prev.map((mm) =>
+                    mm.id === assistantMsgId ? { ...mm, status: null, content: fullContent } : mm
+                  )
+                );
+              }
+            }
+            return;
+          }
+
+          if (evt?.type === "file" && (evt.file || evt.url)) {
+            const fileData = decorateFile(evt.file || evt);
+            filesReceived = true;
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId
+                  ? { ...mm, files: [...(mm.files || []), fileData] }
+                  : mm
+              )
+            );
+            if (!fullContent && fileData.comment) {
+              fullContent = fileData.comment;
+              setMessages((prev) =>
+                prev.map((mm) =>
+                  mm.id === assistantMsgId ? { ...mm, status: null, content: fullContent } : mm
+                )
+              );
+            }
+            return;
+          }
+
+          if (evt?.files) {
+            filesReceived = true;
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId
+                  ? { ...mm, files: [...(mm.files || []), ...evt.files.map(decorateFile)] }
+                  : mm
+              )
+            );
+            return;
+          }
+
+          if (typeof evt === "string" && evt.trim()) {
+            fullContent += evt;
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId ? { ...mm, status: null, content: fullContent } : mm
+              )
+            );
+          }
+        },
+        onDone: () => {
+          if (!fullContent && !filesReceived) {
+            setMessages((prev) =>
+              prev.map((mm) =>
+                mm.id === assistantMsgId
+                  ? { ...mm, status: null, content: "Ready for the next request when you are." }
+                  : mm
+              )
+            );
+          }
+        },
+      });
+    } catch (e) {
+      setMessages((prev) =>
+        prev.map((mm) =>
+          mm.id === assistantMsgId
+            ? { ...mm, status: null, content: e?.message || "Failed to get response" }
+            : mm
+        )
+      );
+    } finally {
+      setStreaming(false);
+    }
+  }
+
+  return (
+    <div className="h-full flex flex-col gap-4 min-h-0">
+      <Card className="p-4 overflow-hidden flex-1 min-h-0">
+        <div ref={scrollerRef} className="h-full overflow-y-auto px-2">
+          <div className="space-y-3">
+            {!historyHydrated && historyQuery.isLoading ? (
+              <LoadingEllipsis
+                text="Loading conversation"
+                className="text-sm text-black/60 dark:text-white/65"
+              />
+            ) : null}
+            {messages.map((m) => (
+              <Message
+                key={m.id}
+                msg={m}
+                onMediaLoad={() => scrollToBottom("auto")}
+                onAction={handleActionClick}
+                actionsDisabled={actionSubmitting}
+              />
+            ))}
+            <div ref={endRef} />
+          </div>
+        </div>
+      </Card>
+
+      <Card className="p-3">
+        {pendingVideoUpload && !pendingFile ? (
+          <div className="mb-2 flex items-center justify-between rounded-2xl bg-black/5 dark:bg-white/10 px-3 py-2 text-sm">
+            <div className="truncate">Awaiting task number for {pendingVideoUpload.name}</div>
+            <button className="opacity-70 hover:opacity-100" onClick={() => setPendingVideoUpload(null)}>
+              x
+            </button>
+          </div>
+        ) : null}
+        {pendingFile ? (
+          <div className="mb-2 flex items-center justify-between rounded-2xl bg-black/5 dark:bg-white/10 px-3 py-2 text-sm">
+            <div className="truncate">{pendingFile.name}</div>
+            <button className="opacity-70 hover:opacity-100" onClick={() => setPendingFile(null)}>
+              x
+            </button>
+          </div>
+        ) : null}
+
+        <div className="flex items-end gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            className="hidden"
+            onChange={(e) => setPendingFile(e.target.files?.[0] || null)}
+            accept="video/*,image/*,.pdf,.xlsx,.xls,.csv,.docx,.doc"
+          />
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="rounded-2xl"
+            title="Attach file"
+            onClick={() => fileRef.current?.click()}
+          >
+            <Paperclip size={18} />
+          </Button>
+
+          <Textarea5 value={value} onChange={setValue} placeholder="Describe the video request..." onEnter={send} />
+
+          <Button size="icon" className="w-12 rounded-2xl" title="Send" disabled={!canSend} onClick={send}>
+            <Send size={18} />
+          </Button>
+        </div>
+
+        <div className="mt-2 text-xs text-black/45 dark:text-white/55">
+          Share a brief, a link, or upload a cut for review.
+        </div>
+      </Card>
+
+      <Modal
+        open={actionModalOpen}
+        onClose={resetActionForm}
+        title={actionFormConfig?.title || "Action"}
+        maxWidth="520px"
+      >
+        {actionLoading ? (
+          <LoadingEllipsis text="Loading form" className="text-sm text-black/60 dark:text-white/65" />
+        ) : actionFormConfig?.error ? (
+          <div className="text-sm text-red-600 dark:text-red-300">{actionFormConfig.error}</div>
+        ) : (
+          <div className="space-y-3">
+            {(actionFormConfig?.fields || []).map((field) => {
+              if (field.type === "select") {
+                const selectOptions = [
+                  { value: "", label: field.placeholder || "Select..." },
+                  ...(field.options || []),
+                ];
+                return (
+                  <FormField key={field.id} label={field.label}>
+                    <SelectDropdown
+                      value={actionFormValues[field.id] || ""}
+                      options={selectOptions}
+                      onChange={(nextValue) =>
+                        setActionFormValues((prev) => ({ ...prev, [field.id]: nextValue }))
+                      }
+                    />
+                  </FormField>
+                );
+              }
+              if (field.type === "textarea") {
+                return (
+                  <FormField key={field.id} label={field.label}>
+                    <textarea
+                      rows={3}
+                      placeholder={field.placeholder || ""}
+                      className="w-full resize-none rounded-2xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                      value={actionFormValues[field.id] || ""}
+                      onChange={(e) =>
+                        setActionFormValues((prev) => ({ ...prev, [field.id]: e.target.value }))
+                      }
+                    />
+                  </FormField>
+                );
+              }
+              return (
+                <FormField key={field.id} label={field.label}>
+                  <input
+                    type="text"
+                    placeholder={field.placeholder || ""}
+                    className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none"
+                    value={actionFormValues[field.id] || ""}
+                    onChange={(e) =>
+                      setActionFormValues((prev) => ({ ...prev, [field.id]: e.target.value }))
+                    }
+                  />
+                </FormField>
+              );
+            })}
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" className="rounded-2xl" onClick={resetActionForm}>
+                Cancel
+              </Button>
+              <Button
+                className="rounded-2xl"
+                onClick={submitActionForm}
+                disabled={!canSubmitActionForm || actionSubmitting || actionLoading}
+              >
+                {actionFormConfig?.submit_text || "Submit"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}
+
+function Message({ msg, onMediaLoad, onAction, actionsDisabled }) {
+  const isUser = msg.role === "user";
+  const formatted = useMemo(() => formatContent(msg.content || ""), [msg.content]);
+  const statusText = useMemo(() => normalizeStatusText(msg.status || ""), [msg.status]);
+  const isStatusContent = useMemo(
+    () => !msg.status && isStatusOnlyContent(msg.content || ""),
+    [msg.status, msg.content]
+  );
+  const fallbackStatus = useMemo(() => normalizeStatusText(msg.content || ""), [msg.content]);
+  const nameCacheRef = useRef(new Map());
+  const actions = msg.actions || msg.buttons || [];
+  return (
+    <div className={isUser ? "flex justify-end" : "flex justify-start"}>
+      <div
+        className={[
+          "max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-soft break-words",
+          "ring-1 ring-black/5 dark:ring-white/10 backdrop-blur-xs",
+          isUser ? "bg-black text-white dark:bg-white dark:text-black" : "bg-white/70 dark:bg-white/10",
+        ].join(" ")}
+      >
+        {msg.status || isStatusContent ? (
+          <StatusLine text={statusText || fallbackStatus} />
+        ) : (
+          <div dangerouslySetInnerHTML={{ __html: formatted }} />
+        )}
+
+        {msg.files?.length ? (
+          <div className="mt-2 space-y-1">
+            {msg.files.map((f, i) => {
+              const url = videoCritiqueApi.resolveFileUrl(f);
+              if (!url) return null;
+              const resolvedPdfFilename = f.pdf_filename || msg.pdf_filename;
+              const displayName = getFriendlyFileName(
+                resolvedPdfFilename ? { ...f, pdf_filename: resolvedPdfFilename } : f,
+                url,
+                nameCacheRef.current
+              );
+              const ext = getFileExtension(displayName);
+              const isImage = ["jpg", "jpeg", "png", "gif", "webp", "bmp"].includes(ext);
+              const showActions = !isUser;
+              const isPdf = ext === "pdf";
+
+              if (isImage) {
+                return (
+                  <div
+                    key={f.file_id || url || i}
+                    className="rounded-xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 p-2"
+                  >
+                    {showActions ? (
+                      <>
+                        <a href={url} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-lg">
+                          <img
+                            src={url}
+                            alt={displayName}
+                            className="max-h-64 w-full object-cover"
+                            loading="lazy"
+                            onLoad={onMediaLoad}
+                          />
+                        </a>
+                        <div className="mt-2 flex items-center gap-2">
+                          <Button asChild size="sm" variant="ghost" className="rounded-xl">
+                            <a href={url} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink size={14} className="mr-1" />
+                              Open
+                            </a>
+                          </Button>
+                          <Button size="sm" variant="secondary" className="rounded-xl">
+                            <span
+                              role="link"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                downloadFile(url, displayName);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  downloadFile(url, displayName);
+                                }
+                              }}
+                              className="inline-flex items-center"
+                            >
+                              <Download size={14} className="mr-1" />
+                              Download
+                            </span>
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="overflow-hidden rounded-lg">
+                        <img
+                          src={url}
+                          alt={displayName}
+                          className="max-h-64 w-full object-cover"
+                          loading="lazy"
+                          onLoad={onMediaLoad}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={f.file_id || url || i}
+                  className="rounded-xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-black/50 dark:text-white/60">
+                        {isPdf ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 text-red-700 dark:text-red-300 px-2 py-0.5">
+                            <FileText size={12} />
+                            PDF
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5">
+                            {ext ? ext.toUpperCase() : "FILE"}
+                          </span>
+                        )}
+                      </div>
+                      {showActions ? (
+                        <div className="mt-1 text-xs font-semibold text-black/80 dark:text-white/85 truncate">
+                          {displayName}
+                        </div>
+                      ) : null}
+                    </div>
+                    {showActions ? (
+                      <div className="flex items-center gap-2">
+                        <Button asChild size="sm" variant="ghost" className="rounded-xl">
+                          <a href={url} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink size={14} className="mr-1" />
+                            Open
+                          </a>
+                        </Button>
+                        <Button size="sm" variant="secondary" className="rounded-xl">
+                          <span
+                            role="link"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              downloadFile(url, displayName);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                downloadFile(url, displayName);
+                              }
+                            }}
+                            className="inline-flex items-center"
+                          >
+                            <Download size={14} className="mr-1" />
+                            Download
+                          </span>
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+
+        {actions.length ? (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {actions.map((action, idx) => {
+              const key = action.action_id || action.id || `${action.label}-${idx}`;
+              const variant = action.variant || "secondary";
+              if (action.url) {
+                return (
+                  <Button
+                    key={key}
+                    asChild
+                    size="sm"
+                    variant={variant}
+                    className="rounded-xl"
+                    disabled={actionsDisabled}
+                  >
+                    <a href={action.url} target="_blank" rel="noopener noreferrer">
+                      {action.label || "Open"}
+                    </a>
+                  </Button>
+                );
+              }
+              return (
+                <Button
+                  key={key}
+                  size="sm"
+                  variant={variant}
+                  className="rounded-xl"
+                  onClick={() => onAction?.(action)}
+                  disabled={actionsDisabled}
+                >
+                  {action.label || "Action"}
+                </Button>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function Textarea5({ value, onChange, placeholder, onEnter, disabled }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "0px";
+    const lineHeight = 22;
+    const max = lineHeight * 5 + 16;
+    el.style.height = Math.min(el.scrollHeight, max) + "px";
+  }, [value]);
+
+  function onKeyDown(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      onEnter?.();
+    }
+  }
+
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      value={value}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={onKeyDown}
+      placeholder={placeholder}
+      className="w-full resize-none rounded-2xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10 dark:focus:ring-white/15 overflow-auto"
+      style={{ maxHeight: "132px" }}
+    />
+  );
+}
+
+function StatusLine({ text }) {
+  return (
+    <span className="inline-flex items-center gap-2 opacity-80">
+      <span>{text || "Reviewing"}</span>
+      <span className="mmg-ellipsis" aria-hidden="true">
+        <span className="mmg-ellipsis-dot" style={{ animationDelay: "0ms" }} />
+        <span className="mmg-ellipsis-dot" style={{ animationDelay: "120ms" }} />
+        <span className="mmg-ellipsis-dot" style={{ animationDelay: "240ms" }} />
+      </span>
+    </span>
+  );
+}
+
+function extractTaskNumber(value) {
+  if (!value) return null;
+  const match = String(value).match(/\b(\d{1,6})\b/);
+  return match ? Number(match[1]) : null;
+}
+
+function isVideoFile(file) {
+  if (!file) return false;
+  if (file.type && file.type.startsWith("video/")) return true;
+  const name = file.name || "";
+  return /\.(mp4|mov|avi|mkv|webm)$/i.test(name);
+}
+
+function isImageFile(file) {
+  if (!file) return false;
+  if (file.type && file.type.startsWith("image/")) return true;
+  const name = file.name || "";
+  return /\.(png|jpe?g|gif|webp|bmp)$/i.test(name);
+}
+
+function normalizeHistoryMessage(msg) {
+  return {
+    id: msg.id || msg.message_id || crypto.randomUUID(),
+    role: msg.role || msg.sender || "assistant",
+    content: msg.content || msg.message || "",
+    files: msg.files || msg.attachments || [],
+    actions: msg.actions || msg.buttons || [],
+    pdf_filename: msg.pdf_filename || msg.pdfFilename,
+    status: null,
+  };
+}
+
+function normalizeStatusText(text) {
+  if (!text) return "";
+  return String(text)
+    .replace(/[_*`]/g, "")
+    .replace(/\.+$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isStatusOnlyContent(content) {
+  const cleaned = normalizeStatusText(content);
+  if (!cleaned) return false;
+  if (cleaned === "Reviewing") return true;
+  if (cleaned.startsWith("Processing")) return true;
+  if (cleaned.startsWith("Analyzing")) return true;
+  return false;
+}
+
+function getFileExtension(value) {
+  if (!value) return "";
+  const cleaned = String(value).split("?")[0].split("#")[0];
+  const parts = cleaned.split(".");
+  if (parts.length <= 1) return "";
+  return parts.pop().toLowerCase();
+}
+
+function getNameFromUrl(url) {
+  if (!url) return "";
+  try {
+    const resolved = new URL(url, window.location.href);
+    const parts = resolved.pathname.split("/").filter(Boolean);
+    return parts.length ? decodeURIComponent(parts[parts.length - 1]) : "";
+  } catch {
+    const fallback = url.split("?")[0].split("#")[0];
+    const parts = fallback.split("/").filter(Boolean);
+    return parts.length ? decodeURIComponent(parts[parts.length - 1]) : "";
+  }
+}
+
+function isGenericFileName(name) {
+  if (!name) return true;
+  const lower = name.trim().toLowerCase();
+  if (!lower) return true;
+  if (lower === "file" || lower === "download") return true;
+  const base = lower.replace(/\.[^.]+$/, "");
+  if (base === "tmp" || base === "temp") return true;
+  if (/^[a-f0-9-]{16,}$/.test(base)) return true;
+  if (/^file[-_]?\d+$/.test(base)) return true;
+  if (/^(tmp|temp)/.test(base)) return true;
+  if (/^upload[-_]?.+$/.test(base)) return true;
+  return false;
+}
+
+function getFriendlyFileName(file, url, cache) {
+  const pdfFilename = file?.pdf_filename || "";
+  const raw = pdfFilename || file?.filename || file?.title || "";
+  const urlName = getNameFromUrl(url);
+  const key = file?.file_id || file?.id || url || raw;
+  let name = raw || urlName || "";
+  const ext = getFileExtension(name) || getFileExtension(urlName) || getFileExtension(url);
+
+  if (pdfFilename) {
+    const pdfExt = getFileExtension(name) || "pdf";
+    if (!name.toLowerCase().endsWith(`.${pdfExt}`)) {
+      name = `${name}.${pdfExt}`;
+    }
+    if (key && cache) cache.set(key, name);
+    return name;
+  }
+
+  if (isGenericFileName(name)) {
+    if (ext === "pdf") {
+      name = "Review.pdf";
+    } else if (ext) {
+      name = `Attachment.${ext}`;
+    } else {
+      name = "Attachment";
+    }
+  } else if (ext && !name.toLowerCase().endsWith(`.${ext}`)) {
+    name = `${name}.${ext}`;
+  }
+
+  if (key && cache) cache.set(key, name);
+  return name || (ext ? `Attachment.${ext}` : "Attachment");
+}
+
+async function downloadFile(url, filename) {
+  try {
+    const token = getAuthToken();
+    const res = await fetch(url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    });
+    if (!res.ok) throw new Error("Download failed");
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+  } catch {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+}
+
+function createGreeting() {
+  return {
+    id: crypto.randomUUID(),
+    role: "assistant",
+    content: `Good ${greetingByTime()}, ready for a video critique?`,
+    files: [],
+    status: null,
+  };
+}
+
+function greetingByTime() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 17) return "afternoon";
+  if (hour >= 17 && hour < 21) return "evening";
+  return "night";
+}
+
+function escapeHtml(text) {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatInline(text) {
+  if (!text) return "";
+  const safe = escapeHtml(text);
+
+  return safe
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="chat-link">$1</a>')
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="chat-link">[Image: $1]</a>')
+    .replace(/\*\*\*(.+?)\*\*\*/g, "<strong><em>$1</em></strong>")
+    .replace(/___(.+?)___/g, "<strong><em>$1</em></strong>")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/__(?!INLINE_CODE_|CODE_BLOCK_)(.+?)__/g, "<strong>$1</strong>")
+    .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "<em>$1</em>")
+    .replace(/(?<!\w)_(?!_)(.+?)(?<!_)_(?!\w)/g, "<em>$1</em>")
+    .replace(/~~(.+?)~~/g, "<del>$1</del>")
+    .replace(/==(.+?)==/g, '<mark class="chat-highlight">$1</mark>');
+}
+
+function formatContent(content) {
+  if (!content) return "";
+
+  const codeBlocks = [];
+  let processed = content.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const index = codeBlocks.length;
+    codeBlocks.push({ lang: lang || "", code: code.trim() });
+    return `__CODE_BLOCK_${index}__`;
+  });
+
+  const inlineCodes = [];
+  processed = processed.replace(/`([^`]+)`/g, (_, code) => {
+    const index = inlineCodes.length;
+    inlineCodes.push(code);
+    return `__INLINE_CODE_${index}__`;
+  });
+
+  const lines = processed.split("\n");
+  let result = [];
+  let inBulletList = false;
+  let inNumberedList = false;
+  let inBlockquote = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+
+    const codeBlockMatch = line.match(/^__CODE_BLOCK_(\d+)__$/);
+    if (codeBlockMatch) {
+      if (inBulletList) { result.push("</ul>"); inBulletList = false; }
+      if (inNumberedList) { result.push("</ol>"); inNumberedList = false; }
+      if (inBlockquote) { result.push("</blockquote>"); inBlockquote = false; }
+
+      const block = codeBlocks[parseInt(codeBlockMatch[1], 10)];
+      const langClass = block.lang ? ` class="language-${block.lang}"` : "";
+      result.push(`<pre class="chat-code-block"><code${langClass}>${escapeHtml(block.code)}</code></pre>`);
+      continue;
+    }
+
+    const headerMatch = line.match(/^(#{1,6})\s+(.*)$/);
+    if (headerMatch) {
+      if (inBulletList) { result.push("</ul>"); inBulletList = false; }
+      if (inNumberedList) { result.push("</ol>"); inNumberedList = false; }
+      if (inBlockquote) { result.push("</blockquote>"); inBlockquote = false; }
+
+      const level = headerMatch[1].length;
+      const text = formatInline(headerMatch[2]);
+      result.push(`<h${level} class="chat-header chat-h${level}">${text}</h${level}>`);
+      continue;
+    }
+
+    if (/^[-*_]{3,}\s*$/.test(line)) {
+      if (inBulletList) { result.push("</ul>"); inBulletList = false; }
+      if (inNumberedList) { result.push("</ol>"); inNumberedList = false; }
+      if (inBlockquote) { result.push("</blockquote>"); inBlockquote = false; }
+      result.push('<hr class="chat-hr">');
+      continue;
+    }
+
+    const blockquoteMatch = line.match(/^>\s*(.*)$/);
+    if (blockquoteMatch) {
+      if (inBulletList) { result.push("</ul>"); inBulletList = false; }
+      if (inNumberedList) { result.push("</ol>"); inNumberedList = false; }
+
+      if (!inBlockquote) {
+        result.push('<blockquote class="chat-blockquote">');
+        inBlockquote = true;
+      }
+      result.push(formatInline(blockquoteMatch[1]) + "<br>");
+      continue;
+    } else if (inBlockquote) {
+      result.push("</blockquote>");
+      inBlockquote = false;
+    }
+
+    const bulletMatch = line.match(/^(\s*)([-*])\s+(.*)$/);
+    if (bulletMatch) {
+      if (inNumberedList) { result.push("</ol>"); inNumberedList = false; }
+
+      if (!inBulletList) {
+        result.push('<ul class="chat-list">');
+        inBulletList = true;
+      }
+      const text = formatInline(bulletMatch[3]);
+      result.push(`<li>${text}</li>`);
+      continue;
+    } else if (inBulletList) {
+      result.push("</ul>");
+      inBulletList = false;
+    }
+
+    const numberedMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
+    if (numberedMatch) {
+      if (inBulletList) { result.push("</ul>"); inBulletList = false; }
+
+      if (!inNumberedList) {
+        result.push('<ol class="chat-numbered-list">');
+        inNumberedList = true;
+      }
+      const text = formatInline(numberedMatch[3]);
+      result.push(`<li>${text}</li>`);
+      continue;
+    } else if (inNumberedList) {
+      result.push("</ol>");
+      inNumberedList = false;
+    }
+
+    if (line.trim() === "") {
+      result.push("<br>");
+      continue;
+    }
+
+    result.push(formatInline(line));
+    if (i < lines.length - 1) {
+      result.push("<br>");
+    }
+  }
+
+  if (inBulletList) result.push("</ul>");
+  if (inNumberedList) result.push("</ol>");
+  if (inBlockquote) result.push("</blockquote>");
+
+  let html = result.join("");
+
+  inlineCodes.forEach((code, index) => {
+    html = html.replace(`__INLINE_CODE_${index}__`, `<code class="chat-inline-code">${escapeHtml(code)}</code>`);
+  });
+
+  return html;
+}

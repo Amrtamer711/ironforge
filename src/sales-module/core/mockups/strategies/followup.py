@@ -69,7 +69,7 @@ class FollowupMockupStrategy(MockupStrategy):
         location_key: str,
         location_name: str,
         time_of_day: str,
-        finish: str,
+        side: str,
         user_id: str,
         user_companies: list[str],
         **kwargs
@@ -81,7 +81,7 @@ class FollowupMockupStrategy(MockupStrategy):
             location_key: Canonical location key
             location_name: Display name
             time_of_day: Time filter
-            finish: Finish filter
+            side: Side filter
             user_id: User identifier
             user_companies: User's accessible companies
             **kwargs: No additional parameters needed
@@ -103,7 +103,7 @@ class FollowupMockupStrategy(MockupStrategy):
             mockup_user_hist,
             location_key,
             time_of_day,
-            finish
+            side
         )
 
         if not is_valid:
@@ -129,7 +129,7 @@ class FollowupMockupStrategy(MockupStrategy):
                 location_key,
                 stored_creative_paths,
                 time_of_day=time_of_day,
-                finish=finish,
+                side=side,
                 company_schemas=user_companies,
                 company_hint=self.company_hint,
             )
@@ -142,7 +142,7 @@ class FollowupMockupStrategy(MockupStrategy):
                 "location_key": location_key,
                 "location_name": location_name,
                 "time_of_day": time_of_day,
-                "finish": finish,
+                "side": side,
                 "mode": self.get_mode_name(),
                 "num_frames": stored_frames,
                 "previous_location": stored_location
@@ -152,7 +152,7 @@ class FollowupMockupStrategy(MockupStrategy):
             mockup_user_hist["metadata"]["location_key"] = location_key
             mockup_user_hist["metadata"]["location_name"] = location_name
             mockup_user_hist["metadata"]["time_of_day"] = time_of_day
-            mockup_user_hist["metadata"]["finish"] = finish
+            mockup_user_hist["metadata"]["side"] = side
 
             self.logger.info(
                 f"[FOLLOWUP_STRATEGY] Updated history with new location: {location_name}"
