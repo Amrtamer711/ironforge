@@ -29,6 +29,7 @@ numpy==1.26.2
 PyMuPDF==1.23.8
 supabase>=2.11.0
 python-jose[cryptography]>=3.3.0
+cachetools>=5.5.0
 
 # CRM Security SDK (git install for production)
 # GitLab (switch to this when migrated): crm-security[fastapi] @ git+https://gitlab.com/mmg-global/ironforge.git@main#subdirectory=src/shared/crm-security
