@@ -22,6 +22,7 @@ export function SetupTab({
   timeOfDayDisabled,
   finish,
   setFinish,
+  sideDisabled,
   timeOfDayOptions,
   finishOptions,
   venueTypeOptions,
@@ -144,26 +145,29 @@ export function SetupTab({
                 />
               </FormField>
 
-              <FormField label="Time of Day">
-                <SelectDropdown
-                  value={timeOfDay}
-                  options={timeOfDayOptions}
-                  placeholder="Select time of day"
-                  onChange={(nextValue) => setTimeOfDay(nextValue)}
-                  disabled={timeOfDayDisabled}
-                  useNativeSelect={useNativeSelects}
-                />
-              </FormField>
+              {!timeOfDayDisabled && (
+                <FormField label="Time of Day">
+                  <SelectDropdown
+                    value={timeOfDay}
+                    options={timeOfDayOptions}
+                    placeholder="Select time of day"
+                    onChange={(nextValue) => setTimeOfDay(nextValue)}
+                    useNativeSelect={useNativeSelects}
+                  />
+                </FormField>
+              )}
 
-              <FormField label="Billboard Finish">
-                <SelectDropdown
-                  value={finish}
-                  options={finishOptions}
-                  placeholder="Select finish"
-                  onChange={(nextValue) => setFinish(nextValue)}
-                  useNativeSelect={useNativeSelects}
-                />
-              </FormField>
+              {!sideDisabled && (
+                <FormField label="Billboard Side">
+                  <SelectDropdown
+                    value={finish}
+                    options={finishOptions}
+                    placeholder="Select side"
+                    onChange={(nextValue) => setFinish(nextValue)}
+                    useNativeSelect={useNativeSelects}
+                  />
+                </FormField>
+              )}
             </div>
 
             {editingTemplate ? (

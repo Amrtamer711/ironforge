@@ -93,7 +93,9 @@ export function MockupPage() {
   const [templateKey, setTemplateKey] = useState("");
 
   const primaryLocation = locations[0] || "";
-  const timeOfDayDisabled = venueType === "indoor";
+  const isIndoor = venueType === "indoor";
+  const timeOfDayDisabled = isIndoor;
+  const sideDisabled = isIndoor;
   const effectiveTimeOfDay = timeOfDayDisabled ? "all" : timeOfDay;
 
   const prevModeRef = useRef(mode);
@@ -179,9 +181,18 @@ export function MockupPage() {
     imgNaturalH: 0,
   });
 
-  const locationsQuery = useQuery({
-    queryKey: ["mockup", "locations"],
-    queryFn: mockupApi.getLocations,
+  // Setup mode uses eligibility endpoint (networks only, no packages)
+  const setupLocationsQuery = useQuery({
+    queryKey: ["mockup", "eligibility", "setup"],
+    queryFn: mockupApi.getSetupLocations,
+    enabled: mode === "setup",
+  });
+
+  // Generate mode uses eligibility endpoint (networks + packages with frames)
+  const generateLocationsQuery = useQuery({
+    queryKey: ["mockup", "eligibility", "generate"],
+    queryFn: mockupApi.getGenerateLocations,
+    enabled: mode === "generate",
   });
 
   const templatesQuery = useQuery({
@@ -214,11 +225,19 @@ export function MockupPage() {
     templateThumbsRef.current = templateThumbs;
   }, [templateThumbs]);
 
-  const locationOptions = useMemo(() => {
-    const data = locationsQuery.data;
+  // Setup mode: networks only (from eligibility endpoint)
+  const setupLocationOptions = useMemo(() => {
+    const data = setupLocationsQuery.data;
     if (Array.isArray(data)) return data;
     return data?.locations || [];
-  }, [locationsQuery.data]);
+  }, [setupLocationsQuery.data]);
+
+  // Generate mode: networks + packages with frames (from eligibility endpoint)
+  const generateLocationOptions = useMemo(() => {
+    const data = generateLocationsQuery.data;
+    if (Array.isArray(data)) return data;
+    return data?.locations || [];
+  }, [generateLocationsQuery.data]);
 
   const templateOptions = useMemo(() => {
     const data = templatesQuery.data;
@@ -249,10 +268,11 @@ export function MockupPage() {
   }, [editingTemplate, mode]);
 
   useEffect(() => {
-    if (venueType === "indoor" && timeOfDay) {
-      setTimeOfDay("");
+    if (venueType === "indoor") {
+      if (timeOfDay) setTimeOfDay("");
+      if (finish) setFinish("");
     }
-  }, [timeOfDay, venueType]);
+  }, [timeOfDay, finish, venueType]);
 
   useEffect(() => {
     setTemplateThumbs((prev) => {
@@ -1592,13 +1612,14 @@ export function MockupPage() {
             setVenueType={setVenueType}
             templateKey={templateKey}
             setTemplateKey={setTemplateKey}
-            locationOptions={locationOptions}
-            locationsQuery={locationsQuery}
+            locationOptions={generateLocationOptions}
+            locationsQuery={generateLocationsQuery}
             timeOfDay={timeOfDay}
             setTimeOfDay={setTimeOfDay}
             timeOfDayDisabled={timeOfDayDisabled}
             finish={finish}
             setFinish={setFinish}
+            sideDisabled={sideDisabled}
             timeOfDayOptions={TIME_OF_DAY}
             finishOptions={FINISHES}
             venueTypeOptions={VENUE_TYPES}
@@ -1622,13 +1643,14 @@ export function MockupPage() {
             venueType={venueType}
             setVenueType={setVenueType}
             setTemplateKey={setTemplateKey}
-            locationOptions={locationOptions}
-            locationsQuery={locationsQuery}
+            locationOptions={setupLocationOptions}
+            locationsQuery={setupLocationsQuery}
             timeOfDay={timeOfDay}
             setTimeOfDay={setTimeOfDay}
             timeOfDayDisabled={timeOfDayDisabled}
             finish={finish}
             setFinish={setFinish}
+            sideDisabled={sideDisabled}
             timeOfDayOptions={TIME_OF_DAY_SETUP}
             finishOptions={FINISHES_SETUP}
             venueTypeOptions={VENUE_TYPES_SETUP}

@@ -65,3 +65,53 @@ export async function getTemplatePhotoBlobUrl(location, photo, { timeOfDay, fini
   const blob = await getTemplatePhotoBlob(location, photo, { timeOfDay, finish });
   return blob ? URL.createObjectURL(blob) : "";
 }
+
+// === ELIGIBILITY API ===
+
+/**
+ * Get locations eligible for mockup setup (networks only, no packages).
+ * Used in Setup tab for frame configuration.
+ */
+export async function getSetupLocations() {
+  return apiRequest("/api/sales/mockup/eligibility/setup");
+}
+
+/**
+ * Get locations eligible for mockup generation (networks + packages with frames).
+ * Used in Generate tab for location dropdown.
+ */
+export async function getGenerateLocations() {
+  return apiRequest("/api/sales/mockup/eligibility/generate");
+}
+
+/**
+ * Get all available templates for a location.
+ * If location is a package, returns templates from ALL networks in package.
+ * @param {string} locationKey - Network or package key
+ */
+export async function getEligibleTemplates(locationKey) {
+  return apiRequest(`/api/sales/mockup/eligibility/templates/${encodeURIComponent(locationKey)}`);
+}
+
+/**
+ * Check if a specific location is eligible for a given mode.
+ * Used for validation and user feedback (especially LLM mode).
+ * @param {string} locationKey - Network or package key
+ * @param {string} mode - "setup", "generate_form", or "generate_llm"
+ */
+export async function checkEligibility(locationKey, mode = "generate_form") {
+  return apiRequest("/api/sales/mockup/eligibility/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ location_key: locationKey, mode }),
+  });
+}
+
+/**
+ * Expand a location (network or package) to its generation targets.
+ * Returns list of networks with their storage keys.
+ * @param {string} locationKey - Network or package key
+ */
+export async function expandLocation(locationKey) {
+  return apiRequest(`/api/sales/mockup/expand/${encodeURIComponent(locationKey)}`);
+}

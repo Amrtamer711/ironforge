@@ -511,6 +511,32 @@ class _DatabaseNamespace:
             location_key, company, photo_filename, environment, time_of_day, side
         )
 
+    # =========================================================================
+    # MOCKUP STORAGE INFO (Unified Architecture)
+    # =========================================================================
+
+    def get_mockup_storage_info(
+        self,
+        network_key: str,
+        company_schemas: list[str],
+    ) -> dict[str, Any] | None:
+        """
+        Get mockup storage info for a network.
+
+        Resolves the correct storage key(s) based on whether the network is
+        standalone or traditional.
+
+        Returns:
+            {
+                "network_key": str,
+                "company": str,
+                "is_standalone": bool,
+                "storage_keys": list[str],  # network_key for standalone, asset_keys for traditional
+                "sample_assets": list[dict],  # For traditional: one per asset_type
+            }
+        """
+        return self._backend.get_mockup_storage_info(network_key, company_schemas)
+
 
 # Create the singleton database interface
 db = _DatabaseNamespace(_backend)

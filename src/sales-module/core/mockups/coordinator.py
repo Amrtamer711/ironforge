@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 import config
 from core.services.asset_service import get_asset_service
+from core.services.mockup_eligibility import GenerateLLMEligibilityService
 from core.utils import match_location_key
 
 from .strategies.ai import AIMockupStrategy
@@ -60,6 +61,9 @@ class MockupCoordinator:
         self.asset_service = get_asset_service()
         self._available_locations: list[dict[str, Any]] | None = None
         self.validator = MockupValidator(user_companies, company_hint=company_hint)
+
+        # Initialize eligibility service for LLM-friendly validation
+        self.llm_eligibility = GenerateLLMEligibilityService(user_companies)
 
         # Initialize strategies
         self.strategies = [
@@ -113,13 +117,18 @@ class MockupCoordinator:
         """
         Validate location has mockup photos configured.
 
+        Uses LLM eligibility service for user-friendly error messages.
+
         Args:
             location_key: Canonical location key
 
         Returns:
             Tuple of (is_valid, error_message)
         """
-        return await self.validator.validate_location_has_mockups(location_key)
+        result = await self.llm_eligibility.check_eligibility(location_key)
+        if result.eligible:
+            return True, None
+        return False, result.reason
 
     async def generate_mockup(
         self,

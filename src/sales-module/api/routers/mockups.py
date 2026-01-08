@@ -654,3 +654,209 @@ async def generate_mockup_api(
             logger.error(f"[MOCKUP API] Error logging usage: {log_error}")
 
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# ELIGIBILITY ENDPOINTS
+# =============================================================================
+
+
+@router.get("/api/mockup/eligibility/setup")
+async def get_setup_eligible_locations(
+    user: AuthUser = Depends(require_permission("sales:mockups:read"))
+):
+    """
+    Get locations eligible for mockup setup.
+
+    Setup mode only allows networks (no packages) because frames are
+    configured at the network level.
+
+    Returns:
+        List of eligible network locations
+    """
+    from core.services.mockup_eligibility import SetupEligibilityService
+
+    if not user.has_company_access:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to any company data."
+        )
+
+    try:
+        service = SetupEligibilityService(user_companies=user.companies)
+        locations = await service.get_eligible_locations()
+
+        return {
+            "locations": [loc.to_dict() for loc in locations],
+            "count": len(locations),
+        }
+    except Exception as e:
+        logger.error(f"[ELIGIBILITY API] Error getting setup locations: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/mockup/eligibility/generate")
+async def get_generate_eligible_locations(
+    user: AuthUser = Depends(require_permission("sales:mockups:read"))
+):
+    """
+    Get locations eligible for mockup generation.
+
+    Generate mode allows networks AND packages, but only those that have
+    mockup frames configured.
+
+    Returns:
+        List of eligible networks and packages
+    """
+    from core.services.mockup_eligibility import GenerateFormEligibilityService
+
+    if not user.has_company_access:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to any company data."
+        )
+
+    try:
+        service = GenerateFormEligibilityService(user_companies=user.companies)
+        locations = await service.get_eligible_locations()
+
+        return {
+            "locations": [loc.to_dict() for loc in locations],
+            "count": len(locations),
+        }
+    except Exception as e:
+        logger.error(f"[ELIGIBILITY API] Error getting generate locations: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/mockup/eligibility/templates/{location_key}")
+async def get_location_templates(
+    location_key: str,
+    user: AuthUser = Depends(require_permission("sales:mockups:read"))
+):
+    """
+    Get all available templates for a location.
+
+    If location is a package, returns templates from ALL networks in the package.
+    If location is a network, returns templates for that network only.
+
+    Args:
+        location_key: Network key or package key
+
+    Returns:
+        List of available templates
+    """
+    from core.services.mockup_eligibility import GenerateFormEligibilityService
+
+    if not user.has_company_access:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to any company data."
+        )
+
+    try:
+        service = GenerateFormEligibilityService(user_companies=user.companies)
+        templates = await service.get_templates_for_location(location_key)
+
+        return {
+            "templates": [t.to_dict() for t in templates],
+            "count": len(templates),
+            "location_key": location_key,
+        }
+    except Exception as e:
+        logger.error(f"[ELIGIBILITY API] Error getting templates for {location_key}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/mockup/eligibility/check")
+async def check_location_eligibility(
+    location_key: str = Form(...),
+    mode: str = Form("generate"),
+    user: AuthUser = Depends(require_permission("sales:mockups:read"))
+):
+    """
+    Check if a location is eligible for a specific mode.
+
+    Args:
+        location_key: Network key or package key to check
+        mode: "setup" or "generate"
+
+    Returns:
+        Eligibility status and reason if not eligible
+    """
+    from core.services.mockup_eligibility import (
+        SetupEligibilityService,
+        GenerateFormEligibilityService,
+    )
+
+    if not user.has_company_access:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to any company data."
+        )
+
+    try:
+        if mode == "setup":
+            service = SetupEligibilityService(user_companies=user.companies)
+        else:
+            service = GenerateFormEligibilityService(user_companies=user.companies)
+
+        result = await service.check_eligibility(location_key)
+
+        return {
+            "location_key": location_key,
+            "mode": mode,
+            "eligible": result.eligible,
+            "reason": result.reason,
+        }
+    except Exception as e:
+        logger.error(f"[ELIGIBILITY API] Error checking eligibility for {location_key}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# PACKAGE EXPANSION ENDPOINT
+# =============================================================================
+
+
+@router.get("/api/mockup/expand/{location_key}")
+async def expand_location(
+    location_key: str,
+    user: AuthUser = Depends(require_permission("sales:mockups:read"))
+):
+    """
+    Expand a location (package or network) to generation targets.
+
+    For packages: returns all networks with their storage keys
+    For networks: returns the single network with its storage keys
+
+    This endpoint is useful for understanding what mockups will be generated
+    for a given location.
+
+    Args:
+        location_key: Network key or package key
+
+    Returns:
+        List of generation targets with storage info
+    """
+    from core.services.mockup_service import PackageExpander
+
+    if not user.has_company_access:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to any company data."
+        )
+
+    try:
+        expander = PackageExpander(user_companies=user.companies)
+        targets = await expander.expand(location_key)
+
+        return {
+            "location_key": location_key,
+            "targets": [t.to_dict() for t in targets],
+            "count": len(targets),
+            "total_storage_keys": sum(len(t.storage_keys) for t in targets),
+        }
+    except Exception as e:
+        logger.error(f"[EXPAND API] Error expanding {location_key}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
