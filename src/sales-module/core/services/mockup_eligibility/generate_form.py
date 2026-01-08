@@ -5,8 +5,6 @@ Form-based generate mode is used when generating mockups via the UI form.
 Shows both networks AND packages, but only those that have mockup frames configured.
 """
 
-from integrations.asset_management import asset_mgmt_client
-from core.services.mockup_frame_service import MockupFrameService
 from .base import BaseEligibilityService, EligibilityResult, LocationOption, TemplateOption
 
 
@@ -24,17 +22,6 @@ class GenerateFormEligibilityService(BaseEligibilityService):
         locations = await service.get_eligible_locations()
         templates = await service.get_templates_for_location("dubai_bundle")  # package
     """
-
-    def __init__(self, user_companies: list[str]):
-        super().__init__(user_companies)
-        self._frame_service = None
-
-    @property
-    def frame_service(self) -> MockupFrameService:
-        """Lazy-load frame service."""
-        if self._frame_service is None:
-            self._frame_service = MockupFrameService(companies=self.user_companies)
-        return self._frame_service
 
     async def get_eligible_locations(self) -> list[LocationOption]:
         """
@@ -56,7 +43,7 @@ class GenerateFormEligibilityService(BaseEligibilityService):
 
         try:
             # 1. Get all networks from Asset-Management API
-            networks = await asset_mgmt_client.get_networks(
+            networks = await self.asset_client.get_networks(
                 companies=self.user_companies,
                 active_only=True
             )
@@ -68,10 +55,8 @@ class GenerateFormEligibilityService(BaseEligibilityService):
 
                 company = network.get("company_schema") or network.get("company")
 
-                # Check if this network has frames
-                has_frames = await self.frame_service.has_mockup_frames(
-                    network_key, company_hint=company
-                )
+                # Check if this network has frames (using shared method)
+                has_frames = await self._check_network_has_frames(network_key, company_hint=company)
 
                 if has_frames:
                     networks_with_frames.add(network_key)
@@ -94,7 +79,7 @@ class GenerateFormEligibilityService(BaseEligibilityService):
 
         try:
             # 2. Get all packages from Asset-Management API
-            packages = await asset_mgmt_client.get_packages(
+            packages = await self.asset_client.get_packages(
                 companies=self.user_companies,
                 active_only=True
             )
@@ -108,12 +93,8 @@ class GenerateFormEligibilityService(BaseEligibilityService):
                     continue
 
                 try:
-                    # Get package with items to find networks
-                    package_detail = await asset_mgmt_client.get_package(
-                        company=company,
-                        package_id=package_id,
-                        include_items=True
-                    )
+                    # Get package with items to find networks (using shared method)
+                    package_detail = await self._get_package_detail(package_id, company)
 
                     if not package_detail or not package_detail.get("items"):
                         continue
@@ -170,18 +151,15 @@ class GenerateFormEligibilityService(BaseEligibilityService):
         normalized_key = location_key.lower().strip()
 
         try:
-            # Check if it's a network/location
-            location_data = await asset_mgmt_client.get_location_by_key(
-                location_key=normalized_key,
-                companies=self.user_companies
-            )
+            # Check if it's a network/location (using shared method)
+            location_data = await self._get_location_data(normalized_key)
 
             if location_data:
                 company = location_data.get("company_schema") or location_data.get("company")
-                # It's a network - check if it has frames
-                has_frames = await self.frame_service.has_mockup_frames(
-                    normalized_key, company_hint=company
-                )
+                display_name = location_data.get("display_name", location_key)
+
+                # Check if it has frames (using shared method)
+                has_frames = await self._check_network_has_frames(normalized_key, company_hint=company)
 
                 if has_frames:
                     self.logger.info(f"[GENERATE_ELIGIBILITY] {location_key} is eligible (network with frames)")
@@ -189,49 +167,28 @@ class GenerateFormEligibilityService(BaseEligibilityService):
                 else:
                     return EligibilityResult(
                         eligible=False,
-                        reason=f"'{location_data.get('display_name', location_key)}' doesn't have any mockup frames configured. Please set up mockup frames in the Setup tab first."
+                        reason=f"'{display_name}' doesn't have any mockup frames configured. Please set up mockup frames in the Setup tab first."
                     )
 
-            # Check if it's a package
-            packages = await asset_mgmt_client.get_packages(
-                companies=self.user_companies,
-                active_only=True
-            )
+            # Check if it's a package (using shared method)
+            package_data = await self._find_package(normalized_key)
 
-            for package in packages:
-                pkg_key = package.get("package_key", "").lower()
-                if pkg_key != normalized_key:
-                    continue
+            if package_data:
+                package_id = package_data.get("id")
+                package_name = package_data.get("name", location_key)
+                company = package_data.get("company")
 
-                package_id = package.get("id")
-                package_name = package.get("name", location_key)
-                company = package.get("company_schema") or package.get("company")
+                # Check if any network in package has frames (using shared method)
+                has_frames = await self._check_package_has_frames(package_id, company)
 
-                # Get package details with items
-                package_detail = await asset_mgmt_client.get_package(
-                    company=company,
-                    package_id=package_id,
-                    include_items=True
-                )
-
-                if package_detail and package_detail.get("items"):
-                    for item in package_detail.get("items", []):
-                        network_key = item.get("network_key")
-                        if network_key:
-                            has_frames = await self.frame_service.has_mockup_frames(
-                                network_key, company_hint=company
-                            )
-                            if has_frames:
-                                self.logger.info(
-                                    f"[GENERATE_ELIGIBILITY] {location_key} is eligible (package with frames)"
-                                )
-                                return EligibilityResult(eligible=True)
-
-                # Package exists but no networks have frames
-                return EligibilityResult(
-                    eligible=False,
-                    reason=f"Package '{package_name}' doesn't have any networks with mockup frames. Please set up mockup frames for networks in this package first."
-                )
+                if has_frames:
+                    self.logger.info(f"[GENERATE_ELIGIBILITY] {location_key} is eligible (package with frames)")
+                    return EligibilityResult(eligible=True)
+                else:
+                    return EligibilityResult(
+                        eligible=False,
+                        reason=f"Package '{package_name}' doesn't have any networks with mockup frames. Please set up mockup frames for networks in this package first."
+                    )
 
         except Exception as e:
             self.logger.warning(f"[GENERATE_ELIGIBILITY] Error checking eligibility: {e}")
@@ -261,11 +218,8 @@ class GenerateFormEligibilityService(BaseEligibilityService):
         templates = []
 
         try:
-            # Check if it's a network first
-            location_data = await asset_mgmt_client.get_location_by_key(
-                location_key=normalized_key,
-                companies=self.user_companies
-            )
+            # Check if it's a network first (using shared method)
+            location_data = await self._get_location_data(normalized_key)
 
             if location_data:
                 # It's a network - get templates for this network
@@ -276,26 +230,15 @@ class GenerateFormEligibilityService(BaseEligibilityService):
                 )
                 templates.extend(network_templates)
             else:
-                # Check if it's a package
-                packages = await asset_mgmt_client.get_packages(
-                    companies=self.user_companies,
-                    active_only=True
-                )
+                # Check if it's a package (using shared method)
+                package_data = await self._find_package(normalized_key)
 
-                for package in packages:
-                    pkg_key = package.get("package_key", "").lower()
-                    if pkg_key != normalized_key:
-                        continue
+                if package_data:
+                    package_id = package_data.get("id")
+                    company = package_data.get("company")
 
-                    package_id = package.get("id")
-                    company = package.get("company_schema") or package.get("company")
-
-                    package_templates = await self._get_package_templates(
-                        package_id,
-                        company,
-                    )
+                    package_templates = await self._get_package_templates(package_id, company)
                     templates.extend(package_templates)
-                    break  # Found the package
 
         except Exception as e:
             self.logger.warning(f"[GENERATE_ELIGIBILITY] Error getting templates: {e}")
@@ -356,12 +299,8 @@ class GenerateFormEligibilityService(BaseEligibilityService):
         templates = []
 
         try:
-            # Get package with items from Asset-Management API
-            package_detail = await asset_mgmt_client.get_package(
-                company=company,
-                package_id=package_id,
-                include_items=True
-            )
+            # Get package with items (using shared method)
+            package_detail = await self._get_package_detail(package_id, company)
 
             if not package_detail or not package_detail.get("items"):
                 return templates

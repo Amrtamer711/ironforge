@@ -6,8 +6,6 @@ Cannot pre-filter because we don't know what the user will request until after p
 Provides post-parse validation with user-friendly feedback messages.
 """
 
-from integrations.asset_management import asset_mgmt_client
-from core.services.mockup_frame_service import MockupFrameService
 from .base import BaseEligibilityService, EligibilityResult, LocationOption
 
 
@@ -28,17 +26,6 @@ class GenerateLLMEligibilityService(BaseEligibilityService):
         if not result.eligible:
             return f"Sorry, {result.reason}"  # Send to user in chat
     """
-
-    def __init__(self, user_companies: list[str]):
-        super().__init__(user_companies)
-        self._frame_service = None
-
-    @property
-    def frame_service(self) -> MockupFrameService:
-        """Lazy-load frame service."""
-        if self._frame_service is None:
-            self._frame_service = MockupFrameService(companies=self.user_companies)
-        return self._frame_service
 
     async def get_eligible_locations(self) -> list[LocationOption]:
         """
@@ -77,20 +64,15 @@ class GenerateLLMEligibilityService(BaseEligibilityService):
         normalized_key = location_key.lower().strip()
 
         try:
-            # Check if it's a network/location
-            location_data = await asset_mgmt_client.get_location_by_key(
-                location_key=normalized_key,
-                companies=self.user_companies
-            )
+            # Check if it's a network/location (using shared method)
+            location_data = await self._get_location_data(normalized_key)
 
             if location_data:
                 display_name = location_data.get("display_name") or location_key.replace("_", " ").title()
                 company = location_data.get("company") or location_data.get("company_schema")
 
-                # Check if it has frames
-                has_frames = await self.frame_service.has_mockup_frames(
-                    normalized_key, company_hint=company
-                )
+                # Check if it has frames (using shared method)
+                has_frames = await self._check_network_has_frames(normalized_key, company_hint=company)
 
                 if has_frames:
                     self.logger.info(f"[LLM_ELIGIBILITY] {location_key} is eligible (network with frames)")
@@ -105,7 +87,7 @@ class GenerateLLMEligibilityService(BaseEligibilityService):
                         )
                     )
 
-            # Check if it's a package
+            # Check if it's a package (using shared method)
             package_data = await self._find_package(normalized_key)
 
             if package_data:
@@ -113,8 +95,8 @@ class GenerateLLMEligibilityService(BaseEligibilityService):
                 package_id = package_data.get("id")
                 company = package_data.get("company")
 
-                # Check if any network in package has frames
-                has_network_with_frames = await self._package_has_frames(package_id, company)
+                # Check if any network in package has frames (using shared method)
+                has_network_with_frames = await self._check_package_has_frames(package_id, company)
 
                 if has_network_with_frames:
                     self.logger.info(f"[LLM_ELIGIBILITY] {location_key} is eligible (package with frames)")
@@ -141,58 +123,6 @@ class GenerateLLMEligibilityService(BaseEligibilityService):
                 "Please check the name and try again, or use the form-based mockup tool to see available locations."
             )
         )
-
-    async def _find_package(self, package_key: str) -> dict | None:
-        """Find a package by key in user's companies."""
-        try:
-            packages = await asset_mgmt_client.get_packages(
-                companies=self.user_companies,
-                active_only=True
-            )
-
-            for package in packages:
-                pkg_key = package.get("package_key", "").lower()
-                if pkg_key == package_key.lower():
-                    result = {
-                        "id": package.get("id"),
-                        "package_key": package.get("package_key"),
-                        "name": package.get("name"),
-                        "company": package.get("company_schema") or package.get("company"),
-                    }
-                    return result
-
-        except Exception as e:
-            self.logger.debug(f"[LLM_ELIGIBILITY] Error finding package: {e}")
-
-        return None
-
-    async def _package_has_frames(self, package_id: int, company: str) -> bool:
-        """Check if any network in a package has mockup frames."""
-        try:
-            # Get package with items from Asset-Management API
-            package_detail = await asset_mgmt_client.get_package(
-                company=company,
-                package_id=package_id,
-                include_items=True
-            )
-
-            if not package_detail or not package_detail.get("items"):
-                return False
-
-            for item in package_detail.get("items", []):
-                network_key = item.get("network_key")
-                if network_key:
-                    has_frames = await self.frame_service.has_mockup_frames(
-                        network_key, company_hint=company
-                    )
-                    if has_frames:
-                        return True
-
-            return False
-
-        except Exception as e:
-            self.logger.warning(f"[LLM_ELIGIBILITY] Error checking package frames: {e}")
-            return False
 
     async def get_ineligibility_message(self, location_key: str) -> str | None:
         """
