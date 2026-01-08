@@ -61,3 +61,15 @@ cp src/unified-ui/supabase.env.example src/unified-ui/supabase.env
 ```bash
 make platform-unifiedui-env
 ```
+
+### Using GitLab CI/CD variables (recommended)
+
+Instead of a local `supabase.env` file, you can store the Supabase values as GitLab CI/CD variables and apply them via CI:
+
+- `UI_DEV_SUPABASE_URL`
+- `UI_DEV_SUPABASE_ANON_KEY`
+- `UI_DEV_SUPABASE_SERVICE_ROLE_KEY`
+- `EKS_CLUSTER_NAME`
+- `AWS_ROLE_ARN` (must be able to access EKS)
+
+Then run the manual pipeline job `deploy_unifiedui_env` on the `demo` branch.
