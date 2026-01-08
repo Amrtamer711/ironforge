@@ -11,3 +11,13 @@ images:
     # This is updated by CI via Merge Request (see `gitops_mr_security_dev`).
     newTag: 76bf2c33
 
+patches:
+  - target:
+      kind: Deployment
+      name: security-service
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - secretRef:
+              name: security-service-env

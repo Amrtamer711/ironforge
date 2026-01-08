@@ -10,4 +10,3 @@ images:
     # Deployed image tag is Git-driven (pure GitOps).
     # This is updated by CI via Merge Request (see `gitops_mr_sales_dev`).
     newTag: c790ef7e
-
