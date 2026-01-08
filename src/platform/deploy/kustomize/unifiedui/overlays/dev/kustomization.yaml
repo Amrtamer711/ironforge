@@ -34,6 +34,11 @@ patches:
       name: unified-ui
     patch: |-
       - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - secretRef:
+              name: unified-ui-env
+      - op: add
         path: /spec/template/spec/containers/0/env/-
         value:
           name: ENVIRONMENT
@@ -41,5 +46,5 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/env/-
         value:
-          name: SALES_BOT_URL
+          name: SALES_MODULE_URL
           value: http://proposal-bot.sales.svc.cluster.local:8000

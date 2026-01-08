@@ -43,3 +43,21 @@ Recommended: let CI open a GitOps merge request that bumps `newTag` automaticall
 - Create a GitLab CI variable `GITLAB_BOT_TOKEN` with permission to push branches and create merge requests.
 - Push a change to `src/unified-ui/**` on the `demo` branch.
 - Merge the generated MR titled `Deploy unifiedui-dev: <sha>`.
+
+## Supabase / runtime env (Kubernetes)
+
+Unified UI expects Supabase environment variables at runtime (see `src/unified-ui/.env.example` for the canonical list).
+
+For Kubernetes, runtime env vars are loaded from a Secret named `unified-ui-env` (see `envFrom` in `src/platform/deploy/kustomize/unifiedui/overlays/dev/kustomization.yaml`).
+
+1) Create `src/unified-ui/supabase.env` from the example and fill values from Render (this file is gitignored):
+
+```bash
+cp src/unified-ui/supabase.env.example src/unified-ui/supabase.env
+```
+
+2) Apply/update the secret:
+
+```bash
+make platform-unifiedui-env
+```

@@ -20,6 +20,7 @@ SHELL := /bin/bash
 	platform-argocd-repo-creds \
 	platform-unifiedui-apply platform-unifiedui-url \
 	platform-unifiedui-set-tag \
+	platform-unifiedui-env \
 	platform-apex-step1 platform-apex-step2 \
 	tf-bootstrap tf-init tf-plan tf-apply tf-output \
 	argocd-bootstrap argocd-tls-tf-init argocd-tls-step1 argocd-tls-step2 argocd-url
@@ -265,9 +266,16 @@ UNIFIEDUI_APP_MANIFEST ?= $(ROOT_DIR)/src/platform/ArgoCD/applications/unifiedui
 UNIFIEDUI_NAMESPACE ?= unifiedui
 UNIFIEDUI_INGRESS_NAME ?= unified-ui
 UNIFIEDUI_KUSTOMIZE_DEV ?= $(ROOT_DIR)/src/platform/deploy/kustomize/unifiedui/overlays/dev/kustomization.yaml
+UNIFIEDUI_ENV_FILE ?= $(ROOT_DIR)/src/unified-ui/supabase.env
 
 platform-unifiedui-apply: ## Install/refresh the Unified UI Argo CD Application
 	@kubectl apply -f $(UNIFIEDUI_APP_MANIFEST)
+
+platform-unifiedui-env: ## Create/update Unified UI runtime secret from `src/unified-ui/supabase.env` (not committed)
+	@test -f $(UNIFIEDUI_ENV_FILE) || (echo "$(RED)Missing $(UNIFIEDUI_ENV_FILE) (copy values from Render env)$(NC)" && exit 1)
+	@kubectl -n $(UNIFIEDUI_NAMESPACE) create secret generic unified-ui-env \
+	  --from-env-file=$(UNIFIEDUI_ENV_FILE) \
+	  --dry-run=client -o yaml | kubectl apply -f -
 
 platform-unifiedui-set-tag: ## Set the Unified UI dev image tag in Git (TAG=...) for Argo CD to roll out
 	@test -n "$(TAG)" || (echo "$(RED)Missing TAG (example: make platform-unifiedui-set-tag TAG=63e20315)$(NC)" && exit 1)
