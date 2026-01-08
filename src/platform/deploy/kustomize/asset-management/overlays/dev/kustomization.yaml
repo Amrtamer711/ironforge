@@ -6,7 +6,8 @@ resources:
 
 images:
   - name: asset-management
-    newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/asset-management
+    # ECR repo is shared with the legacy "asset_library" naming.
+    newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/asset_library
     # Deployed image tag is Git-driven (pure GitOps).
     # This is updated by CI via Merge Request (see `gitops_mr_assetmgmt_dev`).
     newTag: CHANGE_ME

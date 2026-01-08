@@ -18,6 +18,8 @@ The deployed image tag is controlled in Git:
 
 Push a change to `src/asset-management/**` on the `demo` branch to build/push a new image. CI will open a GitOps MR to bump `newTag` (requires `GITLAB_BOT_TOKEN`), then merge it to deploy.
 
+Note: the ECR repository name used for this service is `asset_library` (legacy naming).
+
 ## Runtime env (Kubernetes)
 
 This Deployment can load runtime environment variables from a Secret named `asset-management-env` in the `backends` namespace (optional; pod will still start without it).

@@ -3,7 +3,8 @@ build_asset_management:
   variables:
     SERVICE_NAME: "asset-management"
     SERVICE_DIR: "src/asset-management"
-    ECR_REPO: "asset-management"
+    # ECR repo is shared with the legacy "asset_library" naming.
+    ECR_REPO: "asset_library"
     DOCKERFILE_PATH: "src/asset-management/Dockerfile"
     BUILD_CONTEXT: "src/asset-management"
   rules:
