@@ -191,9 +191,18 @@ export function MockupPage() {
     imgNaturalH: 0,
   });
 
-  const locationsQuery = useQuery({
-    queryKey: ["mockup", "locations"],
-    queryFn: mockupApi.getLocations,
+  // Setup mode uses eligibility endpoint (networks only, no packages)
+  const setupLocationsQuery = useQuery({
+    queryKey: ["mockup", "eligibility", "setup"],
+    queryFn: mockupApi.getSetupLocations,
+    enabled: mode === "setup",
+  });
+
+  // Generate mode uses eligibility endpoint (networks + packages with frames)
+  const generateLocationsQuery = useQuery({
+    queryKey: ["mockup", "eligibility", "generate"],
+    queryFn: mockupApi.getGenerateLocations,
+    enabled: mode === "generate",
   });
 
   const generateTemplatesQuery = useQuery({
@@ -265,12 +274,25 @@ export function MockupPage() {
     templateThumbsRef.current = templateThumbs;
   }, [templateThumbs]);
 
-
-  const locationOptions = useMemo(() => {
-    const data = locationsQuery.data;
+  // Setup mode: networks only (from eligibility endpoint)
+  const setupLocationOptions = useMemo(() => {
+    const data = setupLocationsQuery.data;
     if (Array.isArray(data)) return data;
     return data?.locations || [];
-  }, [locationsQuery.data]);
+  }, [setupLocationsQuery.data]);
+
+  // Generate mode: networks + packages with frames (from eligibility endpoint)
+  const generateLocationOptions = useMemo(() => {
+    const data = generateLocationsQuery.data;
+    if (Array.isArray(data)) return data;
+    return data?.locations || [];
+  }, [generateLocationsQuery.data]);
+
+  // Use appropriate options based on current mode
+  const locationOptions = mode === "setup" ? setupLocationOptions : generateLocationOptions;
+
+  // Use appropriate query based on mode (for loading states, etc.)
+  const locationsQuery = mode === "setup" ? setupLocationsQuery : generateLocationsQuery;
 
   const generateTemplateOptions = useMemo(() => {
     const data = generateTemplatesQuery.data;

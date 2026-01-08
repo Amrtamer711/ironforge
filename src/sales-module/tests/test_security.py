@@ -68,21 +68,30 @@ class TestPathTraversal:
 
     def test_path_traversal_in_location_key(self, client: TestClient, mock_auth):
         """Test that path traversal in location_key is blocked."""
-        response = client.get("/api/mockup/photo/../../../etc/passwd/test.jpg")
+        response = client.get(
+            "/api/mockup/photo/../../../etc/passwd",
+            params={"photo_filename": "test.jpg"}
+        )
 
         # Should return 400 or 404, not expose file
-        assert response.status_code in [400, 404]
+        assert response.status_code in [400, 404, 422]
 
     def test_path_traversal_in_filename(self, client: TestClient, mock_auth):
         """Test that path traversal in filename is blocked."""
-        response = client.get("/api/mockup/photo/valid-location/../../etc/passwd")
+        response = client.get(
+            "/api/mockup/photo/valid-location",
+            params={"photo_filename": "../../etc/passwd"}
+        )
 
         # Should return 400 or 404, not expose file
         assert response.status_code in [400, 404]
 
     def test_null_byte_injection(self, client: TestClient, mock_auth):
         """Test that null byte injection is blocked."""
-        response = client.get("/api/mockup/photo/location/file.jpg%00.txt")
+        response = client.get(
+            "/api/mockup/photo/location",
+            params={"photo_filename": "file.jpg%00.txt"}
+        )
 
         # Should be handled safely
         assert response.status_code in [400, 404]

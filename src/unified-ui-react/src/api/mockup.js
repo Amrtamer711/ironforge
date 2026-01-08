@@ -27,7 +27,8 @@ export async function saveSetupPhoto(formData) {
 }
 
 export async function deleteSetupPhoto(location, photo) {
-  return apiRequest(`/api/sales/mockup/setup/delete/${encodeURIComponent(location)}/${encodeURIComponent(photo)}`, {
+  // location is path param (supports slashes like "network/type/asset"), photo is query param
+  return apiRequest(`/api/sales/mockup/photo/${location}?photo_filename=${encodeURIComponent(photo)}`, {
     method: "DELETE",
   });
 }
@@ -41,11 +42,6 @@ export async function generateMockup(formData) {
   return apiRequest("/api/sales/mockup/generate", { method: "POST", body: formData });
 }
 
-export function getTemplatePhotoUrl(location, photo) {
-  if (!location || !photo) return "";
-  return `${runtimeConfig.API_BASE_URL}/api/sales/mockup/photo/${encodeURIComponent(location)}/${encodeURIComponent(photo)}`;
-}
-
 // TODO : This endpoint does not exist in backend now.
 export async function getHistory() {
   return apiRequest("/api/sales/mockup/history");
@@ -54,10 +50,11 @@ export async function getHistory() {
 export async function getTemplatePhotoBlob(location, photo, { timeOfDay, finish } = {}) {
   if (!location || !photo) return null;
   const params = new URLSearchParams();
+  params.set("photo_filename", photo);  // Required query param
   if (timeOfDay) params.set("time_of_day", timeOfDay);
   if (finish) params.set("finish", finish);
-  const query = params.toString();
-  const path = `/api/sales/mockup/photo/${encodeURIComponent(location)}/${encodeURIComponent(photo)}${query ? `?${query}` : ""}`;
+  // location is path param (supports slashes like "network/type/asset"), photo is query param
+  const path = `/api/sales/mockup/photo/${location}?${params.toString()}`;
   return apiBlob(path);
 }
 
