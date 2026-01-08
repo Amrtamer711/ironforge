@@ -16,6 +16,18 @@ patches:
       kind: Deployment
       name: security-service
     patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: security-service
+        annotations:
+          # Force replace to clear server-side-apply field ownership conflicts
+          # left behind by `kubectl set env --from=secret/...` (valueFrom vs value).
+          argocd.argoproj.io/sync-options: Replace=true
+  - target:
+      kind: Deployment
+      name: security-service
+    patch: |-
       - op: add
         path: /spec/template/spec/containers/0/envFrom
         value:
