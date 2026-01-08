@@ -9,5 +9,5 @@ images:
     newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/proposal-bot
     # Deployed image tag is Git-driven (pure GitOps).
     # This is updated by CI via Merge Request (see `gitops_mr_sales_dev`).
-    newTag: 1b851a7d
+    newTag: c790ef7e
 
