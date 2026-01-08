@@ -50,10 +50,10 @@ Unified UI expects Supabase environment variables at runtime (see `src/unified-u
 
 For Kubernetes, runtime env vars are loaded from a Secret named `unified-ui-env` (see `envFrom` in `src/platform/deploy/kustomize/unifiedui/overlays/dev/kustomization.yaml`).
 
-1) Create `src/unified-ui/supabase.env` from the example and fill values from Render (this file is gitignored):
+1) Create `src/unified-ui/.env` from the example and fill values from Render (this file is gitignored):
 
 ```bash
-cp src/unified-ui/supabase.env.example src/unified-ui/supabase.env
+cp src/unified-ui/.env.example src/unified-ui/.env
 ```
 
 2) Apply/update the secret:
@@ -61,15 +61,3 @@ cp src/unified-ui/supabase.env.example src/unified-ui/supabase.env
 ```bash
 make platform-unifiedui-env
 ```
-
-### Using GitLab CI/CD variables (recommended)
-
-Instead of a local `supabase.env` file, you can store the Supabase values as GitLab CI/CD variables and apply them via CI:
-
-- `UI_DEV_SUPABASE_URL`
-- `UI_DEV_SUPABASE_ANON_KEY`
-- `UI_DEV_SUPABASE_SERVICE_ROLE_KEY`
-- `EKS_CLUSTER_NAME`
-- `AWS_ROLE_ARN` (must be able to access EKS)
-
-Then run the manual pipeline job `deploy_unifiedui_env` on the `demo` branch.

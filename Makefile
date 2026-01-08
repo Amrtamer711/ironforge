@@ -266,16 +266,19 @@ UNIFIEDUI_APP_MANIFEST ?= $(ROOT_DIR)/src/platform/ArgoCD/applications/unifiedui
 UNIFIEDUI_NAMESPACE ?= unifiedui
 UNIFIEDUI_INGRESS_NAME ?= unified-ui
 UNIFIEDUI_KUSTOMIZE_DEV ?= $(ROOT_DIR)/src/platform/deploy/kustomize/unifiedui/overlays/dev/kustomization.yaml
-UNIFIEDUI_ENV_FILE ?= $(ROOT_DIR)/src/unified-ui/supabase.env
+UNIFIEDUI_ENV_FILE ?= $(ROOT_DIR)/src/unified-ui/.env
 
 platform-unifiedui-apply: ## Install/refresh the Unified UI Argo CD Application
 	@kubectl apply -f $(UNIFIEDUI_APP_MANIFEST)
 
-platform-unifiedui-env: ## Create/update Unified UI runtime secret from `src/unified-ui/supabase.env` (not committed)
+platform-unifiedui-env: ## Create/update Unified UI runtime secret from `src/unified-ui/.env` (not committed)
 	@test -f $(UNIFIEDUI_ENV_FILE) || (echo "$(RED)Missing $(UNIFIEDUI_ENV_FILE) (copy values from Render env)$(NC)" && exit 1)
-	@kubectl -n $(UNIFIEDUI_NAMESPACE) create secret generic unified-ui-env \
-	  --from-env-file=$(UNIFIEDUI_ENV_FILE) \
-	  --dry-run=client -o yaml | kubectl apply -f -
+	@TMP_FILE=$$(mktemp); \
+	  awk -F= '/^[A-Za-z_.-][A-Za-z0-9_.-]*=.*/{print}' "$(UNIFIEDUI_ENV_FILE)" > "$$TMP_FILE"; \
+	  kubectl -n $(UNIFIEDUI_NAMESPACE) create secret generic unified-ui-env \
+	    --from-env-file="$$TMP_FILE" \
+	    --dry-run=client -o yaml | kubectl apply -f -; \
+	  rm -f "$$TMP_FILE"
 
 platform-unifiedui-set-tag: ## Set the Unified UI dev image tag in Git (TAG=...) for Argo CD to roll out
 	@test -n "$(TAG)" || (echo "$(RED)Missing TAG (example: make platform-unifiedui-set-tag TAG=63e20315)$(NC)" && exit 1)
