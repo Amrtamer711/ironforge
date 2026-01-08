@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: security-dev
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://gitlab.com/mmg-global/ironforge.git
+    targetRevision: demo
+    path: src/platform/deploy/kustomize/security-service/overlays/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: backends
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+

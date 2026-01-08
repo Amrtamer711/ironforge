@@ -5,4 +5,5 @@ resources:
   - aws-load-balancer-controller.yaml
   - unifiedui-dev.yaml
   - sales-dev.yaml
+  - security-dev.yaml
 

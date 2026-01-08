@@ -48,3 +48,8 @@ patches:
         value:
           name: SALES_MODULE_URL
           value: http://proposal-bot.backends.svc.cluster.local:8000
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: SECURITY_SERVICE_URL
+          value: http://security-service.backends.svc.cluster.local:8002
