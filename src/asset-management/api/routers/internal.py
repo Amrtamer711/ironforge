@@ -215,6 +215,7 @@ def get_location_by_key_internal(
 def get_mockup_storage_info_internal(
     network_key: str,
     companies: list[str] = Query(default=None, description="Company schemas to search"),
+    include_all_assets: bool = Query(default=False, description="Return all assets for traditional networks"),
     service: dict = Depends(verify_service_token),
 ) -> dict:
     """
@@ -222,27 +223,35 @@ def get_mockup_storage_info_internal(
 
     Returns the storage keys needed to fetch/store mockups:
     - For standalone networks: returns network_key (mockups at network level)
-    - For traditional networks: returns asset_keys (mockups at asset level)
+    - For traditional networks: returns asset storage paths (mockups at asset level)
 
     This abstracts the unified architecture - callers just use the returned
     storage_keys without knowing if it's standalone or traditional.
+
+    Args:
+        network_key: Network identifier
+        companies: Company schemas to search
+        include_all_assets: If True, returns ALL assets for traditional networks.
+                           If False, returns only one sample per asset type.
 
     Response:
     {
         "network_key": str,
         "company": str,
         "is_standalone": bool,
-        "storage_keys": list[str],  # Keys to use for mockup storage
-        "sample_assets": list[dict]  # For traditional: one asset per type
+        "storage_keys": list[str],
+            - Standalone: [network_key]
+            - Traditional: ["{network_key}/{type_key}/{asset_key}", ...]
+        "assets": list[dict]  # For traditional: asset details with storage_key
     }
     """
     caller = service.get("service", "unknown")
-    logger.info(f"[INTERNAL] {caller} fetching mockup storage info for: {network_key}")
+    logger.info(f"[INTERNAL] {caller} fetching mockup storage info for: {network_key} (include_all_assets={include_all_assets})")
 
     filter_companies = companies or config.COMPANY_SCHEMAS
 
     try:
-        result = db.get_mockup_storage_info(network_key, filter_companies)
+        result = db.get_mockup_storage_info(network_key, filter_companies, include_all_assets)
         if not result:
             raise HTTPException(
                 status_code=404,

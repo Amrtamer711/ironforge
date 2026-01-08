@@ -27,7 +27,8 @@ export async function saveSetupPhoto(formData) {
 }
 
 export async function deleteSetupPhoto(location, photo) {
-  return apiRequest(`/api/sales/mockup/setup/delete/${encodeURIComponent(location)}/${encodeURIComponent(photo)}`, {
+  // NOTE: photo comes first, location last (supports storage_keys with slashes like "network/type/asset")
+  return apiRequest(`/api/sales/mockup/photo/${encodeURIComponent(photo)}/${location}`, {
     method: "DELETE",
   });
 }
@@ -43,7 +44,8 @@ export async function generateMockup(formData) {
 
 export function getTemplatePhotoUrl(location, photo) {
   if (!location || !photo) return "";
-  return `${runtimeConfig.API_BASE_URL}/api/sales/mockup/photo/${encodeURIComponent(location)}/${encodeURIComponent(photo)}`;
+  // NOTE: photo comes first, location last (supports storage_keys with slashes like "network/type/asset")
+  return `${runtimeConfig.API_BASE_URL}/api/sales/mockup/photo/${encodeURIComponent(photo)}/${location}`;
 }
 
 // TODO : This endpoint does not exist in backend now.
@@ -57,7 +59,8 @@ export async function getTemplatePhotoBlob(location, photo, { timeOfDay, side } 
   if (timeOfDay) params.set("time_of_day", timeOfDay);
   if (side) params.set("side", side);
   const query = params.toString();
-  const path = `/api/sales/mockup/photo/${encodeURIComponent(location)}/${encodeURIComponent(photo)}${query ? `?${query}` : ""}`;
+  // NOTE: photo comes first, location last (supports storage_keys with slashes like "network/type/asset")
+  const path = `/api/sales/mockup/photo/${encodeURIComponent(photo)}/${location}${query ? `?${query}` : ""}`;
   return apiBlob(path);
 }
 

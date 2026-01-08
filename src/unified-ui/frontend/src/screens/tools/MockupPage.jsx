@@ -290,7 +290,7 @@ export function MockupPage() {
       for (const t of missing) {
         let url = "";
         try {
-          url = await mockupApi.getTemplatePhotoBlobUrl(primaryLocation, t.photo, {
+          url = await mockupApi.getTemplatePhotoBlobUrl(t.storage_key || primaryLocation, t.photo, {
             timeOfDay: t.time_of_day || effectiveTimeOfDay,
             side: t.side || side,
           });
@@ -563,7 +563,7 @@ export function MockupPage() {
         setSide("");
       }
 
-      const photoBlob = await mockupApi.getTemplatePhotoBlob(primaryLocation, template.photo, {
+      const photoBlob = await mockupApi.getTemplatePhotoBlob(template.storage_key || primaryLocation, template.photo, {
         timeOfDay: template.time_of_day || effectiveTimeOfDay,
         side: template.side || side,
       });
@@ -1914,7 +1914,9 @@ function RangeField({ label, value, min, max, step = 1, suffix = "", helper, onC
 }
 
 function getTemplateKey(template) {
-  return `${template.photo}::${template.time_of_day || "all"}::${template.side || "all"}`;
+  // Include storage_key for uniqueness across traditional network assets
+  const storageKey = template.storage_key || "";
+  return `${storageKey}::${template.photo}::${template.time_of_day || "all"}::${template.side || "all"}`;
 }
 
 function detectGreenScreen(imageData, { color, tolerance, depthMultiplier, existingFrames }) {

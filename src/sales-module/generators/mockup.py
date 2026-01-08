@@ -32,11 +32,24 @@ def get_location_photos_dir(
 ) -> Path:
     """Get the directory for a location's mockup photos.
 
-    Structure:
-    - Outdoor: mockups/{company}/{location_key}/outdoor/{time_of_day}/{side}
-    - Indoor: mockups/{company}/{location_key}/indoor
+    Args:
+        company: Company schema (e.g., "backlite_dubai")
+        location_key: Location identifier. Can be:
+            - Standalone network: just network_key (e.g., "dubai_gateway")
+            - Traditional network: "{network_key}/{type_key}/{asset_key}"
+              (e.g., "dubai_mall/digital_screens/mall_screen_a")
+        environment: "indoor" or "outdoor"
+        time_of_day: "day" or "night" (ignored for indoor)
+        side: "gold", "silver", or "single_side" (ignored for indoor)
 
-    Example: mockups/backlite_dubai/triple_crown/outdoor/day/gold
+    Structure:
+    - Standalone outdoor: mockups/{company}/{network_key}/outdoor/{time_of_day}/{side}
+    - Standalone indoor:  mockups/{company}/{network_key}/indoor
+    - Traditional outdoor: mockups/{company}/{network_key}/{type_key}/{asset_key}/outdoor/{time_of_day}/{side}
+    - Traditional indoor:  mockups/{company}/{network_key}/{type_key}/{asset_key}/indoor
+
+    Example standalone: mockups/backlite_dubai/dubai_gateway/outdoor/day/gold
+    Example traditional: mockups/backlite_dubai/dubai_mall/digital_screens/mall_screen_a/indoor
     """
     if environment == "indoor":
         return MOCKUPS_DIR / company / location_key / "indoor"

@@ -2018,6 +2018,7 @@ class SupabaseBackend(DatabaseBackend):
         self,
         network_key: str,
         company_schemas: list[str],
+        include_all_assets: bool = False,
     ) -> dict[str, Any] | None:
         """
         Get mockup storage info for a network.
@@ -2028,14 +2029,18 @@ class SupabaseBackend(DatabaseBackend):
         Args:
             network_key: Network identifier (same as location_key in VIEW)
             company_schemas: Company schemas to search
+            include_all_assets: If True, returns ALL assets for traditional networks.
+                               If False, returns only one sample per asset type.
 
         Returns:
             {
                 "network_key": str,
                 "company": str,
                 "is_standalone": bool,
-                "storage_keys": list[str],  # network_key for standalone, asset_keys for traditional
-                "sample_assets": list[dict],  # For traditional: one per asset_type
+                "storage_keys": list[str],
+                    - Standalone: [network_key]
+                    - Traditional: ["{network_key}/{type_key}/{asset_key}", ...]
+                "assets": list[dict],  # For traditional: asset details with storage_key
             }
         """
         # Get the network
@@ -2054,32 +2059,41 @@ class SupabaseBackend(DatabaseBackend):
                 "company": company,
                 "is_standalone": True,
                 "storage_keys": [network_key],
-                "sample_assets": [],
+                "assets": [],
             }
         else:
             # Traditional networks: mockups at asset level
             # Get asset types for this network
             types = self.list_asset_types([company], network_id=network_id)
 
-            sample_assets = []
+            all_assets = []
             storage_keys = []
 
             for asset_type in types:
-                # Get first asset of each type
+                type_key = asset_type.get("type_key")
+                type_name = asset_type.get("name")
+
+                # Get assets - ALL or just first one based on include_all_assets
+                limit = None if include_all_assets else 1
                 assets = self.list_network_assets(
                     [company],
                     type_id=asset_type["id"],
-                    limit=1,
+                    limit=limit,
                 )
-                if assets:
-                    asset = assets[0]
+
+                for asset in assets:
                     asset_key = asset["asset_key"]
-                    storage_keys.append(asset_key)
-                    sample_assets.append({
+                    # Storage key: "{network_key}/{type_key}/{asset_key}"
+                    full_storage_key = f"{network_key}/{type_key}/{asset_key}"
+                    storage_keys.append(full_storage_key)
+
+                    all_assets.append({
                         "asset_key": asset_key,
+                        "type_key": type_key,
+                        "type_name": type_name,
                         "display_name": asset.get("display_name"),
-                        "type_name": asset_type.get("name"),
                         "environment": asset.get("environment", "outdoor"),
+                        "storage_key": full_storage_key,
                     })
 
             return {
@@ -2087,5 +2101,5 @@ class SupabaseBackend(DatabaseBackend):
                 "company": company,
                 "is_standalone": False,
                 "storage_keys": storage_keys,
-                "sample_assets": sample_assets,
+                "assets": all_assets,
             }

@@ -519,6 +519,7 @@ class _DatabaseNamespace:
         self,
         network_key: str,
         company_schemas: list[str],
+        include_all_assets: bool = False,
     ) -> dict[str, Any] | None:
         """
         Get mockup storage info for a network.
@@ -526,16 +527,24 @@ class _DatabaseNamespace:
         Resolves the correct storage key(s) based on whether the network is
         standalone or traditional.
 
+        Args:
+            network_key: Network identifier
+            company_schemas: Company schemas to search
+            include_all_assets: If True, returns ALL assets for traditional networks.
+                               If False, returns only one sample per asset type.
+
         Returns:
             {
                 "network_key": str,
                 "company": str,
                 "is_standalone": bool,
-                "storage_keys": list[str],  # network_key for standalone, asset_keys for traditional
-                "sample_assets": list[dict],  # For traditional: one per asset_type
+                "storage_keys": list[str],
+                    - Standalone: [network_key]
+                    - Traditional: ["{network_key}/{type_key}/{asset_key}", ...]
+                "assets": list[dict],  # For traditional: asset details with storage_key
             }
         """
-        return self._backend.get_mockup_storage_info(network_key, company_schemas)
+        return self._backend.get_mockup_storage_info(network_key, company_schemas, include_all_assets)
 
 
 # Create the singleton database interface

@@ -18,6 +18,7 @@ Usage:
 
 import logging
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -581,9 +582,12 @@ class AssetManagementClient:
         Returns:
             List of mockup frame dicts with time_of_day, side, photo_filename, frames_data
         """
+        # URL-encode location_key to handle traditional networks with slashes
+        # e.g., "dubai_mall/digital_screens/mall_screen_a" -> "dubai_mall%2Fdigital_screens%2Fmall_screen_a"
+        encoded_location = quote(location_key, safe='')
         return await self._request(
             "GET",
-            f"/api/mockup-frames/{company}/{location_key}",
+            f"/api/mockup-frames/{company}/{encoded_location}",
         ) or []
 
     async def get_mockup_frame(
@@ -617,9 +621,11 @@ class AssetManagementClient:
         if photo_filename:
             params["photo_filename"] = photo_filename
 
+        # URL-encode location_key to handle traditional networks with slashes
+        encoded_location = quote(location_key, safe='')
         return await self._request(
             "GET",
-            f"/api/mockup-frames/{company}/{location_key}/frame",
+            f"/api/mockup-frames/{company}/{encoded_location}/frame",
             params=params,
         )
 
@@ -647,9 +653,11 @@ class AssetManagementClient:
             True if deleted successfully
         """
         try:
+            # URL-encode location_key to handle traditional networks with slashes
+            encoded_location = quote(location_key, safe='')
             result = await self._request(
                 "DELETE",
-                f"/api/mockup-frames/{company}/{location_key}",
+                f"/api/mockup-frames/{company}/{encoded_location}",
                 params={
                     "photo_filename": photo_filename,
                     "environment": environment,
@@ -716,8 +724,10 @@ class AssetManagementClient:
             if config:
                 data["config_json"] = json_module.dumps(config)
 
+            # URL-encode location_key to handle traditional networks with slashes
+            encoded_location = quote(location_key, safe='')
             response = await client.post(
-                f"/api/mockup-frames/{company}/{location_key}",
+                f"/api/mockup-frames/{company}/{encoded_location}",
                 headers=headers,
                 files=files,
                 data=data,
@@ -753,11 +763,13 @@ class AssetManagementClient:
             Photo bytes or None if not found
         """
         try:
+            # URL-encode location_key to handle traditional networks with slashes
+            encoded_location = quote(location_key, safe='')
             # Use simplified path for indoor
             if environment == "indoor":
-                endpoint = f"/api/storage/mockups/{company}/{location_key}/indoor/{photo_filename}"
+                endpoint = f"/api/storage/mockups/{company}/{encoded_location}/indoor/{photo_filename}"
             else:
-                endpoint = f"/api/storage/mockups/{company}/{location_key}/{environment}/{time_of_day}/{side}/{photo_filename}"
+                endpoint = f"/api/storage/mockups/{company}/{encoded_location}/{environment}/{time_of_day}/{side}/{photo_filename}"
 
             response = await self._request("GET", endpoint)
             if response and "data" in response:
@@ -793,11 +805,13 @@ class AssetManagementClient:
         Returns:
             Signed URL or None if not found
         """
+        # URL-encode location_key to handle traditional networks with slashes
+        encoded_location = quote(location_key, safe='')
         # Use simplified path for indoor
         if environment == "indoor":
-            endpoint = f"/api/storage/mockups/{company}/{location_key}/indoor/{photo_filename}/url"
+            endpoint = f"/api/storage/mockups/{company}/{encoded_location}/indoor/{photo_filename}/url"
         else:
-            endpoint = f"/api/storage/mockups/{company}/{location_key}/{environment}/{time_of_day}/{side}/{photo_filename}/url"
+            endpoint = f"/api/storage/mockups/{company}/{encoded_location}/{environment}/{time_of_day}/{side}/{photo_filename}/url"
 
         result = await self._request("GET", endpoint, params={"expires_in": expires_in})
         return result.get("url") if result else None
@@ -834,6 +848,7 @@ class AssetManagementClient:
         self,
         network_key: str,
         companies: list[str] | None = None,
+        include_all_assets: bool = False,
     ) -> dict | None:
         """
         Get mockup storage info for a network.
@@ -841,23 +856,29 @@ class AssetManagementClient:
         This is the key integration point for the unified architecture.
         Returns the storage keys needed to fetch/store mockups:
         - For standalone networks: returns network_key (mockups at network level)
-        - For traditional networks: returns asset_keys (mockups at asset level)
+        - For traditional networks: returns asset storage paths (mockups at asset level)
 
         Args:
             network_key: The network/location key
             companies: Companies to search in
+            include_all_assets: If True, returns ALL assets for traditional networks.
+                               If False, returns only one sample per asset type.
 
         Returns:
             Dict with:
             - network_key: str
             - company: str
             - is_standalone: bool
-            - storage_keys: list[str]  # Keys to use for mockup storage
-            - sample_assets: list[dict]  # For traditional: one asset per type
+            - storage_keys: list[str]
+                - Standalone: [network_key]
+                - Traditional: ["{network_key}/{type_key}/{asset_key}", ...]
+            - assets: list[dict]  # For traditional: asset details with storage_key
         """
         params: dict[str, Any] = {}
         if companies:
             params["companies"] = companies
+        if include_all_assets:
+            params["include_all_assets"] = "true"
 
         return await self._request(
             "GET",

@@ -627,6 +627,7 @@ class MockupFrameService:
     async def get_storage_info(
         self,
         location_key: str,
+        include_all_assets: bool = False,
     ) -> dict | None:
         """
         Get mockup storage info for a location.
@@ -634,25 +635,30 @@ class MockupFrameService:
         This is the key method for working with the unified architecture.
         Returns storage keys based on network type:
         - Standalone networks: returns network_key (mockups at network level)
-        - Traditional networks: returns asset_keys (mockups at asset level)
+        - Traditional networks: returns asset storage paths (mockups at asset level)
 
         Args:
             location_key: Location/network key
+            include_all_assets: If True, returns ALL assets for traditional networks.
+                               If False, returns only one sample per asset type.
 
         Returns:
             Dict with:
             - network_key: str
             - company: str
             - is_standalone: bool
-            - storage_keys: list[str] - Keys to use for mockup operations
-            - sample_assets: list[dict] - For traditional: one asset per type
+            - storage_keys: list[str]
+                - Standalone: [network_key]
+                - Traditional: ["{network_key}/{type_key}/{asset_key}", ...]
+            - assets: list[dict] - For traditional: asset details with storage_key
         """
-        self.logger.info(f"[MOCKUP_FRAME_SERVICE] Getting storage info for {location_key}")
+        self.logger.info(f"[MOCKUP_FRAME_SERVICE] Getting storage info for {location_key} (include_all_assets={include_all_assets})")
 
         try:
             result = await asset_mgmt_client.get_mockup_storage_info(
                 network_key=location_key,
                 companies=self.companies,
+                include_all_assets=include_all_assets,
             )
 
             if result:
