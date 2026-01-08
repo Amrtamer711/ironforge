@@ -1274,25 +1274,20 @@ async def main_llm_loop(
 
     available_names = ", ".join(config.available_location_names())
 
-    # Get static and digital locations for the prompt
-    # Filter by user's companies if provided
-    static_locations = []
-    digital_locations = []
-
-    # Create workflow context for request-scoped caching
-    # This avoids redundant DB queries when validating locations in tool handlers
-    # Each location in the context includes its company_schema for O(1) eligibility checks
+    # Get locations and packages for the prompt, grouped by company
+    # This provides the LLM with a hierarchical view of available assets
     workflow_ctx = None
+    locations_context = ""
 
     if user_companies:
         # Get locations from Asset-Management (single source of truth)
-        # AssetService is a singleton with TTL cache - subsequent calls get cache hits
         from core.services.asset_service import get_asset_service
+        from integrations.asset_management import asset_mgmt_client
+
         asset_service = get_asset_service()
         company_locations = await asset_service.get_locations_for_companies(user_companies)
 
         # Create workflow context with pre-loaded locations
-        # Location dict includes company_schema, so we know location->company mapping
         workflow_ctx = WorkflowContext.create(
             user_id=user_id,
             user_companies=user_companies,
@@ -1300,27 +1295,118 @@ async def main_llm_loop(
         )
         logger.debug(f"[LLM] Created WorkflowContext with {len(company_locations)} locations")
 
-        # Debug logging for company access
-        logger.info(f"[LLM] User companies: {user_companies}")
-        logger.info(f"[LLM] Retrieved {len(company_locations)} locations for user")
+        # Fetch packages for user's companies
+        try:
+            packages = await asset_mgmt_client.get_packages(
+                companies=user_companies,
+                active_only=True,
+            )
+            logger.info(f"[LLM] Retrieved {len(packages)} packages for user")
+        except Exception as e:
+            logger.warning(f"[LLM] Failed to fetch packages: {e}")
+            packages = []
 
+        # Group locations by company
+        locations_by_company: dict[str, dict[str, list]] = {}
         for loc in company_locations:
+            company = loc.get('company_schema') or loc.get('company') or 'unknown'
+            if company not in locations_by_company:
+                locations_by_company[company] = {'digital': [], 'static': []}
+
             key = loc.get('location_key', loc.get('key', ''))
             display_name = loc.get('display_name', key)
             display_type = loc.get('display_type', '').lower()
-            # Handle both field names: Asset-Management returns 'company', internal uses 'company_schema'
-            company = loc.get('company_schema') or loc.get('company') or 'unknown'
 
-            if display_type == 'static':
-                static_locations.append(f"{display_name} ({key}) [{company}]")
-            elif display_type == 'digital':
-                digital_locations.append(f"{display_name} ({key}) [{company}]")
+            if display_type == 'digital':
+                locations_by_company[company]['digital'].append({
+                    'key': key,
+                    'name': display_name,
+                })
+            elif display_type == 'static':
+                locations_by_company[company]['static'].append({
+                    'key': key,
+                    'name': display_name,
+                })
 
-        logger.debug(f"[LLM] Static locations: {static_locations}")
-        logger.debug(f"[LLM] Digital locations: {digital_locations}")
+        # Group packages by company
+        packages_by_company: dict[str, list] = {}
+        for pkg in packages:
+            company = pkg.get('company_schema') or pkg.get('company') or 'unknown'
+            if company not in packages_by_company:
+                packages_by_company[company] = []
+
+            pkg_key = pkg.get('package_key', '')
+            pkg_name = pkg.get('name', pkg_key)
+            items = pkg.get('items', [])
+
+            # Build list of networks in package
+            network_list = []
+            for item in items:
+                network_name = item.get('network_name') or item.get('network_key', 'Unknown')
+                network_key = item.get('network_key', '')
+                # Try to find display_type from locations
+                network_type = 'digital'  # Default
+                for loc in company_locations:
+                    if loc.get('location_key') == network_key:
+                        network_type = loc.get('display_type', 'digital').lower()
+                        break
+                network_list.append({
+                    'key': network_key,
+                    'name': network_name,
+                    'type': network_type,
+                })
+
+            packages_by_company[company].append({
+                'key': pkg_key,
+                'name': pkg_name,
+                'networks': network_list,
+            })
+
+        # Build hierarchical context string
+        context_parts = []
+        all_companies = set(locations_by_company.keys()) | set(packages_by_company.keys())
+
+        for company in sorted(all_companies):
+            company_section = [f"\n📍 {company.upper()}"]
+            company_section.append("─" * 50)
+
+            # Digital locations
+            digital_locs = locations_by_company.get(company, {}).get('digital', [])
+            if digital_locs:
+                company_section.append("DIGITAL LOCATIONS:")
+                for loc in digital_locs:
+                    company_section.append(f"  • {loc['name']} ({loc['key']})")
+
+            # Static locations
+            static_locs = locations_by_company.get(company, {}).get('static', [])
+            if static_locs:
+                company_section.append("STATIC LOCATIONS:")
+                for loc in static_locs:
+                    company_section.append(f"  • {loc['name']} ({loc['key']})")
+
+            # Packages
+            company_packages = packages_by_company.get(company, [])
+            if company_packages:
+                company_section.append("PACKAGES (bundles of locations sold together):")
+                for pkg in company_packages:
+                    company_section.append(f"  📦 {pkg['name']} ({pkg['key']})")
+                    if pkg['networks']:
+                        for net in pkg['networks']:
+                            company_section.append(f"     └ {net['name']} ({net['key']}) - {net['type']}")
+                    else:
+                        company_section.append("     └ (no locations configured)")
+
+            context_parts.append("\n".join(company_section))
+
+        locations_context = "\n".join(context_parts) if context_parts else "No locations available."
+
+        logger.info(f"[LLM] User companies: {user_companies}")
+        logger.info(f"[LLM] Built context with {len(company_locations)} locations, {len(packages)} packages")
     else:
         # Fallback to global cache (for Slack without company filtering)
         logger.info("[LLM] No user_companies provided, using global location cache")
+        static_locations = []
+        digital_locations = []
         for key, meta in config.LOCATION_METADATA.items():
             display_name = meta.get('display_name', key)
             if meta.get('display_type', '').lower() == 'static':
@@ -1328,8 +1414,13 @@ async def main_llm_loop(
             elif meta.get('display_type', '').lower() == 'digital':
                 digital_locations.append(f"{display_name} ({key})")
 
-    static_list = ", ".join(static_locations) if static_locations else "None"
-    digital_list = ", ".join(digital_locations) if digital_locations else "None"
+        # Build simple context without company grouping
+        context_parts = []
+        if digital_locations:
+            context_parts.append("DIGITAL LOCATIONS:\n  • " + "\n  • ".join(digital_locations))
+        if static_locations:
+            context_parts.append("STATIC LOCATIONS:\n  • " + "\n  • ".join(static_locations))
+        locations_context = "\n\n".join(context_parts) if context_parts else "No locations available."
 
     # Check if user is admin for system prompt and tool filtering
     # Use override if provided (for web UI where roles are passed separately), otherwise check config
@@ -1337,8 +1428,7 @@ async def main_llm_loop(
 
     prompt = get_main_system_prompt(
         is_admin=is_admin,
-        static_list=static_list,
-        digital_list=digital_list,
+        locations_context=locations_context,
         user_companies=user_companies,
     )
 
