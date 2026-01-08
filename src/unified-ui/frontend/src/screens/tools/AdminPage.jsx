@@ -302,8 +302,8 @@ export function AdminPage() {
   }, [companyList]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden">
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 px-1">
+    <div className="flex h-full min-h-0 flex-col gap-4">
+      <div className="flex items-center gap-2 overflow-x-auto">
         <Button variant={tab === "users" ? "default" : "ghost"} onClick={() => setTab("users")} className="rounded-2xl shrink-0">
           Users
         </Button>
@@ -320,88 +320,88 @@ export function AdminPage() {
           Permissions
         </Button>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto px-2 py-1 space-y-4">
-      {tab === "users" ? (
-        <UsersTabModule.UsersPanel
-          q={q}
-          setQ={setQ}
-          usersQuery={usersQuery}
-          users={users}
-          user={user}
-          companyLookup={companyLookup}
-          userCompanyFilter={userCompanyFilter}
-          setUserCompanyFilter={setUserCompanyFilter}
-          userProfileFilter={userProfileFilter}
-          setUserProfileFilter={setUserProfileFilter}
-          companyFilterOptions={companyFilterOptions}
-          profileFilterOptions={profileFilterOptions}
-          companyList={companyList}
-          profileOptions={profileOptions}
-          profileValues={profileValues}
-          permissionSetList={permissionSetList}
-          permissionSetValues={permissionSetValues}
-          permissionList={permissionList}
-          permissionsQuery={permissionsQuery}
-          page={page}
-        />
-      ) : null}
+      <div className="flex-1 min-h-0">
+        <div className={tab === "users" ? "h-full" : "hidden"} aria-hidden={tab !== "users"}>
+          <UsersTabModule.UsersPanel
+            q={q}
+            setQ={setQ}
+            usersQuery={usersQuery}
+            users={users}
+            user={user}
+            companyLookup={companyLookup}
+            userCompanyFilter={userCompanyFilter}
+            setUserCompanyFilter={setUserCompanyFilter}
+            userProfileFilter={userProfileFilter}
+            setUserProfileFilter={setUserProfileFilter}
+            companyFilterOptions={companyFilterOptions}
+            profileFilterOptions={profileFilterOptions}
+            companyList={companyList}
+            profileOptions={profileOptions}
+            profileValues={profileValues}
+            permissionSetList={permissionSetList}
+            permissionSetValues={permissionSetValues}
+            permissionList={permissionList}
+            permissionsQuery={permissionsQuery}
+            page={page}
+          />
+        </div>
 
-      {tab === "companies" ? (
-        <CompaniesTabModule.CompaniesPanel
-          companySearch={companySearch}
-          setCompanySearch={setCompanySearch}
-          companiesQuery={companiesQuery}
-          filteredCompanyList={filteredCompanyList}
-          companyLookup={companyLookup}
-          companyList={companyList}
-        />
-      ) : null}
+        <div className={tab === "companies" ? "h-full" : "hidden"} aria-hidden={tab !== "companies"}>
+          <CompaniesTabModule.CompaniesPanel
+            companySearch={companySearch}
+            setCompanySearch={setCompanySearch}
+            companiesQuery={companiesQuery}
+            filteredCompanyList={filteredCompanyList}
+            companyLookup={companyLookup}
+            companyList={companyList}
+          />
+        </div>
 
-      {tab === "profiles" ? (
-        <ProfilesTabModule.ProfilesPanel
-          profileSearch={profileSearch}
-          setProfileSearch={setProfileSearch}
-          filteredProfileOptions={filteredProfileOptions}
-          permissionList={permissionList}
-          permissionSetValues={permissionSetValues}
-          permissionSetList={permissionSetList}
-          permissionSetsQuery={permissionSetsQuery}
-          permissionsQuery={permissionsQuery}
-        />
-      ) : null}
+        <div className={tab === "profiles" ? "h-full" : "hidden"} aria-hidden={tab !== "profiles"}>
+          <ProfilesTabModule.ProfilesPanel
+            profileSearch={profileSearch}
+            setProfileSearch={setProfileSearch}
+            filteredProfileOptions={filteredProfileOptions}
+            permissionList={permissionList}
+            permissionSetValues={permissionSetValues}
+            permissionSetList={permissionSetList}
+            permissionSetsQuery={permissionSetsQuery}
+            permissionsQuery={permissionsQuery}
+          />
+        </div>
 
-      {tab === "permission-sets" ? (
-        <PermissionSetsTabModule.PermissionSetsPanel
-          permissionSetSearch={permissionSetSearch}
-          setPermissionSetSearch={setPermissionSetSearch}
-          permissionSetsQuery={permissionSetsQuery}
-          filteredPermissionSetList={filteredPermissionSetList}
-          permissionList={permissionList}
-          permissionsQuery={permissionsQuery}
-        />
-      ) : null}
+        <div className={tab === "permission-sets" ? "h-full" : "hidden"} aria-hidden={tab !== "permission-sets"}>
+          <PermissionSetsTabModule.PermissionSetsPanel
+            permissionSetSearch={permissionSetSearch}
+            setPermissionSetSearch={setPermissionSetSearch}
+            permissionSetsQuery={permissionSetsQuery}
+            filteredPermissionSetList={filteredPermissionSetList}
+            permissionList={permissionList}
+            permissionsQuery={permissionsQuery}
+          />
+        </div>
 
-      {tab === "permissions" ? (
-        <PermissionsTabModule.PermissionsPanel
-          permissionSearch={permissionSearch}
-          setPermissionSearch={setPermissionSearch}
-          permissionModuleFilter={permissionModuleFilter}
-          setPermissionModuleFilter={setPermissionModuleFilter}
-          permissionServiceFilter={permissionServiceFilter}
-          setPermissionServiceFilter={setPermissionServiceFilter}
-          permissionActionFilter={permissionActionFilter}
-          setPermissionActionFilter={setPermissionActionFilter}
-          permissionModuleOptions={permissionModuleOptions}
-          permissionFilterServiceOptions={permissionFilterServiceOptions}
-          permissionFilterActionOptions={permissionFilterActionOptions}
-          permissionsQuery={permissionsQuery}
-          filteredPermissionList={filteredPermissionList}
-          parsePermissionParts={parsePermissionParts}
-          mergedPermissionDescriptions={mergedPermissionDescriptions}
-          permissionTree={permissionTree}
-          updateLocalPermissionDescription={updateLocalPermissionDescription}
-        />
-      ) : null}
+        <div className={tab === "permissions" ? "h-full" : "hidden"} aria-hidden={tab !== "permissions"}>
+          <PermissionsTabModule.PermissionsPanel
+            permissionSearch={permissionSearch}
+            setPermissionSearch={setPermissionSearch}
+            permissionModuleFilter={permissionModuleFilter}
+            setPermissionModuleFilter={setPermissionModuleFilter}
+            permissionServiceFilter={permissionServiceFilter}
+            setPermissionServiceFilter={setPermissionServiceFilter}
+            permissionActionFilter={permissionActionFilter}
+            setPermissionActionFilter={setPermissionActionFilter}
+            permissionModuleOptions={permissionModuleOptions}
+            permissionFilterServiceOptions={permissionFilterServiceOptions}
+            permissionFilterActionOptions={permissionFilterActionOptions}
+            permissionsQuery={permissionsQuery}
+            filteredPermissionList={filteredPermissionList}
+            parsePermissionParts={parsePermissionParts}
+            mergedPermissionDescriptions={mergedPermissionDescriptions}
+            permissionTree={permissionTree}
+            updateLocalPermissionDescription={updateLocalPermissionDescription}
+          />
+        </div>
       </div>
     </div>
   );

@@ -8,7 +8,7 @@ export function ProposalsPage() {
 
   return (
     <div className="h-full min-h-0 flex flex-col">
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-4 px-2 py-1">
+      <div className="flex-1 min-h-0 flex flex-col gap-4">
         <div className="flex items-center gap-3">
           <Button
             variant={tab === "generate" ? "default" : "ghost"}
@@ -26,11 +26,13 @@ export function ProposalsPage() {
           </Button>
         </div>
 
-        <div className={tab === "generate" ? "block" : "hidden"} aria-hidden={tab !== "generate"}>
-          <GenerateTabModule.GeneratePanel />
-        </div>
-        <div className={tab === "history" ? "block" : "hidden"} aria-hidden={tab !== "history"}>
-          <HistoryTabModule.HistoryPanel />
+        <div className="flex-1 min-h-0">
+          <div className={tab === "generate" ? "h-full" : "hidden"} aria-hidden={tab !== "generate"}>
+            <GenerateTabModule.GeneratePanel />
+          </div>
+          <div className={tab === "history" ? "h-full" : "hidden"} aria-hidden={tab !== "history"}>
+            <HistoryTabModule.HistoryPanel />
+          </div>
         </div>
       </div>
     </div>

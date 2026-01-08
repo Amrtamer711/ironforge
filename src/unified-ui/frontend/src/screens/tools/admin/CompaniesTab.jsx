@@ -21,83 +21,92 @@ export function CompaniesTab({
   companyLookup,
   setConfirmDelete,
 }) {
+  const headerContent = (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <CardTitle>Companies</CardTitle>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+        <SearchInput
+          value={companySearch}
+          onChange={(e) => setCompanySearch(e.target.value)}
+          className="w-full sm:w-[220px]"
+        />
+        <Button
+          variant="secondary"
+          className="rounded-2xl self-start sm:self-auto"
+          onClick={() => openCompanyModal(null)}
+        >
+          Add company
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
-    <Card>
-      <CardHeader className="space-y-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle>Companies</CardTitle>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <SearchInput
-              value={companySearch}
-              onChange={(e) => setCompanySearch(e.target.value)}
-              className="w-full sm:w-[220px]"
-            />
-            <Button
-              variant="secondary"
-              className="rounded-2xl self-start sm:self-auto"
-              onClick={() => openCompanyModal(null)}
-            >
-              Add company
-            </Button>
-          </div>
-        </div>
+    <Card className="h-full min-h-0 flex flex-col">
+      <CardHeader className="hidden md:block space-y-2">
+        {headerContent}
       </CardHeader>
-      <CardContent className="space-y-4">
-        {companiesQuery.isLoading ? (
-          <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {filteredCompanyList.map((company) => (
-              <SoftCard key={company.code || company.id} className="p-4 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="text-base font-semibold">{company.name || company.code}</div>
-                    <div className="text-sm text-black/55 dark:text-white/60">{company.code || "—"}</div>
+      <CardContent className="flex-1 min-h-0 overflow-y-auto p-0">
+        <div className="space-y-2 p-5 pb-3 md:hidden">
+          {headerContent}
+        </div>
+        <div className="space-y-4 p-5 pt-1">
+          {companiesQuery.isLoading ? (
+            <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {filteredCompanyList.map((company) => (
+                <SoftCard key={company.code || company.id} className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-base font-semibold">{company.name || company.code}</div>
+                      <div className="text-sm text-black/55 dark:text-white/60">{company.code || "—"}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <IconActionButton
+                        onClick={() => openCompanyModal(company)}
+                        title="Edit company"
+                        aria-label="Edit company"
+                      >
+                        <Pencil size={16} />
+                      </IconActionButton>
+                      <IconActionButton
+                        variant="ghost"
+                        onClick={() =>
+                          setConfirmDelete({
+                            open: true,
+                            type: "company",
+                            payload: company.code || company.id,
+                            label: `Delete company "${company.name || company.code}"?`,
+                          })
+                        }
+                        title="Delete company"
+                        aria-label="Delete company"
+                      >
+                        <Trash2 size={16} />
+                      </IconActionButton>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <IconActionButton
-                      onClick={() => openCompanyModal(company)}
-                      title="Edit company"
-                      aria-label="Edit company"
-                    >
-                      <Pencil size={16} />
-                    </IconActionButton>
-                    <IconActionButton
-                      variant="ghost"
-                      onClick={() =>
-                        setConfirmDelete({
-                          open: true,
-                          type: "company",
-                          payload: company.code || company.id,
-                          label: `Delete company "${company.name || company.code}"?`,
-                        })
-                      }
-                      title="Delete company"
-                      aria-label="Delete company"
-                    >
-                      <Trash2 size={16} />
-                    </IconActionButton>
+                  <div className="flex flex-wrap gap-2 text-sm text-black/55 dark:text-white/60">
+                    {company.country ? <span>{company.country}</span> : null}
+                    {company.currency ? <span>• {company.currency}</span> : null}
+                    {company.timezone ? <span>• {company.timezone}</span> : null}
                   </div>
+                  <div className="flex flex-wrap gap-2 text-sm text-black/55 dark:text-white/60">
+                    <span>Parent: {companyLookup.get(company.parent_id) || "—"}</span>
+                    <span>• {company.isgroup ? "Group" : "Company"}</span>
+                    <span>• {company.is_active === false ? "Inactive" : "Active"}</span>
+                  </div>
+                </SoftCard>
+              ))}
+              {!filteredCompanyList.length ? (
+                <div className="text-sm text-black/60 dark:text-white/65">
+                  {companySearch.trim() ? "No matching companies." : "No companies available."}
                 </div>
-                <div className="flex flex-wrap gap-2 text-sm text-black/55 dark:text-white/60">
-                  {company.country ? <span>{company.country}</span> : null}
-                  {company.currency ? <span>• {company.currency}</span> : null}
-                  {company.timezone ? <span>• {company.timezone}</span> : null}
-                </div>
-                <div className="flex flex-wrap gap-2 text-sm text-black/55 dark:text-white/60">
-                  <span>Parent: {companyLookup.get(company.parent_id) || "—"}</span>
-                  <span>• {company.isgroup ? "Group" : "Company"}</span>
-                  <span>• {company.is_active === false ? "Inactive" : "Active"}</span>
-                </div>
-              </SoftCard>
-            ))}
-            {!filteredCompanyList.length ? (
-              <div className="text-sm text-black/60 dark:text-white/65">
-                {companySearch.trim() ? "No matching companies." : "No companies available."}
-              </div>
-            ) : null}
-          </div>
-        )}
+              ) : null}
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

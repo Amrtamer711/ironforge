@@ -151,15 +151,15 @@ export function LocationsTab({ locations, locationsQuery }) {
 
   return (
     <>
-      <Card>
+      <Card className="h-full min-h-0 flex flex-col">
         <CardHeader className="space-y-1">
           <CardTitle>Locations</CardTitle>
           <div className="text-xs text-black/55 dark:text-white/60">
             {rows.length} location{rows.length === 1 ? "" : "s"}
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-4 mb-3">
+        <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-3 pt-1">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
             <SearchInput
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -195,7 +195,7 @@ export function LocationsTab({ locations, locationsQuery }) {
             <div className="text-sm text-black/60 dark:text-white/65">No locations found.</div>
           ) : (
             <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/40 dark:bg-white/5 w-full max-w-full overflow-hidden">
-              <div className="max-h-[480px] w-full max-w-full min-w-0 overflow-auto">
+              <div className="w-full max-w-full min-w-0 overflow-x-auto">
                 <div className="min-w-max">
                   <table className="w-full text-sm">
                     <thead className="bg-white dark:bg-neutral-900 text-xs uppercase tracking-wide text-black/45 dark:text-white/50">

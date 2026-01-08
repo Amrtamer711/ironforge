@@ -21,86 +21,95 @@ export function PermissionSetsTab({
   duplicatePermissionSet,
   setConfirmDelete,
 }) {
+  const headerContent = (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <CardTitle>Permission Sets</CardTitle>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+        <SearchInput
+          value={permissionSetSearch}
+          onChange={(e) => setPermissionSetSearch(e.target.value)}
+          className="w-full sm:w-[220px]"
+        />
+        <Button
+          variant="secondary"
+          className="rounded-2xl self-start sm:self-auto"
+          onClick={() => openPermissionSetModal(null)}
+        >
+          Add permission set
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
-    <Card>
-      <CardHeader className="space-y-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle>Permission Sets</CardTitle>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <SearchInput
-              value={permissionSetSearch}
-              onChange={(e) => setPermissionSetSearch(e.target.value)}
-              className="w-full sm:w-[220px]"
-            />
-            <Button
-              variant="secondary"
-              className="rounded-2xl self-start sm:self-auto"
-              onClick={() => openPermissionSetModal(null)}
-            >
-              Add permission set
-            </Button>
-          </div>
-        </div>
+    <Card className="h-full min-h-0 flex flex-col">
+      <CardHeader className="hidden md:block space-y-2">
+        {headerContent}
       </CardHeader>
-      <CardContent className="space-y-4">
-        {permissionSetsQuery.isLoading ? (
-          <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {filteredPermissionSetList.map((set) => (
-              <SoftCard key={set.name} className="p-4 space-y-1">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-base font-semibold">{set.display_name || set.name}</div>
-                    <div className="text-sm text-black/55 dark:text-white/60">{set.name}</div>
+      <CardContent className="flex-1 min-h-0 overflow-y-auto p-0">
+        <div className="space-y-2 p-5 pb-3 md:hidden">
+          {headerContent}
+        </div>
+        <div className="space-y-4 p-5 pt-1">
+          {permissionSetsQuery.isLoading ? (
+            <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {filteredPermissionSetList.map((set) => (
+                <SoftCard key={set.name} className="p-4 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-base font-semibold">{set.display_name || set.name}</div>
+                      <div className="text-sm text-black/55 dark:text-white/60">{set.name}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <IconActionButton
+                        onClick={() => duplicatePermissionSet(set)}
+                        title="Duplicate permission set"
+                        aria-label="Duplicate permission set"
+                      >
+                        <Copy size={16} />
+                      </IconActionButton>
+                      <IconActionButton
+                        onClick={() => openPermissionSetModal(set)}
+                        title="Edit permission set"
+                        aria-label="Edit permission set"
+                      >
+                        <Pencil size={16} />
+                      </IconActionButton>
+                      <IconActionButton
+                        variant="ghost"
+                        onClick={() =>
+                          setConfirmDelete({
+                            open: true,
+                            type: "permission-set",
+                            payload: set.name,
+                            label: `Delete permission set "${set.display_name || set.name}"?`,
+                          })
+                        }
+                        title="Delete permission set"
+                        aria-label="Delete permission set"
+                      >
+                        <Trash2 size={16} />
+                      </IconActionButton>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <IconActionButton
-                      onClick={() => duplicatePermissionSet(set)}
-                      title="Duplicate permission set"
-                      aria-label="Duplicate permission set"
-                    >
-                      <Copy size={16} />
-                    </IconActionButton>
-                    <IconActionButton
-                      onClick={() => openPermissionSetModal(set)}
-                      title="Edit permission set"
-                      aria-label="Edit permission set"
-                    >
-                      <Pencil size={16} />
-                    </IconActionButton>
-                    <IconActionButton
-                      variant="ghost"
-                      onClick={() =>
-                        setConfirmDelete({
-                          open: true,
-                          type: "permission-set",
-                          payload: set.name,
-                          label: `Delete permission set "${set.display_name || set.name}"?`,
-                        })
-                      }
-                      title="Delete permission set"
-                      aria-label="Delete permission set"
-                    >
-                      <Trash2 size={16} />
-                    </IconActionButton>
+                  <div className="text-sm text-black/55 dark:text-white/60">
+                    {(set.permissions || []).length} permission{(set.permissions || []).length === 1 ? "" : "s"}
                   </div>
+                  {set.description ? (
+                    <div className="text-sm text-black/60 dark:text-white/65 truncate">{set.description}</div>
+                  ) : null}
+                </SoftCard>
+              ))}
+              {!filteredPermissionSetList.length ? (
+                <div className="text-sm text-black/60 dark:text-white/65">
+                  {permissionSetSearch.trim() ? "No matching permission sets." : "No permission sets available."}
                 </div>
-                <div className="text-sm text-black/55 dark:text-white/60">
-                  {(set.permissions || []).length} permission{(set.permissions || []).length === 1 ? "" : "s"}
-                </div>
-                {set.description ? (
-                  <div className="text-sm text-black/60 dark:text-white/65 truncate">{set.description}</div>
-                ) : null}
-              </SoftCard>
-            ))}
-            {!filteredPermissionSetList.length ? (
-              <div className="text-sm text-black/60 dark:text-white/65">
-                {permissionSetSearch.trim() ? "No matching permission sets." : "No permission sets available."}
-              </div>
-            ) : null}
-          </div>
-        )}
+              ) : null}
+            </div>
+          )}
+        </div>
       </CardContent>
     </Card>
   );

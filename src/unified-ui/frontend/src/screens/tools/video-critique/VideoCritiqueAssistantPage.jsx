@@ -9,7 +9,7 @@ export function VideoCritiqueAssistantPage() {
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-4">
-      <div className="flex items-center gap-2 px-2">
+      <div className="flex items-center gap-2">
         <Button
           variant={tab === "chat" ? "default" : "ghost"}
           className="rounded-2xl"
