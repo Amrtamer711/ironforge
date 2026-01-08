@@ -38,4 +38,8 @@ The deployed image tag is controlled in Git:
 
 - `src/platform/deploy/kustomize/unifiedui/overlays/dev/kustomization.yaml` → `images[].newTag`
 
-Update that tag (commit + push), then sync the Argo CD `unifiedui-dev` Application.
+Recommended: let CI open a GitOps merge request that bumps `newTag` automatically, then merge it to deploy.
+
+- Create a GitLab CI variable `GITLAB_BOT_TOKEN` with permission to push branches and create merge requests.
+- Push a change to `src/unified-ui/**` on the `demo` branch.
+- Merge the generated MR titled `Deploy unifiedui-dev: <sha>`.

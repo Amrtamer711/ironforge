@@ -139,5 +139,9 @@ CI pushes images with a unique tag (commit SHA). The deployed tag lives in Git:
 To roll out a new image:
 
 1) Build/push a new image tag (usually by pushing a commit to the `demo` branch).
-2) Update `newTag` in the file above, commit, and push.
+2) Prefer: let CI open a GitOps merge request (MR) that bumps `newTag` automatically (recommended).
+   - Create a GitLab CI variable `GITLAB_BOT_TOKEN` (bot PAT/project access token) with permission to push branches and create merge requests.
+   - The pipeline will create an MR titled `Deploy unifiedui-dev: <sha>` targeting the `demo` branch.
+   - Merge the MR to deploy.
+   - Fallback: update `newTag` manually, commit, and push.
 3) Argo CD syncs and Kubernetes rolls the Deployment.
