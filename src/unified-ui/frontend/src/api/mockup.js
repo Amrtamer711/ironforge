@@ -6,18 +6,14 @@ export async function getLocations() {
   return apiRequest("/api/sales/mockup/locations");
 }
 
-export async function getTemplates(location, { timeOfDay, side, venueType, locations } = {}) {
+export async function getTemplates(location, { timeOfDay, side, venueType } = {}) {
   const params = new URLSearchParams();
   if (timeOfDay) params.set("time_of_day", timeOfDay);
   if (side) params.set("side", side);
   if (venueType) params.set("venue_type", venueType);
 
-  const locationList = Array.isArray(locations) ? locations : Array.isArray(location) ? location : [];
-  if (locationList.length) {
-    params.set("location_keys", JSON.stringify(locationList));
-  }
-
   const primaryLocation = Array.isArray(location) ? location[0] : location;
+  if (!primaryLocation) return [];
   return apiRequest(`/api/sales/mockup/templates/${encodeURIComponent(primaryLocation)}?${params.toString()}`);
 }
 
@@ -27,8 +23,8 @@ export async function saveSetupPhoto(formData) {
 }
 
 export async function deleteSetupPhoto(location, photo) {
-  // NOTE: photo comes first, location last (supports storage_keys with slashes like "network/type/asset")
-  return apiRequest(`/api/sales/mockup/photo/${encodeURIComponent(photo)}/${location}`, {
+  // location is path param (supports slashes like "network/type/asset"), photo is query param
+  return apiRequest(`/api/sales/mockup/photo/${location}?photo_filename=${encodeURIComponent(photo)}`, {
     method: "DELETE",
   });
 }
@@ -44,8 +40,8 @@ export async function generateMockup(formData) {
 
 export function getTemplatePhotoUrl(location, photo) {
   if (!location || !photo) return "";
-  // NOTE: photo comes first, location last (supports storage_keys with slashes like "network/type/asset")
-  return `${runtimeConfig.API_BASE_URL}/api/sales/mockup/photo/${encodeURIComponent(photo)}/${location}`;
+  // location is path param (supports slashes like "network/type/asset"), photo is query param
+  return `${runtimeConfig.API_BASE_URL}/api/sales/mockup/photo/${location}?photo_filename=${encodeURIComponent(photo)}`;
 }
 
 // TODO : This endpoint does not exist in backend now.
@@ -56,15 +52,65 @@ export async function getHistory() {
 export async function getTemplatePhotoBlob(location, photo, { timeOfDay, side } = {}) {
   if (!location || !photo) return null;
   const params = new URLSearchParams();
+  params.set("photo_filename", photo);  // Required query param
   if (timeOfDay) params.set("time_of_day", timeOfDay);
   if (side) params.set("side", side);
-  const query = params.toString();
-  // NOTE: photo comes first, location last (supports storage_keys with slashes like "network/type/asset")
-  const path = `/api/sales/mockup/photo/${encodeURIComponent(photo)}/${location}${query ? `?${query}` : ""}`;
+  // location is path param (supports slashes like "network/type/asset"), photo is query param
+  const path = `/api/sales/mockup/photo/${location}?${params.toString()}`;
   return apiBlob(path);
 }
 
 export async function getTemplatePhotoBlobUrl(location, photo, { timeOfDay, side } = {}) {
   const blob = await getTemplatePhotoBlob(location, photo, { timeOfDay, side });
   return blob ? URL.createObjectURL(blob) : "";
+}
+
+// === ELIGIBILITY API ===
+
+/**
+ * Get locations eligible for mockup setup (networks only, no packages).
+ * Used in Setup tab for frame configuration.
+ */
+export async function getSetupLocations() {
+  return apiRequest("/api/sales/mockup/eligibility/setup");
+}
+
+/**
+ * Get locations eligible for mockup generation (networks + packages with frames).
+ * Used in Generate tab for location dropdown.
+ */
+export async function getGenerateLocations() {
+  return apiRequest("/api/sales/mockup/eligibility/generate");
+}
+
+/**
+ * Get all available templates for a location.
+ * If location is a package, returns templates from ALL networks in package.
+ * @param {string} locationKey - Network or package key
+ */
+export async function getEligibleTemplates(locationKey) {
+  return apiRequest(`/api/sales/mockup/eligibility/templates/${encodeURIComponent(locationKey)}`);
+}
+
+/**
+ * Check if a specific location is eligible for a given mode.
+ * Used for validation and user feedback (especially LLM mode).
+ * @param {string} locationKey - Network or package key
+ * @param {string} mode - "setup", "generate_form", or "generate_llm"
+ */
+export async function checkEligibility(locationKey, mode = "generate_form") {
+  return apiRequest("/api/sales/mockup/eligibility/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ location_key: locationKey, mode }),
+  });
+}
+
+/**
+ * Expand a location (network or package) to its generation targets.
+ * Returns list of networks with their storage keys.
+ * @param {string} locationKey - Network or package key
+ */
+export async function expandLocation(locationKey) {
+  return apiRequest(`/api/sales/mockup/expand/${encodeURIComponent(locationKey)}`);
 }

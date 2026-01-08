@@ -426,10 +426,10 @@ async def list_mockup_templates(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/mockup/photo/{photo_filename}/{location_key:path}")
+@router.get("/api/mockup/photo/{location_key:path}")
 async def get_mockup_photo(
-    photo_filename: str,
     location_key: str,
+    photo_filename: str,  # Query param - required
     time_of_day: str = "all",
     side: str = "all",
     background_tasks: BackgroundTasks = None,
@@ -438,8 +438,10 @@ async def get_mockup_photo(
     """
     Get a specific photo file from Asset-Management storage.
 
-    NOTE: location_key is last with :path modifier to support traditional network storage keys
-    that contain slashes (e.g., "dubai_mall/digital_screens/mall_screen_a").
+    Args:
+        location_key: Path param - supports slashes for traditional networks
+                      (e.g., "dubai_mall/digital_screens/mall_screen_a")
+        photo_filename: Query param - the photo file to retrieve
 
     Requires sales:mockups:read permission.
     """
@@ -491,13 +493,21 @@ async def get_mockup_photo(
     raise HTTPException(status_code=404, detail=f"Photo not found: {photo_filename}")
 
 
-@router.delete("/api/mockup/photo/{photo_filename}/{location_key:path}")
-async def delete_mockup_photo(photo_filename: str, location_key: str, time_of_day: str = "all", side: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:setup"))):
+@router.delete("/api/mockup/photo/{location_key:path}")
+async def delete_mockup_photo(
+    location_key: str,
+    photo_filename: str,  # Query param - required
+    time_of_day: str = "all",
+    side: str = "all",
+    user: AuthUser = Depends(require_permission("sales:mockups:setup"))
+):
     """
     Delete a photo and its frame.
 
-    NOTE: location_key is last with :path modifier to support traditional network storage keys
-    that contain slashes (e.g., "dubai_mall/digital_screens/mall_screen_a").
+    Args:
+        location_key: Path param - supports slashes for traditional networks
+                      (e.g., "dubai_mall/digital_screens/mall_screen_a")
+        photo_filename: Query param - the photo file to delete
 
     Requires admin role.
     """

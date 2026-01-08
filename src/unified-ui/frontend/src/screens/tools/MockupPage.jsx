@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../../components/ui/button";
 import * as mockupApi from "../../api/mockup";
 import { useAuth, hasPermission } from "../../state/auth";
@@ -148,6 +148,7 @@ export function MockupPage() {
   const testPreviewCacheRef = useRef(new Map());
   const testCreativeFilesRef = useRef({});
   const templateThumbsRef = useRef({});
+  const activeTemplateOptionsRef = useRef([]);
   const greenscreenFrameRef = useRef(false);
 
   const currentPointsRef = useRef([]);
@@ -190,22 +191,70 @@ export function MockupPage() {
     imgNaturalH: 0,
   });
 
-  const locationsQuery = useQuery({
-    queryKey: ["mockup", "locations"],
-    queryFn: mockupApi.getLocations,
+  // Setup mode uses eligibility endpoint (networks only, no packages)
+  const setupLocationsQuery = useQuery({
+    queryKey: ["mockup", "eligibility", "setup"],
+    queryFn: mockupApi.getSetupLocations,
+    enabled: mode === "setup",
   });
 
-  const templatesQuery = useQuery({
-    queryKey: ["mockup", "templates", primaryLocation, effectiveTimeOfDay, side, venueType, locations.join("|")],
+  // Generate mode uses eligibility endpoint (networks + packages with frames)
+  const generateLocationsQuery = useQuery({
+    queryKey: ["mockup", "eligibility", "generate"],
+    queryFn: mockupApi.getGenerateLocations,
+    enabled: mode === "generate",
+  });
+
+  const generateTemplatesQuery = useQuery({
+    queryKey: ["mockup", "templates", primaryLocation, effectiveTimeOfDay, side, venueType],
     queryFn: () =>
       mockupApi.getTemplates(primaryLocation, {
         timeOfDay: effectiveTimeOfDay,
         side,
         venueType,
-        locations,
       }),
-    enabled: Boolean(primaryLocation),
+    enabled: mode === "generate" && Boolean(primaryLocation),
   });
+
+  const setupTemplateQueries = useQueries({
+    queries:
+      mode === "setup"
+        ? locations.map((location) => ({
+            queryKey: ["mockup", "templates", location, effectiveTimeOfDay, side, venueType],
+            queryFn: () =>
+              mockupApi.getTemplates(location, {
+                timeOfDay: effectiveTimeOfDay,
+                side,
+                venueType,
+              }),
+            enabled: Boolean(location),
+            refetchOnMount: false,
+            refetchOnWindowFocus: false,
+            refetchOnReconnect: false,
+            retry: false,
+            staleTime: Infinity,
+          }))
+        : [],
+  });
+
+  const setupTemplatesQuery = useMemo(() => {
+    const data = setupTemplateQueries.flatMap((queryResult, index) => {
+      const response = queryResult.data;
+      const templates = Array.isArray(response) ? response : response?.templates || [];
+      const location = locations[index];
+      return templates.map((template) => ({
+        ...template,
+        storage_key: template.storage_key || location,
+      }));
+    });
+
+    return {
+      data,
+      isLoading: setupTemplateQueries.some((queryResult) => queryResult.isLoading),
+      isFetching: setupTemplateQueries.some((queryResult) => queryResult.isFetching),
+      error: setupTemplateQueries.find((queryResult) => queryResult.error)?.error || null,
+    };
+  }, [locations, setupTemplateQueries]);
 
   useEffect(() => {
     return () => {
@@ -225,17 +274,47 @@ export function MockupPage() {
     templateThumbsRef.current = templateThumbs;
   }, [templateThumbs]);
 
-  const locationOptions = useMemo(() => {
-    const data = locationsQuery.data;
+  // Setup mode: networks only (from eligibility endpoint)
+  const setupLocationOptions = useMemo(() => {
+    const data = setupLocationsQuery.data;
     if (Array.isArray(data)) return data;
     return data?.locations || [];
-  }, [locationsQuery.data]);
+  }, [setupLocationsQuery.data]);
 
-  const templateOptions = useMemo(() => {
-    const data = templatesQuery.data;
+  // Generate mode: networks + packages with frames (from eligibility endpoint)
+  const generateLocationOptions = useMemo(() => {
+    const data = generateLocationsQuery.data;
+    if (Array.isArray(data)) return data;
+    return data?.locations || [];
+  }, [generateLocationsQuery.data]);
+
+  // Use appropriate options based on current mode
+  const locationOptions = mode === "setup" ? setupLocationOptions : generateLocationOptions;
+
+  // Use appropriate query based on mode (for loading states, etc.)
+  const locationsQuery = mode === "setup" ? setupLocationsQuery : generateLocationsQuery;
+
+  const generateTemplateOptions = useMemo(() => {
+    const data = generateTemplatesQuery.data;
     if (Array.isArray(data)) return data;
     return data?.templates || [];
-  }, [templatesQuery.data]);
+  }, [generateTemplatesQuery.data]);
+
+  const setupTemplateOptions = useMemo(() => {
+    const data = setupTemplatesQuery.data;
+    if (Array.isArray(data)) return data;
+    return data?.templates || [];
+  }, [setupTemplatesQuery.data]);
+
+  const activeTemplateOptions = mode === "setup" ? setupTemplateOptions : generateTemplateOptions;
+  const activeTemplateSignature = useMemo(
+    () => activeTemplateOptions.map((template) => getTemplateKey(template)).join("|"),
+    [activeTemplateOptions, getTemplateKey]
+  );
+
+  useEffect(() => {
+    activeTemplateOptionsRef.current = activeTemplateOptions;
+  }, [activeTemplateOptions]);
 
   const historyEnabled = mode === "history";
 
@@ -267,23 +346,26 @@ export function MockupPage() {
 
   useEffect(() => {
     setTemplateThumbs((prev) => {
-      const allowed = new Set(templateOptions.map((t) => getTemplateKey(t)));
+      const allowed = new Set(activeTemplateOptionsRef.current.map((t) => getTemplateKey(t)));
       const next = {};
+      let changed = false;
       Object.entries(prev).forEach(([key, url]) => {
         if (allowed.has(key)) {
           next[key] = url;
         } else if (url) {
+          changed = true;
           URL.revokeObjectURL(url);
         }
       });
-      return next;
+      return changed ? next : prev;
     });
-  }, [templateOptions]);
+  }, [activeTemplateSignature, getTemplateKey]);
 
   useEffect(() => {
     let active = true;
-    if (!primaryLocation || !templateOptions.length) return () => {};
-    const missing = templateOptions.filter((t) => !templateThumbsRef.current[getTemplateKey(t)]);
+    const templates = activeTemplateOptionsRef.current;
+    if (!primaryLocation || !templates.length) return () => {};
+    const missing = templates.filter((t) => !templateThumbsRef.current[getTemplateKey(t)]);
     if (!missing.length) return () => {};
 
     (async () => {
@@ -317,7 +399,7 @@ export function MockupPage() {
     return () => {
       active = false;
     };
-  }, [primaryLocation, templateOptions, effectiveTimeOfDay, side]);
+  }, [primaryLocation, activeTemplateSignature, effectiveTimeOfDay, side, getTemplateKey]);
 
   useEffect(() => {
     return () => {
@@ -1615,8 +1697,8 @@ export function MockupPage() {
               timeOfDayOptions={TIME_OF_DAY}
               sideOptions={SIDES}
               venueTypeOptions={VENUE_TYPES}
-              templateOptions={templateOptions}
-              templatesQuery={templatesQuery}
+              templateOptions={generateTemplateOptions}
+              templatesQuery={generateTemplatesQuery}
               templateThumbs={templateThumbs}
               getTemplateKey={getTemplateKey}
               defaultFrameConfig={DEFAULT_FRAME_CONFIG}
@@ -1652,8 +1734,8 @@ export function MockupPage() {
                 stopEditTemplate={stopEditTemplate}
                 templatesOpen={templatesOpen}
                 setTemplatesOpen={setTemplatesOpen}
-                templateOptions={templateOptions}
-                templatesQuery={templatesQuery}
+                templateOptions={setupTemplateOptions}
+                templatesQuery={setupTemplatesQuery}
                 templateThumbs={templateThumbs}
                 getTemplateKey={getTemplateKey}
                 startEditTemplate={startEditTemplate}

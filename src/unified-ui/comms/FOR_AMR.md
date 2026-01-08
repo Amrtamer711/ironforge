@@ -5,6 +5,7 @@
 ## DEV TO-DO: Unified Asset Management
 
 - [ ] Make the changes to mockup and proposal generation LLM chats with new location structure.
+- [ ] Lazy Load Chat Messages so that the user is not stuck with loading conversations after login (Clarify if reducing the no of chats loaded will have positive impact).
 
 ### Part 1: Unified Architecture ✅ DONE
 

@@ -49,7 +49,10 @@ class TestMockupEndpoints:
 
     def test_delete_photo_requires_admin(self, client: TestClient, mock_auth):
         """Test that delete photo requires admin role."""
-        response = client.delete("/api/mockup/photo/test-location/test.jpg")
+        response = client.delete(
+            "/api/mockup/photo/test-location",
+            params={"photo_filename": "test.jpg"}
+        )
 
         # Regular user should be forbidden
         assert response.status_code in [401, 403]
