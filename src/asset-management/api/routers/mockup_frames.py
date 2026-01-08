@@ -147,9 +147,21 @@ def _build_mockup_storage_key(
     """
     Build mockup storage key based on environment.
 
+    Args:
+        company: Company schema (e.g., "backlite_dubai")
+        location_key: Location identifier. Can be:
+            - Standalone network: just network_key (e.g., "dubai_gateway")
+            - Traditional network: "{network_key}/{type_key}/{asset_key}" (e.g., "dubai_mall/digital_screens/mall_screen_a")
+        environment: "indoor" or "outdoor"
+        time_of_day: "day" or "night" (ignored for indoor)
+        side: "gold", "silver", or "single_side" (ignored for indoor)
+        filename: The photo filename
+
     Structure:
-    - Outdoor: {company}/{location_key}/outdoor/{time_of_day}/{side}/{filename}
-    - Indoor: {company}/{location_key}/indoor/{filename}
+    - Standalone outdoor: {company}/{network_key}/outdoor/{time_of_day}/{side}/{filename}
+    - Standalone indoor:  {company}/{network_key}/indoor/{filename}
+    - Traditional outdoor: {company}/{network_key}/{type_key}/{asset_key}/outdoor/{time_of_day}/{side}/{filename}
+    - Traditional indoor:  {company}/{network_key}/{type_key}/{asset_key}/indoor/{filename}
     """
     if environment == "indoor":
         return f"{company}/{location_key}/indoor/{filename}"

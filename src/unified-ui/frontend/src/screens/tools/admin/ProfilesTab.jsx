@@ -20,84 +20,93 @@ export function ProfilesTab({
   duplicateProfile,
   setConfirmDelete,
 }) {
+  const headerContent = (
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <CardTitle>Profiles</CardTitle>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+        <SearchInput
+          value={profileSearch}
+          onChange={(e) => setProfileSearch(e.target.value)}
+          className="w-full sm:w-[220px]"
+        />
+        <Button variant="secondary" className="rounded-2xl self-start sm:self-auto" onClick={() => openProfileModal(null)}>
+          Add profile
+        </Button>
+      </div>
+    </div>
+  );
+
   return (
-    <Card>
-      <CardHeader className="space-y-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle>Profiles</CardTitle>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <SearchInput
-              value={profileSearch}
-              onChange={(e) => setProfileSearch(e.target.value)}
-              className="w-full sm:w-[220px]"
-            />
-            <Button variant="secondary" className="rounded-2xl self-start sm:self-auto" onClick={() => openProfileModal(null)}>
-              Add profile
-            </Button>
-          </div>
-        </div>
+    <Card className="h-full min-h-0 flex flex-col">
+      <CardHeader className="hidden md:block space-y-2">
+        {headerContent}
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {filteredProfileOptions.map((p) => (
-            <SoftCard key={p.id || p.name} className="p-4 space-y-1">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-base font-semibold">{p.display_name || p.name}</div>
-                  <div className="text-sm text-black/55 dark:text-white/60">{p.name}</div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <IconActionButton
-                    onClick={() => duplicateProfile(p)}
-                    title="Duplicate profile"
-                    aria-label="Duplicate profile"
-                  >
-                    <Copy size={16} />
-                  </IconActionButton>
-                  {!p.is_system ? (
-                    <>
-                      <IconActionButton
-                        onClick={() => openProfileModal(p)}
-                        title="Edit profile"
-                        aria-label="Edit profile"
-                      >
-                        <Pencil size={16} />
-                      </IconActionButton>
-                      <IconActionButton
-                        variant="ghost"
-                        onClick={() =>
-                          setConfirmDelete({
-                            open: true,
-                            type: "profile",
-                        payload: p.id || p.name,
-                        label: `Delete profile "${p.display_name || p.name}"?`,
-                          })
-                        }
-                        title="Delete profile"
-                        aria-label="Delete profile"
-                      >
-                        <Trash2 size={16} />
-                      </IconActionButton>
-                    </>
-                  ) : (
-                    <span className="text-xs rounded-full px-2 py-0.5 bg-black/5 dark:bg-white/10">System</span>
-                  )}
-                </div>
-              </div>
-              <div className="text-sm text-black/55 dark:text-white/60">
-                {(p.permissions || []).length} permission{(p.permissions || []).length === 1 ? "" : "s"}
-              </div>
-              {p.description ? (
-                <div className="text-sm text-black/60 dark:text-white/65 truncate">{p.description}</div>
-              ) : null}
-            </SoftCard>
-          ))}
+      <CardContent className="flex-1 min-h-0 overflow-y-auto p-0">
+        <div className="space-y-2 p-5 pb-3 md:hidden">
+          {headerContent}
         </div>
-        {!filteredProfileOptions.length ? (
-          <div className="text-sm text-black/60 dark:text-white/65">
-            {profileSearch.trim() ? "No matching profiles." : "No profiles available."}
+        <div className="space-y-4 p-5 pt-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {filteredProfileOptions.map((p) => (
+              <SoftCard key={p.id || p.name} className="p-4 space-y-1">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-base font-semibold">{p.display_name || p.name}</div>
+                    <div className="text-sm text-black/55 dark:text-white/60">{p.name}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <IconActionButton
+                      onClick={() => duplicateProfile(p)}
+                      title="Duplicate profile"
+                      aria-label="Duplicate profile"
+                    >
+                      <Copy size={16} />
+                    </IconActionButton>
+                    {!p.is_system ? (
+                      <>
+                        <IconActionButton
+                          onClick={() => openProfileModal(p)}
+                          title="Edit profile"
+                          aria-label="Edit profile"
+                        >
+                          <Pencil size={16} />
+                        </IconActionButton>
+                        <IconActionButton
+                          variant="ghost"
+                          onClick={() =>
+                            setConfirmDelete({
+                              open: true,
+                              type: "profile",
+                              payload: p.id || p.name,
+                              label: `Delete profile "${p.display_name || p.name}"?`,
+                            })
+                          }
+                          title="Delete profile"
+                          aria-label="Delete profile"
+                        >
+                          <Trash2 size={16} />
+                        </IconActionButton>
+                      </>
+                    ) : (
+                      <span className="text-xs rounded-full px-2 py-0.5 bg-black/5 dark:bg-white/10">System</span>
+                    )}
+                  </div>
+                </div>
+                <div className="text-sm text-black/55 dark:text-white/60">
+                  {(p.permissions || []).length} permission{(p.permissions || []).length === 1 ? "" : "s"}
+                </div>
+                {p.description ? (
+                  <div className="text-sm text-black/60 dark:text-white/65 truncate">{p.description}</div>
+                ) : null}
+              </SoftCard>
+            ))}
           </div>
-        ) : null}
+          {!filteredProfileOptions.length ? (
+            <div className="text-sm text-black/60 dark:text-white/65">
+              {profileSearch.trim() ? "No matching profiles." : "No profiles available."}
+            </div>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );

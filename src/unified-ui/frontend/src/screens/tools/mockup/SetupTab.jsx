@@ -20,6 +20,7 @@ export function SetupTab({
   timeOfDay,
   setTimeOfDay,
   timeOfDayDisabled,
+  sideDisabled,
   side,
   setSide,
   timeOfDayOptions,
@@ -104,11 +105,11 @@ export function SetupTab({
   useNativeSelects,
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Mockup Setup</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <Card className="h-full flex flex-col">
+          <CardHeader>
+            <CardTitle>Mockup Setup</CardTitle>
+          </CardHeader>
+          <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-4">
         <div className="space-y-4">
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -143,26 +144,29 @@ export function SetupTab({
                 />
               </FormField>
 
-              <FormField label="Time of Day">
-                <SelectDropdown
-                  value={timeOfDay}
-                  options={timeOfDayOptions}
-                  placeholder="Select time of day"
-                  onChange={(nextValue) => setTimeOfDay(nextValue)}
-                  disabled={timeOfDayDisabled}
-                  useNativeSelect={useNativeSelects}
-                />
-              </FormField>
+              {!timeOfDayDisabled && (
+                <FormField label="Time of Day">
+                  <SelectDropdown
+                    value={timeOfDay}
+                    options={timeOfDayOptions}
+                    placeholder="Select time of day"
+                    onChange={(nextValue) => setTimeOfDay(nextValue)}
+                    useNativeSelect={useNativeSelects}
+                  />
+                </FormField>
+              )}
 
-              <FormField label="Billboard Side">
-                <SelectDropdown
-                  value={side}
-                  options={sideOptions}
-                  placeholder="Select side"
-                  onChange={(nextValue) => setSide(nextValue)}
-                  useNativeSelect={useNativeSelects}
-                />
-              </FormField>
+              {!sideDisabled && (
+                <FormField label="Billboard Side">
+                  <SelectDropdown
+                    value={side}
+                    options={sideOptions}
+                    placeholder="Select side"
+                    onChange={(nextValue) => setSide(nextValue)}
+                    useNativeSelect={useNativeSelects}
+                  />
+                </FormField>
+              )}
             </div>
 
             {editingTemplate ? (

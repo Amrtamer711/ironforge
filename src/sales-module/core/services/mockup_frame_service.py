@@ -467,19 +467,25 @@ class MockupFrameService:
         side: str = "all",
         environment: str = "all",
         company_hint: str | None = None,
-    ) -> tuple[str, str, str, str, Path] | None:
+    ) -> tuple[str, str, str, str, Path, str] | None:
         """
         Get a random photo for a location that has frame data.
 
+        Handles both standalone and traditional networks:
+        - Standalone: Fetches frames directly under network_key
+        - Traditional: Resolves storage keys first, aggregates frames from all assets
+
         Args:
-            location_key: Location identifier
+            location_key: Location identifier (network_key)
             time_of_day: "day", "night", or "all" for random (ignored for indoor)
             side: "gold", "silver", "single_side", or "all" for random (ignored for indoor)
             environment: "indoor", "outdoor", or "all" for random
             company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
-            Tuple of (photo_filename, time_of_day, side, environment, photo_path) or None
+            Tuple of (photo_filename, time_of_day, side, environment, photo_path, storage_key) or None
+            The storage_key is the actual key where frames are stored (may differ from location_key
+            for traditional networks).
         """
         self.logger.info(
             f"[MOCKUP_FRAME_SERVICE] Getting random photo for {location_key} "
@@ -487,33 +493,50 @@ class MockupFrameService:
         )
 
         try:
-            frames, found_company = await self.get_all_frames(location_key, company_hint=company_hint)
-            if not frames:
-                self.logger.warning(f"[MOCKUP_FRAME_SERVICE] No frames found for {location_key}")
-                return None
+            # First, resolve storage keys for traditional networks
+            storage_info = await self.get_storage_info(location_key, include_all_assets=True)
+            company = company_hint
 
-            # Filter frames based on criteria
+            if storage_info:
+                storage_keys = storage_info.get("storage_keys", [])
+                company = storage_info.get("company") or company_hint
+            else:
+                # Fallback: use location_key directly
+                storage_keys = [location_key]
+
+            # Collect matching frames from all storage keys
+            # matching is list of (storage_key, photo, tod, side, env)
             matching = []
-            for frame in frames:
-                env = frame.get("environment", "outdoor")
-                tod = frame.get("time_of_day", "day")
-                frame_side = frame.get("side", "gold")
-                photo = frame.get("photo_filename")
 
-                if not photo:
+            for storage_key in storage_keys:
+                frames, found_company = await self.get_all_frames(storage_key, company_hint=company)
+                if not frames:
                     continue
 
-                if environment != "all" and env != environment:
-                    continue
+                # Update company hint if we found frames
+                if found_company:
+                    company = found_company
 
-                # For outdoor, apply time_of_day and side filters
-                if env == "outdoor":
-                    if time_of_day != "all" and tod != time_of_day:
-                        continue
-                    if side != "all" and frame_side != side:
+                for frame in frames:
+                    env = frame.get("environment", "outdoor")
+                    tod = frame.get("time_of_day", "day")
+                    frame_side = frame.get("side", "gold")
+                    photo = frame.get("photo_filename")
+
+                    if not photo:
                         continue
 
-                matching.append((photo, tod, frame_side, env))
+                    if environment != "all" and env != environment:
+                        continue
+
+                    # For outdoor, apply time_of_day and side filters
+                    if env == "outdoor":
+                        if time_of_day != "all" and tod != time_of_day:
+                            continue
+                        if side != "all" and frame_side != side:
+                            continue
+
+                    matching.append((storage_key, photo, tod, frame_side, env))
 
             if not matching:
                 self.logger.warning(
@@ -523,22 +546,24 @@ class MockupFrameService:
                 return None
 
             # Pick random
-            photo_filename, selected_tod, selected_side, selected_env = random.choice(matching)
+            selected_storage_key, photo_filename, selected_tod, selected_side, selected_env = random.choice(matching)
 
-            # Download the photo (use found_company as hint since we know it has frames)
+            self.logger.info(
+                f"[MOCKUP_FRAME_SERVICE] Selected: {photo_filename} from {selected_storage_key} "
+                f"({selected_env}/{selected_tod}/{selected_side})"
+            )
+
+            # Download the photo using the actual storage_key (not the original location_key)
             photo_path = await self.download_photo(
-                location_key, selected_tod, selected_side, photo_filename,
+                selected_storage_key, selected_tod, selected_side, photo_filename,
                 environment=selected_env,
-                company_hint=found_company,
+                company_hint=company,
             )
 
             if not photo_path:
                 return None
 
-            self.logger.info(
-                f"[MOCKUP_FRAME_SERVICE] Selected: {photo_filename} ({selected_env}/{selected_tod}/{selected_side})"
-            )
-            return photo_filename, selected_tod, selected_side, selected_env, photo_path
+            return photo_filename, selected_tod, selected_side, selected_env, photo_path, selected_storage_key
 
         except Exception as e:
             self.logger.error(f"[MOCKUP_FRAME_SERVICE] Error getting random photo: {e}")
@@ -552,13 +577,37 @@ class MockupFrameService:
         """
         Check if a location has any mockup frames available.
 
+        Handles both standalone and traditional networks:
+        - Standalone: Checks frames directly under network_key
+        - Traditional: Gets storage keys first, then checks each asset path
+
         Args:
-            location_key: Location identifier
+            location_key: Location identifier (network_key)
             company_hint: Optional company to try first (from WorkflowContext)
 
         Returns:
             True if at least one mockup frame exists
         """
+        # First, try to get storage info to resolve traditional network paths
+        storage_info = await self.get_storage_info(location_key, include_all_assets=True)
+
+        if storage_info:
+            storage_keys = storage_info.get("storage_keys", [])
+            company = storage_info.get("company")
+
+            # Check each storage key for frames
+            for storage_key in storage_keys:
+                frames, _ = await self.get_all_frames(storage_key, company_hint=company)
+                if frames:
+                    self.logger.info(
+                        f"[MOCKUP_FRAME_SERVICE] Found frames for {location_key} at storage_key={storage_key}"
+                    )
+                    return True
+
+            self.logger.info(f"[MOCKUP_FRAME_SERVICE] No frames found in any storage key for {location_key}")
+            return False
+
+        # Fallback: try direct lookup (backward compatibility)
         frames, _ = await self.get_all_frames(location_key, company_hint=company_hint)
         return len(frames) > 0
 
@@ -627,6 +676,7 @@ class MockupFrameService:
     async def get_storage_info(
         self,
         location_key: str,
+        include_all_assets: bool = False,
     ) -> dict | None:
         """
         Get mockup storage info for a location.
@@ -634,25 +684,30 @@ class MockupFrameService:
         This is the key method for working with the unified architecture.
         Returns storage keys based on network type:
         - Standalone networks: returns network_key (mockups at network level)
-        - Traditional networks: returns asset_keys (mockups at asset level)
+        - Traditional networks: returns asset storage paths (mockups at asset level)
 
         Args:
             location_key: Location/network key
+            include_all_assets: If True, returns ALL assets for traditional networks.
+                               If False, returns only one sample per asset type.
 
         Returns:
             Dict with:
             - network_key: str
             - company: str
             - is_standalone: bool
-            - storage_keys: list[str] - Keys to use for mockup operations
-            - sample_assets: list[dict] - For traditional: one asset per type
+            - storage_keys: list[str]
+                - Standalone: [network_key]
+                - Traditional: ["{network_key}/{type_key}/{asset_key}", ...]
+            - assets: list[dict] - For traditional: asset details with storage_key
         """
-        self.logger.info(f"[MOCKUP_FRAME_SERVICE] Getting storage info for {location_key}")
+        self.logger.info(f"[MOCKUP_FRAME_SERVICE] Getting storage info for {location_key} (include_all_assets={include_all_assets})")
 
         try:
             result = await asset_mgmt_client.get_mockup_storage_info(
                 network_key=location_key,
                 companies=self.companies,
+                include_all_assets=include_all_assets,
             )
 
             if result:

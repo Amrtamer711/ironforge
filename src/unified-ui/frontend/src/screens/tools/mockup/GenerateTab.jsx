@@ -175,6 +175,7 @@ export function GenerateTab({
   timeOfDay,
   setTimeOfDay,
   timeOfDayDisabled,
+  sideDisabled,
   side,
   setSide,
   timeOfDayOptions,
@@ -223,11 +224,11 @@ export function GenerateTab({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Mockup Generator</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <Card className="h-full flex flex-col">
+          <CardHeader>
+            <CardTitle>Mockup Generator</CardTitle>
+          </CardHeader>
+          <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <FormField label="Location">
             <SelectDropdown
@@ -256,24 +257,27 @@ export function GenerateTab({
             />
           </FormField>
 
-          <FormField label="Time of Day">
-            <SelectDropdown
-              value={timeOfDay}
-              options={timeOfDayOptions}
-              onChange={(nextValue) => setTimeOfDay(nextValue)}
-              disabled={timeOfDayDisabled}
-              useNativeSelect={useNativeSelects}
-            />
-          </FormField>
+          {!timeOfDayDisabled && (
+            <FormField label="Time of Day">
+              <SelectDropdown
+                value={timeOfDay}
+                options={timeOfDayOptions}
+                onChange={(nextValue) => setTimeOfDay(nextValue)}
+                useNativeSelect={useNativeSelects}
+              />
+            </FormField>
+          )}
 
-          <FormField label="Billboard Side">
-            <SelectDropdown
-              value={side}
-              options={sideOptions}
-              onChange={(nextValue) => setSide(nextValue)}
-              useNativeSelect={useNativeSelects}
-            />
-          </FormField>
+          {!sideDisabled && (
+            <FormField label="Billboard Side">
+              <SelectDropdown
+                value={side}
+                options={sideOptions}
+                onChange={(nextValue) => setSide(nextValue)}
+                useNativeSelect={useNativeSelects}
+              />
+            </FormField>
+          )}
         </div>
 
         {locations.length ? (

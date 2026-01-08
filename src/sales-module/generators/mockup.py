@@ -32,11 +32,24 @@ def get_location_photos_dir(
 ) -> Path:
     """Get the directory for a location's mockup photos.
 
-    Structure:
-    - Outdoor: mockups/{company}/{location_key}/outdoor/{time_of_day}/{side}
-    - Indoor: mockups/{company}/{location_key}/indoor
+    Args:
+        company: Company schema (e.g., "backlite_dubai")
+        location_key: Location identifier. Can be:
+            - Standalone network: just network_key (e.g., "dubai_gateway")
+            - Traditional network: "{network_key}/{type_key}/{asset_key}"
+              (e.g., "dubai_mall/digital_screens/mall_screen_a")
+        environment: "indoor" or "outdoor"
+        time_of_day: "day" or "night" (ignored for indoor)
+        side: "gold", "silver", or "single_side" (ignored for indoor)
 
-    Example: mockups/backlite_dubai/triple_crown/outdoor/day/gold
+    Structure:
+    - Standalone outdoor: mockups/{company}/{network_key}/outdoor/{time_of_day}/{side}
+    - Standalone indoor:  mockups/{company}/{network_key}/indoor
+    - Traditional outdoor: mockups/{company}/{network_key}/{type_key}/{asset_key}/outdoor/{time_of_day}/{side}
+    - Traditional indoor:  mockups/{company}/{network_key}/{type_key}/{asset_key}/indoor
+
+    Example standalone: mockups/backlite_dubai/dubai_gateway/outdoor/day/gold
+    Example traditional: mockups/backlite_dubai/dubai_mall/digital_screens/mall_screen_a/indoor
     """
     if environment == "indoor":
         return MOCKUPS_DIR / company / location_key / "indoor"
@@ -358,15 +371,20 @@ async def generate_mockup_async(
     logger.info(f"[MOCKUP_ASYNC] Generating mockup for {location_key} via Asset-Management")
 
     try:
+        # Initialize storage_key - will be updated for traditional networks
+        storage_key = location_key
+
         # Get photo and frame data from Asset-Management
         if specific_photo:
             # Use specific photo
+            # For specific photos, we assume the caller passes the correct storage_key
+            # (e.g., from the templates endpoint which returns storage_key per template)
             selected_tod = time_of_day if time_of_day != "all" else "day"
             selected_side = side if side != "all" else "gold"
             selected_env = environment if environment != "all" else "outdoor"
 
             photo_path = await service.download_photo(
-                location_key, selected_tod, selected_side, specific_photo,
+                storage_key, selected_tod, selected_side, specific_photo,
                 environment=selected_env,
                 company_hint=company_hint,
             )
@@ -384,24 +402,25 @@ async def generate_mockup_async(
                 logger.error(f"[MOCKUP_ASYNC] No photos available for {location_key}")
                 return None, None
 
-            photo_filename, selected_tod, selected_side, selected_env, photo_path = result
+            # Unpack including storage_key (for traditional networks, this may differ from location_key)
+            photo_filename, selected_tod, selected_side, selected_env, photo_path, storage_key = result
 
-        # Get frame data
+        # Get frame data - use storage_key instead of location_key for traditional networks
         frames_data = await service.get_frames(
-            location_key, selected_tod, selected_side, photo_filename,
+            storage_key, selected_tod, selected_side, photo_filename,
             environment=selected_env,
             company_hint=company_hint,
         )
         if not frames_data:
-            logger.error(f"[MOCKUP_ASYNC] No frame data for {location_key}/{photo_filename}")
+            logger.error(f"[MOCKUP_ASYNC] No frame data for {storage_key}/{photo_filename}")
             # Cleanup downloaded photo
             if photo_path and photo_path.exists():
                 photo_path.unlink()
             return None, None
 
-        # Get config if available
+        # Get config if available - use storage_key for traditional networks
         photo_config = await service.get_config(
-            location_key, selected_tod, selected_side, photo_filename,
+            storage_key, selected_tod, selected_side, photo_filename,
             environment=selected_env,
             company_hint=company_hint,
         )

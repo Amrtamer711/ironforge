@@ -168,6 +168,54 @@ class _DatabaseNamespace:
         """Get tasks assigned to a specific videographer."""
         return get_backend().get_tasks_by_videographer(videographer)
 
+    async def list_tasks(
+        self,
+        filters: dict[str, Any] | None = None,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> list[VideoTask]:
+        """
+        List tasks with optional filters.
+
+        This is a convenience method that routes to the appropriate
+        backend method based on filters, or applies filters manually.
+
+        Args:
+            filters: Optional dict with "status", "videographer", "location", "reference_number"
+            limit: Maximum number of results
+            offset: Number of results to skip
+
+        Returns:
+            List of VideoTask models matching the filters
+        """
+        filters = filters or {}
+
+        # Start with all tasks
+        tasks = self.get_all_tasks()
+
+        # Apply filters
+        if "status" in filters:
+            tasks = [t for t in tasks if t.status == filters["status"]]
+        if "videographer" in filters:
+            tasks = [t for t in tasks if t.videographer == filters["videographer"]]
+        if "location" in filters:
+            tasks = [t for t in tasks if t.location == filters["location"]]
+        if "reference_number" in filters:
+            ref = filters["reference_number"]
+            tasks = [t for t in tasks if t.reference_number and ref.lower() in t.reference_number.lower()]
+
+        # Apply pagination
+        if offset:
+            tasks = tasks[offset:]
+        if limit:
+            tasks = tasks[:limit]
+
+        return tasks
+
+    async def get_task(self, task_number: int) -> VideoTask | None:
+        """Get a task by task number (async wrapper for get_task_by_number)."""
+        return self.get_task_by_number(task_number)
+
     def update_task(self, task_number: int, updates: dict[str, Any]) -> bool:
         """Update a task by task number."""
         return get_backend().update_task(task_number, updates)

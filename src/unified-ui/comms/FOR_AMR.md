@@ -3,19 +3,21 @@
 ---
 
 ## DEV TO-DO: Unified Asset Management
+
 - [ ] Make the changes to mockup and proposal generation LLM chats with new location structure.
 
-
 ### Part 1: Unified Architecture ✅ DONE
-- [x] Merge `standalone_assets` into `networks` with `standalone` flag
-- [x] Add `environment` field to `network_assets` (indoor/outdoor)
-- [x] Add `area`, `country` fields to locations
-- [x] Create unified `locations` VIEW (no `asset_source`)
-- [x] Add `get_mockup_storage_info()` for mockup path resolution
-- [x] Internal API endpoint `/api/internal/mockup-storage-info/{network_key}`
-- [x] Migration scripts (`03_unify_standalone.sql`, `04_add_country_column.sql`)
+
+- [X] Merge `standalone_assets` into `networks` with `standalone` flag
+- [X] Add `environment` field to `network_assets` (indoor/outdoor)
+- [X] Add `area`, `country` fields to locations
+- [X] Create unified `locations` VIEW (no `asset_source`)
+- [X] Add `get_mockup_storage_info()` for mockup path resolution
+- [X] Internal API endpoint `/api/internal/mockup-storage-info/{network_key}`
+- [X] Migration scripts (`03_unify_standalone.sql`, `04_add_country_column.sql`)
 
 ### Part 2: Eligibility Service ⏳ PENDING
+
 - [ ] Check if location is **eligible for booking** on given dates
 - [ ] Query `asset_occupations` to find date conflicts
 - [ ] Return availability status for proposals
@@ -23,6 +25,7 @@
 - [ ] Used by Sales-Module when generating proposals
 
 ### Database Migration (for existing DB)
+
 ```bash
 # Run in Supabase SQL Editor:
 1. 03_unify_standalone.sql   # Migrates standalone_assets → networks
@@ -34,19 +37,24 @@
 ## Pending
 
 ## Authentication
+
 1. Authentication issue where 401 causes logout within a specific time. maybe token expiry?
+2. Change the Auth redirect to new mmg-nova.com in supabase
 
 ## General
+
 1. Font issue when the font is not available in the local system.
 2. Examine the document cached log(could be the reason why the chat history loading is taking too long)
 3. Inefficient search for mockup photo in mockup generate ( we already know the configuration we need to look for but we are still looking in all companies)
-
+4. Ensure most functionality and llm functionality are equivalent
 
 ### Questions / Confirmations
+
 1. **Companies Endpoint** - Confirm if `/dev/companies` path is correct for company details
 2. Permissions CRUD not available in the api/rbac/ path. currently using it from api/dev/ path.
 
 ### Admin Features
+
 2. **User - multiple Profile sets** - Assign/list multiple profiles per user
 3. **User - multiple Permission sets** - Assign multiple permission sets per user
 4. **Profile to Permission-Set relation** - Link profiles to permission sets
@@ -54,6 +62,7 @@
 6. **Add Location UI** - List out the locations for admins
 
 ### Mockups
+
 1. **Template thumbnails** - Save `xxxx_n_thumb.png` alongside templates for faster loading. Include in response as `thumbnail` field
 2. **Mockup history** - Show history with date + generated image
 3. **Mockup frame edit endpoint** - Endpoint to get frame details/config for editing existing templates
@@ -67,11 +76,13 @@
 ## Completed
 
 ### Separate Proposals - Multiple Dates + Payment Terms
+
 **Issue**: Separate proposals were not showing different `start_dates` and `payment_terms` was defaulting to "100% upfront"
 
 **Fix**: Now supports `start_dates` array parallel with `durations` and `net_rates`. Each option gets its own column in the financial slide.
 
 **Example Request**:
+
 ```json
 {
     "proposals": [{
@@ -87,7 +98,6 @@
 ```
 
 **Status**: Fixed in commit `5ed9e78`
-
 
 ##Authentication Issue
 

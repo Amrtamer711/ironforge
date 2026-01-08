@@ -31,11 +31,11 @@ export function HistoryPanel(props) {
 
 export function HistoryTab({ historyQuery, historyItems }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>History</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <Card className="h-full flex flex-col">
+          <CardHeader>
+            <CardTitle>History</CardTitle>
+          </CardHeader>
+          <CardContent className="flex-1 min-h-0 overflow-y-auto">
         {historyQuery.isLoading ? (
           <LoadingEllipsis text="Loading" className="text-sm text-black/60 dark:text-white/65" />
         ) : historyQuery.isError ? (

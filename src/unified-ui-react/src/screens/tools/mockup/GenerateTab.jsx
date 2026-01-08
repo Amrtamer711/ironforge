@@ -177,6 +177,7 @@ export function GenerateTab({
   timeOfDayDisabled,
   finish,
   setFinish,
+  sideDisabled,
   timeOfDayOptions,
   finishOptions,
   venueTypeOptions,
@@ -256,24 +257,27 @@ export function GenerateTab({
             />
           </FormField>
 
-          <FormField label="Time of Day">
-            <SelectDropdown
-              value={timeOfDay}
-              options={timeOfDayOptions}
-              onChange={(nextValue) => setTimeOfDay(nextValue)}
-              disabled={timeOfDayDisabled}
-              useNativeSelect={useNativeSelects}
-            />
-          </FormField>
+          {!timeOfDayDisabled && (
+            <FormField label="Time of Day">
+              <SelectDropdown
+                value={timeOfDay}
+                options={timeOfDayOptions}
+                onChange={(nextValue) => setTimeOfDay(nextValue)}
+                useNativeSelect={useNativeSelects}
+              />
+            </FormField>
+          )}
 
-          <FormField label="Billboard Finish">
-            <SelectDropdown
-              value={finish}
-              options={finishOptions}
-              onChange={(nextValue) => setFinish(nextValue)}
-              useNativeSelect={useNativeSelects}
-            />
-          </FormField>
+          {!sideDisabled && (
+            <FormField label="Billboard Side">
+              <SelectDropdown
+                value={finish}
+                options={finishOptions}
+                onChange={(nextValue) => setFinish(nextValue)}
+                useNativeSelect={useNativeSelects}
+              />
+            </FormField>
+          )}
         </div>
 
         {locations.length ? (

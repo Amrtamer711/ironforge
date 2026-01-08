@@ -266,99 +266,186 @@ async def test_preview_mockup(
 
 
 @router.get("/api/mockup/photos/{location_key}")
-async def list_mockup_photos(location_key: str, time_of_day: str = "all", side: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:read"))):
-    """List all photos for a location with specific time_of_day and side. Requires sales:mockups:read permission."""
+async def list_mockup_photos(
+    location_key: str,
+    time_of_day: str = "all",
+    side: str = "all",
+    venue_type: str = "all",
+    user: AuthUser = Depends(require_permission("sales:mockups:read"))
+):
+    """
+    List all photos for a location with proper standalone/traditional handling.
+
+    Args:
+        location_key: Network key
+        time_of_day: Filter by "day", "night", or "all" (only applies to outdoor)
+        side: Filter by "gold", "silver", "single_side", or "all" (only applies to outdoor)
+        venue_type: Filter by "indoor", "outdoor", or "all"
+
+    Requires sales:mockups:read permission.
+    """
     try:
-        # Use MockupFrameService to fetch from Asset-Management (searches all companies)
         service = MockupFrameService(companies=user.companies)
+
+        # Get storage info with ALL assets for traditional networks
+        storage_info = await service.get_storage_info(location_key, include_all_assets=True)
+
+        if not storage_info:
+            storage_keys = [location_key]
+            company = None
+        else:
+            storage_keys = storage_info.get("storage_keys", [location_key])
+            company = storage_info.get("company")
+
         all_photos = set()
 
-        if time_of_day == "all" or side == "all":
-            # Get all variations and aggregate photos
-            variations = await service.list_variations(location_key)
-            for tod in variations:
-                for sid in variations[tod]:
-                    photos = await service.list_photos(location_key, tod, sid)
-                    all_photos.update(photos)
-        else:
-            photos = await service.list_photos(location_key, time_of_day, side)
-            all_photos.update(photos)
+        # Fetch frames from EACH storage key
+        for storage_key in storage_keys:
+            frames, _ = await service.get_all_frames(storage_key, company_hint=company)
+
+            for frame in frames:
+                env = frame.get("environment", "outdoor")
+                tod = frame.get("time_of_day", "day")
+                frame_side = frame.get("side", "gold")
+                photo = frame.get("photo_filename")
+
+                if not photo:
+                    continue
+
+                # Filter by venue_type (environment) FIRST
+                if venue_type != "all" and env != venue_type:
+                    continue
+
+                # For outdoor, apply time_of_day and side filters
+                # For indoor, skip these filters (meaningless)
+                if env == "outdoor":
+                    if time_of_day != "all" and tod != time_of_day:
+                        continue
+                    if side != "all" and frame_side != side:
+                        continue
+
+                all_photos.add(photo)
 
         return {"photos": sorted(all_photos)}
+
     except Exception as e:
         logger.error(f"[MOCKUP API] Error listing photos: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/api/mockup/templates/{location_key}")
-async def list_mockup_templates(location_key: str, time_of_day: str = "all", side: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:read"))):
-    """List all templates (photos with frame configs) for a location. Requires sales:mockups:read permission."""
-    try:
-        templates = []
-        seen_photos = set()  # Track unique photo/tod/side combos
+async def list_mockup_templates(
+    location_key: str,
+    time_of_day: str = "all",
+    side: str = "all",
+    venue_type: str = "all",
+    user: AuthUser = Depends(require_permission("sales:mockups:read"))
+):
+    """
+    List all templates (photos with frame configs) for a location.
 
-        # Use MockupFrameService to fetch from Asset-Management (searches all companies)
+    Handles both standalone and traditional networks:
+    - Standalone: mockups stored at network level
+    - Traditional: mockups stored at asset level (network_key/type_key/asset_key)
+
+    Args:
+        location_key: Network key
+        time_of_day: Filter by "day", "night", or "all" (only applies to outdoor)
+        side: Filter by "gold", "silver", "single_side", or "all" (only applies to outdoor)
+        venue_type: Filter by "indoor", "outdoor", or "all"
+
+    Requires sales:mockups:read permission.
+    """
+    try:
         service = MockupFrameService(companies=user.companies)
 
-        if time_of_day == "all" or side == "all":
-            # Get all variations and their photos
-            variations = await service.list_variations(location_key)
-            for tod in variations:
-                for sid in variations[tod]:
-                    photos = await service.list_photos(location_key, tod, sid)
-                    for photo in photos:
-                        key = (photo, tod, sid)
-                        if key in seen_photos:
-                            continue
-                        seen_photos.add(key)
+        # Step 1: Get storage info with ALL assets for traditional networks
+        storage_info = await service.get_storage_info(location_key, include_all_assets=True)
 
-                        frames_data = await service.get_frames(location_key, tod, sid, photo)
-                        if frames_data:
-                            frame_config = frames_data[0].get("config", {}) if frames_data else {}
-                            templates.append({
-                                "photo": photo,
-                                "time_of_day": tod,
-                                "side": sid,
-                                "frame_count": len(frames_data),
-                                "config": frame_config
-                            })
+        if not storage_info:
+            # Fallback: try location_key directly (backward compatibility)
+            storage_keys = [location_key]
+            company = None
         else:
-            photos = await service.list_photos(location_key, time_of_day, side)
-            for photo in photos:
-                key = (photo, time_of_day, side)
-                if key in seen_photos:
-                    continue
-                seen_photos.add(key)
+            storage_keys = storage_info.get("storage_keys", [location_key])
+            company = storage_info.get("company")
 
-                frames_data = await service.get_frames(location_key, time_of_day, side, photo)
-                if frames_data:
-                    frame_config = frames_data[0].get("config", {}) if frames_data else {}
-                    templates.append({
-                        "photo": photo,
-                        "time_of_day": time_of_day,
-                        "side": side,
-                        "frame_count": len(frames_data),
-                        "config": frame_config
-                    })
+        templates = []
+        seen = set()  # Dedupe: (photo, storage_key, env, tod, side)
+
+        # Step 2: Fetch frames from EACH storage key
+        # storage_key is "{network_key}/{type_key}/{asset_key}" for traditional, "{network_key}" for standalone
+        for storage_key in storage_keys:
+            frames, _ = await service.get_all_frames(storage_key, company_hint=company)
+
+            for frame in frames:
+                env = frame.get("environment", "outdoor")
+                tod = frame.get("time_of_day", "day")
+                frame_side = frame.get("side", "gold")
+                photo = frame.get("photo_filename")
+
+                if not photo:
+                    continue
+
+                # Step 3: Filter by venue_type (environment) FIRST
+                if venue_type != "all" and env != venue_type:
+                    continue
+
+                # Step 4: For OUTDOOR frames, apply time_of_day and side filters
+                # For INDOOR frames, skip these filters (meaningless)
+                if env == "outdoor":
+                    if time_of_day != "all" and tod != time_of_day:
+                        continue
+                    if side != "all" and frame_side != side:
+                        continue
+
+                # Dedupe by unique key
+                key = (photo, storage_key, env, tod, frame_side)
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                # Get frame count and config from frames_data
+                frames_data = frame.get("frames_data", [])
+                frame_config = frames_data[0].get("config", {}) if frames_data else {}
+
+                templates.append({
+                    "photo": photo,
+                    "storage_key": storage_key,  # "{network_key}/{type_key}/{asset_key}" or "{network_key}"
+                    "environment": env,
+                    "time_of_day": tod,
+                    "side": frame_side,
+                    "frame_count": len(frames_data) if frames_data else 1,
+                    "config": frame_config,
+                })
 
         return {"templates": templates}
+
     except Exception as e:
         logger.error(f"[MOCKUP API] Error listing templates: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/mockup/photo/{location_key}/{photo_filename}")
+@router.get("/api/mockup/photo/{photo_filename}/{location_key:path}")
 async def get_mockup_photo(
-    location_key: str,
     photo_filename: str,
+    location_key: str,
     time_of_day: str = "all",
     side: str = "all",
     background_tasks: BackgroundTasks = None,
     user: AuthUser = Depends(require_permission("sales:mockups:read")),
 ):
-    """Get a specific photo file from Asset-Management storage. Requires sales:mockups:read permission."""
+    """
+    Get a specific photo file from Asset-Management storage.
+
+    NOTE: location_key is last with :path modifier to support traditional network storage keys
+    that contain slashes (e.g., "dubai_mall/digital_screens/mall_screen_a").
+
+    Requires sales:mockups:read permission.
+    """
     # Sanitize path components to prevent path traversal attacks
-    location_key = sanitize_path_component(location_key)
+    # For location_key with slashes, sanitize each segment
+    location_key = "/".join(sanitize_path_component(seg) for seg in location_key.split("/"))
     photo_filename = sanitize_path_component(photo_filename)
 
     logger.info(f"[PHOTO GET] Request for photo: {location_key}/{photo_filename} (time_of_day={time_of_day}, side={side})")
@@ -404,13 +491,21 @@ async def get_mockup_photo(
     raise HTTPException(status_code=404, detail=f"Photo not found: {photo_filename}")
 
 
-@router.delete("/api/mockup/photo/{location_key}/{photo_filename}")
-async def delete_mockup_photo(location_key: str, photo_filename: str, time_of_day: str = "all", side: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:setup"))):
-    """Delete a photo and its frame. Requires admin role."""
+@router.delete("/api/mockup/photo/{photo_filename}/{location_key:path}")
+async def delete_mockup_photo(photo_filename: str, location_key: str, time_of_day: str = "all", side: str = "all", user: AuthUser = Depends(require_permission("sales:mockups:setup"))):
+    """
+    Delete a photo and its frame.
+
+    NOTE: location_key is last with :path modifier to support traditional network storage keys
+    that contain slashes (e.g., "dubai_mall/digital_screens/mall_screen_a").
+
+    Requires admin role.
+    """
     from generators import mockup as mockup_generator
 
     # Sanitize path components to prevent path traversal attacks
-    location_key = sanitize_path_component(location_key)
+    # For location_key with slashes, sanitize each segment
+    location_key = "/".join(sanitize_path_component(seg) for seg in location_key.split("/"))
     photo_filename = sanitize_path_component(photo_filename)
 
     try:
@@ -454,9 +549,11 @@ async def generate_mockup_api(
     location_key: str = Form(...),
     time_of_day: str = Form("all"),
     side: str = Form("all"),
+    environment: str = Form("outdoor"),
     ai_prompt: str | None = Form(None),
     creative: UploadFile | None = File(None),
     specific_photo: str | None = Form(None),
+    storage_key: str | None = Form(None),
     frame_config: str | None = Form(None),
     user: AuthUser = Depends(require_permission("sales:mockups:generate"))
 ):
@@ -467,6 +564,13 @@ async def generate_mockup_api(
     because it has REST-specific requirements (specific_photo selection, frame_config override)
     that the coordinator doesn't support. The coordinator is designed for orchestrating
     chat/Slack workflows with automatic strategy selection.
+
+    Args:
+        location_key: Network key (e.g., "dubai_mall")
+        storage_key: Optional storage key for traditional networks
+                    (e.g., "dubai_mall/digital_screens/mall_screen_a").
+                    If not provided, defaults to location_key.
+        environment: "indoor" or "outdoor" (default "outdoor")
 
     Requires sales:mockups:generate permission.
     """
@@ -492,14 +596,26 @@ async def generate_mockup_api(
             except json.JSONDecodeError:
                 logger.warning("[MOCKUP API] Invalid frame config JSON, ignoring")
 
-        # Validate location and get company schema
-        if location_key not in config.LOCATION_METADATA:
-            raise HTTPException(status_code=400, detail=f"Invalid location: {location_key}")
+        # Determine the actual storage key to use for generation
+        # For traditional networks, storage_key comes from templates endpoint
+        # For standalone networks, storage_key is same as location_key
+        effective_storage_key = storage_key or location_key
 
-        location_data = db.get_location_by_key(location_key, user.companies)
+        # Extract network_key from storage_key for validation
+        # Storage key format: "network_key" (standalone) or "network_key/type_key/asset_key" (traditional)
+        network_key = effective_storage_key.split("/")[0]
+
+        # Validate network exists and user has access
+        location_data = db.get_location_by_key(network_key, user.companies)
         if not location_data:
-            raise HTTPException(status_code=403, detail=f"Location '{location_key}' not found in your accessible companies")
-        company_schema = location_data.get("company") or location_data.get("company_schema")
+            # Fallback: check config.LOCATION_METADATA for backward compatibility
+            if network_key not in config.LOCATION_METADATA:
+                raise HTTPException(status_code=400, detail=f"Invalid location: {network_key}")
+            company_schema = None
+        else:
+            company_schema = location_data.get("company") or location_data.get("company_schema")
+
+        logger.info(f"[MOCKUP API] Generate request: network={network_key}, storage_key={effective_storage_key}, env={environment}")
 
         # Determine mode: AI generation or upload
         if ai_prompt:
@@ -531,11 +647,13 @@ async def generate_mockup_api(
 
         # Generate mockup (pass as list) with time_of_day, side, specific_photo, and config override
         # Pass company_hint for O(1) asset lookup (we already know which company owns this location)
+        # Use effective_storage_key for traditional networks (e.g., "dubai_mall/digital_screens/mall_screen_a")
         result_path, photo_used = await mockup_generator.generate_mockup_async(
-            location_key,
+            effective_storage_key,  # Use storage key, not just network key
             [creative_path],
             time_of_day=time_of_day,
             side=side,
+            environment=environment,  # Pass environment for indoor/outdoor filtering
             specific_photo=specific_photo,
             config_override=config_dict,
             company_schemas=user.companies,
@@ -653,4 +771,210 @@ async def generate_mockup_api(
         except Exception as log_error:
             logger.error(f"[MOCKUP API] Error logging usage: {log_error}")
 
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# ELIGIBILITY ENDPOINTS
+# =============================================================================
+
+
+@router.get("/api/mockup/eligibility/setup")
+async def get_setup_eligible_locations(
+    user: AuthUser = Depends(require_permission("sales:mockups:read"))
+):
+    """
+    Get locations eligible for mockup setup.
+
+    Setup mode only allows networks (no packages) because frames are
+    configured at the network level.
+
+    Returns:
+        List of eligible network locations
+    """
+    from core.services.mockup_eligibility import SetupEligibilityService
+
+    if not user.has_company_access:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to any company data."
+        )
+
+    try:
+        service = SetupEligibilityService(user_companies=user.companies)
+        locations = await service.get_eligible_locations()
+
+        return {
+            "locations": [loc.to_dict() for loc in locations],
+            "count": len(locations),
+        }
+    except Exception as e:
+        logger.error(f"[ELIGIBILITY API] Error getting setup locations: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/mockup/eligibility/generate")
+async def get_generate_eligible_locations(
+    user: AuthUser = Depends(require_permission("sales:mockups:read"))
+):
+    """
+    Get locations eligible for mockup generation.
+
+    Generate mode allows networks AND packages, but only those that have
+    mockup frames configured.
+
+    Returns:
+        List of eligible networks and packages
+    """
+    from core.services.mockup_eligibility import GenerateFormEligibilityService
+
+    if not user.has_company_access:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to any company data."
+        )
+
+    try:
+        service = GenerateFormEligibilityService(user_companies=user.companies)
+        locations = await service.get_eligible_locations()
+
+        return {
+            "locations": [loc.to_dict() for loc in locations],
+            "count": len(locations),
+        }
+    except Exception as e:
+        logger.error(f"[ELIGIBILITY API] Error getting generate locations: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/mockup/eligibility/templates/{location_key}")
+async def get_location_templates(
+    location_key: str,
+    user: AuthUser = Depends(require_permission("sales:mockups:read"))
+):
+    """
+    Get all available templates for a location.
+
+    If location is a package, returns templates from ALL networks in the package.
+    If location is a network, returns templates for that network only.
+
+    Args:
+        location_key: Network key or package key
+
+    Returns:
+        List of available templates
+    """
+    from core.services.mockup_eligibility import GenerateFormEligibilityService
+
+    if not user.has_company_access:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to any company data."
+        )
+
+    try:
+        service = GenerateFormEligibilityService(user_companies=user.companies)
+        templates = await service.get_templates_for_location(location_key)
+
+        return {
+            "templates": [t.to_dict() for t in templates],
+            "count": len(templates),
+            "location_key": location_key,
+        }
+    except Exception as e:
+        logger.error(f"[ELIGIBILITY API] Error getting templates for {location_key}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/mockup/eligibility/check")
+async def check_location_eligibility(
+    location_key: str = Form(...),
+    mode: str = Form("generate"),
+    user: AuthUser = Depends(require_permission("sales:mockups:read"))
+):
+    """
+    Check if a location is eligible for a specific mode.
+
+    Args:
+        location_key: Network key or package key to check
+        mode: "setup" or "generate"
+
+    Returns:
+        Eligibility status and reason if not eligible
+    """
+    from core.services.mockup_eligibility import (
+        SetupEligibilityService,
+        GenerateFormEligibilityService,
+    )
+
+    if not user.has_company_access:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to any company data."
+        )
+
+    try:
+        if mode == "setup":
+            service = SetupEligibilityService(user_companies=user.companies)
+        else:
+            service = GenerateFormEligibilityService(user_companies=user.companies)
+
+        result = await service.check_eligibility(location_key)
+
+        return {
+            "location_key": location_key,
+            "mode": mode,
+            "eligible": result.eligible,
+            "reason": result.reason,
+        }
+    except Exception as e:
+        logger.error(f"[ELIGIBILITY API] Error checking eligibility for {location_key}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# PACKAGE EXPANSION ENDPOINT
+# =============================================================================
+
+
+@router.get("/api/mockup/expand/{location_key}")
+async def expand_location(
+    location_key: str,
+    user: AuthUser = Depends(require_permission("sales:mockups:read"))
+):
+    """
+    Expand a location (package or network) to generation targets.
+
+    For packages: returns all networks with their storage keys
+    For networks: returns the single network with its storage keys
+
+    This endpoint is useful for understanding what mockups will be generated
+    for a given location.
+
+    Args:
+        location_key: Network key or package key
+
+    Returns:
+        List of generation targets with storage info
+    """
+    from core.services.mockup_service import PackageExpander
+
+    if not user.has_company_access:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to any company data."
+        )
+
+    try:
+        expander = PackageExpander(user_companies=user.companies)
+        targets = await expander.expand(location_key)
+
+        return {
+            "location_key": location_key,
+            "targets": [t.to_dict() for t in targets],
+            "count": len(targets),
+            "total_storage_keys": sum(len(t.storage_keys) for t in targets),
+        }
+    except Exception as e:
+        logger.error(f"[EXPAND API] Error expanding {location_key}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

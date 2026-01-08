@@ -42,8 +42,8 @@ export function AssetManagementPage() {
   }, [locationsQuery.data]);
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col gap-4 overflow-hidden">
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 px-1">
+    <div className="flex h-full min-h-0 min-w-0 flex-col gap-4">
+      <div className="flex items-center gap-2 overflow-x-auto">
         {TABS.map((tabItem) => (
           <Button
             key={tabItem.key}
@@ -58,9 +58,11 @@ export function AssetManagementPage() {
         ))}
       </div>
 
-      <div className="flex-1 min-h-0 min-w-0 overflow-y-auto px-2 py-1 space-y-4">
+      <div className="flex-1 min-h-0 min-w-0">
         {tab === "locations" ? (
-          <LocationsTabModule.LocationsTab locations={locations} locationsQuery={locationsQuery} />
+          <div className="h-full">
+            <LocationsTabModule.LocationsTab locations={locations} locationsQuery={locationsQuery} />
+          </div>
         ) : null}
       </div>
     </div>

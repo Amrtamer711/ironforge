@@ -5,8 +5,7 @@ from datetime import datetime
 
 def get_main_system_prompt(
     is_admin: bool,
-    static_list: str,
-    digital_list: str,
+    locations_context: str,
     user_companies: list[str] | None = None,
 ) -> str:
     """
@@ -14,8 +13,7 @@ def get_main_system_prompt(
 
     Args:
         is_admin: Whether the current user is an admin
-        static_list: Comma-separated list of static locations (filtered by user's companies)
-        digital_list: Comma-separated list of digital locations (filtered by user's companies)
+        locations_context: Hierarchical listing of locations and packages grouped by company
         user_companies: List of company schemas user can access
 
     Returns:
@@ -26,8 +24,7 @@ def get_main_system_prompt(
         companies_str = ", ".join(user_companies)
         company_info = (
             f"📋 Your Company Access: {companies_str}\n"
-            f"   You can ONLY work with locations from these companies.\n"
-            f"   All locations below are tagged with [company_schema] for reference.\n"
+            f"   You can ONLY work with locations and packages from these companies.\n"
         )
     else:
         companies_str = "None"
@@ -89,13 +86,11 @@ def get_main_system_prompt(
         f"🔴 DIGITAL LOCATIONS (LED screens with rotating ads):\n"
         f"   Features: Multiple advertisers share screen time, ads rotate in loops\n"
         f"   Fee Structure: NET RATE + PRE-CONFIGURED UPLOAD FEE (automatically added)\n"
-        f"   Examples: {digital_list}\n"
         f"   Upload Fee: System automatically adds the correct upload fee for each digital location\n\n"
 
         f"🔵 STATIC LOCATIONS (Traditional billboards, prints, physical displays):\n"
         f"   Features: Single advertiser has exclusive display, no rotation\n"
         f"   Fee Structure: NET RATE + PRODUCTION FEE (must be collected from user)\n"
-        f"   Examples: {static_list}\n"
         f"   Production Fee: REQUIRED - ask user for production fee amount (e.g., 'AED 5,000')\n"
         f"   Multiple Productions: If client changes artwork during campaign (e.g., 2 productions at AED 20k each), sum them together (total: AED 40,000)\n"
         f"   ⚠️ IMPORTANT STATIC LOCATION RULES (SOFT VALIDATION - confirm with user if violated):\n"
@@ -105,6 +100,17 @@ def get_main_system_prompt(
         f"        1. Inform them: 'Static locations are usually sold from the 1st of the month in 4-week increments'\n"
         f"        2. Ask for explicit confirmation: 'Please confirm these dates/duration are absolutely correct'\n"
         f"        3. Only proceed after user confirms - do NOT reject, just validate\n\n"
+
+        f"📦 PACKAGES (bundles of locations sold together):\n"
+        f"   Features: Multiple locations grouped for bundled deals\n"
+        f"   Usage: Use the package_key when user requests the entire bundle\n"
+        f"   Expansion: When a package is selected, ALL locations in it are included\n"
+        f"   Fee Rules: Apply digital/static fee rules to EACH location in the package\n\n"
+
+        f"═══════════════════════════════════════════════════════════════════\n"
+        f"📍 AVAILABLE LOCATIONS & PACKAGES BY COMPANY\n"
+        f"═══════════════════════════════════════════════════════════════════\n"
+        f"{locations_context}\n\n"
 
         f"CRITICAL RULES:\n"
         f"- DIGITAL = Upload fee (automatic) | STATIC = Production fee (ask user)\n"
