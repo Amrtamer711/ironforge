@@ -1,0 +1,18 @@
+build_asset_management:
+  extends: .build_push_ecr_template
+  variables:
+    SERVICE_NAME: "asset-management"
+    SERVICE_DIR: "src/asset-management"
+    ECR_REPO: "asset-management"
+    DOCKERFILE_PATH: "src/asset-management/Dockerfile"
+    BUILD_CONTEXT: "src/asset-management"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "demo"'
+      changes:
+        - src/asset-management/**/*
+        - src/shared/**/*
+      when: on_success
+
+    - if: '$CI_COMMIT_BRANCH == "demo"'
+      when: manual
+      allow_failure: true
