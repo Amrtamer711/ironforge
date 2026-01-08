@@ -1,1 +1,1 @@
-Just added this file to toggle initial k8s deployment..
+Just added this file to toggle initial k8s deployment.
