@@ -171,13 +171,13 @@ deploy_unifiedui_env:
       ENV_FILE="$(mktemp)"
       trap 'rm -f "${ENV_FILE}"' EXIT
 
-      cat >"${ENV_FILE}" <<EOF
-ENVIRONMENT=development
-PORT=3005
-UI_DEV_SUPABASE_URL=${UI_DEV_SUPABASE_URL}
-UI_DEV_SUPABASE_ANON_KEY=${UI_DEV_SUPABASE_ANON_KEY}
-UI_DEV_SUPABASE_SERVICE_ROLE_KEY=${UI_DEV_SUPABASE_SERVICE_ROLE_KEY}
-EOF
+      printf '%s\n' \
+        "ENVIRONMENT=development" \
+        "PORT=3005" \
+        "UI_DEV_SUPABASE_URL=${UI_DEV_SUPABASE_URL}" \
+        "UI_DEV_SUPABASE_ANON_KEY=${UI_DEV_SUPABASE_ANON_KEY}" \
+        "UI_DEV_SUPABASE_SERVICE_ROLE_KEY=${UI_DEV_SUPABASE_SERVICE_ROLE_KEY}" \
+        > "${ENV_FILE}"
 
       kubectl -n "${UNIFIEDUI_NAMESPACE}" create secret generic "${UNIFIEDUI_SECRET_NAME}" \
         --from-env-file="${ENV_FILE}" \
