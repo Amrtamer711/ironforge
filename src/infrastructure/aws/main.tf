@@ -119,6 +119,18 @@ variable "ecr_force_delete" {
   default     = false
 }
 
+variable "enable_gitlab_ci_ecr_push_policy" {
+  type        = bool
+  description = "Whether Terraform should attach an inline ECR push policy to the GitLab OIDC CI role (AWS_ROLE_ARN) so CI can push images to repos in ecr_repository_names."
+  default     = false
+}
+
+variable "gitlab_ci_role_name" {
+  type        = string
+  description = "IAM role name used by GitLab CI via OIDC (AWS_ROLE_ARN). Terraform will attach the ECR push policy to this role when enable_gitlab_ci_ecr_push_policy=true."
+  default     = "GitLabOidcEcrPusher"
+}
+
 variable "eks_cluster_name" {
   type        = string
   description = "EKS cluster name."
@@ -325,6 +337,58 @@ module "ecr" {
   repository_names = var.ecr_repository_names
   force_delete     = var.ecr_force_delete
   tags             = local.common_tags
+}
+
+locals {
+  ecr_repository_arns = [
+    for repo_name in var.ecr_repository_names :
+    "arn:${data.aws_partition.current.partition}:ecr:${var.aws_region}:${data.aws_caller_identity.current.account_id}:repository/${repo_name}"
+  ]
+}
+
+# GitLab CI role (OIDC): allow pushing images to ECR.
+# This is intentionally separate from the EKS cluster auth (Access Entries).
+resource "aws_iam_role_policy" "gitlab_ci_ecr_push" {
+  count = var.enable_gitlab_ci_ecr_push_policy ? 1 : 0
+
+  name = "${local.name_prefix}-gitlab-ci-ecr-push"
+  role = var.gitlab_ci_role_name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "EcrGetAuthToken"
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "EcrPushToRepos"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:CompleteLayerUpload",
+          "ecr:InitiateLayerUpload",
+          "ecr:PutImage",
+          "ecr:UploadLayerPart",
+        ]
+        Resource = local.ecr_repository_arns
+      },
+      {
+        Sid    = "EcrReadRepoMetadata"
+        Effect = "Allow"
+        Action = [
+          "ecr:DescribeRepositories",
+          "ecr:DescribeImages",
+          "ecr:ListImages",
+        ]
+        Resource = local.ecr_repository_arns
+      },
+    ]
+  })
 }
 
 module "eks_fargate" {
