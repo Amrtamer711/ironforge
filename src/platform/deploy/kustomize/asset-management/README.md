@@ -23,3 +23,12 @@ Note: the ECR repository name used for this service is `asset_library` (legacy n
 ## Runtime env (Kubernetes)
 
 This Deployment can load runtime environment variables from a Secret named `asset-management-env` in the `backends` namespace (optional; pod will still start without it).
+
+Recommended flow (keeps secrets out of Git):
+
+1) Put your runtime settings into `src/asset-management/.env` (this repo already ignores `.env` files).
+2) Apply/update the Secret and restart the pods:
+
+```bash
+make platform-assetmgmt-env
+```

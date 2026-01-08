@@ -47,6 +47,14 @@ aws eks update-kubeconfig \
 make platform-argocd-bootstrap
 ```
 
+## Install platform applications
+
+Argo CD needs `Application` resources to know what to deploy (Unified UI, sales module, security service, asset management, etc).
+
+```bash
+make platform-argocd-apps
+```
+
 ## Access
 
 Recommended: expose via an internet-facing ALB Ingress (requires AWS Load Balancer Controller):

@@ -17,10 +17,12 @@ SHELL := /bin/bash
 .PHONY: help install dev run stop clean test lint format docker-up docker-down \
 	infra-bootstrap infra-init infra-plan infra-apply infra-output \
 	platform-argocd-bootstrap platform-argocd-tls-step1 platform-argocd-tls-step2 platform-argocd-url \
+	platform-argocd-apps \
 	platform-argocd-repo-creds \
 	platform-unifiedui-apply platform-unifiedui-url \
 	platform-unifiedui-set-tag \
 	platform-unifiedui-env \
+	platform-assetmgmt-env \
 	platform-apex-step1 platform-apex-step2 \
 	tf-bootstrap tf-init tf-plan tf-apply tf-output \
 	argocd-bootstrap argocd-tls-tf-init argocd-tls-step1 argocd-tls-step2 argocd-url
@@ -207,6 +209,7 @@ infra-output: infra-init ## Terraform outputs for AWS infrastructure
 ARGOCD_BOOTSTRAP_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/bootstrap
 ARGOCD_TLS_OVERLAY_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/bootstrap-tls
 ARGOCD_REPO_CREDS_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/repo-credentials
+ARGOCD_APPLICATIONS_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/applications
 
 # DNS/TLS variables (override with VAR=value)
 # Example:
@@ -216,6 +219,9 @@ ARGOCD_HOSTNAME ?= argocdmmg.global
 
 platform-argocd-bootstrap: ## Install/refresh Argo CD bootstrap (no TLS)
 	@kubectl apply -k $(ARGOCD_BOOTSTRAP_DIR)
+
+platform-argocd-apps: ## Install/refresh all Argo CD Applications (platform workloads)
+	@kubectl apply -k $(ARGOCD_APPLICATIONS_DIR)
 
 platform-argocd-tls-step1: infra-init ## Step 1: create Route53 zone + ACM (prints nameservers; you must set them in GoDaddy)
 	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) apply \
@@ -287,6 +293,24 @@ platform-unifiedui-set-tag: ## Set the Unified UI dev image tag in Git (TAG=...)
 platform-unifiedui-url: ## Print the Unified UI URL (requires PLATFORM_APEX)
 	@test -n "$(PLATFORM_APEX)" || (echo "$(RED)Missing PLATFORM_APEX (e.g. PLATFORM_APEX=mmg-nova.com)$(NC)" && exit 1)
 	@echo "https://$(PLATFORM_SERVICEPLATFORM_HOSTNAME)"
+
+# =============================================================================
+# PLATFORM - ASSET MANAGEMENT (EKS)
+# =============================================================================
+
+ASSETMGMT_NAMESPACE ?= backends
+ASSETMGMT_ENV_FILE ?= $(ROOT_DIR)/src/asset-management/.env
+ASSETMGMT_DEPLOYMENT ?= asset-management
+
+platform-assetmgmt-env: ## Create/update asset-management runtime secret from `src/asset-management/.env` (not committed) and restart pods
+	@test -f $(ASSETMGMT_ENV_FILE) || (echo "$(RED)Missing $(ASSETMGMT_ENV_FILE) (copy values from your env source)$(NC)" && exit 1)
+	@TMP_FILE=$$(mktemp); \
+	  awk -F= '/^[A-Za-z_.-][A-Za-z0-9_.-]*=.*/{print}' "$(ASSETMGMT_ENV_FILE)" > "$$TMP_FILE"; \
+	  kubectl -n $(ASSETMGMT_NAMESPACE) create secret generic asset-management-env \
+	    --from-env-file="$$TMP_FILE" \
+	    --dry-run=client -o yaml | kubectl apply -f -; \
+	  rm -f "$$TMP_FILE"; \
+	  kubectl -n $(ASSETMGMT_NAMESPACE) rollout restart deploy/$(ASSETMGMT_DEPLOYMENT)
 
 # =============================================================================
 # PLATFORM - DEDICATED APEX DOMAIN (EKS)
