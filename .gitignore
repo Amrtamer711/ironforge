@@ -93,3 +93,4 @@ worldstate
 src/platform/ArgoCD/bootstrap-tls/argocd-tls.env
 
 src/unified-ui-react/Old Code Archive/
+docs/TESTING_MCP.md
