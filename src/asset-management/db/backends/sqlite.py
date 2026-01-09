@@ -1550,3 +1550,34 @@ class SQLiteBackend(DatabaseBackend):
             return False
         finally:
             conn.close()
+
+    # =========================================================================
+    # COMPANIES
+    # =========================================================================
+
+    def get_companies(
+        self,
+        active_only: bool = True,
+        leaf_only: bool = True,
+    ) -> list[dict[str, Any]]:
+        """
+        Get all companies from config (SQLite doesn't have companies table).
+
+        For SQLite backend, we return the configured COMPANY_SCHEMAS.
+        This is a fallback for local development.
+        """
+        from config import COMPANY_SCHEMAS
+
+        # Return basic company info from config
+        return [
+            {
+                "id": idx,
+                "code": code,
+                "name": code,  # Use code as name for SQLite
+                "country": None,
+                "currency": None,
+                "is_group": False,
+                "is_active": True,
+            }
+            for idx, code in enumerate(COMPANY_SCHEMAS, start=1)
+        ]

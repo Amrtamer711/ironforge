@@ -2401,3 +2401,53 @@ class SupabaseBackend(DatabaseBackend):
                 "storage_keys": storage_keys,
                 "assets": all_assets,
             }
+
+    # =========================================================================
+    # COMPANIES
+    # =========================================================================
+
+    def get_companies(
+        self,
+        active_only: bool = True,
+        leaf_only: bool = True,
+    ) -> list[dict[str, Any]]:
+        """
+        Get all companies from the public.companies table.
+
+        Args:
+            active_only: If True, only return active companies
+            leaf_only: If True, only return leaf companies (not groups)
+
+        Returns:
+            List of company dicts with code, name, is_group, is_active, etc.
+        """
+        client = self._get_client()
+        try:
+            query = client.table("companies").select("*")
+
+            if active_only:
+                query = query.eq("is_active", True)
+
+            if leaf_only:
+                query = query.eq("is_group", False)
+
+            response = query.order("code").execute()
+
+            companies = []
+            for row in response.data or []:
+                companies.append({
+                    "id": row.get("id"),
+                    "code": row.get("code"),
+                    "name": row.get("name"),
+                    "country": row.get("country"),
+                    "currency": row.get("currency"),
+                    "is_group": row.get("is_group", False),
+                    "is_active": row.get("is_active", True),
+                })
+
+            logger.info(f"[SUPABASE] Retrieved {len(companies)} companies (active_only={active_only}, leaf_only={leaf_only})")
+            return companies
+
+        except Exception as e:
+            logger.error(f"[SUPABASE] Failed to get companies: {e}")
+            return []

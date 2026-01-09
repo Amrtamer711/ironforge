@@ -805,3 +805,25 @@ class DatabaseBackend(ABC):
             True if deleted successfully
         """
         pass
+
+    # =========================================================================
+    # COMPANIES
+    # =========================================================================
+
+    @abstractmethod
+    def get_companies(
+        self,
+        active_only: bool = True,
+        leaf_only: bool = True,
+    ) -> list[dict[str, Any]]:
+        """
+        Get all companies from the database.
+
+        Args:
+            active_only: If True, only return active companies
+            leaf_only: If True, only return leaf companies (not groups)
+
+        Returns:
+            List of company dicts with code, name, is_group, is_active, etc.
+        """
+        pass

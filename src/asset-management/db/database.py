@@ -553,6 +553,27 @@ class _DatabaseNamespace:
         """
         return self._backend.get_mockup_storage_info(network_key, company_schemas, include_all_assets)
 
+    # =========================================================================
+    # COMPANIES
+    # =========================================================================
+
+    def get_companies(
+        self,
+        active_only: bool = True,
+        leaf_only: bool = True,
+    ) -> list[dict[str, Any]]:
+        """
+        Get all companies from the database.
+
+        Args:
+            active_only: If True, only return active companies
+            leaf_only: If True, only return leaf companies (not groups)
+
+        Returns:
+            List of company dicts with code, name, is_group, is_active, etc.
+        """
+        return self._backend.get_companies(active_only, leaf_only)
+
 
 # Create the singleton database interface
 db = _DatabaseNamespace(_backend)
