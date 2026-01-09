@@ -66,7 +66,7 @@ async def expand_companies(
 
     Example:
         POST /api/companies/expand?company_codes=backlite
-        Returns: ["backlite_dubai", "backlite_ksa", "backlite_uk", "backlite_abudhabi"]
+        Returns: ["backlite_dubai", "backlite_uk", "backlite_abudhabi"]
     """
     expanded = db.expand_companies(company_codes)
     return {
@@ -88,7 +88,6 @@ async def get_company_hierarchy():
     - mmg (root group)
       - backlite (group)
         - backlite_dubai (leaf)
-        - backlite_ksa (leaf)
         - backlite_uk (leaf)
         - backlite_abudhabi (leaf)
       - viola (leaf)

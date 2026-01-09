@@ -260,8 +260,8 @@ async def _expand_companies_for_hierarchy(companies: list[str]) -> list[str]:
 
     If a user has access to a group company (e.g., 'mmg' or 'backlite'),
     this expands to all leaf companies they can access:
-    - mmg -> all companies (backlite_dubai, backlite_ksa, viola, etc.)
-    - backlite -> all backlite verticals (backlite_dubai, backlite_ksa, etc.)
+    - mmg -> all companies (backlite_dubai, backlite_uk, backlite_abudhabi, viola)
+    - backlite -> all backlite verticals (backlite_dubai, backlite_uk, backlite_abudhabi)
     - backlite_dubai -> just backlite_dubai (leaf company)
 
     Calls asset-management /api/companies/expand endpoint.

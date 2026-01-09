@@ -1591,7 +1591,7 @@ class SQLiteBackend(DatabaseBackend):
 
         For SQLite (local dev), we use a hardcoded hierarchy matching production:
         - mmg (group) -> all companies
-        - backlite (group) -> backlite_dubai, backlite_ksa, backlite_uk, backlite_abudhabi
+        - backlite (group) -> backlite_dubai, backlite_uk, backlite_abudhabi
         - viola (leaf) -> viola
         - Individual leaf companies -> themselves
         """

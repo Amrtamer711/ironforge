@@ -81,7 +81,7 @@ class MockupFrameService:
     - Check mockup availability
 
     Usage:
-        service = MockupFrameService(companies=["backlite_dubai", "backlite_ksa"])
+        service = MockupFrameService(companies=["backlite_dubai", "backlite_uk"])
 
         # Get available variations (searches all companies)
         variations = await service.list_variations("dubai_mall")
