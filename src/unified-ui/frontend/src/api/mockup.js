@@ -6,6 +6,10 @@ export async function getLocations() {
   return apiRequest("/api/sales/mockup/locations");
 }
 
+export async function getAssetTypes() {
+  return apiRequest("/api/assets/asset-types");
+}
+
 export async function getTemplates(location, { timeOfDay, side, venueType } = {}) {
   const params = new URLSearchParams();
   if (timeOfDay) params.set("time_of_day", timeOfDay);
