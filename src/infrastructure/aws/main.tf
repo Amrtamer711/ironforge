@@ -163,6 +163,78 @@ variable "enable_workload_fargate_profile" {
   default     = true
 }
 
+variable "enable_system_fargate_profiles" {
+  type        = bool
+  description = "Whether to create the kube-system Fargate profiles (CoreDNS + AWS Load Balancer Controller)."
+  default     = true
+}
+
+variable "enable_eks_managed_node_groups" {
+  type        = bool
+  description = "Whether to create EKS managed node groups (EC2 workers)."
+  default     = false
+}
+
+variable "eks_node_capacity_type" {
+  type        = string
+  description = "Capacity type for node groups: ON_DEMAND or SPOT."
+  default     = "ON_DEMAND"
+}
+
+variable "eks_node_disk_size" {
+  type        = number
+  description = "Disk size in GiB for EC2 nodes (EBS root volume)."
+  default     = 50
+}
+
+variable "eks_general_instance_types" {
+  type        = list(string)
+  description = "EC2 instance types for the general-purpose node group."
+  default     = ["m6i.large"]
+}
+
+variable "eks_general_min_size" {
+  type        = number
+  description = "Minimum size for the general-purpose node group."
+  default     = 2
+}
+
+variable "eks_general_desired_size" {
+  type        = number
+  description = "Desired size for the general-purpose node group."
+  default     = 2
+}
+
+variable "eks_general_max_size" {
+  type        = number
+  description = "Maximum size for the general-purpose node group."
+  default     = 4
+}
+
+variable "eks_sales_instance_types" {
+  type        = list(string)
+  description = "EC2 instance types for the dedicated sales node group (start with r6i.xlarge)."
+  default     = ["r6i.xlarge"]
+}
+
+variable "eks_sales_min_size" {
+  type        = number
+  description = "Minimum size for the dedicated sales node group."
+  default     = 1
+}
+
+variable "eks_sales_desired_size" {
+  type        = number
+  description = "Desired size for the dedicated sales node group."
+  default     = 1
+}
+
+variable "eks_sales_max_size" {
+  type        = number
+  description = "Maximum size for the dedicated sales node group."
+  default     = 3
+}
+
 variable "workload_namespaces" {
   type        = list(string)
   description = "Kubernetes namespaces to schedule onto Fargate for workloads (apps + platform controllers like ArgoCD)."
@@ -400,10 +472,34 @@ module "eks_fargate" {
   vpc_id                                      = module.network.vpc_id
   private_subnet_ids                          = module.network.private_subnet_ids
   bootstrap_cluster_creator_admin_permissions = var.bootstrap_cluster_creator_admin_permissions
+  enable_system_fargate_profiles              = var.enable_system_fargate_profiles
   enable_workload_fargate_profile             = var.enable_workload_fargate_profile
   workload_namespaces                         = var.workload_namespaces
   workload_namespace_labels                   = var.workload_namespace_labels
   tags                                        = local.common_tags
+}
+
+module "eks_managed_nodes" {
+  source = "./modules/eks_managed_nodes"
+
+  enable       = var.enable_eks_managed_node_groups
+  cluster_name = module.eks_fargate.cluster_name
+  subnet_ids   = module.network.private_subnet_ids
+
+  capacity_type = var.eks_node_capacity_type
+  disk_size     = var.eks_node_disk_size
+
+  general_instance_types = var.eks_general_instance_types
+  general_min_size       = var.eks_general_min_size
+  general_desired_size   = var.eks_general_desired_size
+  general_max_size       = var.eks_general_max_size
+
+  sales_instance_types = var.eks_sales_instance_types
+  sales_min_size       = var.eks_sales_min_size
+  sales_desired_size   = var.eks_sales_desired_size
+  sales_max_size       = var.eks_sales_max_size
+
+  tags = local.common_tags
 }
 
 module "eks_access" {

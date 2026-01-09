@@ -24,6 +24,12 @@ variable "bootstrap_cluster_creator_admin_permissions" {
   default     = true
 }
 
+variable "enable_system_fargate_profiles" {
+  type        = bool
+  description = "Whether to create the kube-system Fargate profiles (CoreDNS + AWS Load Balancer Controller)."
+  default     = true
+}
+
 variable "enable_workload_fargate_profile" {
   type        = bool
   description = "Whether to create additional Fargate profiles for workload_namespaces."

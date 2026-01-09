@@ -26,3 +26,14 @@ patches:
         value:
           name: ASSET_MGMT_URL
           value: http://asset-management.backends.svc.cluster.local:8001
+      - op: add
+        path: /spec/template/spec/nodeSelector
+        value:
+          workload: sales
+      - op: add
+        path: /spec/template/spec/tolerations
+        value:
+          - key: dedicated
+            operator: Equal
+            value: sales
+            effect: NoSchedule
