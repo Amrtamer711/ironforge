@@ -19,6 +19,23 @@ spec:
     spec:
       priorityClassName: system-cluster-critical
       serviceAccountName: cluster-autoscaler
+      tolerations:
+        # Allow scheduling onto system/tainted nodes. The autoscaler is a critical
+        # cluster component, and should run even when nodes are tainted.
+        - key: "CriticalAddonsOnly"
+          operator: "Exists"
+        # Dedicated sales nodes are tainted; tolerate so autoscaler can run even
+        # if those are the only available nodes.
+        - key: "dedicated"
+          operator: "Equal"
+          value: "sales"
+          effect: "NoSchedule"
+        # If any Fargate nodes remain, tolerate their taint so scheduling doesn't
+        # get blocked by "untolerated taint(s)" errors.
+        - key: "eks.amazonaws.com/compute-type"
+          operator: "Equal"
+          value: "fargate"
+          effect: "NoSchedule"
       containers:
         - name: cluster-autoscaler
           image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.34.0

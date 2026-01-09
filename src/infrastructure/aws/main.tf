@@ -561,6 +561,65 @@ module "argocd_image_updater_irsa" {
   tags = local.common_tags
 }
 
+module "cluster_autoscaler_irsa" {
+  source = "./modules/irsa_role"
+
+  role_name   = "${local.name_prefix}-cluster-autoscaler"
+  policy_name = "${local.name_prefix}-cluster-autoscaler"
+
+  oidc_provider_arn = module.eks_fargate.oidc_provider_arn
+  oidc_provider_url = module.eks_fargate.oidc_provider_url
+
+  service_account_name = "cluster-autoscaler"
+  service_account_ns   = "kube-system"
+
+  policy_json = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AutoscalingWrite"
+        Effect = "Allow"
+        Action = [
+          "autoscaling:SetDesiredCapacity",
+          "autoscaling:TerminateInstanceInAutoScalingGroup",
+          "autoscaling:UpdateAutoScalingGroup",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AutoscalingRead"
+        Effect = "Allow"
+        Action = [
+          "autoscaling:DescribeAutoScalingGroups",
+          "autoscaling:DescribeAutoScalingInstances",
+          "autoscaling:DescribeLaunchConfigurations",
+          "autoscaling:DescribeScalingActivities",
+          "autoscaling:DescribeTags",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "Ec2Read"
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeAvailabilityZones",
+          "ec2:DescribeImages",
+          "ec2:DescribeInstances",
+          "ec2:DescribeInstanceTypes",
+          "ec2:DescribeLaunchTemplateVersions",
+          "ec2:DescribeRouteTables",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeVpcs",
+        ]
+        Resource = "*"
+      },
+    ]
+  })
+
+  tags = local.common_tags
+}
+
 module "argocd_dns" {
   source = "./modules/argocd_dns"
 
@@ -680,6 +739,16 @@ output "argocd_image_updater_role_arn" {
 output "argocd_image_updater_policy_arn" {
   value       = module.argocd_image_updater_irsa.policy_arn
   description = "IAM policy ARN attached to the argocd-image-updater IRSA role."
+}
+
+output "cluster_autoscaler_role_arn" {
+  value       = module.cluster_autoscaler_irsa.role_arn
+  description = "IRSA role ARN to annotate the cluster-autoscaler ServiceAccount (eks.amazonaws.com/role-arn)."
+}
+
+output "cluster_autoscaler_policy_arn" {
+  value       = module.cluster_autoscaler_irsa.policy_arn
+  description = "IAM policy ARN attached to the cluster-autoscaler IRSA role."
 }
 
 output "rds_endpoint" {
