@@ -29,7 +29,7 @@ services:
       # Service URLs for proxy routing
       - key: SALES_MODULE_URL
         value: "https://crm-sales-module.onrender.com"
-      - key: ASSET_MGMT_URL
+      - key: ASSET_MANAGEMENT_URL
         value: "https://crm-asset-management.onrender.com"
       - key: SECURITY_SERVICE_URL
         value: "https://crm-security-service.onrender.com"

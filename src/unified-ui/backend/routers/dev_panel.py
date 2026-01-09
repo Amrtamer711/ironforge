@@ -891,13 +891,13 @@ async def list_all_companies(_: bool = Depends(dev_only)) -> list[str]:
     """List all available companies in the system from Asset Management."""
     settings = get_settings()
 
-    if not settings.ASSET_MGMT_URL:
+    if not settings.ASSET_MANAGEMENT_URL:
         logger.warning("[DEV] Asset Management URL not configured, returning empty list")
         return []
 
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(f"{settings.ASSET_MGMT_URL}/api/companies")
+            response = await client.get(f"{settings.ASSET_MANAGEMENT_URL}/api/companies")
             response.raise_for_status()
             data = response.json()
             # Return just the company codes (leaf companies)

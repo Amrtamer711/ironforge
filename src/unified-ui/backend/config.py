@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     # URLs for backend API services (proxied requests)
     # ==========================================================================
     SALES_MODULE_URL: str | None = None  # Sales module API (proposals, bookings, etc.)
-    ASSET_MGMT_URL: str | None = None  # Asset management API (networks, locations, packages)
+    ASSET_MANAGEMENT_URL: str | None = None  # Asset management API (networks, locations, packages)
     SECURITY_SERVICE_URL: str | None = None  # Security service API (auth, audit, rate limiting)
 
     # ==========================================================================
@@ -224,7 +224,7 @@ class Settings(BaseSettings):
         )
         logger.info(f"[UI] CORS allowed origins: {origins_str}")
         logger.info(f"[UI] Sales Module URL: {self.SALES_MODULE_URL or '(not configured)'}")
-        logger.info(f"[UI] Asset Management URL: {self.ASSET_MGMT_URL or '(not configured)'}")
+        logger.info(f"[UI] Asset Management URL: {self.ASSET_MANAGEMENT_URL or '(not configured)'}")
         logger.info(f"[UI] Security Service URL: {self.SECURITY_SERVICE_URL or '(not configured)'}")
 
 

@@ -295,14 +295,14 @@ async def proxy_to_asset_management(
     """
     settings = get_settings()
 
-    if not settings.ASSET_MGMT_URL:
+    if not settings.ASSET_MANAGEMENT_URL:
         raise HTTPException(
             status_code=503,
             detail="Asset management service not configured",
         )
 
     # Build target URL (same pattern as sales proxy)
-    target_url = f"{settings.ASSET_MGMT_URL}/api/{path}"
+    target_url = f"{settings.ASSET_MANAGEMENT_URL}/api/{path}"
     if request.query_params:
         target_url += f"?{request.query_params}"
 
@@ -359,7 +359,7 @@ async def proxy_to_asset_management(
                 detail={
                     "error": "Asset management service unavailable",
                     "details": str(e),
-                    "target": settings.ASSET_MGMT_URL,
+                    "target": settings.ASSET_MANAGEMENT_URL,
                 },
             )
     except Exception as e:
