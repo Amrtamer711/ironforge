@@ -574,6 +574,37 @@ class _DatabaseNamespace:
         """
         return self._backend.get_companies(active_only, leaf_only)
 
+    def expand_companies(
+        self,
+        company_codes: list[str],
+    ) -> list[str]:
+        """
+        Expand company codes to include all accessible leaf companies.
+
+        Uses the company hierarchy to resolve access:
+        - If user has 'mmg' (root group): Returns ALL leaf companies
+        - If user has 'backlite' (group): Returns all backlite verticals
+        - If user has 'backlite_dubai' (leaf): Returns only 'backlite_dubai'
+
+        Args:
+            company_codes: List of company codes (may include groups)
+
+        Returns:
+            List of leaf company codes (schema names) the user can access
+        """
+        return self._backend.expand_companies(company_codes)
+
+    def get_company_hierarchy(
+        self,
+    ) -> list[dict[str, Any]]:
+        """
+        Get the full company hierarchy tree.
+
+        Returns:
+            List of companies with parent_id, is_group, and children info
+        """
+        return self._backend.get_company_hierarchy()
+
 
 # Create the singleton database interface
 db = _DatabaseNamespace(_backend)

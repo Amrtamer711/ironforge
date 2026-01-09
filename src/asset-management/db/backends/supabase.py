@@ -2451,3 +2451,118 @@ class SupabaseBackend(DatabaseBackend):
         except Exception as e:
             logger.error(f"[SUPABASE] Failed to get companies: {e}")
             return []
+
+    def expand_companies(
+        self,
+        company_codes: list[str],
+    ) -> list[str]:
+        """
+        Expand company codes to include all accessible leaf companies.
+
+        Uses the company hierarchy to resolve access:
+        - If user has 'mmg' (root group): Returns ALL leaf companies
+        - If user has 'backlite' (group): Returns all backlite verticals
+        - If user has 'backlite_dubai' (leaf): Returns only 'backlite_dubai'
+
+        Args:
+            company_codes: List of company codes (may include groups)
+
+        Returns:
+            List of leaf company codes (schema names) the user can access
+        """
+        if not company_codes:
+            return []
+
+        client = self._get_client()
+        try:
+            # First, get all companies with their hierarchy
+            response = client.table("companies").select("id, code, parent_id, is_group, is_active").execute()
+            all_companies = {c["code"]: c for c in (response.data or [])}
+
+            # Build parent->children map
+            children_map: dict[int, list[str]] = {}
+            for c in all_companies.values():
+                parent_id = c.get("parent_id")
+                if parent_id:
+                    if parent_id not in children_map:
+                        children_map[parent_id] = []
+                    children_map[parent_id].append(c["code"])
+
+            # Recursively get all children of a company
+            def get_all_descendants(company_id: int) -> set[str]:
+                descendants = set()
+                if company_id in children_map:
+                    for child_code in children_map[company_id]:
+                        child = all_companies.get(child_code)
+                        if child and child.get("is_active", True):
+                            if not child.get("is_group", False):
+                                # Leaf company - add it
+                                descendants.add(child_code)
+                            else:
+                                # Group company - recurse
+                                descendants.update(get_all_descendants(child["id"]))
+                return descendants
+
+            # Process each input company code
+            result_codes = set()
+            for code in company_codes:
+                company = all_companies.get(code)
+                if not company:
+                    logger.warning(f"[SUPABASE] Company not found: {code}")
+                    continue
+
+                if not company.get("is_active", True):
+                    continue
+
+                if company.get("is_group", False):
+                    # Group company - expand to all descendants
+                    result_codes.update(get_all_descendants(company["id"]))
+                else:
+                    # Leaf company - add directly
+                    result_codes.add(code)
+
+            result = sorted(result_codes)
+            logger.info(f"[SUPABASE] Expanded {company_codes} -> {result}")
+            return result
+
+        except Exception as e:
+            logger.error(f"[SUPABASE] Failed to expand companies: {e}")
+            # Fallback: return input codes that aren't groups
+            return [c for c in company_codes if c not in ("mmg", "backlite")]
+
+    def get_company_hierarchy(
+        self,
+    ) -> list[dict[str, Any]]:
+        """
+        Get the full company hierarchy tree.
+
+        Returns:
+            List of companies with id, code, name, parent_id, is_group, children
+        """
+        client = self._get_client()
+        try:
+            response = (
+                client.table("companies")
+                .select("id, code, name, parent_id, country, currency, is_group, is_active")
+                .order("id")
+                .execute()
+            )
+
+            companies = response.data or []
+
+            # Build children arrays
+            company_map = {c["id"]: c for c in companies}
+            for c in companies:
+                c["children"] = []
+
+            for c in companies:
+                parent_id = c.get("parent_id")
+                if parent_id and parent_id in company_map:
+                    company_map[parent_id]["children"].append(c["code"])
+
+            logger.info(f"[SUPABASE] Retrieved company hierarchy ({len(companies)} companies)")
+            return companies
+
+        except Exception as e:
+            logger.error(f"[SUPABASE] Failed to get company hierarchy: {e}")
+            return []

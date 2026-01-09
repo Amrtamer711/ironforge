@@ -50,3 +50,51 @@ async def list_companies(
         "companies": [c["code"] for c in companies],
         "details": companies,
     }
+
+
+@router.post("/api/companies/expand")
+async def expand_companies(
+    company_codes: list[str] = Query(..., description="Company codes to expand (may include groups)"),
+):
+    """
+    Expand company codes to all accessible leaf companies.
+
+    Uses the company hierarchy to resolve access:
+    - If user has 'mmg' (root group): Returns ALL leaf companies
+    - If user has 'backlite' (group): Returns all backlite verticals
+    - If user has 'backlite_dubai' (leaf): Returns only 'backlite_dubai'
+
+    Example:
+        POST /api/companies/expand?company_codes=backlite
+        Returns: ["backlite_dubai", "backlite_ksa", "backlite_uk", "backlite_abudhabi"]
+    """
+    expanded = db.expand_companies(company_codes)
+    return {
+        "input": company_codes,
+        "expanded": expanded,
+        "count": len(expanded),
+    }
+
+
+@router.get("/api/companies/hierarchy")
+async def get_company_hierarchy():
+    """
+    Get the full company hierarchy tree.
+
+    Returns all companies with their parent relationships and children.
+    Used by admin panels and permission management UIs.
+
+    Hierarchy structure:
+    - mmg (root group)
+      - backlite (group)
+        - backlite_dubai (leaf)
+        - backlite_ksa (leaf)
+        - backlite_uk (leaf)
+        - backlite_abudhabi (leaf)
+      - viola (leaf)
+    """
+    hierarchy = db.get_company_hierarchy()
+    return {
+        "hierarchy": hierarchy,
+        "count": len(hierarchy),
+    }
