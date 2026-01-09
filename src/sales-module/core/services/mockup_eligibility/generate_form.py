@@ -5,6 +5,8 @@ Form-based generate mode is used when generating mockups via the UI form.
 Shows both networks AND packages, but only those that have mockup frames configured.
 """
 
+import asyncio
+
 from .base import BaseEligibilityService, EligibilityResult, LocationOption, TemplateOption
 
 
@@ -42,12 +44,21 @@ class GenerateFormEligibilityService(BaseEligibilityService):
         networks_with_frames = set()  # Track for package eligibility check
 
         try:
-            # 1. Get all networks from Asset-Management API
+            # 1. BULK: Get all locations with frames in a single query
+            locations_with_frames = await self.frame_service.get_all_locations_with_frames()
+            networks_with_frames = set(locations_with_frames.keys())
+
+            self.logger.info(
+                f"[GENERATE_ELIGIBILITY] Bulk query found {len(networks_with_frames)} locations with frames"
+            )
+
+            # 2. Get all networks from Asset-Management API
             networks = await self.asset_client.get_networks(
                 companies=self.user_companies,
                 active_only=True
             )
 
+            # 3. Filter networks that have frames (O(1) lookup)
             for network in networks:
                 network_key = network.get("network_key")
                 if not network_key:
@@ -55,23 +66,16 @@ class GenerateFormEligibilityService(BaseEligibilityService):
 
                 company = network.get("company_schema") or network.get("company")
 
-                # Check if this network has frames (using shared method)
-                has_frames = await self._check_network_has_frames(network_key, company_hint=company)
-
-                if has_frames:
-                    networks_with_frames.add(network_key)
-                    variations = await self.frame_service.list_variations(
-                        network_key, company_hint=company
-                    )
-                    frame_count = sum(len(sides) for sides in variations.values())
-
+                # O(1) lookup instead of N API calls
+                if network_key in locations_with_frames:
+                    frame_info = locations_with_frames[network_key]
                     locations.append(LocationOption(
                         key=network_key,
                         name=network.get("name") or network_key.replace("_", " ").title(),
                         type="network",
                         has_frames=True,
-                        frame_count=frame_count,
-                        company=company,
+                        frame_count=frame_info.get("frame_count", 1),
+                        company=frame_info.get("company") or company,
                     ))
 
         except Exception as e:
@@ -178,8 +182,13 @@ class GenerateFormEligibilityService(BaseEligibilityService):
                 package_name = package_data.get("name", location_key)
                 company = package_data.get("company")
 
-                # Check if any network in package has frames (using shared method)
-                has_frames = await self._check_package_has_frames(package_id, company)
+                # Get bulk data for O(1) lookups
+                locations_with_frames = await self.frame_service.get_all_locations_with_frames()
+
+                # Check if any network in package has frames (using shared method with bulk data)
+                has_frames = await self._check_package_has_frames(
+                    package_id, company, locations_with_frames=locations_with_frames
+                )
 
                 if has_frames:
                     self.logger.info(f"[GENERATE_ELIGIBILITY] {location_key} is eligible (package with frames)")
@@ -295,7 +304,10 @@ class GenerateFormEligibilityService(BaseEligibilityService):
         package_id: int,
         company: str,
     ) -> list[TemplateOption]:
-        """Get all templates from all networks in a package."""
+        """Get all templates from all networks in a package.
+
+        Uses asyncio.gather for parallel fetching instead of sequential N API calls.
+        """
         templates = []
 
         try:
@@ -305,15 +317,25 @@ class GenerateFormEligibilityService(BaseEligibilityService):
             if not package_detail or not package_detail.get("items"):
                 return templates
 
+            # Build list of tasks for parallel execution
+            tasks = []
             for item in package_detail.get("items", []):
                 network_key = item.get("network_key")
                 network_name = item.get("network_name") or item.get("name")
 
                 if network_key:
-                    network_templates = await self._get_network_templates(
-                        network_key, network_name, company
+                    tasks.append(
+                        self._get_network_templates(network_key, network_name, company)
                     )
-                    templates.extend(network_templates)
+
+            # Execute all network template fetches in parallel
+            if tasks:
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+                for result in results:
+                    if isinstance(result, Exception):
+                        self.logger.debug(f"[GENERATE_ELIGIBILITY] Error in parallel fetch: {result}")
+                    elif result:
+                        templates.extend(result)
 
         except Exception as e:
             self.logger.warning(f"[GENERATE_ELIGIBILITY] Error getting package templates: {e}")

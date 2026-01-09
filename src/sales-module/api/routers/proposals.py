@@ -388,12 +388,30 @@ async def create_proposal(
                 detail="Combined proposals require at least 2 locations"
             )
 
-    # Validate all locations belong to user's companies
+    # OPTIMIZED: Batch validate all locations in single query
+    # Instead of N individual lookups, fetch all locations once and validate in memory
+    unique_locations = set()
     for proposal in request.proposals:
         location_key = proposal.location.strip().lower().replace(" ", "_")
-        is_valid, error_msg, _ = _validate_location_access(location_key, user_companies)
-        if not is_valid:
-            raise HTTPException(status_code=403, detail=error_msg)
+        unique_locations.add(location_key)
+
+    # Fetch all locations once (uses caching under the hood)
+    all_user_locations = db.get_locations_for_companies(user_companies)
+
+    # Build index for O(1) lookup
+    location_index = {}
+    for loc in all_user_locations:
+        key = loc.get("location_key", "").lower()
+        if key:
+            location_index[key] = loc
+
+    # Validate all locations
+    for location_key in unique_locations:
+        if location_key not in location_index:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Location '{location_key}' not found in your accessible companies."
+            )
 
     try:
         # Transform request to processor format (handles both LLM and simple formats)

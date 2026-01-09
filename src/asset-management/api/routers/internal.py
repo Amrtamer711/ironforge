@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Query, status
 import config
 from core.locations import Location, LocationService
 from core.networks import Network, NetworkService
+from core.packages import Package, PackageService
 from db.database import db
 
 router = APIRouter(prefix="/api/internal", tags=["Internal"])
@@ -26,6 +27,7 @@ logger = logging.getLogger("asset-management")
 # Service singletons
 _location_service = LocationService()
 _network_service = NetworkService()
+_package_service = PackageService()
 
 
 # =============================================================================
@@ -168,6 +170,71 @@ def list_networks_internal(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve networks",
+        )
+
+
+@router.get("/packages")
+def list_packages_internal(
+    companies: list[str] = Query(default=None, description="Filter by company schemas"),
+    active_only: bool = Query(default=True, description="Only return active packages"),
+    service: dict = Depends(verify_service_token),
+) -> list[Package]:
+    """
+    List all packages for service-to-service calls.
+
+    Used by Sales-Module for package eligibility checks.
+    """
+    caller = service.get("service", "unknown")
+    logger.info(f"[INTERNAL] {caller} fetching packages (companies={companies}, active_only={active_only})")
+
+    filter_companies = companies or config.COMPANY_SCHEMAS
+
+    try:
+        packages = _package_service.list_packages(
+            companies=filter_companies,
+            active_only=active_only,
+        )
+        logger.info(f"[INTERNAL] Returning {len(packages)} packages to {caller}")
+        return packages
+    except Exception as e:
+        logger.error(f"[INTERNAL] Failed to list packages: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve packages",
+        )
+
+
+@router.get("/packages/{company}/{package_id}")
+def get_package_internal(
+    company: str,
+    package_id: int,
+    include_items: bool = Query(default=True, description="Include package items"),
+    service: dict = Depends(verify_service_token),
+) -> Package | None:
+    """
+    Get a specific package by ID for service-to-service calls.
+
+    Used by Sales-Module for package eligibility and template fetching.
+    """
+    caller = service.get("service", "unknown")
+    logger.info(f"[INTERNAL] {caller} fetching package {package_id} from {company}")
+
+    try:
+        package = _package_service.get_package(
+            company=company,
+            package_id=package_id,
+            expand_locations=include_items,
+        )
+        if not package:
+            raise HTTPException(status_code=404, detail=f"Package not found: {package_id}")
+        return package
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[INTERNAL] Failed to get package: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve package",
         )
 
 

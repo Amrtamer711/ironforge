@@ -31,6 +31,10 @@ def _get_logger():
 # Cache TTL in seconds (5 minutes)
 CACHE_TTL = 300
 
+# Global cache for bulk locations query
+_bulk_locations_cache: dict[str, Any] | None = None
+_bulk_locations_cache_time: float = 0
+
 
 class MockupFrameCache:
     """Thread-safe cache for mockup frame discovery results."""
@@ -103,6 +107,79 @@ class MockupFrameService:
         else:
             self.companies = companies
         self.logger = _get_logger()
+
+    async def get_all_locations_with_frames(self) -> dict[str, dict]:
+        """
+        Get all locations that have mockup frames across all companies.
+
+        This is a bulk query to avoid N+1 queries when checking eligibility.
+        Results are cached for CACHE_TTL seconds.
+
+        Returns:
+            Dict mapping location_key to {company, frame_count}
+        """
+        import httpx
+
+        global _bulk_locations_cache, _bulk_locations_cache_time
+
+        # Check cache first
+        cache_key = ",".join(sorted(self.companies))
+        if (
+            _bulk_locations_cache is not None
+            and _bulk_locations_cache.get("key") == cache_key
+            and time.time() - _bulk_locations_cache_time < CACHE_TTL
+        ):
+            self.logger.info("[MOCKUP_FRAME_SERVICE] Bulk locations cache hit")
+            return _bulk_locations_cache.get("data", {})
+
+        self.logger.info(
+            f"[MOCKUP_FRAME_SERVICE] Getting all locations with frames for: {self.companies}"
+        )
+
+        try:
+            params = [("companies", c) for c in self.companies]
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(
+                    f"{asset_mgmt_client.base_url}/api/mockup-frames/bulk/locations-with-frames",
+                    params=params,
+                    headers={"X-Internal-Service": "sales-module"},
+                )
+
+            if response.status_code != 200:
+                self.logger.warning(
+                    f"[MOCKUP_FRAME_SERVICE] Bulk query failed: {response.status_code}"
+                )
+                return {}
+
+            results = response.json()
+
+            # Convert to dict for O(1) lookups
+            locations_map = {}
+            for item in results:
+                loc_key = item.get("location_key")
+                if loc_key:
+                    # If location exists in multiple companies, use first one
+                    if loc_key not in locations_map:
+                        locations_map[loc_key] = {
+                            "company": item.get("company"),
+                            "frame_count": item.get("frame_count", 1),
+                        }
+                    else:
+                        # Aggregate frame count across companies
+                        locations_map[loc_key]["frame_count"] += item.get("frame_count", 1)
+
+            # Cache the result
+            _bulk_locations_cache = {"key": cache_key, "data": locations_map}
+            _bulk_locations_cache_time = time.time()
+
+            self.logger.info(
+                f"[MOCKUP_FRAME_SERVICE] Found {len(locations_map)} locations with frames (cached)"
+            )
+            return locations_map
+
+        except Exception as e:
+            self.logger.error(f"[MOCKUP_FRAME_SERVICE] Error getting locations with frames: {e}")
+            return {}
 
     async def get_all_frames(
         self,
@@ -508,8 +585,19 @@ class MockupFrameService:
             # matching is list of (storage_key, photo, tod, side, env)
             matching = []
 
-            for storage_key in storage_keys:
-                frames, found_company = await self.get_all_frames(storage_key, company_hint=company)
+            # OPTIMIZED: Fetch frames from all storage keys in parallel
+            async def fetch_frames_for_key(storage_key: str):
+                return storage_key, await self.get_all_frames(storage_key, company_hint=company)
+
+            tasks = [fetch_frames_for_key(sk) for sk in storage_keys]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for result in results:
+                if isinstance(result, Exception):
+                    self.logger.debug(f"[MOCKUP_FRAME_SERVICE] Error fetching frames: {result}")
+                    continue
+
+                storage_key, (frames, found_company) = result
                 if not frames:
                     continue
 
@@ -595,10 +683,19 @@ class MockupFrameService:
             storage_keys = storage_info.get("storage_keys", [])
             company = storage_info.get("company")
 
-            # Check each storage key for frames
-            for storage_key in storage_keys:
+            # OPTIMIZED: Check all storage keys in parallel
+            async def check_key(storage_key: str):
                 frames, _ = await self.get_all_frames(storage_key, company_hint=company)
-                if frames:
+                return storage_key, bool(frames)
+
+            tasks = [check_key(sk) for sk in storage_keys]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            for result in results:
+                if isinstance(result, Exception):
+                    continue
+                storage_key, has_frames = result
+                if has_frames:
                     self.logger.info(
                         f"[MOCKUP_FRAME_SERVICE] Found frames for {location_key} at storage_key={storage_key}"
                     )

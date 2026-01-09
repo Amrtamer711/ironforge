@@ -213,19 +213,28 @@ class BaseEligibilityService(ABC):
     async def _check_package_has_frames(
         self,
         package_id: int,
-        company: str
+        company: str,
+        locations_with_frames: dict[str, dict] | None = None
     ) -> bool:
         """
         Check if any network in a package has mockup frames.
 
+        Uses bulk lookup for O(1) checks instead of N API calls.
+
         Args:
             package_id: Package ID to check
             company: Company schema
+            locations_with_frames: Pre-fetched bulk data from get_all_locations_with_frames().
+                                   If not provided, will fetch it (less efficient).
 
         Returns:
             True if at least one network in the package has frames, False otherwise
         """
         try:
+            # Get bulk data if not provided (caller should pass this for efficiency)
+            if locations_with_frames is None:
+                locations_with_frames = await self.frame_service.get_all_locations_with_frames()
+
             package_detail = await self.asset_client.get_package(
                 company=company,
                 package_id=package_id,
@@ -235,15 +244,11 @@ class BaseEligibilityService(ABC):
             if not package_detail or not package_detail.get("items"):
                 return False
 
+            # O(1) lookup for each network instead of N API calls
             for item in package_detail.get("items", []):
                 network_key = item.get("network_key")
-                if network_key:
-                    has_frames = await self._check_network_has_frames(
-                        network_key,
-                        company_hint=company
-                    )
-                    if has_frames:
-                        return True
+                if network_key and network_key in locations_with_frames:
+                    return True
 
             return False
 

@@ -1249,14 +1249,15 @@ async def soft_delete_mockup_by_location(
             logger.debug(f"[STORAGE] No mockup file found for {location_key}/{photo_filename}")
             return False
 
-        # Soft-delete all matching records (usually just one)
-        for record in response.data:
-            file_id = record.get("file_id")
+        # OPTIMIZED: Batch update with IN clause instead of N individual updates
+        file_ids = [record.get("file_id") for record in response.data if record.get("file_id")]
+
+        if file_ids:
             client.table("mockup_files").update({
                 "is_deleted": True,
                 "deleted_at": datetime.utcnow().isoformat(),
-            }).eq("file_id", file_id).execute()
-            logger.info(f"[STORAGE] Soft-deleted mockup file {file_id}")
+            }).in_("file_id", file_ids).execute()
+            logger.info(f"[STORAGE] Soft-deleted {len(file_ids)} mockup file(s): {file_ids}")
 
         return True
 

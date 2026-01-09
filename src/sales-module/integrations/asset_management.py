@@ -313,7 +313,7 @@ class AssetManagementClient:
             "companies": companies,
             "active_only": active_only,
         }
-        return await self._request("GET", "/api/packages", params=params) or []
+        return await self._request("GET", "/api/internal/packages", params=params) or []
 
     async def get_package(
         self,
@@ -335,7 +335,7 @@ class AssetManagementClient:
         params = {"include_items": include_items}
         return await self._request(
             "GET",
-            f"/api/packages/{company}/{package_id}",
+            f"/api/internal/packages/{company}/{package_id}",
             params=params,
         )
 

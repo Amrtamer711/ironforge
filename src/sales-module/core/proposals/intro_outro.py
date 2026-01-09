@@ -20,15 +20,36 @@ class IntroOutroHandler:
     - Fall back to first location if no Landmark found
     """
 
-    def __init__(self, available_locations: list[dict[str, Any]]):
+    def __init__(
+        self,
+        available_locations: list[dict[str, Any]],
+        location_index: dict[str, dict[str, Any]] | None = None,
+    ):
         """
         Initialize handler with available locations.
 
         Args:
             available_locations: List of location dicts from AssetService
+            location_index: Optional pre-built index for O(1) lookups.
+                           If not provided, will be built from available_locations.
         """
         self.available_locations = available_locations
         self.logger = config.logger
+
+        # OPTIMIZED: Build or use location index for O(1) lookups
+        if location_index is not None:
+            self._location_index = location_index
+        else:
+            # Build index from list
+            self._location_index = {}
+            for loc in available_locations:
+                key = loc.get("location_key") or loc.get("key")
+                if key:
+                    self._location_index[key.lower()] = loc
+
+    def _get_location_fast(self, location_key: str) -> dict[str, Any] | None:
+        """O(1) location lookup using pre-built index."""
+        return self._location_index.get(location_key.lower())
 
     def get_intro_outro_location(
         self,
@@ -74,8 +95,8 @@ class IntroOutroHandler:
             if not location_key:
                 continue
 
-            # Get location metadata
-            location_meta = get_location_metadata(location_key, self.available_locations)
+            # OPTIMIZED: O(1) lookup instead of O(N) search
+            location_meta = self._get_location_fast(location_key)
             if not location_meta:
                 continue
 
@@ -106,7 +127,8 @@ class IntroOutroHandler:
             self.logger.info(f"[INTRO_OUTRO] Falling back to first location: '{first_location_key}'")
 
             if first_location_key:
-                location_meta = get_location_metadata(first_location_key, self.available_locations)
+                # OPTIMIZED: O(1) lookup instead of O(N) search
+                location_meta = self._get_location_fast(first_location_key)
                 if location_meta:
                     series = location_meta.get('series', '')
                     display_name = location_meta.get('display_name', first_location_key)
