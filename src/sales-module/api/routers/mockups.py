@@ -489,6 +489,17 @@ async def list_mockup_templates(
         side: Filter by "gold", "silver", "single_side", or "all" (only applies to outdoor)
         venue_type: Filter by "indoor", "outdoor", or "all"
 
+    Returns:
+        {
+            "templates": [...],  # Filtered templates based on query params
+            "available_configs": {  # ALL available configs (unfiltered, for dropdown filtering)
+                "has_frames": bool,
+                "available_venue_types": ["outdoor", "indoor"],
+                "available_time_of_days": {"outdoor": ["day", "night"], ...},
+                "available_sides": {"outdoor": {"day": ["gold", "silver"], ...}, ...}
+            }
+        }
+
     Requires sales:mockups:read permission.
     """
     try:
@@ -508,6 +519,12 @@ async def list_mockup_templates(
         templates = []
         seen = set()  # Dedupe: (photo, storage_key, env, tod, side)
 
+        # For available_configs computation (before filtering)
+        all_venue_types = set()
+        time_of_days_by_venue: dict[str, set[str]] = {}
+        sides_by_venue_tod: dict[str, dict[str, set[str]]] = {}
+        has_any_frames = False
+
         # Step 2: Fetch frames from EACH storage key
         # storage_key is "{network_key}/{type_key}" for traditional, "{network_key}" for standalone
         for storage_key in storage_keys:
@@ -522,6 +539,22 @@ async def list_mockup_templates(
                 if not photo:
                     continue
 
+                has_any_frames = True
+
+                # === BUILD AVAILABLE_CONFIGS (from ALL frames, before filtering) ===
+                all_venue_types.add(env)
+                if env not in time_of_days_by_venue:
+                    time_of_days_by_venue[env] = set()
+                if env == "outdoor":
+                    time_of_days_by_venue[env].add(tod)
+                if env not in sides_by_venue_tod:
+                    sides_by_venue_tod[env] = {}
+                if env == "outdoor":
+                    if tod not in sides_by_venue_tod[env]:
+                        sides_by_venue_tod[env][tod] = set()
+                    sides_by_venue_tod[env][tod].add(frame_side)
+
+                # === APPLY FILTERS FOR RETURNED TEMPLATES ===
                 # Step 3: Filter by venue_type (environment) FIRST
                 if venue_type != "all" and env != venue_type:
                     continue
@@ -555,7 +588,21 @@ async def list_mockup_templates(
                     "company": frame_company or company,  # Company that owns this frame (for O(1) photo lookup)
                 })
 
-        return {"templates": templates}
+        # Build available_configs response (computed from ALL frames, not filtered)
+        available_configs = {
+            "has_frames": has_any_frames,
+            "available_venue_types": sorted(all_venue_types),
+            "available_time_of_days": {env: sorted(tods) for env, tods in time_of_days_by_venue.items()},
+            "available_sides": {
+                env: {tod: sorted(sides) for tod, sides in tods.items()}
+                for env, tods in sides_by_venue_tod.items()
+            },
+        }
+
+        return {
+            "templates": templates,
+            "available_configs": available_configs,
+        }
 
     except Exception as e:
         logger.error(f"[MOCKUP API] Error listing templates: {e}")
@@ -1198,7 +1245,7 @@ async def get_location_templates(
     user: AuthUser = Depends(require_permission("sales:mockups:read"))
 ):
     """
-    Get all available templates for a location.
+    Get all available templates for a location with available config combinations.
 
     If location is a package, returns templates from ALL networks in the package.
     If location is a network, returns templates for that network only.
@@ -1207,7 +1254,17 @@ async def get_location_templates(
         location_key: Network key or package key
 
     Returns:
-        List of available templates
+        {
+            "templates": [...],
+            "count": int,
+            "location_key": str,
+            "available_configs": {
+                "has_frames": bool,
+                "available_venue_types": ["outdoor", "indoor"],
+                "available_time_of_days": {"outdoor": ["day", "night"], ...},
+                "available_sides": {"outdoor": {"day": ["gold", "silver"], ...}, ...}
+            }
+        }
     """
     from core.services.mockup_eligibility import GenerateFormEligibilityService
 
@@ -1220,11 +1277,14 @@ async def get_location_templates(
     try:
         service = GenerateFormEligibilityService(user_companies=user.companies)
         templates = await service.get_templates_for_location(location_key)
+        # Efficient: derive available_configs from already-fetched templates (no duplicate API calls)
+        available_configs = service.get_available_configs_from_templates(templates, location_key)
 
         return {
             "templates": [t.to_dict() for t in templates],
             "count": len(templates),
             "location_key": location_key,
+            "available_configs": available_configs,
         }
     except Exception as e:
         logger.error(f"[ELIGIBILITY API] Error getting templates for {location_key}: {e}", exc_info=True)

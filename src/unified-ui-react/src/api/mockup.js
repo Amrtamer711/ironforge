@@ -121,12 +121,35 @@ export async function getGenerateLocations() {
 }
 
 /**
- * Get all available templates for a location.
+ * Get all available templates for a location with available config combinations.
  * If location is a package, returns templates from ALL networks in package.
  * @param {string} locationKey - Network or package key
+ * @returns {Promise<{templates: Array, count: number, location_key: string, available_configs: Object}>}
  */
 export async function getEligibleTemplates(locationKey) {
   return apiRequest(`/api/sales/mockup/eligibility/templates/${encodeURIComponent(locationKey)}`);
+}
+
+/**
+ * Extract available configs from templates response.
+ * Used for dynamic dropdown filtering based on which mockup configs exist.
+ *
+ * @param {Object} templatesResponse - Response from getEligibleTemplates
+ * @returns {Object} Available configs for filtering:
+ *   {
+ *     has_frames: boolean,
+ *     available_venue_types: string[],       // e.g., ["outdoor", "indoor"]
+ *     available_time_of_days: Object,        // e.g., {"outdoor": ["day", "night"]}
+ *     available_sides: Object                // e.g., {"outdoor": {"day": ["gold", "silver"]}}
+ *   }
+ */
+export function getAvailableConfigs(templatesResponse) {
+  return templatesResponse?.available_configs || {
+    has_frames: false,
+    available_venue_types: [],
+    available_time_of_days: {},
+    available_sides: {},
+  };
 }
 
 /**
