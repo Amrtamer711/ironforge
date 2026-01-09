@@ -368,31 +368,47 @@ export function MockupPage() {
     const missing = templates.filter((t) => !templateThumbsRef.current[getTemplateKey(t)]);
     if (!missing.length) return () => {};
 
+    // OPTIMIZED: Fetch all thumbnails in parallel instead of sequentially
     (async () => {
-      for (const t of missing) {
-        let url = "";
-        try {
-          url = await mockupApi.getTemplatePhotoBlobUrl(t.storage_key || primaryLocation, t.photo, {
-            timeOfDay: t.time_of_day || effectiveTimeOfDay,
-            side: t.side || side,
-          });
-        } catch {
-          url = "";
-        }
-        if (!active) {
-          if (url) URL.revokeObjectURL(url);
-          return;
-        }
-        if (url) {
+      const results = await Promise.all(
+        missing.map(async (t) => {
           const key = getTemplateKey(t);
-          setTemplateThumbs((prev) => {
-            if (prev[key]) {
-              URL.revokeObjectURL(url);
-              return prev;
-            }
-            return { ...prev, [key]: url };
-          });
+          let url = "";
+          try {
+            url = await mockupApi.getTemplatePhotoBlobUrl(t.storage_key || primaryLocation, t.photo, {
+              timeOfDay: t.time_of_day || effectiveTimeOfDay,
+              side: t.side || side,
+              company: t.company,  // O(1) lookup hint from templates response
+            });
+          } catch {
+            url = "";
+          }
+          return { key, url };
+        })
+      );
+
+      // Check if still active after parallel fetch completes
+      if (!active) {
+        // Cleanup all fetched URLs
+        results.forEach(({ url }) => {
+          if (url) URL.revokeObjectURL(url);
+        });
+        return;
+      }
+
+      // Batch update state with all successful results
+      const newThumbs = {};
+      results.forEach(({ key, url }) => {
+        if (url && !templateThumbsRef.current[key]) {
+          newThumbs[key] = url;
+        } else if (url) {
+          // Already exists, cleanup duplicate
+          URL.revokeObjectURL(url);
         }
+      });
+
+      if (Object.keys(newThumbs).length > 0) {
+        setTemplateThumbs((prev) => ({ ...prev, ...newThumbs }));
       }
     })();
 
@@ -648,6 +664,7 @@ export function MockupPage() {
       const photoBlob = await mockupApi.getTemplatePhotoBlob(template.storage_key || primaryLocation, template.photo, {
         timeOfDay: template.time_of_day || effectiveTimeOfDay,
         side: template.side || side,
+        company: template.company,  // O(1) lookup hint from templates response
       });
       if (!photoBlob) throw new Error("Failed to load template image");
       const photoUrl = URL.createObjectURL(photoBlob);

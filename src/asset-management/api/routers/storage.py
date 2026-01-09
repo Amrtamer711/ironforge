@@ -4,6 +4,7 @@ Storage API Router - Templates and Mockup Files.
 Provides access to templates and mockup files stored in Supabase Storage.
 """
 
+import asyncio
 import base64
 import logging
 from typing import Any
@@ -137,7 +138,8 @@ async def get_template(company: str, location_key: str) -> dict[str, Any]:
         # Look for template file: {company}/{location_key}/{location_key}.pptx
         storage_key = f"{company}/{location_key}/{location_key}.pptx"
 
-        data = bucket.download(storage_key)
+        # Run blocking Supabase download in thread pool for concurrent execution
+        data = await asyncio.to_thread(bucket.download, storage_key)
         if not data:
             raise HTTPException(status_code=404, detail="Template not found")
 
@@ -172,9 +174,9 @@ async def template_exists(company: str, location_key: str) -> dict[str, bool]:
 
         storage_key = f"{company}/{location_key}/{location_key}.pptx"
 
-        # Try to get file info
+        # Try to get file info (run in thread pool)
         try:
-            bucket.download(storage_key)
+            await asyncio.to_thread(bucket.download, storage_key)
             return {"exists": True}
         except Exception:
             return {"exists": False}
@@ -355,7 +357,8 @@ async def get_intro_outro_pdf(company: str, pdf_name: str) -> dict[str, Any]:
         # Look for PDF in company's intro_outro folder
         storage_key = f"{company}/intro_outro/{pdf_name}.pdf"
 
-        data = bucket.download(storage_key)
+        # Run blocking Supabase download in thread pool for concurrent execution
+        data = await asyncio.to_thread(bucket.download, storage_key)
         if not data:
             raise HTTPException(status_code=404, detail="PDF not found")
 
@@ -452,7 +455,8 @@ async def get_mockup_photo(
             company, location_key, environment, time_of_day, side, photo_filename
         )
 
-        data = bucket.download(storage_key)
+        # Run blocking Supabase download in thread pool for concurrent execution
+        data = await asyncio.to_thread(bucket.download, storage_key)
         if not data:
             raise HTTPException(status_code=404, detail="Photo not found")
 
@@ -510,7 +514,8 @@ async def get_mockup_photo_indoor(
 
         storage_key = f"{company}/{location_key}/indoor/{photo_filename}"
 
-        data = bucket.download(storage_key)
+        # Run blocking Supabase download in thread pool for concurrent execution
+        data = await asyncio.to_thread(bucket.download, storage_key)
         if not data:
             raise HTTPException(status_code=404, detail="Photo not found")
 

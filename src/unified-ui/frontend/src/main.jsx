@@ -9,6 +9,8 @@ import "./styles/globals.css";
 import { AppRoutes } from "./routes/AppRoutes";
 import { AuthProvider } from "./state/auth";
 import { NotificationsProvider } from "./state/notifications";
+import { registerSW } from "virtual:pwa-register";
+registerSW({ immediate: true });
 
 const BRAND_KEY = "mmg-brand-theme";
 

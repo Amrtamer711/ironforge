@@ -1,18 +1,29 @@
 """
 Cache - In-memory caches for user sessions and mockup history.
+
+All caches have TTL-based cleanup to prevent unbounded memory growth.
 """
 
 import os
+import time
 from datetime import datetime, timedelta
 from typing import Any
 
 import config
 from core.utils.memory import cleanup_memory
 
+# Cache TTL settings (in seconds)
+USER_HISTORY_TTL = 3600  # 1 hour
+PENDING_LOCATION_TTL = 1800  # 30 minutes
+PENDING_BOOKING_ORDER_TTL = 3600  # 1 hour
+MAX_CACHE_SIZE = 1000  # Max entries per cache to prevent memory exhaustion
+
 # Global for user conversation history
-user_history: dict[str, list] = {}
+# Structure: {user_id: {"history": list, "timestamp": float}}
+user_history: dict[str, dict[str, Any]] = {}
 
 # Global for pending location additions (waiting for PPT upload)
+# Structure: {user_id: {"data": dict, "timestamp": float}}
 pending_location_additions: dict[str, dict[str, Any]] = {}
 
 # Global for mockup history (30-minute memory per user)
@@ -22,8 +33,73 @@ mockup_history: dict[str, dict[str, Any]] = {}
 
 # Global for booking order draft review sessions (active until approved/cancelled)
 # Structure: {user_id: {"data": dict, "warnings": List[str], "missing_required": List[str],
-#                        "original_file_path": Path, "company": str, "file_type": str}}
+#                        "original_file_path": Path, "company": str, "file_type": str, "timestamp": float}}
 pending_booking_orders: dict[str, dict[str, Any]] = {}
+
+
+def cleanup_stale_caches():
+    """
+    Clean up all stale cache entries.
+
+    OPTIMIZED: Prevents unbounded memory growth by removing expired entries.
+    Called periodically or when cache size exceeds MAX_CACHE_SIZE.
+    """
+    now = time.time()
+    cleaned_count = 0
+
+    # Clean user_history
+    stale_keys = [
+        k for k, v in user_history.items()
+        if now - v.get("timestamp", 0) > USER_HISTORY_TTL
+    ]
+    for k in stale_keys:
+        del user_history[k]
+        cleaned_count += 1
+
+    # Clean pending_location_additions
+    stale_keys = [
+        k for k, v in pending_location_additions.items()
+        if now - v.get("timestamp", 0) > PENDING_LOCATION_TTL
+    ]
+    for k in stale_keys:
+        del pending_location_additions[k]
+        cleaned_count += 1
+
+    # Clean pending_booking_orders
+    stale_keys = [
+        k for k, v in pending_booking_orders.items()
+        if now - v.get("timestamp", 0) > PENDING_BOOKING_ORDER_TTL
+    ]
+    for k in stale_keys:
+        del pending_booking_orders[k]
+        cleaned_count += 1
+
+    if cleaned_count > 0:
+        config.logger.info(f"[CACHE] Cleaned up {cleaned_count} stale cache entries")
+
+    return cleaned_count
+
+
+def _ensure_cache_size():
+    """Ensure caches don't exceed MAX_CACHE_SIZE by removing oldest entries."""
+    # Check user_history
+    if len(user_history) > MAX_CACHE_SIZE:
+        # Sort by timestamp, remove oldest
+        sorted_keys = sorted(user_history.keys(), key=lambda k: user_history[k].get("timestamp", 0))
+        for k in sorted_keys[:len(user_history) - MAX_CACHE_SIZE]:
+            del user_history[k]
+        config.logger.warning(f"[CACHE] Evicted {len(sorted_keys[:len(user_history) - MAX_CACHE_SIZE])} oldest user_history entries")
+
+    # Similar for other caches
+    if len(pending_location_additions) > MAX_CACHE_SIZE:
+        sorted_keys = sorted(pending_location_additions.keys(), key=lambda k: pending_location_additions[k].get("timestamp", 0))
+        for k in sorted_keys[:len(pending_location_additions) - MAX_CACHE_SIZE]:
+            del pending_location_additions[k]
+
+    if len(pending_booking_orders) > MAX_CACHE_SIZE:
+        sorted_keys = sorted(pending_booking_orders.keys(), key=lambda k: pending_booking_orders[k].get("timestamp", 0))
+        for k in sorted_keys[:len(pending_booking_orders) - MAX_CACHE_SIZE]:
+            del pending_booking_orders[k]
 
 
 def cleanup_expired_mockups():

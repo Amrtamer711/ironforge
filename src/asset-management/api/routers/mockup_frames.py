@@ -50,6 +50,41 @@ class MockupFrameDetail(BaseModel):
 # =============================================================================
 
 
+class LocationWithFrames(BaseModel):
+    """Location with frame count info."""
+    location_key: str
+    company: str
+    frame_count: int
+
+
+@router.get("/bulk/locations-with-frames", response_model=list[LocationWithFrames])
+async def get_locations_with_frames(
+    companies: list[str] = Query(..., description="Company schemas to check"),
+) -> list[dict[str, Any]]:
+    """
+    Get all locations that have mockup frames across companies.
+
+    This is a bulk query to avoid N+1 queries when checking eligibility.
+    Returns distinct location_keys with their company and frame count.
+
+    Args:
+        companies: List of company schemas to check
+
+    Returns:
+        List of locations with frame counts
+    """
+    logger.info(f"[MOCKUP_FRAMES] Getting locations with frames for: {companies}")
+
+    try:
+        results = db.get_locations_with_frames(companies)
+        logger.info(f"[MOCKUP_FRAMES] Found {len(results)} locations with frames")
+        return results
+
+    except Exception as e:
+        logger.error(f"[MOCKUP_FRAMES] Failed to get locations with frames: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{company}/{location_key}", response_model=list[MockupFrameInfo])
 async def list_mockup_frames(company: str, location_key: str) -> list[dict[str, Any]]:
     """

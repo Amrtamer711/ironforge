@@ -78,10 +78,14 @@ class MockupResponseBuilder:
         """
         self.location_key = location_key
         self.network_results: list[NetworkResult] = []
+        # OPTIMIZED: Dict index for O(1) network lookups
+        self._network_index: dict[str, NetworkResult] = {}
 
     def add_network_result(self, result: NetworkResult) -> None:
         """Add a network result to the response."""
         self.network_results.append(result)
+        # Update index for O(1) lookup
+        self._network_index[result.network_key] = result
 
     def add_mockup_to_network(
         self,
@@ -93,10 +97,10 @@ class MockupResponseBuilder:
 
         If network doesn't exist, creates a new NetworkResult.
         """
-        for result in self.network_results:
-            if result.network_key == network_key:
-                result.mockups.append(mockup)
-                return
+        # OPTIMIZED: O(1) lookup instead of O(N) linear search
+        if network_key in self._network_index:
+            self._network_index[network_key].mockups.append(mockup)
+            return
 
         # Network not found - this shouldn't happen if used correctly
         # but handle gracefully
@@ -107,6 +111,7 @@ class MockupResponseBuilder:
             mockups=[mockup],
         )
         self.network_results.append(new_result)
+        self._network_index[network_key] = new_result
 
     @property
     def total_mockups(self) -> int:

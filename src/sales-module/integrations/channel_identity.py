@@ -39,6 +39,20 @@ logger = logging.getLogger("proposal-bot")
 # Unified UI URL - where channel identity APIs live
 _unified_ui_url: str | None = None
 
+# OPTIMIZED: Shared HTTP client to avoid creating new connection per request
+_shared_http_client: aiohttp.ClientSession | None = None
+
+
+async def _get_shared_http_client() -> aiohttp.ClientSession:
+    """Get or create the shared HTTP client with connection pooling."""
+    global _shared_http_client
+    if _shared_http_client is None or _shared_http_client.closed:
+        _shared_http_client = aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(limit=10),
+            timeout=aiohttp.ClientTimeout(total=5),
+        )
+    return _shared_http_client
+
 
 def _get_ui_url() -> str:
     """Get the Unified UI service URL."""
@@ -91,7 +105,9 @@ class ChannelIdentity:
             - platform_user_id: str or None - linked platform user ID
         """
         try:
-            async with aiohttp.ClientSession() as session, session.post(
+            # OPTIMIZED: Use shared HTTP client instead of creating new one per request
+            session = await _get_shared_http_client()
+            async with session.post(
                 f"{_get_ui_url()}/api/channel-identity/record",
                 json={
                     "provider": provider,
@@ -102,7 +118,6 @@ class ChannelIdentity:
                     "real_name": real_name,
                     "avatar_url": avatar_url,
                 },
-                timeout=aiohttp.ClientTimeout(total=5),
             ) as response:
                 if response.status == 200:
                     return await response.json()
@@ -137,9 +152,10 @@ class ChannelIdentity:
             - platform_user_name: str or None
         """
         try:
-            async with aiohttp.ClientSession() as session, session.get(
+            # OPTIMIZED: Use shared HTTP client instead of creating new one per request
+            session = await _get_shared_http_client()
+            async with session.get(
                 f"{_get_ui_url()}/api/channel-identity/check/{provider}/{provider_user_id}",
-                timeout=aiohttp.ClientTimeout(total=5),
             ) as response:
                 if response.status == 200:
                     return await response.json()

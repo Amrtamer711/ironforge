@@ -1156,15 +1156,16 @@ class SQLiteBackend(DatabaseBackend):
         locations = self.list_locations([company_schema], network_id=network_id)
         total_locations = len(locations)
 
-        # Count eligible locations per service
-        proposal_eligible = sum(
-            1 for loc in locations
-            if self.check_location_eligibility(loc["id"], [company_schema])["service_eligibility"]["proposal_generator"]
-        )
-        calendar_eligible = sum(
-            1 for loc in locations
-            if self.check_location_eligibility(loc["id"], [company_schema])["service_eligibility"]["availability_calendar"]
-        )
+        # OPTIMIZED: Count eligible locations per service using in-memory check
+        # Instead of N DB calls, we compute eligibility from already-fetched data
+        proposal_eligible = 0
+        calendar_eligible = 0
+        for loc in locations:
+            service_elig = self._compute_location_eligibility(loc)
+            if service_elig.get("proposal_generator"):
+                proposal_eligible += 1
+            if service_elig.get("availability_calendar"):
+                calendar_eligible += 1
 
         # Proposal generator
         proposal_missing = []
@@ -1217,6 +1218,25 @@ class SQLiteBackend(DatabaseBackend):
             "total_location_count": total_locations,
         }
 
+    def _compute_location_eligibility(self, loc: dict[str, Any]) -> dict[str, bool]:
+        """
+        Compute eligibility for a location without DB call.
+
+        OPTIMIZED: Works on already-fetched location data to avoid N+1.
+        """
+        # Proposal generator - basic field check
+        proposal_eligible = bool(loc.get("display_name")) and bool(loc.get("display_type"))
+        # Mockup generator - basic field check
+        mockup_eligible = bool(loc.get("display_name"))
+        # Availability calendar - basic field check
+        calendar_eligible = bool(loc.get("display_name"))
+
+        return {
+            "proposal_generator": proposal_eligible,
+            "mockup_generator": mockup_eligible,
+            "availability_calendar": calendar_eligible,
+        }
+
     def get_eligible_locations(
         self,
         service: str,
@@ -1224,14 +1244,15 @@ class SQLiteBackend(DatabaseBackend):
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
-        # For SQLite, we do in-memory filtering since we don't have rate_cards/mockup_frames tables
+        # OPTIMIZED: Check eligibility in-memory instead of N DB calls
         all_locations = self.list_locations(company_schemas, limit=1000, offset=0)
         eligible = []
 
         for loc in all_locations:
-            eligibility = self.check_location_eligibility(loc["id"], company_schemas)
-            if eligibility["service_eligibility"].get(service, False):
-                loc["service_eligibility"] = eligibility["service_eligibility"]
+            # Compute eligibility without calling get_location again
+            service_elig = self._compute_location_eligibility(loc)
+            if service_elig.get(service, False):
+                loc["service_eligibility"] = service_elig
                 eligible.append(loc)
 
         return eligible[offset:offset + limit]
@@ -1243,13 +1264,45 @@ class SQLiteBackend(DatabaseBackend):
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
+        # OPTIMIZED: Bulk fetch all locations once, then group by network
         all_networks = self.list_networks(company_schemas, limit=1000, offset=0)
-        eligible = []
+        all_locations = self.list_locations(company_schemas, limit=10000, offset=0)
 
+        # Build index: network_id -> list of locations
+        locations_by_network: dict[int, list[dict]] = {}
+        for loc in all_locations:
+            net_id = loc.get("network_id")
+            if net_id:
+                if net_id not in locations_by_network:
+                    locations_by_network[net_id] = []
+                locations_by_network[net_id].append(loc)
+
+        eligible = []
         for net in all_networks:
-            eligibility = self.check_network_eligibility(net["id"], company_schemas)
-            if eligibility["service_eligibility"].get(service, False):
-                net["service_eligibility"] = eligibility["service_eligibility"]
+            net_id = net["id"]
+            company_schema = net.get("company_schema", "")
+            net_locations = locations_by_network.get(net_id, [])
+
+            # Compute network eligibility in-memory
+            proposal_eligible = 0
+            calendar_eligible = 0
+            for loc in net_locations:
+                service_elig = self._compute_location_eligibility(loc)
+                if service_elig.get("proposal_generator"):
+                    proposal_eligible += 1
+                if service_elig.get("availability_calendar"):
+                    calendar_eligible += 1
+
+            # Check network-level eligibility
+            has_name = bool(net.get("name"))
+            net_service_elig = {
+                "proposal_generator": has_name and proposal_eligible > 0,
+                "mockup_generator": False,  # Networks not eligible for mockup
+                "availability_calendar": has_name and calendar_eligible > 0,
+            }
+
+            if net_service_elig.get(service, False):
+                net["service_eligibility"] = net_service_elig
                 eligible.append(net)
 
         return eligible[offset:offset + limit]
@@ -1293,6 +1346,37 @@ class SQLiteBackend(DatabaseBackend):
                 if r.get("config"):
                     r["config"] = json.loads(r["config"])
             return results
+        finally:
+            conn.close()
+
+    def get_locations_with_frames(
+        self,
+        company_schemas: list[str],
+    ) -> list[dict[str, Any]]:
+        """
+        Get all distinct location_keys that have mockup frames across companies.
+
+        This is a bulk query to avoid N+1 queries when checking eligibility.
+
+        Args:
+            company_schemas: List of company schemas to check
+
+        Returns:
+            List of dicts with location_key, company, frame_count
+        """
+        conn = self._connect()
+        try:
+            placeholders = ",".join(["?" for _ in company_schemas])
+            cursor = conn.execute(
+                f"""
+                SELECT location_key, company, COUNT(*) as frame_count
+                FROM mockup_frames
+                WHERE company IN ({placeholders})
+                GROUP BY location_key, company
+                """,
+                company_schemas,
+            )
+            return self._rows_to_list(cursor.fetchall())
         finally:
             conn.close()
 

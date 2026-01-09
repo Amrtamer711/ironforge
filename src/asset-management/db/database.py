@@ -465,6 +465,13 @@ class _DatabaseNamespace:
         """List all mockup frames for a location."""
         return self._backend.list_mockup_frames(location_key, company_schema)
 
+    def get_locations_with_frames(
+        self,
+        company_schemas: list[str],
+    ) -> list[dict[str, Any]]:
+        """Get all distinct location_keys that have mockup frames across companies."""
+        return self._backend.get_locations_with_frames(company_schemas)
+
     def save_mockup_frame(
         self,
         location_key: str,

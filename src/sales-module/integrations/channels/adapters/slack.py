@@ -32,6 +32,20 @@ from crm_channels import (
 
 logger = logging.getLogger("proposal-bot")
 
+# OPTIMIZED: Shared HTTP client for all SlackAdapter instances
+# Avoids TCP/TLS handshake overhead per request
+_shared_http_client: aiohttp.ClientSession | None = None
+
+
+async def _get_shared_http_client() -> aiohttp.ClientSession:
+    """Get or create the shared HTTP client with connection pooling."""
+    global _shared_http_client
+    if _shared_http_client is None or _shared_http_client.closed:
+        _shared_http_client = aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(limit=20)
+        )
+    return _shared_http_client
+
 
 class SlackAdapter(ChannelAdapter):
     """
@@ -324,23 +338,24 @@ class SlackAdapter(ChannelAdapter):
         filename = file_info.get("name", "downloaded_file")
 
         try:
-            async with aiohttp.ClientSession() as session:
-                headers = {"Authorization": f"Bearer {self._bot_token}"}
-                async with session.get(url, headers=headers) as response:
-                    if response.status != 200:
-                        logger.error(f"[SlackAdapter] Download failed: {response.status}")
-                        return None
+            # OPTIMIZED: Use shared HTTP client instead of creating new one per request
+            session = await _get_shared_http_client()
+            headers = {"Authorization": f"Bearer {self._bot_token}"}
+            async with session.get(url, headers=headers) as response:
+                if response.status != 200:
+                    logger.error(f"[SlackAdapter] Download failed: {response.status}")
+                    return None
 
-                    # Create temp file
-                    suffix = Path(filename).suffix
-                    with tempfile.NamedTemporaryFile(
-                        delete=False,
-                        suffix=suffix,
-                        prefix="slack_download_"
-                    ) as tmp:
-                        content = await response.read()
-                        tmp.write(content)
-                        return Path(tmp.name)
+                # Create temp file
+                suffix = Path(filename).suffix
+                with tempfile.NamedTemporaryFile(
+                    delete=False,
+                    suffix=suffix,
+                    prefix="slack_download_"
+                ) as tmp:
+                    content = await response.read()
+                    tmp.write(content)
+                    return Path(tmp.name)
 
         except Exception as e:
             logger.error(f"[SlackAdapter] Failed to download file: {e}", exc_info=True)
@@ -458,9 +473,10 @@ class SlackAdapter(ChannelAdapter):
             payload["blocks"] = blocks
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(response_url, json=payload) as response:
-                    return response.status == 200
+            # OPTIMIZED: Use shared HTTP client instead of creating new one per request
+            session = await _get_shared_http_client()
+            async with session.post(response_url, json=payload) as response:
+                return response.status == 200
         except Exception as e:
             logger.error(f"[SlackAdapter] Failed to respond to action: {e}", exc_info=True)
             return False

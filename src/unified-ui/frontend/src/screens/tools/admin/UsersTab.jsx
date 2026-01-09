@@ -1024,7 +1024,7 @@ export function UsersModal({
                           type="button"
                           onClick={() => toggleUserProfile(value)}
                           className={cn(
-                            "mmg-profile-option flex items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm ring-1 transition-colors",
+                            "mmg-profile-option flex items-center justify-between gap-3 rounded-xl px-3 py-1.5 text-xs ring-1 transition-colors",
                             active
                               ? "bg-black/5 dark:bg-white/10 ring-black/20 dark:ring-white/20 text-black dark:text-white"
                               : "bg-white/60 dark:bg-white/5 ring-black/5 dark:ring-white/10 text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10"
@@ -1033,7 +1033,7 @@ export function UsersModal({
                           <span className="min-w-0 truncate">{profile.display_name || profile.name || value}</span>
                           <span
                             className={cn(
-                              "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
+                              "h-4 w-4 rounded-full flex items-center justify-center transition-colors",
                               active
                                 ? "bg-black text-white dark:bg-white dark:text-black shadow-soft"
                                 : "bg-black/5 dark:bg-white/10 text-black/40 dark:text-white/40"
@@ -1111,7 +1111,7 @@ export function UsersModal({
                           type="button"
                           onClick={() => toggleUserPermissionSet(value)}
                           className={cn(
-                            "flex items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm ring-1 transition-colors",
+                            "flex items-center justify-between gap-3 rounded-xl px-3 py-1.5 text-xs ring-1 transition-colors",
                             active
                               ? "bg-black/5 dark:bg-white/10 ring-black/20 dark:ring-white/20 text-black dark:text-white"
                               : "bg-white/60 dark:bg-white/5 ring-black/5 dark:ring-white/10 text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10"
@@ -1120,7 +1120,7 @@ export function UsersModal({
                           <span className="min-w-0 truncate">{set.display_name || set.name || value}</span>
                           <span
                             className={cn(
-                              "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
+                              "h-4 w-4 rounded-full flex items-center justify-center transition-colors",
                               active
                                 ? "bg-black text-white dark:bg-white dark:text-black shadow-soft"
                                 : "bg-black/5 dark:bg-white/10 text-black/40 dark:text-white/40"
@@ -1199,7 +1199,7 @@ export function UsersModal({
                             type="button"
                             onClick={() => toggleUserPermission(perm)}
                             className={cn(
-                              "flex items-center justify-between gap-3 rounded-xl px-3 py-2 text-sm ring-1 transition-colors",
+                              "flex items-center justify-between gap-3 rounded-xl px-3 py-1.5 text-xs ring-1 transition-colors",
                               active
                                 ? "bg-black/5 dark:bg-white/10 ring-black/20 dark:ring-white/20 text-black dark:text-white"
                                 : "bg-white/60 dark:bg-white/5 ring-black/5 dark:ring-white/10 text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/10"
@@ -1208,7 +1208,7 @@ export function UsersModal({
                             <span className="min-w-0 truncate">{perm}</span>
                             <span
                               className={cn(
-                                "h-6 w-6 rounded-full flex items-center justify-center transition-colors",
+                                "h-4 w-4 rounded-full flex items-center justify-center transition-colors",
                                 active
                                   ? "bg-black text-white dark:bg-white dark:text-black shadow-soft"
                                   : "bg-black/5 dark:bg-white/10 text-black/40 dark:text-white/40"

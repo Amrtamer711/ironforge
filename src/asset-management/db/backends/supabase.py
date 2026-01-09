@@ -467,6 +467,68 @@ class SupabaseBackend(DatabaseBackend):
 
         return result if status == "found" else None
 
+    def get_networks_by_ids(
+        self,
+        network_ids: list[int],
+        company_schemas: list[str],
+    ) -> list[dict[str, Any]]:
+        """
+        Bulk fetch networks by IDs.
+
+        Optimized for batch lookups - uses IN query instead of N individual queries.
+        Results are cached for future individual lookups.
+
+        Args:
+            network_ids: List of network IDs to fetch
+            company_schemas: Company schemas to search in
+
+        Returns:
+            List of network dicts (may be fewer than input if some not found)
+        """
+        if not network_ids:
+            return []
+
+        # Dedupe IDs
+        unique_ids = list(set(network_ids))
+        results = []
+        ids_to_fetch = []
+
+        # Check cache first for each ID
+        for nid in unique_ids:
+            cache_key = f"network:{nid}:{','.join(sorted(company_schemas))}"
+            cached = _run_async(self._cache_get(cache_key))
+            if cached is not None:
+                results.append(cached)
+            else:
+                ids_to_fetch.append(nid)
+
+        # Fetch remaining from database
+        if ids_to_fetch:
+            client = self._get_client()
+            for schema in company_schemas:
+                try:
+                    response = (
+                        client.schema(schema)
+                        .table("networks")
+                        .select("*")
+                        .in_("id", ids_to_fetch)
+                        .eq("is_active", True)
+                        .execute()
+                    )
+                    for row in response.data or []:
+                        row["company_schema"] = schema
+                        results.append(row)
+                        # Cache for future lookups
+                        cache_key = f"network:{row['id']}:{','.join(sorted(company_schemas))}"
+                        _run_async(self._cache_set(cache_key, row, ttl=NETWORK_CACHE_TTL))
+                        # Remove from ids_to_fetch to avoid duplicate fetches
+                        if row["id"] in ids_to_fetch:
+                            ids_to_fetch.remove(row["id"])
+                except Exception as e:
+                    logger.warning(f"[BULK] Error fetching networks from {schema}: {e}")
+
+        return results
+
     def list_networks(
         self,
         company_schemas: list[str],
@@ -644,6 +706,68 @@ class SupabaseBackend(DatabaseBackend):
             _run_async(self._cache_set(cache_key, result, ttl=ASSET_TYPE_CACHE_TTL))
 
         return result if status == "found" else None
+
+    def get_asset_types_by_ids(
+        self,
+        type_ids: list[int],
+        company_schemas: list[str],
+    ) -> list[dict[str, Any]]:
+        """
+        Bulk fetch asset types by IDs.
+
+        Optimized for batch lookups - uses IN query instead of N individual queries.
+        Results are cached for future individual lookups.
+
+        Args:
+            type_ids: List of asset type IDs to fetch
+            company_schemas: Company schemas to search in
+
+        Returns:
+            List of asset type dicts (may be fewer than input if some not found)
+        """
+        if not type_ids:
+            return []
+
+        # Dedupe IDs
+        unique_ids = list(set(type_ids))
+        results = []
+        ids_to_fetch = []
+
+        # Check cache first for each ID
+        for tid in unique_ids:
+            cache_key = f"asset_type:{tid}:{','.join(sorted(company_schemas))}"
+            cached = _run_async(self._cache_get(cache_key))
+            if cached is not None:
+                results.append(cached)
+            else:
+                ids_to_fetch.append(tid)
+
+        # Fetch remaining from database
+        if ids_to_fetch:
+            client = self._get_client()
+            for schema in company_schemas:
+                try:
+                    response = (
+                        client.schema(schema)
+                        .table("asset_types")
+                        .select("*")
+                        .in_("id", ids_to_fetch)
+                        .eq("is_active", True)
+                        .execute()
+                    )
+                    for row in response.data or []:
+                        row["company_schema"] = schema
+                        results.append(row)
+                        # Cache for future lookups
+                        cache_key = f"asset_type:{row['id']}:{','.join(sorted(company_schemas))}"
+                        _run_async(self._cache_set(cache_key, row, ttl=ASSET_TYPE_CACHE_TTL))
+                        # Remove from ids_to_fetch to avoid duplicate fetches
+                        if row["id"] in ids_to_fetch:
+                            ids_to_fetch.remove(row["id"])
+                except Exception as e:
+                    logger.warning(f"[BULK] Error fetching asset types from {schema}: {e}")
+
+        return results
 
     def list_asset_types(
         self,
@@ -903,19 +1027,72 @@ class SupabaseBackend(DatabaseBackend):
             offset=offset,
         )
 
-        # Enrich with network and type names
+        # OPTIMIZED: Bulk fetch networks and types instead of N individual queries
+        # Collect unique IDs
+        network_ids = list({r["network_id"] for r in results if r.get("network_id")})
+        type_ids = list({r["type_id"] for r in results if r.get("type_id")})
+
+        # Bulk fetch
+        networks = self.get_networks_by_ids(network_ids, company_schemas) if network_ids else []
+        types = self.get_asset_types_by_ids(type_ids, company_schemas) if type_ids else []
+
+        # Build lookup dicts for O(1) access
+        networks_map = {n["id"]: n for n in networks}
+        types_map = {t["id"]: t for t in types}
+
+        # Enrich with network and type names using O(1) lookups
         for r in results:
-            schema = r.get("company_schema")
-            if r.get("network_id"):
-                network = self.get_network(r["network_id"], [schema])
-                if network:
-                    r["network_name"] = network.get("name")
-            if r.get("type_id"):
-                asset_type = self.get_asset_type(r["type_id"], [schema])
-                if asset_type:
-                    r["type_name"] = asset_type.get("name")
+            if r.get("network_id") and r["network_id"] in networks_map:
+                r["network_name"] = networks_map[r["network_id"]].get("name")
+            if r.get("type_id") and r["type_id"] in types_map:
+                r["type_name"] = types_map[r["type_id"]].get("name")
 
         return results
+
+    def count_assets_by_network_ids(
+        self,
+        network_ids: list[int],
+        company_schemas: list[str],
+    ) -> dict[int, int]:
+        """
+        Count assets grouped by network ID.
+
+        Optimized for batch counting - uses single query with GROUP BY
+        instead of N individual list_network_assets calls.
+
+        Args:
+            network_ids: List of network IDs to count assets for
+            company_schemas: Company schemas to search in
+
+        Returns:
+            Dict mapping network_id -> asset count
+        """
+        if not network_ids:
+            return {}
+
+        counts = {nid: 0 for nid in network_ids}
+        client = self._get_client()
+
+        for schema in company_schemas:
+            try:
+                # Use RPC or direct count query
+                # Supabase doesn't have GROUP BY in the JS client, so we fetch and count
+                response = (
+                    client.schema(schema)
+                    .table("network_assets")
+                    .select("network_id")
+                    .in_("network_id", network_ids)
+                    .eq("is_active", True)
+                    .execute()
+                )
+                for row in response.data or []:
+                    nid = row.get("network_id")
+                    if nid in counts:
+                        counts[nid] += 1
+            except Exception as e:
+                logger.warning(f"[BULK] Error counting assets in {schema}: {e}")
+
+        return counts
 
     def update_network_asset(
         self,
@@ -1531,6 +1708,7 @@ class SupabaseBackend(DatabaseBackend):
         """Get package items (cached).
 
         After unification, all package items are networks.
+        Uses bulk fetching for network names and asset counts.
         """
         cache_key = f"package_items:{package_id}:{company_schema}"
 
@@ -1551,16 +1729,24 @@ class SupabaseBackend(DatabaseBackend):
             )
             items = response.data or []
 
-            # Enrich with network names and asset counts
-            for item in items:
-                network_id = item.get("network_id")
-                if network_id:
-                    network = self.get_network(network_id, [company_schema])
-                    if network:
-                        item["network_name"] = network.get("name")
-                    # Count network assets (locations) in this network
-                    assets = self.list_network_assets([company_schema], network_id=network_id)
-                    item["location_count"] = len(assets)
+            # OPTIMIZED: Bulk fetch networks and asset counts instead of N individual queries
+            network_ids = [item["network_id"] for item in items if item.get("network_id")]
+
+            if network_ids:
+                # Bulk fetch all networks
+                networks = self.get_networks_by_ids(network_ids, [company_schema])
+                networks_map = {n["id"]: n for n in networks}
+
+                # Bulk count assets for all networks
+                asset_counts = self.count_assets_by_network_ids(network_ids, [company_schema])
+
+                # Enrich items with O(1) lookups
+                for item in items:
+                    network_id = item.get("network_id")
+                    if network_id:
+                        if network_id in networks_map:
+                            item["network_name"] = networks_map[network_id].get("name")
+                        item["location_count"] = asset_counts.get(network_id, 0)
 
             # Cache the result
             _run_async(self._cache_set(cache_key, items, ttl=PACKAGE_CACHE_TTL))
@@ -1704,14 +1890,15 @@ class SupabaseBackend(DatabaseBackend):
         locations = self.list_locations([company_schema], network_id=network_id)
         total_locations = len(locations)
 
-        # Count eligible locations
+        # OPTIMIZED: Count eligible locations using in-memory check
+        # Instead of N DB calls, we compute eligibility from already-fetched data
         proposal_eligible = 0
         calendar_eligible = 0
         for loc in locations:
-            eligibility = self.check_location_eligibility(loc["id"], [company_schema])
-            if eligibility["service_eligibility"]["proposal_generator"]:
+            service_elig = self._compute_location_eligibility(loc)
+            if service_elig.get("proposal_generator"):
                 proposal_eligible += 1
-            if eligibility["service_eligibility"]["availability_calendar"]:
+            if service_elig.get("availability_calendar"):
                 calendar_eligible += 1
 
         # Proposal generator
@@ -1765,6 +1952,25 @@ class SupabaseBackend(DatabaseBackend):
             "total_location_count": total_locations,
         }
 
+    def _compute_location_eligibility(self, loc: dict[str, Any]) -> dict[str, bool]:
+        """
+        Compute eligibility for a location without DB call.
+
+        OPTIMIZED: Works on already-fetched location data to avoid N+1.
+        """
+        # Proposal generator - basic field check
+        proposal_eligible = bool(loc.get("display_name")) and bool(loc.get("display_type"))
+        # Mockup generator - basic field check
+        mockup_eligible = bool(loc.get("display_name"))
+        # Availability calendar - basic field check
+        calendar_eligible = bool(loc.get("display_name"))
+
+        return {
+            "proposal_generator": proposal_eligible,
+            "mockup_generator": mockup_eligible,
+            "availability_calendar": calendar_eligible,
+        }
+
     def get_eligible_locations(
         self,
         service: str,
@@ -1772,14 +1978,15 @@ class SupabaseBackend(DatabaseBackend):
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
-        # Get all locations then filter by eligibility
+        # OPTIMIZED: Check eligibility in-memory instead of N DB calls
         all_locations = self.list_locations(company_schemas, limit=1000)
         eligible = []
 
         for loc in all_locations:
-            eligibility = self.check_location_eligibility(loc["id"], company_schemas)
-            if eligibility["service_eligibility"].get(service, False):
-                loc["service_eligibility"] = eligibility["service_eligibility"]
+            # Compute eligibility without calling get_location again
+            service_elig = self._compute_location_eligibility(loc)
+            if service_elig.get(service, False):
+                loc["service_eligibility"] = service_elig
                 eligible.append(loc)
 
         return eligible[offset:offset + limit]
@@ -1791,13 +1998,44 @@ class SupabaseBackend(DatabaseBackend):
         limit: int = 100,
         offset: int = 0,
     ) -> list[dict[str, Any]]:
+        # OPTIMIZED: Bulk fetch all locations once, then group by network
         all_networks = self.list_networks(company_schemas, limit=1000)
-        eligible = []
+        all_locations = self.list_locations(company_schemas, limit=10000)
 
+        # Build index: network_id -> list of locations
+        locations_by_network: dict[int, list[dict]] = {}
+        for loc in all_locations:
+            net_id = loc.get("network_id")
+            if net_id:
+                if net_id not in locations_by_network:
+                    locations_by_network[net_id] = []
+                locations_by_network[net_id].append(loc)
+
+        eligible = []
         for net in all_networks:
-            eligibility = self.check_network_eligibility(net["id"], company_schemas)
-            if eligibility["service_eligibility"].get(service, False):
-                net["service_eligibility"] = eligibility["service_eligibility"]
+            net_id = net["id"]
+            net_locations = locations_by_network.get(net_id, [])
+
+            # Compute network eligibility in-memory
+            proposal_eligible = 0
+            calendar_eligible = 0
+            for loc in net_locations:
+                service_elig = self._compute_location_eligibility(loc)
+                if service_elig.get("proposal_generator"):
+                    proposal_eligible += 1
+                if service_elig.get("availability_calendar"):
+                    calendar_eligible += 1
+
+            # Check network-level eligibility
+            has_name = bool(net.get("name"))
+            net_service_elig = {
+                "proposal_generator": has_name and proposal_eligible > 0,
+                "mockup_generator": False,  # Networks not eligible for mockup
+                "availability_calendar": has_name and calendar_eligible > 0,
+            }
+
+            if net_service_elig.get(service, False):
+                net["service_eligibility"] = net_service_elig
                 eligible.append(net)
 
         return eligible[offset:offset + limit]
@@ -1851,6 +2089,66 @@ class SupabaseBackend(DatabaseBackend):
         except Exception as e:
             logger.debug(f"[SUPABASE] Failed to list mockup frames: {e}")
             return []
+
+    def get_locations_with_frames(
+        self,
+        company_schemas: list[str],
+    ) -> list[dict[str, Any]]:
+        """
+        Get all distinct location_keys that have mockup frames across companies.
+
+        This is a bulk query to avoid N+1 queries when checking eligibility.
+
+        Args:
+            company_schemas: List of company schemas to check
+
+        Returns:
+            List of dicts with location_key, company, frame_count
+        """
+        cache_key = f"locations_with_frames:{':'.join(sorted(company_schemas))}"
+
+        # Try cache first
+        cached = _run_async(self._cache_get(cache_key))
+        if cached is not None:
+            logger.debug(f"[CACHE] Locations with frames cache hit")
+            return cached
+
+        client = self._get_client()
+        results = []
+
+        for company in company_schemas:
+            try:
+                # Get distinct location_keys with frame count
+                response = (
+                    client.schema(company)
+                    .table("mockup_frames")
+                    .select("location_key")
+                    .execute()
+                )
+
+                if response.data:
+                    # Count frames per location
+                    location_counts = {}
+                    for row in response.data:
+                        loc_key = row.get("location_key")
+                        if loc_key:
+                            location_counts[loc_key] = location_counts.get(loc_key, 0) + 1
+
+                    for loc_key, count in location_counts.items():
+                        results.append({
+                            "location_key": loc_key,
+                            "company": company,
+                            "frame_count": count,
+                        })
+
+            except Exception as e:
+                logger.debug(f"[SUPABASE] Failed to get locations with frames for {company}: {e}")
+                continue
+
+        # Cache for 5 minutes (eligibility doesn't change often)
+        _run_async(self._cache_set(cache_key, results, ttl=300))
+
+        return results
 
     def save_mockup_frame(
         self,

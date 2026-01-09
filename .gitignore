@@ -96,8 +96,5 @@ src/platform/ArgoCD/bootstrap-tls/argocd-tls.env
 # Argo CD repo credentials (local env file)
 src/platform/ArgoCD/repo-credentials/gitlab-repo.env
 
-# Unified UI ingress hostname params (local env file)
-src/platform/deploy/kustomize/unifiedui/overlays/dev/unifiedui-params.env
-
-# Unified UI Supabase/runtime env (contains secrets)
-src/unified-ui/supabase.env
+src/unified-ui-react/Old Code Archive/
+docs/TESTING_MCP.md

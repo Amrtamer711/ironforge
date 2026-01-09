@@ -705,6 +705,24 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
+    def get_locations_with_frames(
+        self,
+        company_schemas: list[str],
+    ) -> list[dict[str, Any]]:
+        """
+        Get all distinct location_keys that have mockup frames across companies.
+
+        This is a bulk query to avoid N+1 queries when checking eligibility.
+
+        Args:
+            company_schemas: List of company schemas to check
+
+        Returns:
+            List of dicts with location_key, company, frame_count
+        """
+        pass
+
+    @abstractmethod
     def save_mockup_frame(
         self,
         location_key: str,

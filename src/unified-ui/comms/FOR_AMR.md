@@ -42,6 +42,17 @@
 1. Authentication issue where 401 causes logout within a specific time. maybe token expiry?
 2. Change the Auth redirect to new mmg-nova.com in supabase
 
+
+## Profiles 
+
+Sales Executive - Account director
+	associated with one company. only view their own mockups and proposals
+Head of Sales
+	associated with one company. They can view proposals and mockups of all users under that company.
+Chief Revenue Officer
+	across all companies. everything must be visible for all users.
+
+
 ## General
 
 1. Font issue when the font is not available in the local system.

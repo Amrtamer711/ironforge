@@ -376,7 +376,7 @@ async def list_mockup_templates(
         # Step 2: Fetch frames from EACH storage key
         # storage_key is "{network_key}/{type_key}/{asset_key}" for traditional, "{network_key}" for standalone
         for storage_key in storage_keys:
-            frames, _ = await service.get_all_frames(storage_key, company_hint=company)
+            frames, frame_company = await service.get_all_frames(storage_key, company_hint=company)
 
             for frame in frames:
                 env = frame.get("environment", "outdoor")
@@ -417,6 +417,7 @@ async def list_mockup_templates(
                     "side": frame_side,
                     "frame_count": len(frames_data) if frames_data else 1,
                     "config": frame_config,
+                    "company": frame_company or company,  # Company that owns this frame (for O(1) photo lookup)
                 })
 
         return {"templates": templates}
@@ -432,6 +433,7 @@ async def get_mockup_photo(
     photo_filename: str,  # Query param - required
     time_of_day: str = "all",
     side: str = "all",
+    company: str | None = None,  # Query param - company hint for O(1) lookup (from templates response)
     background_tasks: BackgroundTasks = None,
     user: AuthUser = Depends(require_permission("sales:mockups:read")),
 ):
@@ -442,6 +444,7 @@ async def get_mockup_photo(
         location_key: Path param - supports slashes for traditional networks
                       (e.g., "dubai_mall/digital_screens/mall_screen_a")
         photo_filename: Query param - the photo file to retrieve
+        company: Query param - optional company hint for O(1) lookup (avoids searching all companies)
 
     Requires sales:mockups:read permission.
     """
@@ -450,35 +453,48 @@ async def get_mockup_photo(
     location_key = "/".join(sanitize_path_component(seg) for seg in location_key.split("/"))
     photo_filename = sanitize_path_component(photo_filename)
 
-    logger.info(f"[PHOTO GET] Request for photo: {location_key}/{photo_filename} (time_of_day={time_of_day}, side={side})")
+    logger.info(f"[PHOTO GET] Request for photo: {location_key}/{photo_filename} (time_of_day={time_of_day}, side={side}, company={company})")
 
-    # Use MockupFrameService to fetch from Asset-Management (searches all companies)
+    # Use MockupFrameService to fetch from Asset-Management
+    # Pass company hint to avoid searching all companies sequentially
     service = MockupFrameService(companies=user.companies)
 
     if time_of_day == "all" or side == "all":
-        # Search across all variations
-        variations = await service.list_variations(location_key)
-        logger.info(f"[PHOTO GET] Available variations: {variations}")
+        # OPTIMIZED: Fetch all frames once, then do O(1) lookup instead of N API calls
+        # Pass company hint for direct lookup (avoids 4 sequential API calls)
+        frames, found_company = await service.get_all_frames(location_key, company_hint=company)
+        effective_company = found_company or company  # Use found company or fall back to hint
 
-        for tod in variations:
-            for sid in variations[tod]:
-                # Check if this photo exists in this variation
-                photos = await service.list_photos(location_key, tod, sid)
-                if photo_filename in photos:
-                    # Download the photo
-                    photo_path = await service.download_photo(location_key, tod, sid, photo_filename)
-                    if photo_path and photo_path.exists():
-                        file_size = os.path.getsize(photo_path)
-                        logger.info(f"[PHOTO GET] ✓ FOUND: {photo_path} ({file_size} bytes)")
+        # Build photo lookup dict for O(1) access
+        photo_lookup = {}
+        for frame in frames:
+            photo = frame.get("photo_filename")
+            if photo:
+                photo_lookup[photo] = (
+                    frame.get("time_of_day", "day"),
+                    frame.get("side", "gold")
+                )
 
-                        # Schedule cleanup after response is sent
-                        if background_tasks:
-                            background_tasks.add_task(os.unlink, photo_path)
+        logger.info(f"[PHOTO GET] Found {len(photo_lookup)} photos for {location_key} (company={effective_company})")
 
-                        return FileResponse(photo_path, filename=photo_filename)
+        # O(1) lookup instead of nested loops with API calls
+        if photo_filename in photo_lookup:
+            tod, sid = photo_lookup[photo_filename]
+            # Pass company hint to download_photo for O(1) storage lookup
+            photo_path = await service.download_photo(location_key, tod, sid, photo_filename, company_hint=effective_company)
+            if photo_path and photo_path.exists():
+                file_size = os.path.getsize(photo_path)
+                logger.info(f"[PHOTO GET] ✓ FOUND: {photo_path} ({file_size} bytes)")
+
+                # Schedule cleanup after response is sent
+                if background_tasks:
+                    background_tasks.add_task(os.unlink, photo_path)
+
+                return FileResponse(photo_path, filename=photo_filename)
     else:
         # Direct lookup with specific time_of_day and side
-        photo_path = await service.download_photo(location_key, time_of_day, side, photo_filename)
+        # Pass company hint for O(1) storage lookup
+        photo_path = await service.download_photo(location_key, time_of_day, side, photo_filename, company_hint=company)
         if photo_path and photo_path.exists():
             file_size = os.path.getsize(photo_path)
             logger.info(f"[PHOTO GET] ✓ FOUND: {photo_path} ({file_size} bytes)")
@@ -527,18 +543,29 @@ async def delete_mockup_photo(
 
         # If "all" is specified, find and delete the photo from whichever variation it's in
         if time_of_day == "all" or side == "all":
-            # Use MockupFrameService to find the photo's variation (searches all companies)
+            # OPTIMIZED: Fetch all frames once, then do O(1) lookup instead of N API calls
             service = MockupFrameService(companies=user.companies)
-            variations = await service.list_variations(location_key)
-            for tod in variations:
-                for sid in variations[tod]:
-                    photos = await service.list_photos(location_key, tod, sid)
-                    if photo_filename in photos:
-                        success = await mockup_generator.delete_location_photo(location_key, photo_filename, company_schema, tod, sid)
-                        if success:
-                            return {"success": True}
-                        else:
-                            raise HTTPException(status_code=500, detail="Failed to delete photo")
+            frames, _ = await service.get_all_frames(location_key)
+
+            # Build photo lookup dict for O(1) access
+            photo_lookup = {}
+            for frame in frames:
+                photo = frame.get("photo_filename")
+                if photo:
+                    photo_lookup[photo] = (
+                        frame.get("time_of_day", "day"),
+                        frame.get("side", "gold")
+                    )
+
+            # O(1) lookup instead of nested loops with API calls
+            if photo_filename in photo_lookup:
+                tod, sid = photo_lookup[photo_filename]
+                success = await mockup_generator.delete_location_photo(location_key, photo_filename, company_schema, tod, sid)
+                if success:
+                    return {"success": True}
+                else:
+                    raise HTTPException(status_code=500, detail="Failed to delete photo")
+
             raise HTTPException(status_code=404, detail="Photo not found")
         else:
             success = await mockup_generator.delete_location_photo(location_key, photo_filename, company_schema, time_of_day, side)

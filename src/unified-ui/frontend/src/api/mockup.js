@@ -38,10 +38,14 @@ export async function generateMockup(formData) {
   return apiRequest("/api/sales/mockup/generate", { method: "POST", body: formData });
 }
 
-export function getTemplatePhotoUrl(location, photo) {
+export function getTemplatePhotoUrl(location, photo, { company } = {}) {
   if (!location || !photo) return "";
   // location is path param (supports slashes like "network/type/asset"), photo is query param
-  return `${runtimeConfig.API_BASE_URL}/api/sales/mockup/photo/${location}?photo_filename=${encodeURIComponent(photo)}`;
+  // company is optional hint for O(1) lookup (avoids searching all companies)
+  const params = new URLSearchParams();
+  params.set("photo_filename", photo);
+  if (company) params.set("company", company);
+  return `${runtimeConfig.API_BASE_URL}/api/sales/mockup/photo/${location}?${params.toString()}`;
 }
 
 // TODO : This endpoint does not exist in backend now.
@@ -49,19 +53,20 @@ export async function getHistory() {
   return apiRequest("/api/sales/mockup/history");
 }
 
-export async function getTemplatePhotoBlob(location, photo, { timeOfDay, side } = {}) {
+export async function getTemplatePhotoBlob(location, photo, { timeOfDay, side, company } = {}) {
   if (!location || !photo) return null;
   const params = new URLSearchParams();
   params.set("photo_filename", photo);  // Required query param
   if (timeOfDay) params.set("time_of_day", timeOfDay);
   if (side) params.set("side", side);
+  if (company) params.set("company", company);  // O(1) lookup hint
   // location is path param (supports slashes like "network/type/asset"), photo is query param
   const path = `/api/sales/mockup/photo/${location}?${params.toString()}`;
   return apiBlob(path);
 }
 
-export async function getTemplatePhotoBlobUrl(location, photo, { timeOfDay, side } = {}) {
-  const blob = await getTemplatePhotoBlob(location, photo, { timeOfDay, side });
+export async function getTemplatePhotoBlobUrl(location, photo, { timeOfDay, side, company } = {}) {
+  const blob = await getTemplatePhotoBlob(location, photo, { timeOfDay, side, company });
   return blob ? URL.createObjectURL(blob) : "";
 }
 
