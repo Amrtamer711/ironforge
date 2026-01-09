@@ -128,7 +128,7 @@ def get_base_tools() -> list[ToolDefinition | RawTool]:
             parameters={
                 "type": "object",
                 "properties": {
-                    "company": {"type": "string", "description": "Company to add the location to (e.g., 'backlite_dubai', 'backlite_ksa'). Must be a company the user has access to."},
+                    "company": {"type": "string", "description": "Company to add the location to (e.g., 'backlite_dubai', 'viola'). Must be a company the user has access to."},
                     "location_key": {"type": "string", "description": "Folder/key name (lowercase, underscores for spaces, e.g., 'dubai_gateway')"},
                     "display_name": {"type": "string", "description": "Display name shown to users (e.g., 'The Dubai Gateway')"},
                     "display_type": {"type": "string", "enum": ["Digital", "Static"], "description": "Display type - determines which fields are required"},

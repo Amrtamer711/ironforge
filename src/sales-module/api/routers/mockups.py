@@ -26,6 +26,7 @@ router = APIRouter(tags=["mockups"])
 # Valid enum values for form parameters
 VALID_TIME_OF_DAY = {"day", "night", "all"}
 VALID_SIDE = {"gold", "silver", "all"}
+VALID_VENUE_TYPE = {"indoor", "outdoor"}
 
 
 @router.get("/mockup")
@@ -63,15 +64,21 @@ async def get_mockup_locations(user: AuthUser = Depends(require_permission("sale
 
 @router.post("/api/mockup/save-frame")
 async def save_mockup_frame(
-    location_key: str = Form(..., min_length=1, max_length=100),
+    location_keys: str = Form(..., max_length=5000),  # JSON array of location keys
     time_of_day: str = Form("day"),
     side: str = Form("gold"),
+    venue_type: str = Form("outdoor"),  # indoor or outdoor (maps to environment)
     frames_data: str = Form(..., max_length=50000),
     photo: UploadFile = File(...),
     config_json: str | None = Form(None, max_length=10000),
     user: AuthUser = Depends(require_permission("sales:mockups:setup"))
 ):
-    """Save a billboard photo with multiple frame coordinates and optional config. Requires admin role."""
+    """Save a billboard photo with multiple frame coordinates to multiple locations.
+
+    Args:
+        location_keys: JSON array of location keys (e.g., '["network_a", "network_b"]')
+        venue_type: "indoor" or "outdoor" - determines environment for storage
+    """
     from generators import mockup as mockup_generator
 
     # Validate enum parameters
@@ -79,6 +86,20 @@ async def save_mockup_frame(
         raise HTTPException(status_code=400, detail=f"Invalid time_of_day: {time_of_day}. Must be one of: {VALID_TIME_OF_DAY}")
     if side not in VALID_SIDE:
         raise HTTPException(status_code=400, detail=f"Invalid side: {side}. Must be one of: {VALID_SIDE}")
+    if venue_type not in VALID_VENUE_TYPE:
+        raise HTTPException(status_code=400, detail=f"Invalid venue_type: {venue_type}. Must be one of: {VALID_VENUE_TYPE}")
+
+    # Parse location_keys JSON array
+    try:
+        locations = json.loads(location_keys)
+        if not isinstance(locations, list) or len(locations) == 0:
+            raise HTTPException(status_code=400, detail="location_keys must be a non-empty JSON array")
+        # Validate each location key is a non-empty string
+        for i, loc in enumerate(locations):
+            if not isinstance(loc, str) or not loc.strip():
+                raise HTTPException(status_code=400, detail=f"location_keys[{i}] must be a non-empty string")
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid location_keys JSON array")
 
     # Validate file upload
     try:
@@ -91,9 +112,10 @@ async def save_mockup_frame(
 
     # Log EXACTLY what was received from the form
     logger.info("[MOCKUP API] ====== SAVE FRAME REQUEST ======")
-    logger.info(f"[MOCKUP API] RECEIVED location_key: '{location_key}'")
+    logger.info(f"[MOCKUP API] RECEIVED location_keys: {locations}")
     logger.info(f"[MOCKUP API] RECEIVED time_of_day: '{time_of_day}'")
     logger.info(f"[MOCKUP API] RECEIVED side: '{side}'")
+    logger.info(f"[MOCKUP API] RECEIVED venue_type: '{venue_type}'")
     logger.info(f"[MOCKUP API] RECEIVED photo filename: '{photo.filename}' ({len(photo_data)} bytes)")
     logger.info("[MOCKUP API] ====================================")
 
@@ -120,60 +142,99 @@ async def save_mockup_frame(
             except json.JSONDecodeError:
                 raise HTTPException(status_code=400, detail="Invalid config JSON")
 
-        # Validate location exists and user has access (using singleton AssetService)
-        asset_service = get_asset_service()
-        has_access, error_msg = await asset_service.validate_location_access(location_key, user.companies)
-        if not has_access:
-            raise HTTPException(status_code=403, detail=error_msg or f"Location '{location_key}' not found or not accessible")
-
         # Read photo data
         logger.info(f"[MOCKUP API] Reading photo data from upload: {photo.filename}")
         photo_data = await photo.read()
         logger.info(f"[MOCKUP API] ✓ Read {len(photo_data)} bytes from upload")
 
-        # Determine which company schema to save to - based on which company owns the location
-        location_data = await asset_service.get_location_by_key(location_key, user.companies)
-        if not location_data:
-            raise HTTPException(status_code=403, detail=f"Location '{location_key}' not found in your accessible companies")
-        # Asset-Management API returns "company", some internal code uses "company_schema"
-        company_schema = location_data.get("company") or location_data.get("company_schema")
-        if not company_schema:
-            raise HTTPException(status_code=500, detail=f"Location '{location_key}' has no company assigned")
+        # Map venue_type to environment parameter
+        environment = venue_type  # "indoor" or "outdoor"
 
-        # Save via Asset-Management API (handles database + storage)
-        logger.info(f"[MOCKUP API] Saving {len(frames)} frame(s) via asset-management for {company_schema}.{location_key}/{time_of_day}/{side}")
+        # Process each location
+        asset_service = get_asset_service()
         from integrations.asset_management import asset_mgmt_client
-        result = await asset_mgmt_client.save_mockup_frame(
-            company=company_schema,
-            location_key=location_key,
-            photo_data=photo_data,
-            photo_filename=photo.filename,
-            frames_data=frames,
-            time_of_day=time_of_day,
-            side=side,
-            created_by=user.email,
-            config=config_dict,
-        )
-        if not result or not result.get("success"):
-            raise HTTPException(status_code=500, detail="Failed to save mockup frame via asset-management")
-        final_filename = result.get("photo_filename")
-        logger.info(f"[MOCKUP API] ✓ Asset-management save complete, filename: {final_filename}")
 
-        # Save photo to disk with the final auto-numbered filename
-        logger.info(f"[MOCKUP API] Saving photo to disk: {final_filename}")
-        photo_path = mockup_generator.save_location_photo(company_schema, location_key, final_filename, photo_data, time_of_day, side)
-        logger.info(f"[MOCKUP API] ✓ Photo saved to disk at: {photo_path}")
+        results = []
+        failed_locations = []
 
-        # Verify the file exists immediately after saving
-        if os.path.exists(photo_path):
-            file_size = os.path.getsize(photo_path)
-            logger.info(f"[MOCKUP API] ✓ VERIFICATION: File exists on disk, size: {file_size} bytes")
-        else:
-            logger.error(f"[MOCKUP API] ✗ VERIFICATION FAILED: File does not exist at {photo_path}")
+        for location_key in locations:
+            try:
+                # Validate location exists and user has access
+                has_access, error_msg = await asset_service.validate_location_access(location_key, user.companies)
+                if not has_access:
+                    failed_locations.append({"location": location_key, "error": error_msg or "Not accessible"})
+                    continue
 
-        logger.info(f"[MOCKUP API] ✓ Complete: Saved {len(frames)} frame(s) for {location_key}/{time_of_day}/{side}/{final_filename}")
+                # Determine which company schema to save to
+                location_data = await asset_service.get_location_by_key(location_key, user.companies)
+                if not location_data:
+                    failed_locations.append({"location": location_key, "error": "Location not found"})
+                    continue
 
-        return {"success": True, "photo": final_filename, "time_of_day": time_of_day, "side": side, "frames_count": len(frames)}
+                company_schema = location_data.get("company") or location_data.get("company_schema")
+                if not company_schema:
+                    failed_locations.append({"location": location_key, "error": "No company assigned"})
+                    continue
+
+                # Save via Asset-Management API (handles database + storage)
+                logger.info(f"[MOCKUP API] Saving {len(frames)} frame(s) via asset-management for {company_schema}.{location_key}/{time_of_day}/{side}/{environment}")
+                result = await asset_mgmt_client.save_mockup_frame(
+                    company=company_schema,
+                    location_key=location_key,
+                    photo_data=photo_data,
+                    photo_filename=photo.filename,
+                    frames_data=frames,
+                    time_of_day=time_of_day,
+                    side=side,
+                    environment=environment,
+                    created_by=user.email,
+                    config=config_dict,
+                )
+                if not result or not result.get("success"):
+                    failed_locations.append({"location": location_key, "error": "Asset-management save failed"})
+                    continue
+
+                final_filename = result.get("photo_filename")
+                logger.info(f"[MOCKUP API] ✓ Asset-management save complete for {location_key}, filename: {final_filename}")
+
+                # Save photo to disk with the final auto-numbered filename
+                logger.info(f"[MOCKUP API] Saving photo to disk for {location_key}: {final_filename}")
+                photo_path = mockup_generator.save_location_photo(
+                    company_schema, location_key, final_filename, photo_data,
+                    time_of_day, side, environment=environment
+                )
+                logger.info(f"[MOCKUP API] ✓ Photo saved to disk at: {photo_path}")
+
+                # Verify the file exists immediately after saving
+                if os.path.exists(photo_path):
+                    file_size = os.path.getsize(photo_path)
+                    logger.info(f"[MOCKUP API] ✓ VERIFICATION: File exists on disk, size: {file_size} bytes")
+                else:
+                    logger.error(f"[MOCKUP API] ✗ VERIFICATION FAILED: File does not exist at {photo_path}")
+
+                results.append({
+                    "location": location_key,
+                    "photo": final_filename,
+                    "success": True,
+                })
+                logger.info(f"[MOCKUP API] ✓ Complete: Saved {len(frames)} frame(s) for {location_key}/{time_of_day}/{side}/{final_filename}")
+
+            except Exception as loc_error:
+                logger.error(f"[MOCKUP API] Error saving to {location_key}: {loc_error}")
+                failed_locations.append({"location": location_key, "error": str(loc_error)})
+
+        # Return summary
+        return {
+            "success": len(failed_locations) == 0,
+            "saved_count": len(results),
+            "failed_count": len(failed_locations),
+            "results": results,
+            "failed": failed_locations,
+            "time_of_day": time_of_day,
+            "side": side,
+            "venue_type": venue_type,
+            "frames_count": len(frames),
+        }
 
     except json.JSONDecodeError as e:
         logger.error(f"[MOCKUP API] JSON decode error: {e}", exc_info=True)

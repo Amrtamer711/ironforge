@@ -18,9 +18,12 @@ import os
 from pathlib import Path
 from typing import Any
 
+import httpx
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
+
+from backend.config import get_settings
 
 # Only import if we're in a development environment
 ENVIRONMENT = os.getenv("ENVIRONMENT", "local")
@@ -885,11 +888,26 @@ async def set_exact_companies(
 
 @router.get("/companies")
 async def list_all_companies(_: bool = Depends(dev_only)) -> list[str]:
-    """List all available companies in the system."""
-    # Known companies from personas.yaml
-    return [
-        "backlite_dubai",
-        "backlite_ksa",
-        "viola_communications",
-        "mmg_corporate",
-    ]
+    """List all available companies in the system from Asset Management."""
+    settings = get_settings()
+
+    if not settings.ASSET_MGMT_URL:
+        logger.warning("[DEV] Asset Management URL not configured, returning empty list")
+        return []
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{settings.ASSET_MGMT_URL}/api/companies")
+            response.raise_for_status()
+            data = response.json()
+            # Return just the company codes (leaf companies)
+            return data.get("companies", [])
+    except httpx.TimeoutException:
+        logger.error("[DEV] Timeout fetching companies from Asset Management")
+        return []
+    except httpx.ConnectError as e:
+        logger.error(f"[DEV] Connection error fetching companies: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"[DEV] Error fetching companies: {e}")
+        return []

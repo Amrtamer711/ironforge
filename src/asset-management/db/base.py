@@ -805,3 +805,58 @@ class DatabaseBackend(ABC):
             True if deleted successfully
         """
         pass
+
+    # =========================================================================
+    # COMPANIES
+    # =========================================================================
+
+    @abstractmethod
+    def get_companies(
+        self,
+        active_only: bool = True,
+        leaf_only: bool = True,
+    ) -> list[dict[str, Any]]:
+        """
+        Get all companies from the database.
+
+        Args:
+            active_only: If True, only return active companies
+            leaf_only: If True, only return leaf companies (not groups)
+
+        Returns:
+            List of company dicts with code, name, is_group, is_active, etc.
+        """
+        pass
+
+    @abstractmethod
+    def expand_companies(
+        self,
+        company_codes: list[str],
+    ) -> list[str]:
+        """
+        Expand company codes to include all accessible leaf companies.
+
+        Uses the company hierarchy to resolve access:
+        - If user has 'mmg' (root group): Returns ALL leaf companies
+        - If user has 'backlite' (group): Returns all backlite verticals
+        - If user has 'backlite_dubai' (leaf): Returns only 'backlite_dubai'
+
+        Args:
+            company_codes: List of company codes (may include groups)
+
+        Returns:
+            List of leaf company codes (schema names) the user can access
+        """
+        pass
+
+    @abstractmethod
+    def get_company_hierarchy(
+        self,
+    ) -> list[dict[str, Any]]:
+        """
+        Get the full company hierarchy tree.
+
+        Returns:
+            List of companies with parent_id, is_group, and children info
+        """
+        pass

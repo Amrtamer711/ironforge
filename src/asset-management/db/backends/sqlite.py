@@ -1550,3 +1550,121 @@ class SQLiteBackend(DatabaseBackend):
             return False
         finally:
             conn.close()
+
+    # =========================================================================
+    # COMPANIES
+    # =========================================================================
+
+    def get_companies(
+        self,
+        active_only: bool = True,
+        leaf_only: bool = True,
+    ) -> list[dict[str, Any]]:
+        """
+        Get all companies from config (SQLite doesn't have companies table).
+
+        For SQLite backend, we return the configured COMPANY_SCHEMAS.
+        This is a fallback for local development.
+        """
+        from config import COMPANY_SCHEMAS
+
+        # Return basic company info from config
+        return [
+            {
+                "id": idx,
+                "code": code,
+                "name": code,  # Use code as name for SQLite
+                "country": None,
+                "currency": None,
+                "is_group": False,
+                "is_active": True,
+            }
+            for idx, code in enumerate(COMPANY_SCHEMAS, start=1)
+        ]
+
+    def expand_companies(
+        self,
+        company_codes: list[str],
+    ) -> list[str]:
+        """
+        Expand company codes to include all accessible leaf companies.
+
+        For SQLite (local dev), we use a hardcoded hierarchy matching production:
+        - mmg (group) -> all companies
+        - backlite (group) -> backlite_dubai, backlite_uk, backlite_abudhabi
+        - viola (leaf) -> viola
+        - Individual leaf companies -> themselves
+        """
+        from config import COMPANY_SCHEMAS
+
+        # Define hierarchy for local development
+        HIERARCHY = {
+            "mmg": COMPANY_SCHEMAS,  # Root gets all
+            "backlite": [c for c in COMPANY_SCHEMAS if c.startswith("backlite_")],
+        }
+
+        result = set()
+        for code in company_codes:
+            if code in HIERARCHY:
+                # Group company - expand
+                result.update(HIERARCHY[code])
+            elif code in COMPANY_SCHEMAS:
+                # Leaf company - add directly
+                result.add(code)
+            # Unknown codes are ignored
+
+        return sorted(result)
+
+    def get_company_hierarchy(
+        self,
+    ) -> list[dict[str, Any]]:
+        """
+        Get the full company hierarchy tree.
+
+        For SQLite (local dev), returns a hardcoded hierarchy matching production.
+        """
+        from config import COMPANY_SCHEMAS
+
+        # Build a simple hierarchy for local dev
+        companies = [
+            {"id": 1, "code": "mmg", "name": "MMG", "parent_id": None, "is_group": True, "is_active": True, "children": ["backlite", "viola"]},
+            {"id": 2, "code": "backlite", "name": "Backlite", "parent_id": 1, "is_group": True, "is_active": True, "children": [c for c in COMPANY_SCHEMAS if c.startswith("backlite_")]},
+        ]
+
+        # Add leaf companies
+        idx = 3
+        for code in COMPANY_SCHEMAS:
+            if code.startswith("backlite_"):
+                companies.append({
+                    "id": idx,
+                    "code": code,
+                    "name": code.replace("_", " ").title(),
+                    "parent_id": 2,  # Under backlite
+                    "is_group": False,
+                    "is_active": True,
+                    "children": [],
+                })
+            elif code == "viola":
+                companies.append({
+                    "id": idx,
+                    "code": code,
+                    "name": "Viola",
+                    "parent_id": 1,  # Under mmg
+                    "is_group": False,
+                    "is_active": True,
+                    "children": [],
+                })
+            else:
+                # Other leaf companies under mmg
+                companies.append({
+                    "id": idx,
+                    "code": code,
+                    "name": code.replace("_", " ").title(),
+                    "parent_id": 1,
+                    "is_group": False,
+                    "is_active": True,
+                    "children": [],
+                })
+            idx += 1
+
+        return companies

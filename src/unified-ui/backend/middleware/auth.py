@@ -38,8 +38,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
 from fastapi import Depends, HTTPException, Request
 
+from backend.config import get_settings
 from backend.services.rbac_service import get_user_rbac_data
 from backend.services.supabase_client import get_supabase
 from backend.services.local_auth import (
@@ -250,6 +252,54 @@ def _apply_company_overrides(
             result.remove(company)
 
     return result
+
+
+async def _expand_companies_for_hierarchy(companies: list[str]) -> list[str]:
+    """
+    Expand company codes using hierarchical access rules.
+
+    If a user has access to a group company (e.g., 'mmg' or 'backlite'),
+    this expands to all leaf companies they can access:
+    - mmg -> all companies (backlite_dubai, backlite_uk, backlite_abudhabi, viola)
+    - backlite -> all backlite verticals (backlite_dubai, backlite_uk, backlite_abudhabi)
+    - backlite_dubai -> just backlite_dubai (leaf company)
+
+    Calls asset-management /api/companies/expand endpoint.
+    Falls back to original companies if the API call fails.
+    """
+    if not companies:
+        return []
+
+    settings = get_settings()
+    if not settings.ASSET_MGMT_URL:
+        logger.warning("[AUTH] Asset Management URL not configured, cannot expand companies")
+        return companies
+
+    try:
+        # Build query string with all company codes
+        params = "&".join(f"company_codes={c}" for c in companies)
+        url = f"{settings.ASSET_MGMT_URL}/api/companies/expand?{params}"
+
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.post(url)
+            response.raise_for_status()
+            data = response.json()
+            expanded = data.get("expanded", companies)
+
+            if expanded != companies:
+                logger.info(f"[AUTH] Expanded companies: {companies} -> {expanded}")
+
+            return expanded
+
+    except httpx.TimeoutException:
+        logger.warning("[AUTH] Timeout expanding companies, using original list")
+        return companies
+    except httpx.ConnectError as e:
+        logger.warning(f"[AUTH] Connection error expanding companies: {e}")
+        return companies
+    except Exception as e:
+        logger.warning(f"[AUTH] Error expanding companies: {e}, using original list")
+        return companies
 
 
 def _build_trusted_user_from_impersonation(impersonate_data: dict) -> TrustedUser:
@@ -565,6 +615,9 @@ async def get_trusted_user(request: Request) -> TrustedUser:
             )
             logger.debug(f"[PROXY AUTH] Applied company overrides: {company_overrides}")
 
+        # Expand companies based on hierarchy (e.g., 'backlite' -> all backlite verticals)
+        trusted_user.companies = await _expand_companies_for_hierarchy(trusted_user.companies)
+
         return trusted_user
 
     # server.js:552-554
@@ -624,6 +677,9 @@ async def get_trusted_user(request: Request) -> TrustedUser:
                     local_rbac.companies, company_overrides
                 )
                 logger.debug(f"[PROXY AUTH] Applied company overrides: {company_overrides}")
+
+            # Expand companies based on hierarchy (e.g., 'backlite' -> all backlite verticals)
+            final_companies = await _expand_companies_for_hierarchy(final_companies)
 
             return TrustedUser(
                 id=local_user.id,
@@ -701,6 +757,9 @@ async def get_trusted_user(request: Request) -> TrustedUser:
             )
             logger.debug(f"[PROXY AUTH] Applied company overrides: {company_overrides}")
 
+        # Expand companies based on hierarchy (e.g., 'backlite' -> all backlite verticals)
+        final_companies = await _expand_companies_for_hierarchy(final_companies)
+
         return TrustedUser(
             id=user.id,
             email=user.email,
@@ -721,7 +780,7 @@ async def get_trusted_user(request: Request) -> TrustedUser:
             sharing_rules=rbac_dict["sharingRules"],
             shared_records=rbac_dict["sharedRecords"],
             shared_from_user_ids=rbac_dict["sharedFromUserIds"],
-            # Level 5: Company access (with overrides applied)
+            # Level 5: Company access (with overrides and hierarchy expansion applied)
             companies=final_companies,
         )
 

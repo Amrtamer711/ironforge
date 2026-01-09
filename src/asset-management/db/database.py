@@ -553,6 +553,58 @@ class _DatabaseNamespace:
         """
         return self._backend.get_mockup_storage_info(network_key, company_schemas, include_all_assets)
 
+    # =========================================================================
+    # COMPANIES
+    # =========================================================================
+
+    def get_companies(
+        self,
+        active_only: bool = True,
+        leaf_only: bool = True,
+    ) -> list[dict[str, Any]]:
+        """
+        Get all companies from the database.
+
+        Args:
+            active_only: If True, only return active companies
+            leaf_only: If True, only return leaf companies (not groups)
+
+        Returns:
+            List of company dicts with code, name, is_group, is_active, etc.
+        """
+        return self._backend.get_companies(active_only, leaf_only)
+
+    def expand_companies(
+        self,
+        company_codes: list[str],
+    ) -> list[str]:
+        """
+        Expand company codes to include all accessible leaf companies.
+
+        Uses the company hierarchy to resolve access:
+        - If user has 'mmg' (root group): Returns ALL leaf companies
+        - If user has 'backlite' (group): Returns all backlite verticals
+        - If user has 'backlite_dubai' (leaf): Returns only 'backlite_dubai'
+
+        Args:
+            company_codes: List of company codes (may include groups)
+
+        Returns:
+            List of leaf company codes (schema names) the user can access
+        """
+        return self._backend.expand_companies(company_codes)
+
+    def get_company_hierarchy(
+        self,
+    ) -> list[dict[str, Any]]:
+        """
+        Get the full company hierarchy tree.
+
+        Returns:
+            List of companies with parent_id, is_group, and children info
+        """
+        return self._backend.get_company_hierarchy()
+
 
 # Create the singleton database interface
 db = _DatabaseNamespace(_backend)

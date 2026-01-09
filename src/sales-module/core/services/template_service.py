@@ -77,7 +77,7 @@ class TemplateService:
     - Check template existence across multiple companies
 
     Usage:
-        service = TemplateService(companies=["backlite_dubai", "backlite_ksa"])
+        service = TemplateService(companies=["backlite_dubai", "backlite_uk"])
 
         # Check if template exists (searches all companies)
         if await service.exists("dubai_mall"):
