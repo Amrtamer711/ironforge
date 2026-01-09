@@ -21,3 +21,8 @@ patches:
         value:
           - secretRef:
               name: proposal-bot-env
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: ASSET_MGMT_URL
+          value: http://asset-management.backends.svc.cluster.local:8001
