@@ -160,19 +160,19 @@ variable "eks_admin_principal_arns" {
 variable "enable_workload_fargate_profile" {
   type        = bool
   description = "Whether to create a Fargate profile for workload_namespaces."
-  default     = true
+  default     = false
 }
 
 variable "enable_system_fargate_profiles" {
   type        = bool
   description = "Whether to create the kube-system Fargate profiles (CoreDNS + AWS Load Balancer Controller)."
-  default     = true
+  default     = false
 }
 
 variable "enable_eks_managed_node_groups" {
   type        = bool
   description = "Whether to create EKS managed node groups (EC2 workers)."
-  default     = false
+  default     = true
 }
 
 variable "eks_node_capacity_type" {
