@@ -329,7 +329,11 @@ platform-videocritique-env: ## Create/update video-critique runtime secret from 
 	    --from-env-file="$$TMP_FILE" \
 	    --dry-run=client -o yaml | kubectl apply -f -; \
 	  rm -f "$$TMP_FILE"; \
-	  kubectl -n $(VIDEOCRITIQUE_NAMESPACE) rollout restart deploy/$(VIDEOCRITIQUE_DEPLOYMENT)
+	  if kubectl -n $(VIDEOCRITIQUE_NAMESPACE) get deploy/$(VIDEOCRITIQUE_DEPLOYMENT) >/dev/null 2>&1; then \
+	    kubectl -n $(VIDEOCRITIQUE_NAMESPACE) rollout restart deploy/$(VIDEOCRITIQUE_DEPLOYMENT); \
+	  else \
+	    echo "$(YELLOW)Deployment $(VIDEOCRITIQUE_DEPLOYMENT) not found yet. Apply Argo CD apps first (make platform-argocd-apps) and wait for sync, then rerun: make platform-videocritique-env$(NC)"; \
+	  fi
 
 # =============================================================================
 # PLATFORM - DEDICATED APEX DOMAIN (EKS)
