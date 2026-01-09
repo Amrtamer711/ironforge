@@ -12,10 +12,16 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: backends
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: proposal-bot
+      jsonPointers:
+        - /spec/replicas
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-
+      - RespectIgnoreDifferences=true

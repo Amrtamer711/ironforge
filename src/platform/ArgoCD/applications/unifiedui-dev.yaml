@@ -12,12 +12,19 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: unifiedui
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: unified-ui
+      jsonPointers:
+        - /spec/replicas
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - RespectIgnoreDifferences=true
       # Allows us to safely patch ALB TLS annotations (certificate ARN, listener config) without Argo CD reverting them.
       - RespectIgnoreDifferences=true
   ignoreDifferences:
