@@ -80,6 +80,10 @@ tmp/
 temp/
 *.tmp
 
+# Excel files (data imports)
+*.xlsx
+*.xls
+
 # Fonts (proprietary)
 Sofia-Pro Font/
 
