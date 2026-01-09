@@ -196,13 +196,13 @@ variable "eks_general_instance_types" {
 variable "eks_general_min_size" {
   type        = number
   description = "Minimum size for the general-purpose node group."
-  default     = 3
+  default     = 1
 }
 
 variable "eks_general_desired_size" {
   type        = number
   description = "Desired size for the general-purpose node group."
-  default     = 3
+  default     = 1
 }
 
 variable "eks_general_max_size" {
@@ -220,13 +220,13 @@ variable "eks_sales_instance_types" {
 variable "eks_sales_min_size" {
   type        = number
   description = "Minimum size for the dedicated sales node group."
-  default     = 2
+  default     = 1
 }
 
 variable "eks_sales_desired_size" {
   type        = number
   description = "Desired size for the dedicated sales node group."
-  default     = 2
+  default     = 1
 }
 
 variable "eks_sales_max_size" {

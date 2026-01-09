@@ -2,6 +2,10 @@ data "aws_partition" "current" {}
 
 locals {
   node_role_name = coalesce(var.node_role_name, "${var.cluster_name}-node-role")
+  autoscaler_tags = {
+    "k8s.io/cluster-autoscaler/enabled"             = "true"
+    "k8s.io/cluster-autoscaler/${var.cluster_name}" = "true"
+  }
 
   # EKS node group names max out at 63 chars.
   # Prefix with cluster_name for easy identification, but hash if needed.
@@ -63,6 +67,56 @@ resource "aws_iam_role_policy_attachment" "ssm" {
   policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+resource "aws_iam_role_policy" "cluster_autoscaler" {
+  count = var.enable ? 1 : 0
+
+  name = "${var.cluster_name}-cluster-autoscaler"
+  role = aws_iam_role.nodes[0].name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AutoscalingWrite"
+        Effect = "Allow"
+        Action = [
+          "autoscaling:SetDesiredCapacity",
+          "autoscaling:TerminateInstanceInAutoScalingGroup",
+          "autoscaling:UpdateAutoScalingGroup",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AutoscalingRead"
+        Effect = "Allow"
+        Action = [
+          "autoscaling:DescribeAutoScalingGroups",
+          "autoscaling:DescribeAutoScalingInstances",
+          "autoscaling:DescribeLaunchConfigurations",
+          "autoscaling:DescribeTags",
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "Ec2Read"
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeAvailabilityZones",
+          "ec2:DescribeImages",
+          "ec2:DescribeInstances",
+          "ec2:DescribeInstanceTypes",
+          "ec2:DescribeLaunchTemplateVersions",
+          "ec2:DescribeRouteTables",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeVpcs",
+        ]
+        Resource = "*"
+      },
+    ]
+  })
+}
+
 resource "aws_eks_node_group" "general" {
   count = var.enable && var.general_enabled ? 1 : 0
 
@@ -96,13 +150,14 @@ resource "aws_eks_node_group" "general" {
     }
   }
 
-  tags = var.tags
+  tags = merge(var.tags, local.autoscaler_tags)
 
   depends_on = [
     aws_iam_role_policy_attachment.eks_worker_node,
     aws_iam_role_policy_attachment.eks_cni,
     aws_iam_role_policy_attachment.ecr_readonly,
     aws_iam_role_policy_attachment.ssm,
+    aws_iam_role_policy.cluster_autoscaler,
   ]
 }
 
@@ -139,13 +194,13 @@ resource "aws_eks_node_group" "sales" {
     }
   }
 
-  tags = var.tags
+  tags = merge(var.tags, local.autoscaler_tags)
 
   depends_on = [
     aws_iam_role_policy_attachment.eks_worker_node,
     aws_iam_role_policy_attachment.eks_cni,
     aws_iam_role_policy_attachment.ecr_readonly,
     aws_iam_role_policy_attachment.ssm,
+    aws_iam_role_policy.cluster_autoscaler,
   ]
 }
-

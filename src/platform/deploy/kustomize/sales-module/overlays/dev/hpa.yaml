@@ -7,7 +7,7 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: proposal-bot
-  minReplicas: 2
+  minReplicas: 1
   maxReplicas: 8
   metrics:
     - type: Resource
@@ -22,4 +22,3 @@ spec:
         target:
           type: Utilization
           averageUtilization: 70
-
