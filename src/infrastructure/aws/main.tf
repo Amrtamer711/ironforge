@@ -110,7 +110,8 @@ variable "ecr_repository_names" {
     "testapprepo",
     "proposal-bot",
     "security-service",
-    "unifiedui"
+    "unifiedui",
+    "video-critique"
   ]
 }
 

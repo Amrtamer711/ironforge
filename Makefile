@@ -23,6 +23,7 @@ SHELL := /bin/bash
 	platform-unifiedui-set-tag \
 	platform-unifiedui-env \
 	platform-assetmgmt-env \
+	platform-videocritique-env \
 	platform-apex-step1 platform-apex-step2 \
 	tf-bootstrap tf-init tf-plan tf-apply tf-output \
 	argocd-bootstrap argocd-tls-tf-init argocd-tls-step1 argocd-tls-step2 argocd-url
@@ -311,6 +312,24 @@ platform-assetmgmt-env: ## Create/update asset-management runtime secret from `s
 	    --dry-run=client -o yaml | kubectl apply -f -; \
 	  rm -f "$$TMP_FILE"; \
 	  kubectl -n $(ASSETMGMT_NAMESPACE) rollout restart deploy/$(ASSETMGMT_DEPLOYMENT)
+
+# =============================================================================
+# PLATFORM - VIDEO CRITIQUE (EKS)
+# =============================================================================
+
+VIDEOCRITIQUE_NAMESPACE ?= backends
+VIDEOCRITIQUE_ENV_FILE ?= $(ROOT_DIR)/src/video-critique/.env
+VIDEOCRITIQUE_DEPLOYMENT ?= video-critique
+
+platform-videocritique-env: ## Create/update video-critique runtime secret from `src/video-critique/.env` (not committed) and restart pods
+	@test -f $(VIDEOCRITIQUE_ENV_FILE) || (echo "$(RED)Missing $(VIDEOCRITIQUE_ENV_FILE) (copy values from your env source)$(NC)" && exit 1)
+	@TMP_FILE=$$(mktemp); \
+	  awk -F= '/^[A-Za-z_.-][A-Za-z0-9_.-]*=.*/{print}' "$(VIDEOCRITIQUE_ENV_FILE)" > "$$TMP_FILE"; \
+	  kubectl -n $(VIDEOCRITIQUE_NAMESPACE) create secret generic video-critique-env \
+	    --from-env-file="$$TMP_FILE" \
+	    --dry-run=client -o yaml | kubectl apply -f -; \
+	  rm -f "$$TMP_FILE"; \
+	  kubectl -n $(VIDEOCRITIQUE_NAMESPACE) rollout restart deploy/$(VIDEOCRITIQUE_DEPLOYMENT)
 
 # =============================================================================
 # PLATFORM - DEDICATED APEX DOMAIN (EKS)

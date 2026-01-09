@@ -7,3 +7,4 @@ resources:
   - unifiedui-dev.yaml
   - sales-dev.yaml
   - security-dev.yaml
+  - videocritique-dev.yaml
