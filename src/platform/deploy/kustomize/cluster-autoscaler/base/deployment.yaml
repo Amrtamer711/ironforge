@@ -26,7 +26,6 @@ spec:
             - ./cluster-autoscaler
             - --cloud-provider=aws
             - --namespace=kube-system
-            - --cluster-name=mmg-test-cluster-1-t588
             - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/mmg-test-cluster-1-t588
             - --balance-similar-node-groups
             - --expander=least-waste
@@ -34,6 +33,11 @@ spec:
             - --skip-nodes-with-system-pods=false
             - --stderrthreshold=info
             - --v=2
+          env:
+            - name: AWS_REGION
+              value: eu-north-1
+            - name: AWS_DEFAULT_REGION
+              value: eu-north-1
           resources:
             requests:
               cpu: 100m
