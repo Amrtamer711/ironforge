@@ -1,5 +1,5 @@
 # =============================================================================
-# CRM Platform - Git Ignore
+# MMG Service Platform - Git Ignore
 # =============================================================================
 
 # Environment files (contain secrets)
@@ -8,6 +8,7 @@
 .env.secrets
 .env.*.local
 /dev_venv
+src/infrastructure/aws/local.auto.tfvars
 
 # Python
 __pycache__/
@@ -91,6 +92,9 @@ worldstate
 
 # Argo CD TLS params (local env file)
 src/platform/ArgoCD/bootstrap-tls/argocd-tls.env
+
+# Argo CD repo credentials (local env file)
+src/platform/ArgoCD/repo-credentials/gitlab-repo.env
 
 src/unified-ui-react/Old Code Archive/
 docs/TESTING_MCP.md
