@@ -39,7 +39,7 @@ class TestMockupEndpoints:
         response = client.post(
             "/api/mockup/save-frame",
             data={
-                "location_key": "test",
+                "location_keys": '["test"]',  # JSON array of location keys
                 "frames_data": "[]",
             }
         )
@@ -75,7 +75,7 @@ class TestMockupValidation:
         response = client.post(
             "/api/mockup/save-frame",
             data={
-                "location_key": "../../../etc/passwd",  # Path traversal attempt
+                "location_keys": '["../../../etc/passwd"]',  # Path traversal attempt
                 "frames_data": "[]",
             },
             files={"photo": ("test.jpg", b"fake image", "image/jpeg")}
@@ -88,7 +88,7 @@ class TestMockupValidation:
         response = client.post(
             "/api/mockup/save-frame",
             data={
-                "location_key": "test",
+                "location_keys": '["test"]',
                 "time_of_day": "invalid",
                 "frames_data": "[]",
             },

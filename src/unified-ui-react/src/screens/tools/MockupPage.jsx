@@ -410,11 +410,10 @@ export function MockupPage() {
     try {
       setSetupSaving(true);
       const formData = new FormData();
-      formData.append("location_key", primaryLocation);
       formData.append("location_keys", JSON.stringify(locations));
       formData.append("venue_type", venueType);
       formData.append("time_of_day", effectiveTimeOfDay || "all");
-      formData.append("finish", finish || "all");
+      formData.append("side", finish || "all");  // Backend expects "side", not "finish"
       formData.append("frames_data", JSON.stringify(framesPayload));
       formData.append("photo", setupPhoto);
 
