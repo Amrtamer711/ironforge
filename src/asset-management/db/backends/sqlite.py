@@ -615,6 +615,148 @@ class SQLiteBackend(DatabaseBackend):
             conn.close()
 
     # =========================================================================
+    # NETWORK ASSETS (Physical display units within a traditional network)
+    # =========================================================================
+
+    def list_network_assets(
+        self,
+        company_schemas: list[str],
+        network_id: int | None = None,
+        type_id: int | None = None,
+        include_inactive: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """List network assets (individual display units) within traditional networks."""
+        conn = self._connect()
+        try:
+            placeholders = ",".join("?" * len(company_schemas))
+            params = list(company_schemas)
+            active_filter = "" if include_inactive else "AND na.is_active = 1"
+            network_filter = ""
+            type_filter = ""
+
+            if network_id is not None:
+                network_filter = "AND na.network_id = ?"
+                params.append(network_id)
+            if type_id is not None:
+                type_filter = "AND na.type_id = ?"
+                params.append(type_id)
+
+            cursor = conn.execute(
+                f"""
+                SELECT na.*, n.name as network_name, at.name as type_name
+                FROM network_assets na
+                LEFT JOIN networks n ON na.network_id = n.id
+                LEFT JOIN asset_types at ON na.type_id = at.id
+                WHERE na.company IN ({placeholders}) {active_filter} {network_filter} {type_filter}
+                ORDER BY na.display_name
+                LIMIT ? OFFSET ?
+                """,
+                (*params, limit, offset),
+            )
+            results = self._rows_to_list(cursor.fetchall())
+            for r in results:
+                r["company_schema"] = r.pop("company", None)
+            return results
+        finally:
+            conn.close()
+
+    # =========================================================================
+    # MOCKUP STORAGE INFO (Unified Architecture Support)
+    # =========================================================================
+
+    def get_mockup_storage_info(
+        self,
+        network_key: str,
+        company_schemas: list[str],
+    ) -> dict[str, Any] | None:
+        """
+        Get mockup storage info for a network.
+
+        Resolves the correct storage key(s) based on whether the network is
+        standalone or traditional. Traditional networks store mockups at
+        ASSET TYPE level (not individual asset level).
+
+        Args:
+            network_key: Network identifier (same as location_key in VIEW)
+            company_schemas: Company schemas to search
+
+        Returns:
+            {
+                "network_key": str,
+                "company": str,
+                "is_standalone": bool,
+                "storage_keys": list[str],
+                    - Standalone: [network_key]
+                    - Traditional: ["{network_key}/{type_key}", ...]
+                "asset_types": list[dict],  # For traditional: type details with storage_key
+            }
+        """
+        import random
+
+        # Get the network
+        network = self.get_network_by_key(network_key, company_schemas)
+        if not network:
+            return None
+
+        company = network.get("company_schema", network.get("company"))
+        is_standalone = bool(network.get("standalone", False))
+        network_id = network["id"]
+
+        if is_standalone:
+            # Standalone networks: mockups at network level
+            return {
+                "network_key": network_key,
+                "company": company,
+                "is_standalone": True,
+                "storage_keys": [network_key],
+                "assets": [],
+            }
+        else:
+            # Traditional networks: mockups at ASSET TYPE level
+            types = self.list_asset_types([company], network_id=network_id)
+
+            all_types = []
+            storage_keys = []
+
+            for asset_type in types:
+                type_key = asset_type.get("type_key")
+                type_name = asset_type.get("name")
+                type_id = asset_type.get("id")
+
+                # Storage key at TYPE level: "{network_key}/{type_key}"
+                type_storage_key = f"{network_key}/{type_key}"
+                storage_keys.append(type_storage_key)
+
+                # Get all assets in this type to pick a random one for environment
+                assets = self.list_network_assets(
+                    [company],
+                    type_id=type_id,
+                )
+                if assets:
+                    random_asset = random.choice(assets)
+                    default_env = random_asset.get("environment", "outdoor")
+                else:
+                    default_env = "outdoor"
+
+                all_types.append({
+                    "type_key": type_key,
+                    "type_name": type_name,
+                    "type_id": type_id,
+                    "environment": default_env,
+                    "storage_key": type_storage_key,
+                })
+
+            return {
+                "network_key": network_key,
+                "company": company,
+                "is_standalone": False,
+                "storage_keys": storage_keys,
+                "asset_types": all_types,
+            }
+
+    # =========================================================================
     # LOCATIONS (Unified: locations = networks)
     # =========================================================================
 

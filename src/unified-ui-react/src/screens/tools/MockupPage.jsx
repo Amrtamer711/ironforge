@@ -91,6 +91,7 @@ export function MockupPage() {
   const [timeOfDay, setTimeOfDay] = useState("all");
   const [finish, setFinish] = useState("all");
   const [templateKey, setTemplateKey] = useState("");
+  const [selectedAssetType, setSelectedAssetType] = useState("");
 
   const primaryLocation = locations[0] || "";
   const isIndoor = venueType === "indoor";
@@ -207,6 +208,19 @@ export function MockupPage() {
     enabled: Boolean(primaryLocation),
   });
 
+  // Query for asset types (for traditional networks in setup mode)
+  const assetTypesQuery = useQuery({
+    queryKey: ["mockup", "asset-types", primaryLocation],
+    queryFn: () => mockupApi.getNetworkAssetTypes(primaryLocation),
+    enabled: mode === "setup" && Boolean(primaryLocation),
+  });
+
+  // Derived state for asset types
+  const assetTypesData = assetTypesQuery.data || {};
+  const assetTypes = assetTypesData.asset_types || [];
+  const isTraditionalNetwork = assetTypesData.is_standalone === false && assetTypes.length > 0;
+  const assetTypesLoading = assetTypesQuery.isLoading;
+
   useEffect(() => {
     return () => {
       testPreviewCacheRef.current.forEach((entry) => {
@@ -273,6 +287,11 @@ export function MockupPage() {
       if (finish) setFinish("");
     }
   }, [timeOfDay, finish, venueType]);
+
+  // Clear selected asset type when location changes
+  useEffect(() => {
+    setSelectedAssetType("");
+  }, [primaryLocation]);
 
   useEffect(() => {
     setTemplateThumbs((prev) => {
@@ -407,6 +426,12 @@ export function MockupPage() {
       return;
     }
 
+    // For traditional networks, require asset type selection
+    if (isTraditionalNetwork && !selectedAssetType) {
+      setSetupError("Select an asset type for this traditional network");
+      return;
+    }
+
     try {
       setSetupSaving(true);
       const formData = new FormData();
@@ -416,6 +441,11 @@ export function MockupPage() {
       formData.append("side", finish || "all");  // Backend expects "side", not "finish"
       formData.append("frames_data", JSON.stringify(framesPayload));
       formData.append("photo", setupPhoto);
+
+      // For traditional networks, include asset_type_key
+      if (isTraditionalNetwork && selectedAssetType) {
+        formData.append("asset_type_key", selectedAssetType);
+      }
 
       await mockupApi.saveSetupPhoto(formData);
       setSetupMessage("Saved frames successfully");
@@ -1644,6 +1674,11 @@ export function MockupPage() {
             setTemplateKey={setTemplateKey}
             locationOptions={setupLocationOptions}
             locationsQuery={setupLocationsQuery}
+            assetTypes={assetTypes}
+            selectedAssetType={selectedAssetType}
+            setSelectedAssetType={setSelectedAssetType}
+            isTraditionalNetwork={isTraditionalNetwork}
+            assetTypesLoading={assetTypesLoading}
             timeOfDay={timeOfDay}
             setTimeOfDay={setTimeOfDay}
             timeOfDayDisabled={timeOfDayDisabled}

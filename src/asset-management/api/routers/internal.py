@@ -282,7 +282,6 @@ def get_location_by_key_internal(
 def get_mockup_storage_info_internal(
     network_key: str,
     companies: list[str] = Query(default=None, description="Company schemas to search"),
-    include_all_assets: bool = Query(default=False, description="Return all assets for traditional networks"),
     service: dict = Depends(verify_service_token),
 ) -> dict:
     """
@@ -290,7 +289,7 @@ def get_mockup_storage_info_internal(
 
     Returns the storage keys needed to fetch/store mockups:
     - For standalone networks: returns network_key (mockups at network level)
-    - For traditional networks: returns asset storage paths (mockups at asset level)
+    - For traditional networks: returns asset type paths (mockups at type level)
 
     This abstracts the unified architecture - callers just use the returned
     storage_keys without knowing if it's standalone or traditional.
@@ -298,8 +297,6 @@ def get_mockup_storage_info_internal(
     Args:
         network_key: Network identifier
         companies: Company schemas to search
-        include_all_assets: If True, returns ALL assets for traditional networks.
-                           If False, returns only one sample per asset type.
 
     Response:
     {
@@ -308,17 +305,17 @@ def get_mockup_storage_info_internal(
         "is_standalone": bool,
         "storage_keys": list[str],
             - Standalone: [network_key]
-            - Traditional: ["{network_key}/{type_key}/{asset_key}", ...]
-        "assets": list[dict]  # For traditional: asset details with storage_key
+            - Traditional: ["{network_key}/{type_key}", ...]
+        "asset_types": list[dict]  # For traditional: type details with storage_key
     }
     """
     caller = service.get("service", "unknown")
-    logger.info(f"[INTERNAL] {caller} fetching mockup storage info for: {network_key} (include_all_assets={include_all_assets})")
+    logger.info(f"[INTERNAL] {caller} fetching mockup storage info for: {network_key}")
 
     filter_companies = companies or config.COMPANY_SCHEMAS
 
     try:
-        result = db.get_mockup_storage_info(network_key, filter_companies, include_all_assets)
+        result = db.get_mockup_storage_info(network_key, filter_companies)
         if not result:
             raise HTTPException(
                 status_code=404,
@@ -332,6 +329,64 @@ def get_mockup_storage_info_internal(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve mockup storage info",
+        )
+
+
+@router.get("/asset-types/{network_key}")
+def get_network_asset_types_internal(
+    network_key: str,
+    companies: list[str] = Query(default=None, description="Company schemas to search"),
+    service: dict = Depends(verify_service_token),
+) -> dict:
+    """
+    Get asset types for a traditional network.
+
+    Used by the mockup setup UI to show the asset type picker.
+    For standalone networks, returns empty list (no asset types).
+
+    Args:
+        network_key: Network identifier
+        companies: Company schemas to search
+
+    Response:
+    {
+        "network_key": str,
+        "company": str,
+        "is_standalone": bool,
+        "asset_types": list[dict]
+            - type_key: str
+            - type_name: str
+            - type_id: int
+            - environment: str (default for the type)
+    }
+    """
+    caller = service.get("service", "unknown")
+    logger.info(f"[INTERNAL] {caller} fetching asset types for network: {network_key}")
+
+    filter_companies = companies or config.COMPANY_SCHEMAS
+
+    try:
+        # Use get_mockup_storage_info which already returns asset_types
+        result = db.get_mockup_storage_info(network_key, filter_companies)
+        if not result:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Network not found: {network_key}"
+            )
+
+        return {
+            "network_key": result.get("network_key"),
+            "company": result.get("company"),
+            "is_standalone": result.get("is_standalone", False),
+            "asset_types": result.get("asset_types", []),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[INTERNAL] Failed to get asset types for network: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve asset types",
         )
 
 

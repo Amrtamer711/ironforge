@@ -848,7 +848,6 @@ class AssetManagementClient:
         self,
         network_key: str,
         companies: list[str] | None = None,
-        include_all_assets: bool = False,
     ) -> dict | None:
         """
         Get mockup storage info for a network.
@@ -856,13 +855,11 @@ class AssetManagementClient:
         This is the key integration point for the unified architecture.
         Returns the storage keys needed to fetch/store mockups:
         - For standalone networks: returns network_key (mockups at network level)
-        - For traditional networks: returns asset storage paths (mockups at asset level)
+        - For traditional networks: returns asset type paths (mockups at type level)
 
         Args:
             network_key: The network/location key
             companies: Companies to search in
-            include_all_assets: If True, returns ALL assets for traditional networks.
-                               If False, returns only one sample per asset type.
 
         Returns:
             Dict with:
@@ -871,18 +868,48 @@ class AssetManagementClient:
             - is_standalone: bool
             - storage_keys: list[str]
                 - Standalone: [network_key]
-                - Traditional: ["{network_key}/{type_key}/{asset_key}", ...]
-            - assets: list[dict]  # For traditional: asset details with storage_key
+                - Traditional: ["{network_key}/{type_key}", ...]
+            - asset_types: list[dict]  # For traditional: type details with storage_key
         """
         params: dict[str, Any] = {}
         if companies:
             params["companies"] = companies
-        if include_all_assets:
-            params["include_all_assets"] = "true"
 
         return await self._request(
             "GET",
             f"/api/internal/mockup-storage-info/{network_key}",
+            params=params,
+        )
+
+    async def get_network_asset_types(
+        self,
+        network_key: str,
+        companies: list[str] | None = None,
+    ) -> dict | None:
+        """
+        Get asset types for a traditional network.
+
+        Used by the mockup setup UI to show the asset type picker.
+        For standalone networks, returns empty list.
+
+        Args:
+            network_key: The network/location key
+            companies: Companies to search in
+
+        Returns:
+            Dict with:
+            - network_key: str
+            - company: str
+            - is_standalone: bool
+            - asset_types: list[dict] - Type details with type_key, type_name, etc.
+        """
+        params: dict[str, Any] = {}
+        if companies:
+            params["companies"] = companies
+
+        return await self._request(
+            "GET",
+            f"/api/internal/asset-types/{network_key}",
             params=params,
         )
 

@@ -17,6 +17,12 @@ export function SetupTab({
   setTemplateKey,
   locationOptions,
   locationsQuery,
+  // Asset type picker for traditional networks
+  assetTypes,
+  selectedAssetType,
+  setSelectedAssetType,
+  isTraditionalNetwork,
+  assetTypesLoading,
   timeOfDay,
   setTimeOfDay,
   timeOfDayDisabled,
@@ -134,6 +140,32 @@ export function SetupTab({
                   </div>
                 ) : null}
               </FormField>
+
+              {isTraditionalNetwork && (
+                <FormField label="Asset Type">
+                  <SelectDropdown
+                    value={selectedAssetType}
+                    options={assetTypes.map((t) => ({
+                      value: t.type_key,
+                      label: t.type_name || t.type_key,
+                    }))}
+                    placeholder={assetTypesLoading ? "Loading..." : "Select asset type"}
+                    onChange={(nextValue) => setSelectedAssetType(nextValue)}
+                    useNativeSelect={useNativeSelects}
+                    disabled={assetTypesLoading || assetTypes.length === 0}
+                  />
+                  {assetTypesLoading && (
+                    <div className="mt-1 text-xs text-black/50 dark:text-white/60">
+                      <LoadingEllipsis text="Loading asset types" />
+                    </div>
+                  )}
+                  {!assetTypesLoading && assetTypes.length === 0 && locations.length > 0 && (
+                    <div className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                      No asset types found for this network.
+                    </div>
+                  )}
+                </FormField>
+              )}
 
               <FormField label="Venue Type">
                 <SelectDropdown

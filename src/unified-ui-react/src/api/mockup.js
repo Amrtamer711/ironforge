@@ -6,6 +6,17 @@ export async function getLocations() {
   return apiRequest("/api/sales/mockup/locations");
 }
 
+/**
+ * Get asset types for a traditional network.
+ * Used in Setup tab to show asset type picker.
+ * For standalone networks, returns empty asset_types list.
+ * @param {string} networkKey - Network key
+ * @returns {Promise<{network_key: string, company: string, is_standalone: boolean, asset_types: Array}>}
+ */
+export async function getNetworkAssetTypes(networkKey) {
+  return apiRequest(`/api/sales/mockup/asset-types/${encodeURIComponent(networkKey)}`);
+}
+
 export async function getTemplates(location, { timeOfDay, finish, venueType, locations } = {}) {
   const params = new URLSearchParams();
   if (timeOfDay) params.set("time_of_day", timeOfDay);
@@ -37,9 +48,37 @@ export async function testPreview(formData) {
   return apiBlob("/api/sales/mockup/test-preview", { method: "POST", body: formData });
 }
 
+/**
+ * Generate mockup(s) for a location.
+ *
+ * For standalone networks or when storage_key is provided:
+ *   Returns Response object (image blob) - use `result.blob()` to get image
+ *
+ * For traditional networks without storage_key (auto multi-type):
+ *   Returns JSON with multiple mockups:
+ *   {
+ *     multi_type: true,
+ *     network_key: string,
+ *     mockups: [{storage_key, type_key, type_name, image_base64, photo_used}],
+ *     skipped_types: [{type_key, type_name, reason}],
+ *     creative_type: "ai_generated" | "uploaded",
+ *     config: {environment, time_of_day, side}
+ *   }
+ *
+ * @param {FormData} formData - Must include: location_key, and either ai_prompt or creative file
+ * @returns {Promise<Response|Object>} Response for single image, Object for multi-type
+ */
 export async function generateMockup(formData) {
-  // Returns either a Response (image blob) or JSON payload with multiple images.
   return apiRequest("/api/sales/mockup/generate", { method: "POST", body: formData });
+}
+
+/**
+ * Helper to check if generateMockup result is multi-type.
+ * @param {Response|Object} result - Result from generateMockup
+ * @returns {boolean}
+ */
+export function isMultiTypeMockupResult(result) {
+  return result && typeof result === 'object' && !(result instanceof Response) && result.multi_type === true;
 }
 
 // TODO : This endpoint does not exist in backend now.
