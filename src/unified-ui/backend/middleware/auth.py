@@ -271,14 +271,14 @@ async def _expand_companies_for_hierarchy(companies: list[str]) -> list[str]:
         return []
 
     settings = get_settings()
-    if not settings.ASSET_MGMT_URL:
+    if not settings.ASSET_MANAGEMENT_URL:
         logger.warning("[AUTH] Asset Management URL not configured, cannot expand companies")
         return companies
 
     try:
         # Build query string with all company codes
         params = "&".join(f"company_codes={c}" for c in companies)
-        url = f"{settings.ASSET_MGMT_URL}/api/companies/expand?{params}"
+        url = f"{settings.ASSET_MANAGEMENT_URL}/api/companies/expand?{params}"
 
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.post(url)

@@ -456,6 +456,11 @@ export function GenerateTab({
                               loading="lazy"
                             />
                           </a>
+                          {image.label && (
+                            <div className="mt-2 text-xs font-medium text-black/70 dark:text-white/80 truncate">
+                              {image.label}
+                            </div>
+                          )}
                           <div className="mt-2 flex items-center gap-2">
                             <Button asChild size="sm" variant="ghost" className="rounded-xl">
                               <a href={image.url} target="_blank" rel="noopener noreferrer">
@@ -515,6 +520,37 @@ async function normalizeGeneratedImages(response, locationLabel) {
   }
 
   const payload = response;
+
+  // Handle multi-type response with base64-encoded images
+  if (payload?.multi_type && Array.isArray(payload?.mockups)) {
+    return payload.mockups.map((mockup, index) => {
+      const label = mockup.type_name || mockup.type_key || `Type ${index + 1}`;
+      if (mockup.image_base64) {
+        // Convert base64 to blob URL
+        const byteString = atob(mockup.image_base64);
+        const arrayBuffer = new ArrayBuffer(byteString.length);
+        const uint8Array = new Uint8Array(arrayBuffer);
+        for (let i = 0; i < byteString.length; i++) {
+          uint8Array[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([uint8Array], { type: "image/jpeg" });
+        const url = URL.createObjectURL(blob);
+        const safeLabel = (label || "result")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "");
+        return {
+          url,
+          filename: `mockup_${safeLabel}_${index + 1}.jpg`,
+          label,
+          typeKey: mockup.type_key,
+          storageKey: mockup.storage_key,
+        };
+      }
+      return { url: "", filename: `mockup_${index + 1}.jpg`, label };
+    });
+  }
+
   const list =
     payload?.images ||
     payload?.image_urls ||

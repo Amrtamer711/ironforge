@@ -89,6 +89,7 @@ export function MockupPage() {
   const [mode, setMode] = useState("generate");
   const [locations, setLocations] = useState([]);
   const [venueType, setVenueType] = useState("all");
+  const [assetType, setAssetType] = useState("");
   const [timeOfDay, setTimeOfDay] = useState("all");
   const [side, setSide] = useState("all");
   const [templateKey, setTemplateKey] = useState("");
@@ -126,6 +127,7 @@ export function MockupPage() {
   const [setupFrameConfig, setSetupFrameConfig] = useState(DEFAULT_FRAME_CONFIG);
   const [greenscreenColor, setGreenscreenColor] = useState("#1CFF1C");
   const [colorTolerance, setColorTolerance] = useState(40);
+  const [greenscreenDetecting, setGreenscreenDetecting] = useState(false);
   const [currentPoints, setCurrentPoints] = useState([]);
   const [frameCount, setFrameCount] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -203,6 +205,12 @@ export function MockupPage() {
     queryKey: ["mockup", "eligibility", "generate"],
     queryFn: mockupApi.getGenerateLocations,
     enabled: mode === "generate",
+  });
+
+  const assetTypesQuery = useQuery({
+    queryKey: ["mockup", "asset-types"],
+    queryFn: mockupApi.getAssetTypes,
+    enabled: mode === "setup",
   });
 
   const generateTemplatesQuery = useQuery({
@@ -294,6 +302,12 @@ export function MockupPage() {
   // Use appropriate query based on mode (for loading states, etc.)
   const locationsQuery = mode === "setup" ? setupLocationsQuery : generateLocationsQuery;
 
+  const assetTypeOptions = useMemo(() => {
+    const data = assetTypesQuery.data;
+    if (Array.isArray(data)) return data;
+    return data?.asset_types || data?.types || [];
+  }, [assetTypesQuery.data]);
+
   const generateTemplateOptions = useMemo(() => {
     const data = generateTemplatesQuery.data;
     if (Array.isArray(data)) return data;
@@ -326,10 +340,12 @@ export function MockupPage() {
       setLocations([]);
       if (mode === "setup") {
         setVenueType("");
+        setAssetType("");
         setTimeOfDay("");
         setSide("");
       } else {
         setVenueType("all");
+        setAssetType("");
         setTimeOfDay("all");
         setSide("all");
       }
@@ -501,6 +517,7 @@ export function MockupPage() {
       const formData = new FormData();
       formData.append("location_keys", JSON.stringify(locations));
       formData.append("venue_type", venueType);
+      if (assetType) formData.append("asset_type_key", assetType);
       formData.append("time_of_day", effectiveTimeOfDay || "all");
       formData.append("side", side || "all");
       formData.append("frames_data", JSON.stringify(framesPayload));
@@ -515,6 +532,7 @@ export function MockupPage() {
       previewImgRef.current = null;
       setSetupImageReady(false);
       queryClient.invalidateQueries({ queryKey: ["mockup", "templates"] });
+      queryClient.refetchQueries({ queryKey: ["mockup", "templates"], type: "active" });
       drawPreview();
     } catch (err) {
       setSetupError(err?.message || "Failed to save template");
@@ -1533,33 +1551,44 @@ export function MockupPage() {
   }
 
   function handleGreenscreenDetect() {
-    if (!previewImgRef.current) return;
+    if (!previewImgRef.current || greenscreenDetecting) return;
+    setGreenscreenDetecting(true);
 
-    const tempCanvas = document.createElement("canvas");
-    tempCanvas.width = previewImgRef.current.width;
-    tempCanvas.height = previewImgRef.current.height;
-    const tempCtx = tempCanvas.getContext("2d");
-    tempCtx.drawImage(previewImgRef.current, 0, 0);
-    const imageData = tempCtx.getImageData(0, 0, previewImgRef.current.width, previewImgRef.current.height);
+    setTimeout(() => {
+      if (!previewImgRef.current) {
+        setGreenscreenDetecting(false);
+        return;
+      }
+      try {
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = previewImgRef.current.width;
+        tempCanvas.height = previewImgRef.current.height;
+        const tempCtx = tempCanvas.getContext("2d");
+        tempCtx.drawImage(previewImgRef.current, 0, 0);
+        const imageData = tempCtx.getImageData(0, 0, previewImgRef.current.width, previewImgRef.current.height);
 
-    const detected = detectGreenScreen(imageData, {
-      color: greenscreenColor,
-      tolerance: colorTolerance,
-      depthMultiplier: setupFrameConfig.depthMultiplier,
-      existingFrames: allFramesRef.current,
-    });
+        const detected = detectGreenScreen(imageData, {
+          color: greenscreenColor,
+          tolerance: colorTolerance,
+          depthMultiplier: setupFrameConfig.depthMultiplier,
+          existingFrames: allFramesRef.current,
+        });
 
-    if (detected) {
-      currentPointsRef.current = detected;
-      clearActiveSelection();
-      greenscreenFrameRef.current = true;
-      syncCurrentPoints();
-      setFrameSettingsOpen(true);
-      setSetupHint("Green screen detected. Adjust points or click Add Frame to save.");
-      drawPreview();
-    } else {
-      setSetupHint("No green screen detected. Adjust tolerance or draw frame manually.");
-    }
+        if (detected) {
+          currentPointsRef.current = detected;
+          clearActiveSelection();
+          greenscreenFrameRef.current = true;
+          syncCurrentPoints();
+          setFrameSettingsOpen(true);
+          setSetupHint("Green screen detected. Adjust points or click Add Frame to save.");
+          drawPreview();
+        } else {
+          setSetupHint("No green screen detected. Adjust tolerance or draw frame manually.");
+        }
+      } finally {
+        setGreenscreenDetecting(false);
+      }
+    }, 0);
   }
 
   async function generateTestPreview() {
@@ -1733,9 +1762,13 @@ export function MockupPage() {
                 setLocations={setLocations}
                 venueType={venueType}
                 setVenueType={setVenueType}
+                assetType={assetType}
+                setAssetType={setAssetType}
                 setTemplateKey={setTemplateKey}
                 locationOptions={locationOptions}
                 locationsQuery={locationsQuery}
+                assetTypeOptions={assetTypeOptions}
+                assetTypesQuery={assetTypesQuery}
                 timeOfDay={timeOfDay}
                 setTimeOfDay={setTimeOfDay}
                 timeOfDayDisabled={timeOfDayDisabled}
@@ -1774,6 +1807,7 @@ export function MockupPage() {
                 setGreenscreenOpen={setGreenscreenOpen}
                 greenscreenColor={greenscreenColor}
                 setGreenscreenColor={setGreenscreenColor}
+                greenscreenDetecting={greenscreenDetecting}
                 colorTolerance={colorTolerance}
                 setColorTolerance={setColorTolerance}
                 RangeField={RangeField}

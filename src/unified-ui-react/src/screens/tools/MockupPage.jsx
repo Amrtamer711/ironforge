@@ -4,6 +4,7 @@ import { Button } from "../../components/ui/button";
 import * as mockupApi from "../../api/mockup";
 import { useAuth, hasPermission } from "../../state/auth";
 import { normalizeFrameConfig } from "../../lib/utils";
+import { useNotifications } from "../../hooks/useNotifications";
 import * as GenerateTabModule from "./mockup/GenerateTab";
 import * as SetupTabModule from "./mockup/SetupTab";
 import * as HistoryTabModule from "./mockup/HistoryTab";
@@ -83,6 +84,7 @@ function getRangeBackground(value, min, max) {
 export function MockupPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { addNotification } = useNotifications();
   const canSetup = hasPermission(user, "sales:mockups:setup");
 
   const [mode, setMode] = useState("generate");
@@ -91,6 +93,7 @@ export function MockupPage() {
   const [timeOfDay, setTimeOfDay] = useState("all");
   const [finish, setFinish] = useState("all");
   const [templateKey, setTemplateKey] = useState("");
+  const [selectedAssetType, setSelectedAssetType] = useState("");
 
   const primaryLocation = locations[0] || "";
   const isIndoor = venueType === "indoor";
@@ -207,6 +210,173 @@ export function MockupPage() {
     enabled: Boolean(primaryLocation),
   });
 
+  // Query for asset types (for traditional networks in setup mode)
+  const assetTypesQuery = useQuery({
+    queryKey: ["mockup", "asset-types", primaryLocation],
+    queryFn: () => mockupApi.getNetworkAssetTypes(primaryLocation),
+    enabled: mode === "setup" && Boolean(primaryLocation),
+  });
+
+  // Derived state for asset types
+  const assetTypesData = assetTypesQuery.data || {};
+  const assetTypes = assetTypesData.asset_types || [];
+  const isTraditionalNetwork = assetTypesData.is_standalone === false && assetTypes.length > 0;
+  const assetTypesLoading = assetTypesQuery.isLoading;
+
+  // Derived available configs for dropdown filtering (from templatesQuery - single API call)
+  // available_configs is now included in the templates endpoint response
+  const availableConfigs = useMemo(() => {
+    return mockupApi.getAvailableConfigs(templatesQuery.data);
+  }, [templatesQuery.data]);
+
+  // Compute valid venue types based on available configs
+  const validVenueTypes = useMemo(() => {
+    if (!availableConfigs.has_frames) return [];
+    return availableConfigs.available_venue_types || [];
+  }, [availableConfigs]);
+
+  // Compute valid time_of_days based on selected venue type
+  const validTimeOfDays = useMemo(() => {
+    if (!availableConfigs.has_frames) return [];
+    if (!venueType || venueType === "all") {
+      // Aggregate all time_of_days across all venue types
+      const all = new Set();
+      Object.values(availableConfigs.available_time_of_days || {}).forEach(tods => {
+        tods.forEach(t => all.add(t));
+      });
+      return Array.from(all);
+    }
+    return availableConfigs.available_time_of_days?.[venueType] || [];
+  }, [availableConfigs, venueType]);
+
+  // Compute valid sides based on selected venue type + time_of_day
+  const validSides = useMemo(() => {
+    if (!availableConfigs.has_frames) return [];
+    if (!venueType || venueType === "all") {
+      // Aggregate all sides
+      const all = new Set();
+      Object.values(availableConfigs.available_sides || {}).forEach(byTod => {
+        Object.values(byTod).forEach(sides => {
+          sides.forEach(s => all.add(s));
+        });
+      });
+      return Array.from(all);
+    }
+    const byVenue = availableConfigs.available_sides?.[venueType] || {};
+    if (!timeOfDay || timeOfDay === "all") {
+      const all = new Set();
+      Object.values(byVenue).forEach(sides => sides.forEach(s => all.add(s)));
+      return Array.from(all);
+    }
+    return byVenue[timeOfDay] || [];
+  }, [availableConfigs, venueType, timeOfDay]);
+
+  // Filter dropdown options based on available configs (only in generate mode with location selected)
+  const filteredVenueTypes = useMemo(() => {
+    if (mode !== "generate" || !primaryLocation || !availableConfigs.has_frames) {
+      return VENUE_TYPES;
+    }
+    return VENUE_TYPES.filter(opt => opt.value === "all" || validVenueTypes.includes(opt.value));
+  }, [mode, primaryLocation, availableConfigs.has_frames, validVenueTypes]);
+
+  const filteredTimeOfDays = useMemo(() => {
+    if (mode !== "generate" || !primaryLocation || !availableConfigs.has_frames) {
+      return TIME_OF_DAY;
+    }
+    return TIME_OF_DAY.filter(opt => opt.value === "all" || validTimeOfDays.includes(opt.value));
+  }, [mode, primaryLocation, availableConfigs.has_frames, validTimeOfDays]);
+
+  const filteredFinishes = useMemo(() => {
+    if (mode !== "generate" || !primaryLocation || !availableConfigs.has_frames) {
+      return FINISHES;
+    }
+    return FINISHES.filter(opt => opt.value === "all" || validSides.includes(opt.value));
+  }, [mode, primaryLocation, availableConfigs.has_frames, validSides]);
+
+  // Track previous venue type for smart reset detection
+  const prevVenueTypeRef = useRef(venueType);
+  const prevTimeOfDayRef = useRef(timeOfDay);
+
+  // Smart reset when venue type changes invalidates downstream selections
+  useEffect(() => {
+    // Skip if not in generate mode, no location, or no configs loaded
+    if (mode !== "generate" || !primaryLocation || !availableConfigs.has_frames) return;
+    // Skip on initial mount or if venue type hasn't changed
+    if (prevVenueTypeRef.current === venueType) return;
+    prevVenueTypeRef.current = venueType;
+
+    const warnings = [];
+
+    // Check if current timeOfDay is valid for new venueType
+    if (timeOfDay && timeOfDay !== "all") {
+      const validTods = venueType === "all"
+        ? Array.from(new Set(Object.values(availableConfigs.available_time_of_days || {}).flat()))
+        : availableConfigs.available_time_of_days?.[venueType] || [];
+      if (!validTods.includes(timeOfDay)) {
+        setTimeOfDay("all");
+        warnings.push("Time of day");
+      }
+    }
+
+    // Check if current side/finish is valid
+    if (finish && finish !== "all") {
+      let validSidesForSelection = [];
+      if (venueType === "all") {
+        const all = new Set();
+        Object.values(availableConfigs.available_sides || {}).forEach(byTod => {
+          Object.values(byTod).forEach(sides => sides.forEach(s => all.add(s)));
+        });
+        validSidesForSelection = Array.from(all);
+      } else {
+        const byVenue = availableConfigs.available_sides?.[venueType] || {};
+        if (timeOfDay && timeOfDay !== "all") {
+          validSidesForSelection = byVenue[timeOfDay] || [];
+        } else {
+          const all = new Set();
+          Object.values(byVenue).forEach(sides => sides.forEach(s => all.add(s)));
+          validSidesForSelection = Array.from(all);
+        }
+      }
+      if (!validSidesForSelection.includes(finish)) {
+        setFinish("all");
+        warnings.push("Side");
+      }
+    }
+
+    // Notify user about resets
+    if (warnings.length > 0) {
+      addNotification({
+        id: `mockup-reset-${Date.now()}`,
+        title: "Settings Reset",
+        message: `${warnings.join(" and ")} reset - no mockups available for that combination`,
+      });
+    }
+  }, [venueType, availableConfigs, mode, primaryLocation, timeOfDay, finish, addNotification]);
+
+  // Smart reset when time_of_day changes invalidates side selection
+  useEffect(() => {
+    // Skip if not in generate mode, no location, or no configs loaded
+    if (mode !== "generate" || !primaryLocation || !availableConfigs.has_frames) return;
+    // Skip if venue type is "all" or indoor (indoor ignores time_of_day/side)
+    if (!venueType || venueType === "all" || venueType === "indoor") return;
+    // Skip on initial mount or if time of day hasn't changed
+    if (prevTimeOfDayRef.current === timeOfDay) return;
+    prevTimeOfDayRef.current = timeOfDay;
+
+    // Check if current side/finish is valid for new timeOfDay
+    if (finish && finish !== "all" && timeOfDay && timeOfDay !== "all") {
+      const validSidesForTod = availableConfigs.available_sides?.[venueType]?.[timeOfDay] || [];
+      if (!validSidesForTod.includes(finish)) {
+        setFinish("all");
+        addNotification({
+          id: `mockup-reset-side-${Date.now()}`,
+          title: "Side Reset",
+          message: "Side reset - no mockups available for that combination",
+        });
+      }
+    }
+  }, [timeOfDay, availableConfigs, mode, primaryLocation, venueType, finish, addNotification]);
+
   useEffect(() => {
     return () => {
       testPreviewCacheRef.current.forEach((entry) => {
@@ -273,6 +443,11 @@ export function MockupPage() {
       if (finish) setFinish("");
     }
   }, [timeOfDay, finish, venueType]);
+
+  // Clear selected asset type when location changes
+  useEffect(() => {
+    setSelectedAssetType("");
+  }, [primaryLocation]);
 
   useEffect(() => {
     setTemplateThumbs((prev) => {
@@ -407,6 +582,12 @@ export function MockupPage() {
       return;
     }
 
+    // For traditional networks, require asset type selection
+    if (isTraditionalNetwork && !selectedAssetType) {
+      setSetupError("Select an asset type for this traditional network");
+      return;
+    }
+
     try {
       setSetupSaving(true);
       const formData = new FormData();
@@ -416,6 +597,11 @@ export function MockupPage() {
       formData.append("side", finish || "all");  // Backend expects "side", not "finish"
       formData.append("frames_data", JSON.stringify(framesPayload));
       formData.append("photo", setupPhoto);
+
+      // For traditional networks, include asset_type_key
+      if (isTraditionalNetwork && selectedAssetType) {
+        formData.append("asset_type_key", selectedAssetType);
+      }
 
       await mockupApi.saveSetupPhoto(formData);
       setSetupMessage("Saved frames successfully");
@@ -1619,9 +1805,9 @@ export function MockupPage() {
             finish={finish}
             setFinish={setFinish}
             sideDisabled={sideDisabled}
-            timeOfDayOptions={TIME_OF_DAY}
-            finishOptions={FINISHES}
-            venueTypeOptions={VENUE_TYPES}
+            timeOfDayOptions={filteredTimeOfDays}
+            finishOptions={filteredFinishes}
+            venueTypeOptions={filteredVenueTypes}
             templateOptions={templateOptions}
             templatesQuery={templatesQuery}
             templateThumbs={templateThumbs}
@@ -1644,6 +1830,11 @@ export function MockupPage() {
             setTemplateKey={setTemplateKey}
             locationOptions={setupLocationOptions}
             locationsQuery={setupLocationsQuery}
+            assetTypes={assetTypes}
+            selectedAssetType={selectedAssetType}
+            setSelectedAssetType={setSelectedAssetType}
+            isTraditionalNetwork={isTraditionalNetwork}
+            assetTypesLoading={assetTypesLoading}
             timeOfDay={timeOfDay}
             setTimeOfDay={setTimeOfDay}
             timeOfDayDisabled={timeOfDayDisabled}

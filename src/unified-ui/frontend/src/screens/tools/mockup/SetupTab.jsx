@@ -14,9 +14,13 @@ export function SetupTab({
   setLocations,
   venueType,
   setVenueType,
+  assetType,
+  setAssetType,
   setTemplateKey,
   locationOptions,
   locationsQuery,
+  assetTypeOptions,
+  assetTypesQuery,
   timeOfDay,
   setTimeOfDay,
   timeOfDayDisabled,
@@ -55,6 +59,7 @@ export function SetupTab({
   setGreenscreenOpen,
   greenscreenColor,
   setGreenscreenColor,
+  greenscreenDetecting,
   colorTolerance,
   setColorTolerance,
   RangeField,
@@ -112,7 +117,7 @@ export function SetupTab({
           <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-4">
         <div className="space-y-4">
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
               <FormField label="Location">
                 <MultiSelect
                   value={locations}
@@ -130,6 +135,32 @@ export function SetupTab({
                 {locationsQuery.isLoading ? (
                   <div className="mt-1 text-xs text-black/50 dark:text-white/60">
                     <LoadingEllipsis text="Loading locations" />
+                  </div>
+                ) : null}
+              </FormField>
+
+              <FormField label="Asset Type">
+                <SelectDropdown
+                  value={assetType}
+                  options={[
+                    { value: "", label: "All asset types" },
+                    ...assetTypeOptions.map((type) => {
+                      if (typeof type === "string") {
+                        return { value: type, label: type };
+                      }
+                      return {
+                        value: type?.type_key ?? type?.key ?? type?.id ?? type?.value ?? "",
+                        label: type?.name ?? type?.label ?? type?.type_key ?? "Unknown",
+                      };
+                    }),
+                  ]}
+                  placeholder="Select asset type"
+                  onChange={(nextValue) => setAssetType(nextValue)}
+                  useNativeSelect={useNativeSelects}
+                />
+                {assetTypesQuery?.isLoading ? (
+                  <div className="mt-1 text-xs text-black/50 dark:text-white/60">
+                    <LoadingEllipsis text="Loading asset types" />
                   </div>
                 ) : null}
               </FormField>
@@ -396,9 +427,9 @@ export function SetupTab({
                       <Button
                         className="rounded-2xl w-full"
                         onClick={handleGreenscreenDetect}
-                        disabled={!canDetectGreenscreen}
+                        disabled={!canDetectGreenscreen || greenscreenDetecting}
                       >
-                        Detect Green Screen Now
+                        {greenscreenDetecting ? <LoadingEllipsis text="Detecting" /> : "Detect Green Screen Now"}
                       </Button>
                     </div>
                   ) : null}

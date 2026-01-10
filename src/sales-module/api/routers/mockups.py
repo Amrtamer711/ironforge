@@ -62,9 +62,55 @@ async def get_mockup_locations(user: AuthUser = Depends(require_permission("sale
     return {"locations": sorted(locations, key=lambda x: x["name"])}
 
 
+@router.get("/api/mockup/asset-types/{network_key}")
+async def get_network_asset_types(
+    network_key: str,
+    user: AuthUser = Depends(require_permission("sales:mockups:read"))
+):
+    """
+    Get asset types for a traditional network.
+
+    Used by the mockup setup UI to show the asset type picker.
+    For standalone networks, returns empty list (no asset type selection needed).
+
+    Returns:
+        {
+            "network_key": str,
+            "company": str,
+            "is_standalone": bool,
+            "asset_types": list[dict] - Type details with type_key, type_name, etc.
+        }
+    """
+    from integrations.asset_management import asset_mgmt_client
+
+    if not user.has_company_access:
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have access to any company data."
+        )
+
+    try:
+        result = await asset_mgmt_client.get_network_asset_types(
+            network_key=network_key,
+            companies=user.companies,
+        )
+
+        if not result:
+            raise HTTPException(status_code=404, detail=f"Network not found: {network_key}")
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[MOCKUP API] Error getting asset types for {network_key}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get asset types")
+
+
 @router.post("/api/mockup/save-frame")
 async def save_mockup_frame(
     location_keys: str = Form(..., max_length=5000),  # JSON array of location keys
+    asset_type_key: str | None = Form(None),  # Required for traditional networks, ignored for standalone
     time_of_day: str = Form("day"),
     side: str = Form("gold"),
     venue_type: str = Form("outdoor"),  # indoor or outdoor (maps to environment)
@@ -77,6 +123,9 @@ async def save_mockup_frame(
 
     Args:
         location_keys: JSON array of location keys (e.g., '["network_a", "network_b"]')
+        asset_type_key: Asset type key for traditional networks (e.g., 'digital_screens').
+                       Required for traditional networks, ignored for standalone networks.
+                       Storage key becomes: {network_key}/{asset_type_key}
         venue_type: "indoor" or "outdoor" - determines environment for storage
     """
     from generators import mockup as mockup_generator
@@ -113,6 +162,7 @@ async def save_mockup_frame(
     # Log EXACTLY what was received from the form
     logger.info("[MOCKUP API] ====== SAVE FRAME REQUEST ======")
     logger.info(f"[MOCKUP API] RECEIVED location_keys: {locations}")
+    logger.info(f"[MOCKUP API] RECEIVED asset_type_key: '{asset_type_key}'")
     logger.info(f"[MOCKUP API] RECEIVED time_of_day: '{time_of_day}'")
     logger.info(f"[MOCKUP API] RECEIVED side: '{side}'")
     logger.info(f"[MOCKUP API] RECEIVED venue_type: '{venue_type}'")
@@ -157,30 +207,52 @@ async def save_mockup_frame(
         results = []
         failed_locations = []
 
-        for location_key in locations:
+        for network_key in locations:
             try:
                 # Validate location exists and user has access
-                has_access, error_msg = await asset_service.validate_location_access(location_key, user.companies)
+                has_access, error_msg = await asset_service.validate_location_access(network_key, user.companies)
                 if not has_access:
-                    failed_locations.append({"location": location_key, "error": error_msg or "Not accessible"})
+                    failed_locations.append({"location": network_key, "error": error_msg or "Not accessible"})
                     continue
 
                 # Determine which company schema to save to
-                location_data = await asset_service.get_location_by_key(location_key, user.companies)
+                location_data = await asset_service.get_location_by_key(network_key, user.companies)
                 if not location_data:
-                    failed_locations.append({"location": location_key, "error": "Location not found"})
+                    failed_locations.append({"location": network_key, "error": "Location not found"})
                     continue
 
                 company_schema = location_data.get("company") or location_data.get("company_schema")
                 if not company_schema:
-                    failed_locations.append({"location": location_key, "error": "No company assigned"})
+                    failed_locations.append({"location": network_key, "error": "No company assigned"})
                     continue
 
+                # Determine storage key based on network type
+                # Get storage info to check if standalone or traditional
+                storage_info = await asset_mgmt_client.get_mockup_storage_info(
+                    network_key=network_key,
+                    companies=user.companies,
+                )
+
+                is_standalone = storage_info.get("is_standalone", True) if storage_info else True
+
+                if is_standalone:
+                    # Standalone network: storage at network level
+                    storage_key = network_key
+                else:
+                    # Traditional network: storage at asset type level
+                    if not asset_type_key:
+                        failed_locations.append({
+                            "location": network_key,
+                            "error": "asset_type_key required for traditional network"
+                        })
+                        continue
+                    storage_key = f"{network_key}/{asset_type_key}"
+
                 # Save via Asset-Management API (handles database + storage)
-                logger.info(f"[MOCKUP API] Saving {len(frames)} frame(s) via asset-management for {company_schema}.{location_key}/{time_of_day}/{side}/{environment}")
+                logger.info(f"[MOCKUP API] Saving {len(frames)} frame(s) via asset-management for {company_schema}.{storage_key}/{time_of_day}/{side}/{environment}")
                 result = await asset_mgmt_client.save_mockup_frame(
                     company=company_schema,
-                    location_key=location_key,
+                    location_key=storage_key,  # Use storage_key (may include asset_type)
                     photo_data=photo_data,
                     photo_filename=photo.filename,
                     frames_data=frames,
@@ -191,16 +263,16 @@ async def save_mockup_frame(
                     config=config_dict,
                 )
                 if not result or not result.get("success"):
-                    failed_locations.append({"location": location_key, "error": "Asset-management save failed"})
+                    failed_locations.append({"location": network_key, "error": "Asset-management save failed"})
                     continue
 
                 final_filename = result.get("photo_filename")
-                logger.info(f"[MOCKUP API] ✓ Asset-management save complete for {location_key}, filename: {final_filename}")
+                logger.info(f"[MOCKUP API] ✓ Asset-management save complete for {storage_key}, filename: {final_filename}")
 
                 # Save photo to disk with the final auto-numbered filename
-                logger.info(f"[MOCKUP API] Saving photo to disk for {location_key}: {final_filename}")
+                logger.info(f"[MOCKUP API] Saving photo to disk for {storage_key}: {final_filename}")
                 photo_path = mockup_generator.save_location_photo(
-                    company_schema, location_key, final_filename, photo_data,
+                    company_schema, storage_key, final_filename, photo_data,
                     time_of_day, side, environment=environment
                 )
                 logger.info(f"[MOCKUP API] ✓ Photo saved to disk at: {photo_path}")
@@ -213,15 +285,17 @@ async def save_mockup_frame(
                     logger.error(f"[MOCKUP API] ✗ VERIFICATION FAILED: File does not exist at {photo_path}")
 
                 results.append({
-                    "location": location_key,
+                    "location": network_key,
+                    "storage_key": storage_key,
+                    "asset_type_key": asset_type_key if not is_standalone else None,
                     "photo": final_filename,
                     "success": True,
                 })
-                logger.info(f"[MOCKUP API] ✓ Complete: Saved {len(frames)} frame(s) for {location_key}/{time_of_day}/{side}/{final_filename}")
+                logger.info(f"[MOCKUP API] ✓ Complete: Saved {len(frames)} frame(s) for {storage_key}/{time_of_day}/{side}/{final_filename}")
 
             except Exception as loc_error:
-                logger.error(f"[MOCKUP API] Error saving to {location_key}: {loc_error}")
-                failed_locations.append({"location": location_key, "error": str(loc_error)})
+                logger.error(f"[MOCKUP API] Error saving to {network_key}: {loc_error}")
+                failed_locations.append({"location": network_key, "error": str(loc_error)})
 
         # Return summary
         return {
@@ -348,8 +422,8 @@ async def list_mockup_photos(
     try:
         service = MockupFrameService(companies=user.companies)
 
-        # Get storage info with ALL assets for traditional networks
-        storage_info = await service.get_storage_info(location_key, include_all_assets=True)
+        # Get storage info - returns all asset types for traditional networks
+        storage_info = await service.get_storage_info(location_key)
 
         if not storage_info:
             storage_keys = [location_key]
@@ -406,8 +480,8 @@ async def list_mockup_templates(
     List all templates (photos with frame configs) for a location.
 
     Handles both standalone and traditional networks:
-    - Standalone: mockups stored at network level
-    - Traditional: mockups stored at asset level (network_key/type_key/asset_key)
+    - Standalone: mockups stored at network level (network_key)
+    - Traditional: mockups stored at asset type level (network_key/type_key)
 
     Args:
         location_key: Network key
@@ -415,13 +489,24 @@ async def list_mockup_templates(
         side: Filter by "gold", "silver", "single_side", or "all" (only applies to outdoor)
         venue_type: Filter by "indoor", "outdoor", or "all"
 
+    Returns:
+        {
+            "templates": [...],  # Filtered templates based on query params
+            "available_configs": {  # ALL available configs (unfiltered, for dropdown filtering)
+                "has_frames": bool,
+                "available_venue_types": ["outdoor", "indoor"],
+                "available_time_of_days": {"outdoor": ["day", "night"], ...},
+                "available_sides": {"outdoor": {"day": ["gold", "silver"], ...}, ...}
+            }
+        }
+
     Requires sales:mockups:read permission.
     """
     try:
         service = MockupFrameService(companies=user.companies)
 
-        # Step 1: Get storage info with ALL assets for traditional networks
-        storage_info = await service.get_storage_info(location_key, include_all_assets=True)
+        # Step 1: Get storage info - returns all asset types for traditional networks
+        storage_info = await service.get_storage_info(location_key)
 
         if not storage_info:
             # Fallback: try location_key directly (backward compatibility)
@@ -434,8 +519,14 @@ async def list_mockup_templates(
         templates = []
         seen = set()  # Dedupe: (photo, storage_key, env, tod, side)
 
+        # For available_configs computation (before filtering)
+        all_venue_types = set()
+        time_of_days_by_venue: dict[str, set[str]] = {}
+        sides_by_venue_tod: dict[str, dict[str, set[str]]] = {}
+        has_any_frames = False
+
         # Step 2: Fetch frames from EACH storage key
-        # storage_key is "{network_key}/{type_key}/{asset_key}" for traditional, "{network_key}" for standalone
+        # storage_key is "{network_key}/{type_key}" for traditional, "{network_key}" for standalone
         for storage_key in storage_keys:
             frames, frame_company = await service.get_all_frames(storage_key, company_hint=company)
 
@@ -448,6 +539,22 @@ async def list_mockup_templates(
                 if not photo:
                     continue
 
+                has_any_frames = True
+
+                # === BUILD AVAILABLE_CONFIGS (from ALL frames, before filtering) ===
+                all_venue_types.add(env)
+                if env not in time_of_days_by_venue:
+                    time_of_days_by_venue[env] = set()
+                if env == "outdoor":
+                    time_of_days_by_venue[env].add(tod)
+                if env not in sides_by_venue_tod:
+                    sides_by_venue_tod[env] = {}
+                if env == "outdoor":
+                    if tod not in sides_by_venue_tod[env]:
+                        sides_by_venue_tod[env][tod] = set()
+                    sides_by_venue_tod[env][tod].add(frame_side)
+
+                # === APPLY FILTERS FOR RETURNED TEMPLATES ===
                 # Step 3: Filter by venue_type (environment) FIRST
                 if venue_type != "all" and env != venue_type:
                     continue
@@ -472,7 +579,7 @@ async def list_mockup_templates(
 
                 templates.append({
                     "photo": photo,
-                    "storage_key": storage_key,  # "{network_key}/{type_key}/{asset_key}" or "{network_key}"
+                    "storage_key": storage_key,  # "{network_key}/{type_key}" or "{network_key}"
                     "environment": env,
                     "time_of_day": tod,
                     "side": frame_side,
@@ -481,7 +588,21 @@ async def list_mockup_templates(
                     "company": frame_company or company,  # Company that owns this frame (for O(1) photo lookup)
                 })
 
-        return {"templates": templates}
+        # Build available_configs response (computed from ALL frames, not filtered)
+        available_configs = {
+            "has_frames": has_any_frames,
+            "available_venue_types": sorted(all_venue_types),
+            "available_time_of_days": {env: sorted(tods) for env, tods in time_of_days_by_venue.items()},
+            "available_sides": {
+                env: {tod: sorted(sides) for tod, sides in tods.items()}
+                for env, tods in sides_by_venue_tod.items()
+            },
+        }
+
+        return {
+            "templates": templates,
+            "available_configs": available_configs,
+        }
 
     except Exception as e:
         logger.error(f"[MOCKUP API] Error listing templates: {e}")
@@ -663,12 +784,28 @@ async def generate_mockup_api(
     that the coordinator doesn't support. The coordinator is designed for orchestrating
     chat/Slack workflows with automatic strategy selection.
 
+    Unified Architecture Support:
+    - If storage_key provided: Generate single mockup for that specific storage path (FileResponse)
+    - If storage_key NOT provided AND standalone network: Generate single mockup (FileResponse)
+    - If storage_key NOT provided AND traditional network: Auto-iterate all asset types,
+      generate one mockup per compatible type, return JSON with multiple images
+
     Args:
         location_key: Network key (e.g., "dubai_mall")
-        storage_key: Optional storage key for traditional networks
-                    (e.g., "dubai_mall/digital_screens/mall_screen_a").
-                    If not provided, defaults to location_key.
+        storage_key: Optional storage key for specific template
+                    (e.g., "dubai_mall/digital_screens" for type-level).
+                    If provided, generates single mockup for that storage path.
+                    If not provided for traditional networks, auto-generates for all types.
         environment: "indoor" or "outdoor" (default "outdoor")
+
+    Returns:
+        FileResponse for single mockup OR JSON for multi-type generation:
+        {
+            "multi_type": true,
+            "mockups": [{"storage_key": ..., "type_key": ..., "image_base64": ..., ...}],
+            "skipped_types": [...],
+            "creative_type": "ai_generated" | "uploaded"
+        }
 
     Requires sales:mockups:generate permission.
     """
@@ -694,16 +831,8 @@ async def generate_mockup_api(
             except json.JSONDecodeError:
                 logger.warning("[MOCKUP API] Invalid frame config JSON, ignoring")
 
-        # Determine the actual storage key to use for generation
-        # For traditional networks, storage_key comes from templates endpoint
-        # For standalone networks, storage_key is same as location_key
-        effective_storage_key = storage_key or location_key
-
-        # Extract network_key from storage_key for validation
-        # Storage key format: "network_key" (standalone) or "network_key/type_key/asset_key" (traditional)
-        network_key = effective_storage_key.split("/")[0]
-
         # Validate network exists and user has access
+        network_key = location_key  # location_key IS the network_key
         location_data = db.get_location_by_key(network_key, user.companies)
         if not location_data:
             # Fallback: check config.LOCATION_METADATA for backward compatibility
@@ -712,8 +841,6 @@ async def generate_mockup_api(
             company_schema = None
         else:
             company_schema = location_data.get("company") or location_data.get("company_schema")
-
-        logger.info(f"[MOCKUP API] Generate request: network={network_key}, storage_key={effective_storage_key}, env={environment}")
 
         # Determine mode: AI generation or upload
         if ai_prompt:
@@ -743,15 +870,182 @@ async def generate_mockup_api(
         else:
             raise HTTPException(status_code=400, detail="Either ai_prompt or creative file must be provided")
 
+        # Check if this is a multi-type generation scenario
+        # Multi-type: traditional network + no storage_key provided + no specific_photo
+        from integrations.asset_management import asset_mgmt_client
+        import base64
+
+        storage_info_result = await asset_mgmt_client.get_mockup_storage_info(
+            network_key=network_key,
+            companies=user.companies,
+        )
+
+        is_standalone = storage_info_result.get("is_standalone", True) if storage_info_result else True
+        asset_types = storage_info_result.get("asset_types", []) if storage_info_result else []
+
+        # Determine if multi-type generation is needed
+        # Multi-type: traditional network + no storage_key explicitly provided + no specific_photo
+        is_multi_type = (
+            not is_standalone
+            and not storage_key
+            and not specific_photo
+            and len(asset_types) > 0
+        )
+
+        logger.info(f"[MOCKUP API] Generate request: network={network_key}, is_standalone={is_standalone}, is_multi_type={is_multi_type}, storage_key={storage_key}")
+
+        if is_multi_type:
+            # MULTI-TYPE GENERATION: Iterate all asset types and generate one mockup per compatible type
+            logger.info(f"[MOCKUP API] Multi-type generation for traditional network {network_key} with {len(asset_types)} asset types")
+
+            service = MockupFrameService(companies=user.companies)
+            generated_mockups = []
+            skipped_types = []
+
+            for asset_type in asset_types:
+                type_key = asset_type.get("type_key")
+                type_name = asset_type.get("type_name", type_key)
+                type_storage_key = asset_type.get("storage_key")  # "{network_key}/{type_key}"
+
+                logger.info(f"[MOCKUP API] Checking asset type: {type_key} at {type_storage_key}")
+
+                # Get frames for this type and check for compatible config
+                frames, _ = await service.get_all_frames(type_storage_key, company_hint=company_schema)
+
+                if not frames:
+                    skipped_types.append({
+                        "type_key": type_key,
+                        "type_name": type_name,
+                        "reason": "no_frames"
+                    })
+                    continue
+
+                # Filter frames by environment, time_of_day, and side
+                compatible_frames = []
+                for frame in frames:
+                    frame_env = frame.get("environment", "outdoor")
+                    frame_tod = frame.get("time_of_day", "day")
+                    frame_side = frame.get("side", "gold")
+
+                    # Environment must match (or filter is "all")
+                    if environment != "all" and frame_env != environment:
+                        continue
+
+                    # For outdoor, check time_of_day and side
+                    if frame_env == "outdoor":
+                        if time_of_day != "all" and frame_tod != time_of_day:
+                            continue
+                        if side != "all" and frame_side != side:
+                            continue
+
+                    compatible_frames.append(frame)
+
+                if not compatible_frames:
+                    skipped_types.append({
+                        "type_key": type_key,
+                        "type_name": type_name,
+                        "reason": "no_compatible_frames",
+                        "requested_config": {"environment": environment, "time_of_day": time_of_day, "side": side}
+                    })
+                    continue
+
+                # Generate mockup for this type
+                try:
+                    result_path, photo_used = await mockup_generator.generate_mockup_async(
+                        type_storage_key,
+                        [creative_path],
+                        time_of_day=time_of_day,
+                        side=side,
+                        environment=environment,
+                        specific_photo=None,  # Let it pick randomly from compatible
+                        config_override=config_dict,
+                        company_schemas=user.companies,
+                        company_hint=company_schema,
+                    )
+
+                    if result_path and photo_used:
+                        # Read image and encode as base64
+                        with open(result_path, "rb") as img_file:
+                            image_base64 = base64.b64encode(img_file.read()).decode("utf-8")
+
+                        generated_mockups.append({
+                            "storage_key": type_storage_key,
+                            "type_key": type_key,
+                            "type_name": type_name,
+                            "image_base64": image_base64,
+                            "photo_used": photo_used,
+                        })
+
+                        # Log success
+                        db.log_mockup_usage(
+                            location_key=location_key,
+                            time_of_day=time_of_day,
+                            side=side,
+                            photo_used=photo_used,
+                            creative_type=creative_type,
+                            company_schema=company_schema,
+                            ai_prompt=ai_prompt if ai_prompt else None,
+                            template_selected=False,
+                            success=True,
+                            user_ip=client_ip,
+                        )
+
+                        # Cleanup temp result file
+                        if result_path.exists():
+                            result_path.unlink()
+                    else:
+                        skipped_types.append({
+                            "type_key": type_key,
+                            "type_name": type_name,
+                            "reason": "generation_failed"
+                        })
+
+                except Exception as gen_error:
+                    logger.error(f"[MOCKUP API] Error generating mockup for type {type_key}: {gen_error}")
+                    skipped_types.append({
+                        "type_key": type_key,
+                        "type_name": type_name,
+                        "reason": f"error: {str(gen_error)}"
+                    })
+
+            # Cleanup creative file
+            if creative_path and creative_path.exists():
+                creative_path.unlink()
+
+            if not generated_mockups:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No compatible frames found for any asset type with config: environment={environment}, time_of_day={time_of_day}, side={side}"
+                )
+
+            logger.info(f"[MOCKUP API] Multi-type generation complete: {len(generated_mockups)} mockups, {len(skipped_types)} skipped")
+
+            return {
+                "multi_type": True,
+                "network_key": network_key,
+                "mockups": generated_mockups,
+                "skipped_types": skipped_types,
+                "creative_type": creative_type,
+                "config": {
+                    "environment": environment,
+                    "time_of_day": time_of_day,
+                    "side": side,
+                }
+            }
+
+        # SINGLE MOCKUP GENERATION (standalone or explicit storage_key provided)
+        # Determine the actual storage key to use for generation
+        effective_storage_key = storage_key or network_key
+
+        logger.info(f"[MOCKUP API] Single mockup generation: storage_key={effective_storage_key}, env={environment}")
+
         # Generate mockup (pass as list) with time_of_day, side, specific_photo, and config override
-        # Pass company_hint for O(1) asset lookup (we already know which company owns this location)
-        # Use effective_storage_key for traditional networks (e.g., "dubai_mall/digital_screens/mall_screen_a")
         result_path, photo_used = await mockup_generator.generate_mockup_async(
-            effective_storage_key,  # Use storage key, not just network key
+            effective_storage_key,
             [creative_path],
             time_of_day=time_of_day,
             side=side,
-            environment=environment,  # Pass environment for indoor/outdoor filtering
+            environment=environment,
             specific_photo=specific_photo,
             config_override=config_dict,
             company_schemas=user.companies,
@@ -951,7 +1245,7 @@ async def get_location_templates(
     user: AuthUser = Depends(require_permission("sales:mockups:read"))
 ):
     """
-    Get all available templates for a location.
+    Get all available templates for a location with available config combinations.
 
     If location is a package, returns templates from ALL networks in the package.
     If location is a network, returns templates for that network only.
@@ -960,7 +1254,17 @@ async def get_location_templates(
         location_key: Network key or package key
 
     Returns:
-        List of available templates
+        {
+            "templates": [...],
+            "count": int,
+            "location_key": str,
+            "available_configs": {
+                "has_frames": bool,
+                "available_venue_types": ["outdoor", "indoor"],
+                "available_time_of_days": {"outdoor": ["day", "night"], ...},
+                "available_sides": {"outdoor": {"day": ["gold", "silver"], ...}, ...}
+            }
+        }
     """
     from core.services.mockup_eligibility import GenerateFormEligibilityService
 
@@ -973,11 +1277,14 @@ async def get_location_templates(
     try:
         service = GenerateFormEligibilityService(user_companies=user.companies)
         templates = await service.get_templates_for_location(location_key)
+        # Efficient: derive available_configs from already-fetched templates (no duplicate API calls)
+        available_configs = service.get_available_configs_from_templates(templates, location_key)
 
         return {
             "templates": [t.to_dict() for t in templates],
             "count": len(templates),
             "location_key": location_key,
+            "available_configs": available_configs,
         }
     except Exception as e:
         logger.error(f"[ELIGIBILITY API] Error getting templates for {location_key}: {e}", exc_info=True)

@@ -2316,19 +2316,17 @@ class SupabaseBackend(DatabaseBackend):
         self,
         network_key: str,
         company_schemas: list[str],
-        include_all_assets: bool = False,
     ) -> dict[str, Any] | None:
         """
         Get mockup storage info for a network.
 
         Resolves the correct storage key(s) based on whether the network is
-        standalone or traditional.
+        standalone or traditional. Traditional networks store mockups at
+        ASSET TYPE level (not individual asset level).
 
         Args:
             network_key: Network identifier (same as location_key in VIEW)
             company_schemas: Company schemas to search
-            include_all_assets: If True, returns ALL assets for traditional networks.
-                               If False, returns only one sample per asset type.
 
         Returns:
             {
@@ -2337,8 +2335,8 @@ class SupabaseBackend(DatabaseBackend):
                 "is_standalone": bool,
                 "storage_keys": list[str],
                     - Standalone: [network_key]
-                    - Traditional: ["{network_key}/{type_key}/{asset_key}", ...]
-                "assets": list[dict],  # For traditional: asset details with storage_key
+                    - Traditional: ["{network_key}/{type_key}", ...]
+                "asset_types": list[dict],  # For traditional: type details with storage_key
             }
         """
         # Get the network
@@ -2360,46 +2358,48 @@ class SupabaseBackend(DatabaseBackend):
                 "assets": [],
             }
         else:
-            # Traditional networks: mockups at asset level
+            # Traditional networks: mockups at ASSET TYPE level (not individual assets)
             # Get asset types for this network
+            import random
             types = self.list_asset_types([company], network_id=network_id)
 
-            all_assets = []
+            all_types = []
             storage_keys = []
 
             for asset_type in types:
                 type_key = asset_type.get("type_key")
                 type_name = asset_type.get("name")
+                type_id = asset_type.get("id")
 
-                # Get assets - ALL or just first one based on include_all_assets
-                limit = None if include_all_assets else 1
+                # Storage key at TYPE level: "{network_key}/{type_key}"
+                type_storage_key = f"{network_key}/{type_key}"
+                storage_keys.append(type_storage_key)
+
+                # Get all assets in this type to pick a random one for environment
                 assets = self.list_network_assets(
                     [company],
-                    type_id=asset_type["id"],
-                    limit=limit,
+                    type_id=type_id,
                 )
+                if assets:
+                    random_asset = random.choice(assets)
+                    default_env = random_asset.get("environment", "outdoor")
+                else:
+                    default_env = "outdoor"
 
-                for asset in assets:
-                    asset_key = asset["asset_key"]
-                    # Storage key: "{network_key}/{type_key}/{asset_key}"
-                    full_storage_key = f"{network_key}/{type_key}/{asset_key}"
-                    storage_keys.append(full_storage_key)
-
-                    all_assets.append({
-                        "asset_key": asset_key,
-                        "type_key": type_key,
-                        "type_name": type_name,
-                        "display_name": asset.get("display_name"),
-                        "environment": asset.get("environment", "outdoor"),
-                        "storage_key": full_storage_key,
-                    })
+                all_types.append({
+                    "type_key": type_key,
+                    "type_name": type_name,
+                    "type_id": type_id,
+                    "environment": default_env,
+                    "storage_key": type_storage_key,
+                })
 
             return {
                 "network_key": network_key,
                 "company": company,
                 "is_standalone": False,
                 "storage_keys": storage_keys,
-                "assets": all_assets,
+                "asset_types": all_types,
             }
 
     # =========================================================================

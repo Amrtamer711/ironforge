@@ -80,6 +80,10 @@ tmp/
 temp/
 *.tmp
 
+# Excel files (data imports)
+*.xlsx
+*.xls
+
 # Fonts (proprietary)
 Sofia-Pro Font/
 
@@ -98,3 +102,6 @@ src/platform/ArgoCD/repo-credentials/gitlab-repo.env
 
 src/unified-ui-react/Old Code Archive/
 docs/TESTING_MCP.md
+
+# MCP config (may contain tokens)
+.mcp.json
