@@ -4,8 +4,10 @@
 
 ## DEV TO-DO: Unified Asset Management
 
-- [ ] Make the changes to mockup and proposal generation LLM chats with new location structure.
-- [ ] Lazy Load Chat Messages so that the user is not stuck with loading conversations after login (Clarify if reducing the no of chats loaded will have positive impact).
+# - [ ] Make the changes to mockup and proposal generation LLM chats with new location structure.
+# - [ ] Lazy Load Chat Messages so that the user is not stuck with loading conversations after login (Clarify if reducing the no of chats loaded will have positive impact).
+- [ ] Check the indoor locations - Why images are not loading. Error message below #Error01
+
 
 ### Part 1: Unified Architecture ✅ DONE
 
@@ -137,3 +139,26 @@ crm-unified-ui.onrender.com/favicon.ico clientIP="94.200.129.142" requestID="c23
 [GET]
 crm-unified-ui.onrender.com/api/base/auth/me clientIP="94.200.129.142" requestID="e78aa9b4-9f8a-47e1" responseTimeMS=40 responseBytes=459 userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 2026-01-07 05:48:22,128 - unified-ui - ERROR - [UI Auth] Error: Session from session_id claim in JWT does not exist
+
+-------------------------------
+
+
+#Error01
+
+[21:19:05] [Assets] ERROR: 2026-01-10 17:19:05,596 - asset-management - DEBUG - [STORAGE] Mockup photo not found: viola/dna01/outdoor/day/gold/Dna01_3.jpg - {'statusCode': 404, 'error': not_found, 'message': Object not found}
+[21:19:05] [Assets] INFO: 2026-01-10 17:19:05,596 - crm_security.middleware - INFO - [HTTP] GET /api/storage/mockups/viola/dna01/outdoor/day/gold/Dna01_3.jpg -> 404 (701ms) user=- request_id=107fb233-25f2-4f64-a6cf-9ba4120fed74
+[21:19:05] [Assets] INFO: INFO:     127.0.0.1:62946 - "GET /api/storage/mockups/viola/dna01/outdoor/day/gold/Dna01_3.jpg HTTP/1.1" 404 Not Found
+[21:19:05] [Sales] WARN: 17:19:05 WARNING  [4b45fadd] core.services.mockup_frame_service: [MOCKUP_FRAME_SERVICE] Photo not found in any company
+[21:19:05] [Sales] ERROR: 17:19:05 ERROR    [4b45fadd] proposal-bot: [PHOTO GET] ✗ Photo not found: dna01/Dna01_3.jpg
+[21:19:05] [Sales] INFO: 17:19:05 INFO     [4b45fadd] api.request: GET /api/mockup/photo/dna01 -> 404 (3891ms)
+[21:19:05] [UI] INFO: 2026-01-10 17:19:05,598 - unified-ui - INFO - [PROXY] Response: 404
+[21:19:05] [UI] INFO: 2026-01-10 17:19:05,598 - unified-ui - INFO - [UI] GET /api/sales/mockup/photo/dna01 -> 404 (4348ms)
+[21:19:05] [UI] INFO: INFO:     127.0.0.1:63103 - "GET /api/sales/mockup/photo/dna01?photo_filename=Dna01_3.jpg&time_of_day=day&side=gold&company=backlite_dubai HTTP/1.1" 404 Not Found
+[21:19:06] [Assets] ERROR: 2026-01-10 17:19:06,320 - asset-management - DEBUG - [STORAGE] Mockup photo not found: viola/dna01/outdoor/day/gold/Dna01_4.jpg - {'statusCode': 404, 'error': not_found, 'message': Object not found}
+[21:19:06] [Assets] INFO: 2026-01-10 17:19:06,321 - crm_security.middleware - INFO - [HTTP] GET /api/storage/mockups/viola/dna01/outdoor/day/gold/Dna01_4.jpg -> 404 (798ms) user=- request_id=6732d396-0ef3-439c-984a-fbcf1a4819a5
+[21:19:06] [Assets] INFO: INFO:     127.0.0.1:62952 - "GET /api/storage/mockups/viola/dna01/outdoor/day/gold/Dna01_4.jpg HTTP/1.1" 404 Not Found
+[21:19:06] [Sales] WARN: 17:19:06 WARNING  [af931afc] core.services.mockup_frame_service: [MOCKUP_FRAME_SERVICE] Photo not found in any company
+[21:19:06] [Sales] ERROR: 17:19:06 ERROR    [af931afc] proposal-bot: [PHOTO GET] ✗ Photo not found: dna01/Dna01_4.jpg
+
+end Error01
+
