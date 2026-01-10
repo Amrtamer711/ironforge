@@ -273,7 +273,7 @@ async def save_mockup_frame(
                 logger.info(f"[MOCKUP API] Saving photo to disk for {storage_key}: {final_filename}")
                 photo_path = mockup_generator.save_location_photo(
                     company_schema, storage_key, final_filename, photo_data,
-                    time_of_day, side, environment=environment
+                    environment=environment, time_of_day=time_of_day, side=side
                 )
                 logger.info(f"[MOCKUP API] ✓ Photo saved to disk at: {photo_path}")
 
