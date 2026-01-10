@@ -394,17 +394,32 @@ async def refresh_attachment_urls(
         return {"urls": {}}
 
     storage_client = get_storage_client()
+    logger.info(f"[CHAT] attachment refresh: storage_client={storage_client}, provider={storage_client.provider_name if storage_client else 'None'}")
     if not storage_client or storage_client.provider_name == "local":
         # Local storage doesn't need signed URLs
+        logger.info(f"[CHAT] attachment refresh: returning empty (local storage or no client)")
         return {"urls": {}}
 
     # 1. Single batch DB lookup (instead of N sequential calls)
     docs = db.get_documents_batch(all_ids)
 
+    # DEBUG: Log what we got from the database
+    logger.info(f"[CHAT] attachment refresh: requested={all_ids}, found_in_db={list(docs.keys())}")
+    for fid in all_ids:
+        doc = docs.get(fid)
+        if doc:
+            logger.info(f"[CHAT] doc {fid}: provider={doc.get('storage_provider')}, bucket={doc.get('storage_bucket')}, key={doc.get('storage_key')}")
+        else:
+            logger.warning(f"[CHAT] doc {fid}: NOT FOUND in documents table")
+
     # 2. Parallel signed URL generation (instead of sequential)
     async def refresh_one(file_id: str) -> tuple[str, str | None]:
         doc = docs.get(file_id)
-        if not doc or doc.get("storage_provider") != "supabase":
+        if not doc:
+            logger.warning(f"[CHAT] refresh_one {file_id}: no document record")
+            return (file_id, None)
+        if doc.get("storage_provider") != "supabase":
+            logger.warning(f"[CHAT] refresh_one {file_id}: provider={doc.get('storage_provider')} (not supabase)")
             return (file_id, None)
         try:
             url = await storage_client.get_signed_url(
