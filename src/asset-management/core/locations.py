@@ -278,7 +278,7 @@ class LocationService:
             series=data.get("series"),
             height=data.get("height"),
             width=data.get("width"),
-            number_of_faces=data.get("number_of_faces", 1),
+            number_of_faces=data.get("number_of_faces") or 1,
             spot_duration=data.get("spot_duration"),
             loop_duration=data.get("loop_duration"),
             sov_percent=data.get("sov_percent"),

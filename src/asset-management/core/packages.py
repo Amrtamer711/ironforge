@@ -143,9 +143,10 @@ class PackageService:
             package.expanded_locations = [
                 LocationSummary(
                     id=loc["id"],
-                    location_key=loc["location_key"],
-                    display_name=loc["display_name"],
-                    display_type=loc["display_type"],
+                    # Networks use network_key, locations use location_key
+                    location_key=loc.get("network_key") or loc.get("location_key"),
+                    display_name=loc.get("display_name") or loc.get("name", ""),
+                    display_type=loc.get("display_type", ""),
                     company=loc.get("company_schema", loc.get("company", company)),
                 )
                 for loc in locs
@@ -262,9 +263,10 @@ class PackageService:
         return [
             LocationSummary(
                 id=loc["id"],
-                location_key=loc["location_key"],
-                display_name=loc["display_name"],
-                display_type=loc["display_type"],
+                # Networks use network_key, locations use location_key
+                location_key=loc.get("network_key") or loc.get("location_key"),
+                display_name=loc.get("display_name") or loc.get("name", ""),
+                display_type=loc.get("display_type", ""),
                 company=loc.get("company_schema", loc.get("company", company)),
             )
             for loc in locs
