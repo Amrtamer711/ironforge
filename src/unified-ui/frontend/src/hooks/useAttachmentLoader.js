@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import * as chatApi from "../api/chat";
 
 const PREFETCH_SIZE = 20;
@@ -17,6 +17,13 @@ export function useAttachmentLoader(allFileIds = []) {
   const loadedRef = useRef(new Set());
   const pendingRef = useRef(new Set());
 
+  // O(1) index lookup map instead of O(n) indexOf calls
+  const fileIdIndexMap = useMemo(() => {
+    const map = new Map();
+    allFileIds.forEach((id, idx) => map.set(id, idx));
+    return map;
+  }, [allFileIds]);
+
   const loadAttachments = useCallback(
     async (visibleFileIds) => {
       // Filter out already loaded or pending
@@ -29,11 +36,14 @@ export function useAttachmentLoader(allFileIds = []) {
       // Mark as pending
       needLoad.forEach((id) => pendingRef.current.add(id));
 
-      // Calculate prefetch IDs (next batch not yet loaded)
-      const lastVisibleIndex = Math.max(
-        ...visibleFileIds.map((id) => allFileIds.indexOf(id)).filter((i) => i >= 0),
-        -1
-      );
+      // Calculate prefetch IDs using O(1) Map lookup instead of O(n) indexOf
+      let lastVisibleIndex = -1;
+      for (const id of visibleFileIds) {
+        const idx = fileIdIndexMap.get(id);
+        if (idx !== undefined && idx > lastVisibleIndex) {
+          lastVisibleIndex = idx;
+        }
+      }
       const prefetchIds =
         lastVisibleIndex >= 0
           ? allFileIds
@@ -64,7 +74,7 @@ export function useAttachmentLoader(allFileIds = []) {
         setIsLoading(false);
       }
     },
-    [allFileIds]
+    [allFileIds, fileIdIndexMap]
   );
 
   return { urls, loadAttachments, isLoading };

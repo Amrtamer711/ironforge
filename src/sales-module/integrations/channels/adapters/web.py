@@ -14,6 +14,7 @@ File Storage:
 
 import contextvars
 import logging
+import re
 import time
 import uuid
 from collections import deque
@@ -22,6 +23,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+# Pre-compiled regex patterns for performance (avoid recompilation on every call)
+_INLINE_CODE_RE = re.compile(r'__INLINE_CODE_\d+__')
+_CODE_BLOCK_RE = re.compile(r'__CODE_BLOCK_\d+__')
 
 # Context variable to track current request ID for parallel request support
 # This allows adapter methods to tag events with the correct request_id
@@ -226,15 +231,17 @@ class WebAdapter(ChannelAdapter):
 
         session = self._sessions.get(user_id)
         if session:
+            # Cache datetime for this check (avoid 2 datetime.now() calls)
+            request_time = datetime.now()
             # Check if session has expired
-            session_age = (datetime.now() - session.last_activity).total_seconds()
+            session_age = (request_time - session.last_activity).total_seconds()
             if session_age > self.SESSION_TTL:
                 # Session expired, remove it
                 del self._sessions[user_id]
                 logger.debug(f"[WebAdapter] Session expired for user {user_id}")
                 return None
             # Update last activity
-            session.last_activity = datetime.now()
+            session.last_activity = request_time
         return session
 
     def _cleanup_stale_sessions(self) -> int:
@@ -286,9 +293,9 @@ class WebAdapter(ChannelAdapter):
         """
         if not text:
             return text
-        import re
-        text = re.sub(r'__INLINE_CODE_\d+__', '', text)
-        text = re.sub(r'__CODE_BLOCK_\d+__', '', text)
+        # Use pre-compiled regex patterns for performance
+        text = _INLINE_CODE_RE.sub('', text)
+        text = _CODE_BLOCK_RE.sub('', text)
         return text
 
     def _restore_session_state(self, user_id: str, session: WebSession) -> None:

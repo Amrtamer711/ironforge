@@ -35,7 +35,7 @@ BOOKING_ORDER_CACHE_TTL = 300  # 5 minutes for booking orders
 STATS_CACHE_TTL = 600  # 10 minutes for statistics
 PROPOSAL_CACHE_TTL = 300  # 5 minutes for proposals
 DOCUMENT_CACHE_TTL = 600  # 10 minutes for documents
-CHAT_CACHE_TTL = 1800  # 30 minutes for chat sessions (was 300)
+CHAT_CACHE_TTL = 300  # 5 minutes for chat sessions (reduced from 30min for freshness)
 BO_WORKFLOW_CACHE_TTL = 30  # 30 seconds for BO workflows (short-lived)
 AI_COSTS_CACHE_TTL = 900  # 15 minutes for AI costs summary
 
@@ -1936,7 +1936,7 @@ class SupabaseBackend(DatabaseBackend):
         messages: list[dict[str, Any]],
         session_id: str | None = None,
     ) -> bool:
-        """Save or update a user's chat session."""
+        """Save or update a user's chat session (full replacement)."""
         import uuid
 
         now = datetime.now().isoformat()
@@ -1963,6 +1963,150 @@ class SupabaseBackend(DatabaseBackend):
         except Exception as e:
             logger.error(f"[SUPABASE] Error saving chat session for {user_id}: {e}")
             return False
+
+    def append_chat_messages(
+        self,
+        user_id: str,
+        new_messages: list[dict[str, Any]],
+        session_id: str | None = None,
+    ) -> bool:
+        """
+        Atomically append messages to a user's chat session.
+
+        This uses PostgreSQL's JSONB concatenation to prevent race conditions
+        where concurrent saves could lose messages. Much safer than read-modify-write.
+
+        Args:
+            user_id: The user's ID
+            new_messages: List of messages to append
+            session_id: Optional session ID (creates new if not exists)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        import uuid
+
+        if not new_messages:
+            return True
+
+        now = datetime.now().isoformat()
+        if not session_id:
+            session_id = str(uuid.uuid4())
+
+        try:
+            client = self._get_client()
+
+            # First check if session exists
+            existing = client.table("chat_sessions").select("session_id").eq("user_id", user_id).single().execute()
+
+            if existing.data:
+                # Atomic append using PostgreSQL JSONB concatenation
+                # This is race-condition safe - concurrent appends both succeed
+                client.rpc("append_chat_messages", {
+                    "p_user_id": user_id,
+                    "p_new_messages": new_messages,
+                    "p_updated_at": now,
+                }).execute()
+            else:
+                # Create new session with initial messages
+                client.table("chat_sessions").insert({
+                    "user_id": user_id,
+                    "session_id": session_id,
+                    "messages": new_messages,
+                    "created_at": now,
+                    "updated_at": now,
+                }).execute()
+
+            # Invalidate cache
+            _run_async(self._cache_delete(f"chat:{user_id}"))
+
+            logger.debug(f"[SUPABASE] Appended {len(new_messages)} messages for user: {user_id}")
+            return True
+        except Exception as e:
+            # If RPC doesn't exist, fall back to full save
+            if "function" in str(e).lower() and "not exist" in str(e).lower():
+                logger.warning(f"[SUPABASE] append_chat_messages RPC not found, using fallback")
+                return self._append_chat_messages_fallback(user_id, new_messages, session_id)
+            logger.error(f"[SUPABASE] Error appending chat messages for {user_id}: {e}")
+            return False
+
+    def _append_chat_messages_fallback(
+        self,
+        user_id: str,
+        new_messages: list[dict[str, Any]],
+        session_id: str | None = None,
+    ) -> bool:
+        """
+        Fallback append using optimistic locking pattern.
+
+        If the RPC function doesn't exist, this provides a safer alternative
+        to raw read-modify-write by using updated_at as a version check.
+        """
+        import uuid
+
+        now = datetime.now().isoformat()
+        if not session_id:
+            session_id = str(uuid.uuid4())
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                client = self._get_client()
+
+                # Read current state
+                existing = client.table("chat_sessions").select("*").eq("user_id", user_id).single().execute()
+
+                if existing.data:
+                    current_messages = existing.data.get("messages", [])
+                    current_updated = existing.data.get("updated_at")
+
+                    # Append new messages
+                    updated_messages = current_messages + new_messages
+
+                    # Optimistic lock: only update if updated_at hasn't changed
+                    result = client.table("chat_sessions").update({
+                        "messages": updated_messages,
+                        "updated_at": now,
+                    }).eq("user_id", user_id).eq("updated_at", current_updated).execute()
+
+                    if result.data:
+                        _run_async(self._cache_delete(f"chat:{user_id}"))
+                        return True
+                    else:
+                        # Conflict - retry
+                        logger.warning(f"[SUPABASE] Optimistic lock conflict for {user_id}, retry {attempt + 1}")
+                        continue
+                else:
+                    # Create new
+                    client.table("chat_sessions").insert({
+                        "user_id": user_id,
+                        "session_id": session_id,
+                        "messages": new_messages,
+                        "created_at": now,
+                        "updated_at": now,
+                    }).execute()
+                    _run_async(self._cache_delete(f"chat:{user_id}"))
+                    return True
+
+            except Exception as e:
+                if "PGRST116" in str(e):  # No row found, create new
+                    try:
+                        client.table("chat_sessions").insert({
+                            "user_id": user_id,
+                            "session_id": session_id,
+                            "messages": new_messages,
+                            "created_at": now,
+                            "updated_at": now,
+                        }).execute()
+                        _run_async(self._cache_delete(f"chat:{user_id}"))
+                        return True
+                    except Exception as insert_err:
+                        logger.error(f"[SUPABASE] Error creating chat session: {insert_err}")
+                        return False
+                logger.error(f"[SUPABASE] Error in fallback append for {user_id}: {e}")
+
+        logger.error(f"[SUPABASE] Failed to append messages after {max_retries} retries")
+        return False
 
     def get_chat_session(self, user_id: str) -> dict[str, Any] | None:
         """Get a user's chat session (cached with short TTL)."""

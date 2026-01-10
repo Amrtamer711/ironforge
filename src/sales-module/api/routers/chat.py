@@ -278,7 +278,11 @@ async def delete_conversation(
 
 
 @router.get("/history")
-async def get_chat_history(user: AuthUser = Depends(require_permission("sales:chat:use"))):
+async def get_chat_history(
+    user: AuthUser = Depends(require_permission("sales:chat:use")),
+    limit: int | None = None,
+    offset: int = 0,
+):
     """
     Load persisted chat history for the authenticated user.
 
@@ -291,10 +295,15 @@ async def get_chat_history(user: AuthUser = Depends(require_permission("sales:ch
 
     Requires sales:chat:use permission.
 
+    Args:
+        limit: Maximum number of messages to return (None = all messages)
+        offset: Number of messages to skip from the start (for pagination)
+
     Returns:
         messages: List of message objects with role, content, timestamp
         session_id: The conversation session ID
-        message_count: Total number of messages
+        message_count: Total number of messages (before pagination)
+        has_more: Whether there are more messages after this page
         attachment_file_ids: List of file_ids for lazy-loading attachments
     """
     from db.database import db
@@ -308,26 +317,39 @@ async def get_chat_history(user: AuthUser = Depends(require_permission("sales:ch
                 "messages": [],
                 "session_id": None,
                 "message_count": 0,
+                "has_more": False,
                 "last_updated": None,
                 "attachment_file_ids": [],
             }
 
-        messages = session.get("messages", [])
+        all_messages = session.get("messages", [])
+        total_count = len(all_messages)
 
-        # Collect attachment file_ids for frontend lazy loading
+        # Apply pagination if limit is specified
+        if limit is not None:
+            messages = all_messages[offset:offset + limit]
+            has_more = (offset + limit) < total_count
+        else:
+            messages = all_messages[offset:] if offset > 0 else all_messages
+            has_more = False
+
+        # Collect attachment file_ids for frontend lazy loading (only for returned messages)
         # NO URL REFRESH HERE - done via /attachments/refresh endpoint
-        attachment_ids = []
-        for msg in messages:
-            for att in (msg.get("attachments") or msg.get("files") or []):
-                if att.get("file_id"):
-                    attachment_ids.append(att["file_id"])
+        # Optimized: single list comprehension instead of nested loops with append
+        attachment_ids = [
+            att["file_id"]
+            for msg in messages
+            for att in (msg.get("attachments") or msg.get("files") or [])
+            if att.get("file_id")
+        ]
 
-        logger.info(f"[CHAT] Loaded {len(messages)} messages ({len(attachment_ids)} attachments) for {user.email}")
+        logger.info(f"[CHAT] Loaded {len(messages)}/{total_count} messages ({len(attachment_ids)} attachments) for {user.email}")
 
         return {
             "messages": messages,
             "session_id": session.get("session_id"),
-            "message_count": len(messages),
+            "message_count": total_count,
+            "has_more": has_more,
             "last_updated": session.get("updated_at"),
             "attachment_file_ids": attachment_ids,
         }
@@ -337,6 +359,7 @@ async def get_chat_history(user: AuthUser = Depends(require_permission("sales:ch
             "messages": [],
             "session_id": None,
             "message_count": 0,
+            "has_more": False,
             "error": str(e),
             "attachment_file_ids": [],
         }

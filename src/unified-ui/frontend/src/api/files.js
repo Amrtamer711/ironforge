@@ -31,6 +31,12 @@ export function resolveFileUrl(file) {
 
   if (file?.url) {
     if (file.url.startsWith("http")) return file.url;
+
+    // legacy "/api/files/..." -> proxy through /api/sales/files/
+    if (file.url.startsWith("/api/files/")) {
+      return `${base}/api/sales/files/${file.url.replace("/api/files/", "")}`;
+    }
+
     return `${base}${file.url}`;
   }
 

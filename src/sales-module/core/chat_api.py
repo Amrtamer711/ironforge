@@ -16,9 +16,12 @@ from datetime import datetime
 from typing import Any
 
 import config
-from core.chat_persistence import clear_chat_messages, save_chat_messages
+from core.chat_persistence import append_chat_messages, clear_chat_messages, save_chat_messages
+from core.llm import main_llm_loop
+from crm_security import has_permission
 from db.cache import user_history
 from integrations.channels import WebAdapter
+from integrations.channels.adapters.web import current_parent_message_id, current_request_id
 
 logger = config.logger
 
@@ -82,13 +85,14 @@ async def process_chat_message(
             "error": Optional[str]
         }
     """
-    from core.llm import main_llm_loop
-
     roles = roles or []
     web_adapter = _ensure_web_adapter_registered()
 
     # Get or create session (adapter handles persistence loading + LLM context rebuild)
     session = web_adapter.get_or_create_session(user_id, user_name, roles=roles)
+
+    # Track message count BEFORE adding new messages (for atomic append)
+    messages_before = len(session.messages)
 
     # Add user message to session history
     user_msg = {
@@ -110,7 +114,6 @@ async def process_chat_message(
     session.messages.append(user_msg)
 
     # Check if user has admin permissions using RBAC
-    from crm_security import has_permission
     is_admin = has_permission(permissions or [], "core:*:*")
 
     # Build channel_event in the same format as Slack events
@@ -133,9 +136,6 @@ async def process_chat_message(
                 "temp_path": f.get("temp_path"),  # Web uploads have temp_path
             }
             channel_event["files"].append(file_info)
-
-    # Get message count before processing
-    messages_before = len(session.messages)
 
     try:
         logger.info(f"[WebChat] Calling main_llm_loop for user={user_id}, admin={is_admin}, companies={companies}")
@@ -182,9 +182,11 @@ async def process_chat_message(
                         "title": att.get("title"),
                     })
 
-        # Persist messages to database
+        # Persist only NEW messages using atomic append (race-condition safe)
         try:
-            save_chat_messages(user_id, session.messages, session.conversation_id)
+            new_messages = session.messages[messages_before:]
+            if new_messages:
+                append_chat_messages(user_id, new_messages, session.conversation_id)
         except Exception as persist_err:
             logger.warning(f"[WebChat] Failed to persist messages: {persist_err}")
 
@@ -231,9 +233,6 @@ async def stream_chat_message(
     """
     import uuid as uuid_module
 
-    from core.llm import main_llm_loop
-    from integrations.channels.adapters.web import current_parent_message_id, current_request_id
-
     # Generate unique request ID for parallel request support
     request_id = str(uuid_module.uuid4())
     logger.info(f"[WebChat] stream_chat_message called for user={user_id}, request={request_id[:8]}...")
@@ -253,6 +252,9 @@ async def stream_chat_message(
     # Set context variables so adapter methods tag events correctly
     request_token = current_request_id.set(request_id)
     parent_token = current_parent_message_id.set(user_msg_id)  # Links responses to this user message
+
+    # Track message count BEFORE adding new messages (for atomic append)
+    messages_before = len(session.messages)
 
     # Add user message to session history (with timestamp for ordering)
     user_msg = {
@@ -277,7 +279,6 @@ async def stream_chat_message(
     web_adapter.cleanup_old_events(user_id)
 
     # Check if user has admin permissions using RBAC
-    from crm_security import has_permission
     is_admin = has_permission(permissions or [], "core:*:*")
 
     # Build channel_event
@@ -336,7 +337,7 @@ async def stream_chat_message(
         yield f"data: {json.dumps({'type': 'status', 'content': 'Processing...'})}\n\n"
 
         event_index = event_start_index
-        poll_interval = 0.1  # 100ms polling
+        poll_interval = 0.02  # 20ms polling (reduced from 100ms for faster response)
 
         # Stream events as they arrive (filtered by request_id)
         while not request_complete or event_index < len(session.events):
@@ -357,16 +358,12 @@ async def stream_chat_message(
                     yield f"data: {json.dumps({'type': 'status', 'message_id': event.get('message_id'), 'parent_id': event.get('parent_id'), 'content': event.get('content')})}\n\n"
 
                 elif event_type == "message":
-                    # New message from assistant
+                    # New message from assistant - send full content directly (no artificial delay)
                     content = event.get("content", "")
                     message_id = event.get("message_id")
                     if content:
-                        # Stream word by word for typing effect
-                        words = content.split(' ')
-                        for i, word in enumerate(words):
-                            chunk = word + (' ' if i < len(words) - 1 else '')
-                            yield f"data: {json.dumps({'type': 'chunk', 'content': chunk, 'message_id': message_id, 'parent_id': event.get('parent_id')})}\n\n"
-                            await asyncio.sleep(0.02)
+                        # Send complete content as single event (real-time streaming uses stream_delta)
+                        yield f"data: {json.dumps({'type': 'content', 'content': content, 'message_id': message_id, 'parent_id': event.get('parent_id')})}\n\n"
 
                 elif event_type == "file":
                     # File uploaded
@@ -395,9 +392,11 @@ async def stream_chat_message(
         # Ensure task is done
         await llm_task
 
-        # Persist messages (save full conversation - all parallel messages are included)
+        # Persist only NEW messages using atomic append (race-condition safe)
         try:
-            save_chat_messages(user_id, session.messages, session.conversation_id)
+            new_messages = session.messages[messages_before:]
+            if new_messages:
+                append_chat_messages(user_id, new_messages, session.conversation_id)
         except Exception as persist_err:
             logger.warning(f"[WebChat] Failed to persist messages: {persist_err}")
 

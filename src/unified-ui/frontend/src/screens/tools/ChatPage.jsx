@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { VariableSizeList as List } from "react-window";
 import { ExternalLink, Download , FileText, Paperclip, Send } from "lucide-react";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -8,6 +9,10 @@ import * as chatApi from "../../api/chat";
 import * as filesApi from "../../api/files";
 import { getAuthToken } from "../../lib/token";
 import { useAttachmentLoader } from "../../hooks/useAttachmentLoader";
+
+// Virtual scrolling constants
+const ESTIMATED_ROW_HEIGHT = 80; // Base height for message estimation
+const VIRTUAL_SCROLL_THRESHOLD = 50; // Enable virtual scrolling when > 50 messages
 
 export function ChatPage() {
   const [conversationId, setConversationId] = useState(null);
@@ -24,10 +29,48 @@ export function ChatPage() {
   const abortRef = useRef(null);
   const stickToBottomRef = useRef(true);
 
+  // Streaming update batching - reduces re-renders from 11+ per chunk to 1 per frame
+  const pendingUpdateRef = useRef(null);
+  const rafIdRef = useRef(null);
+
+  // Virtual scrolling refs
+  const listRef = useRef(null);
+  const rowHeightsRef = useRef({});
+  const containerRef = useRef(null);
+  const [containerHeight, setContainerHeight] = useState(400);
+
+  // Use virtual scrolling only for large message lists
+  const useVirtualScroll = messages.length > VIRTUAL_SCROLL_THRESHOLD;
+
+  // Estimate row height based on content
+  const getRowHeight = useCallback((index) => {
+    if (rowHeightsRef.current[index]) {
+      return rowHeightsRef.current[index];
+    }
+    const msg = messages[index];
+    if (!msg) return ESTIMATED_ROW_HEIGHT;
+    // Estimate based on content length and attachments
+    const contentLength = (msg.content || "").length;
+    const hasFiles = (msg.files?.length || 0) > 0;
+    const baseHeight = 60;
+    const contentHeight = Math.ceil(contentLength / 60) * 22; // ~60 chars per line, 22px line height
+    const fileHeight = hasFiles ? 100 * msg.files.length : 0;
+    return Math.max(baseHeight + contentHeight + fileHeight, ESTIMATED_ROW_HEIGHT);
+  }, [messages]);
+
+  // Update row height after render (for accurate sizing)
+  const setRowHeight = useCallback((index, height) => {
+    if (rowHeightsRef.current[index] !== height) {
+      rowHeightsRef.current[index] = height;
+      listRef.current?.resetAfterIndex(index);
+    }
+  }, []);
+
   const historyQuery = useQuery({
     queryKey: ["chat", "history"],
     queryFn: chatApi.getHistory,
-    enabled: true,
+    staleTime: 5 * 60 * 1000, // 5 minutes - avoid refetching on every mount
+    refetchOnMount: false,
   });
 
   // Lazy attachment loading with pre-fetching
@@ -61,19 +104,75 @@ export function ChatPage() {
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
+
+    // Throttled scroll handler - reduces scroll event processing from ~60/s to ~10/s
+    let lastCall = 0;
+    const throttleMs = 100;
     const updateStickiness = () => {
+      const now = Date.now();
+      if (now - lastCall < throttleMs) return;
+      lastCall = now;
+
       const threshold = 120;
       const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
       stickToBottomRef.current = atBottom;
     };
+
     updateStickiness();
     el.addEventListener("scroll", updateStickiness, { passive: true });
     return () => el.removeEventListener("scroll", updateStickiness);
   }, []);
 
-  const scrollToBottom = React.useCallback((behavior = "smooth", force = false) => {
+  const scrollToBottom = useCallback((behavior = "smooth", force = false) => {
     if (!force && !stickToBottomRef.current) return;
-    endRef.current?.scrollIntoView({ behavior, block: "end" });
+    // For virtual scrolling, scroll to last item
+    if (listRef.current && useVirtualScroll) {
+      listRef.current.scrollToItem(messages.length - 1, "end");
+    } else {
+      endRef.current?.scrollIntoView({ behavior, block: "end" });
+    }
+  }, [useVirtualScroll, messages.length]);
+
+  // Measure container height for virtual scrolling
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerHeight(entry.contentRect.height);
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  // Stable callback for media load - prevents Message re-renders
+  const handleMediaLoad = useCallback(() => scrollToBottom("auto"), [scrollToBottom]);
+
+  // Batched message update - coalesces rapid streaming updates into single RAF
+  const queueMessageUpdate = useCallback((msgId, updateFn) => {
+    // Store the update function keyed by message ID
+    if (!pendingUpdateRef.current) {
+      pendingUpdateRef.current = new Map();
+    }
+    pendingUpdateRef.current.set(msgId, updateFn);
+
+    // Schedule a single RAF to flush all pending updates
+    if (!rafIdRef.current) {
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = null;
+        if (!pendingUpdateRef.current || pendingUpdateRef.current.size === 0) return;
+
+        const updates = pendingUpdateRef.current;
+        pendingUpdateRef.current = null;
+
+        setMessages((prev) =>
+          prev.map((mm) => {
+            const updateFn = updates.get(mm.id);
+            return updateFn ? updateFn(mm) : mm;
+          })
+        );
+      });
+    }
   }, []);
 
   useEffect(() => {
@@ -221,21 +320,17 @@ export function ChatPage() {
             if (evt.message_id && evt.message_id !== currentMessageId) currentMessageId = evt.message_id;
             fullContent = evt.type === "content" ? evt.content : fullContent + evt.content;
 
-            setMessages((prev) =>
-              prev.map((mm) =>
-                mm.id === assistantMsgId ? { ...mm, status: null, content: fullContent } : mm
-              )
-            );
+            // Use batched update for high-frequency chunk events
+            const capturedContent = fullContent;
+            queueMessageUpdate(assistantMsgId, (mm) => ({ ...mm, status: null, content: capturedContent }));
             return;
           }
 
           if (evt?.content && !evt.type) {
             fullContent += evt.content;
-            setMessages((prev) =>
-              prev.map((mm) =>
-                mm.id === assistantMsgId ? { ...mm, status: null, content: fullContent } : mm
-              )
-            );
+            // Use batched update for high-frequency chunk events
+            const capturedContent = fullContent;
+            queueMessageUpdate(assistantMsgId, (mm) => ({ ...mm, status: null, content: capturedContent }));
             return;
           }
 
@@ -297,11 +392,9 @@ export function ChatPage() {
 
           if (typeof evt === "string" && evt.trim()) {
             fullContent += evt;
-            setMessages((prev) =>
-              prev.map((mm) =>
-                mm.id === assistantMsgId ? { ...mm, status: null, content: fullContent } : mm
-              )
-            );
+            // Use batched update for string content
+            const capturedContent = fullContent;
+            queueMessageUpdate(assistantMsgId, (mm) => ({ ...mm, status: null, content: capturedContent }));
           }
         },
         onDone: () => {
@@ -329,29 +422,64 @@ export function ChatPage() {
     }
   }
 
+  // Virtual list row renderer
+  const VirtualRow = useCallback(({ index, style }) => {
+    const m = messages[index];
+    return (
+      <div style={style} className="px-2 py-1.5">
+        <MessageWithMeasure
+          msg={m}
+          index={index}
+          attachmentUrls={attachmentUrls}
+          onAttachmentVisible={loadAttachments}
+          onMediaLoad={handleMediaLoad}
+          setRowHeight={setRowHeight}
+        />
+      </div>
+    );
+  }, [messages, attachmentUrls, loadAttachments, handleMediaLoad, setRowHeight]);
+
   return (
     <div className="h-full flex flex-col gap-4 min-h-0">
       <Card className="p-4 overflow-hidden flex-1 min-h-0">
-        <div ref={scrollerRef} className="h-full overflow-y-auto px-2">
-          <div className="space-y-3">
-            {!historyHydrated && historyQuery.isLoading ? (
-              <LoadingEllipsis
-                text="Loading conversation"
-                className="text-sm text-black/60 dark:text-white/65"
-              />
-            ) : null}
-            {messages.map((m) => (
-              <Message
-                key={m.id}
-                msg={m}
-                attachmentUrls={attachmentUrls}
-                onAttachmentVisible={loadAttachments}
-                onMediaLoad={() => scrollToBottom("auto")}
-              />
-            ))}
-            <div ref={endRef} />
+        {!historyHydrated && historyQuery.isLoading ? (
+          <div className="h-full flex items-center justify-center">
+            <LoadingEllipsis
+              text="Loading conversation"
+              className="text-sm text-black/60 dark:text-white/65"
+            />
           </div>
-        </div>
+        ) : useVirtualScroll ? (
+          /* Virtual scrolling for large message lists (>50 messages) */
+          <div ref={containerRef} className="h-full">
+            <List
+              ref={listRef}
+              height={containerHeight}
+              itemCount={messages.length}
+              itemSize={getRowHeight}
+              width="100%"
+              className="scrollbar-thin"
+            >
+              {VirtualRow}
+            </List>
+          </div>
+        ) : (
+          /* Regular scrolling for small message lists */
+          <div ref={scrollerRef} className="h-full overflow-y-auto px-2">
+            <div className="space-y-3">
+              {messages.map((m) => (
+                <Message
+                  key={m.id}
+                  msg={m}
+                  attachmentUrls={attachmentUrls}
+                  onAttachmentVisible={loadAttachments}
+                  onMediaLoad={handleMediaLoad}
+                />
+              ))}
+              <div ref={endRef} />
+            </div>
+          </div>
+        )}
       </Card>
 
       <Card className="p-3">
@@ -390,7 +518,37 @@ export function ChatPage() {
   );
 }
 
-function Message({ msg, attachmentUrls = {}, onAttachmentVisible, onMediaLoad }) {
+// Wrapper for Message that measures height for virtual scrolling
+const MessageWithMeasure = React.memo(function MessageWithMeasure({
+  msg,
+  index,
+  attachmentUrls,
+  onAttachmentVisible,
+  onMediaLoad,
+  setRowHeight,
+}) {
+  const rowRef = useRef(null);
+
+  useEffect(() => {
+    if (rowRef.current) {
+      const height = rowRef.current.getBoundingClientRect().height;
+      setRowHeight(index, height + 12); // +12 for padding
+    }
+  }, [index, setRowHeight, msg.content, msg.files]);
+
+  return (
+    <div ref={rowRef}>
+      <Message
+        msg={msg}
+        attachmentUrls={attachmentUrls}
+        onAttachmentVisible={onAttachmentVisible}
+        onMediaLoad={onMediaLoad}
+      />
+    </div>
+  );
+});
+
+const Message = React.memo(function Message({ msg, attachmentUrls = {}, onAttachmentVisible, onMediaLoad }) {
   const isUser = msg.role === "user";
   const formatted = useMemo(() => formatContent(msg.content || ""), [msg.content]);
   const statusText = useMemo(() => normalizeStatusText(msg.status || ""), [msg.status]);
@@ -601,7 +759,7 @@ function Message({ msg, attachmentUrls = {}, onAttachmentVisible, onMediaLoad })
       </div>
     </div>
   );
-}
+});
 
 function Textarea5({ value, onChange, placeholder, onEnter, disabled }) {
   const ref = useRef(null);
