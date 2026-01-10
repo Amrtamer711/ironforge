@@ -10,6 +10,7 @@ exactly the same capabilities as Slack by using the same main_llm_loop.
 
 import asyncio
 import json
+import threading
 from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
@@ -21,15 +22,23 @@ from integrations.channels import WebAdapter
 
 logger = config.logger
 
-# Global WebAdapter instance for the unified UI
+# Global WebAdapter instance for the unified UI (thread-safe initialization)
 _web_adapter: WebAdapter | None = None
+_web_adapter_lock = threading.Lock()
 
 
 def get_web_adapter() -> WebAdapter:
-    """Get or create the global WebAdapter instance."""
+    """
+    Get or create the global WebAdapter instance.
+
+    Uses double-checked locking for thread-safe initialization.
+    """
     global _web_adapter
     if _web_adapter is None:
-        _web_adapter = WebAdapter(file_base_url="/api/files")
+        with _web_adapter_lock:
+            # Double-check after acquiring lock
+            if _web_adapter is None:
+                _web_adapter = WebAdapter(file_base_url="/api/files")
     return _web_adapter
 
 

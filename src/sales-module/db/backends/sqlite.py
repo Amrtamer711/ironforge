@@ -1887,6 +1887,60 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
+    def get_documents_batch(self, file_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """
+        Get multiple documents by file_id in a single query.
+
+        Returns a dict mapping file_id -> document data.
+        """
+        if not file_ids:
+            return {}
+
+        result: dict[str, dict[str, Any]] = {}
+        conn = self._connect()
+        try:
+            cursor = conn.cursor()
+            # Build placeholders for IN clause
+            placeholders = ",".join("?" * len(file_ids))
+            cursor.execute(
+                f"""
+                SELECT file_id, user_id, original_filename, file_type,
+                       storage_provider, storage_bucket, storage_key,
+                       file_size, file_extension, file_hash,
+                       document_type, bo_id, proposal_id,
+                       created_at, is_deleted, deleted_at
+                FROM documents WHERE file_id IN ({placeholders})
+                """,
+                file_ids
+            )
+            rows = cursor.fetchall()
+            for row in rows:
+                doc = {
+                    "file_id": row[0],
+                    "user_id": row[1],
+                    "original_filename": row[2],
+                    "file_type": row[3],
+                    "storage_provider": row[4],
+                    "storage_bucket": row[5],
+                    "storage_key": row[6],
+                    "file_size": row[7],
+                    "file_extension": row[8],
+                    "file_hash": row[9],
+                    "document_type": row[10],
+                    "bo_id": row[11],
+                    "proposal_id": row[12],
+                    "created_at": row[13],
+                    "is_deleted": bool(row[14]),
+                    "deleted_at": row[15],
+                }
+                result[doc["file_id"]] = doc
+            return result
+        except Exception as e:
+            logger.error(f"[DB] Error in batch document lookup: {e}")
+            return result
+        finally:
+            conn.close()
+
     def get_document_by_hash(self, file_hash: str) -> dict[str, Any] | None:
         """Get a document by file hash (for deduplication)."""
         conn = self._connect()

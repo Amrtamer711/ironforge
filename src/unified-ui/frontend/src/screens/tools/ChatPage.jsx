@@ -7,6 +7,7 @@ import { LoadingEllipsis } from "../../components/ui/loading-ellipsis";
 import * as chatApi from "../../api/chat";
 import * as filesApi from "../../api/files";
 import { getAuthToken } from "../../lib/token";
+import { useAttachmentLoader } from "../../hooks/useAttachmentLoader";
 
 export function ChatPage() {
   const [conversationId, setConversationId] = useState(null);
@@ -15,6 +16,7 @@ export function ChatPage() {
   const [pendingFile, setPendingFile] = useState(null);
   const [streaming, setStreaming] = useState(false);
   const [historyHydrated, setHistoryHydrated] = useState(false);
+  const [attachmentFileIds, setAttachmentFileIds] = useState([]);
 
   const fileRef = useRef(null);
   const scrollerRef = useRef(null);
@@ -27,6 +29,9 @@ export function ChatPage() {
     queryFn: chatApi.getHistory,
     enabled: true,
   });
+
+  // Lazy attachment loading with pre-fetching
+  const { urls: attachmentUrls, loadAttachments } = useAttachmentLoader(attachmentFileIds);
 
   const canSend = useMemo(
     () => (value.trim().length > 0 || Boolean(pendingFile)) && !streaming,
@@ -42,6 +47,11 @@ export function ChatPage() {
       setConversationId(history.session_id || history.conversation_id || null);
       const msgs = (history.messages || []).map(normalizeHistoryMessage);
       setMessages(msgs.length ? msgs : [createGreeting()]);
+
+      // Capture attachment file IDs for lazy loading
+      if (history.attachment_file_ids?.length) {
+        setAttachmentFileIds(history.attachment_file_ids);
+      }
     } else {
       setMessages([createGreeting()]);
     }
@@ -331,7 +341,13 @@ export function ChatPage() {
               />
             ) : null}
             {messages.map((m) => (
-              <Message key={m.id} msg={m} onMediaLoad={() => scrollToBottom("auto")} />
+              <Message
+                key={m.id}
+                msg={m}
+                attachmentUrls={attachmentUrls}
+                onAttachmentVisible={loadAttachments}
+                onMediaLoad={() => scrollToBottom("auto")}
+              />
             ))}
             <div ref={endRef} />
           </div>
@@ -374,7 +390,7 @@ export function ChatPage() {
   );
 }
 
-function Message({ msg, onMediaLoad }) {
+function Message({ msg, attachmentUrls = {}, onAttachmentVisible, onMediaLoad }) {
   const isUser = msg.role === "user";
   const formatted = useMemo(() => formatContent(msg.content || ""), [msg.content]);
   const statusText = useMemo(() => normalizeStatusText(msg.status || ""), [msg.status]);
@@ -384,6 +400,37 @@ function Message({ msg, onMediaLoad }) {
   );
   const fallbackStatus = useMemo(() => normalizeStatusText(msg.content || ""), [msg.content]);
   const nameCacheRef = useRef(new Map());
+  const attachmentRef = useRef(null);
+  const observedRef = useRef(false);
+
+  // Intersection Observer for lazy loading attachments
+  useEffect(() => {
+    if (!msg.files?.length || observedRef.current) return;
+
+    const el = attachmentRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !observedRef.current) {
+            observedRef.current = true;
+            // Collect file_ids from this message's attachments
+            const fileIds = msg.files.map((f) => f.file_id).filter(Boolean);
+            if (fileIds.length && onAttachmentVisible) {
+              onAttachmentVisible(fileIds);
+            }
+            observer.disconnect();
+          }
+        });
+      },
+      { rootMargin: "200px" } // Pre-load when 200px away from viewport
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [msg.files, onAttachmentVisible]);
+
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
       <div
@@ -402,9 +449,11 @@ function Message({ msg, onMediaLoad }) {
         )}
 
         {msg.files?.length ? (
-          <div className="mt-2 space-y-1">
+          <div ref={attachmentRef} className="mt-2 space-y-1">
             {msg.files.map((f, i) => {
-              const url = filesApi.resolveFileUrl(f);
+              // Check for refreshed URL first, then fallback to resolveFileUrl
+              const refreshedUrl = f.file_id ? attachmentUrls[f.file_id] : null;
+              const url = refreshedUrl || filesApi.resolveFileUrl(f);
               if (!url) return null;
               const resolvedPdfFilename = f.pdf_filename || msg.pdf_filename;
               const displayName = getFriendlyFileName(

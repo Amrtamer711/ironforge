@@ -30,6 +30,20 @@ export async function getHistory() {
   return apiRequest("/api/sales/chat/history");
 }
 
+/**
+ * Batch refresh signed URLs for chat attachments.
+ * Supports pre-fetching: pass prefetchIds for next batch to load ahead.
+ * @param {string[]} fileIds - Currently visible attachment file_ids
+ * @param {string[]} prefetchIds - Next batch to pre-fetch (optional)
+ * @returns {Promise<{urls: Record<string, string>}>}
+ */
+export async function refreshAttachmentUrls(fileIds, prefetchIds = []) {
+  return apiRequest("/api/sales/chat/attachments/refresh", {
+    method: "POST",
+    body: JSON.stringify({ file_ids: fileIds, prefetch_ids: prefetchIds }),
+  });
+}
+
 // SSE stream (legacy-compatible)
 export async function streamMessage({ conversationId, message, fileIds, onEvent, onChunk, onDone, onError, signal }) {
   try {

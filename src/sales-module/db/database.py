@@ -512,6 +512,10 @@ class _DatabaseNamespace:
         """Get a document by file_id."""
         return self._backend.get_document(file_id)
 
+    def get_documents_batch(self, file_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """Get multiple documents by file_id in a single query."""
+        return self._backend.get_documents_batch(file_ids)
+
     def get_document_by_hash(self, file_hash: str) -> dict[str, Any] | None:
         """Get a document by file hash (for deduplication)."""
         return self._backend.get_document_by_hash(file_hash)

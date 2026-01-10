@@ -35,7 +35,7 @@ BOOKING_ORDER_CACHE_TTL = 300  # 5 minutes for booking orders
 STATS_CACHE_TTL = 600  # 10 minutes for statistics
 PROPOSAL_CACHE_TTL = 300  # 5 minutes for proposals
 DOCUMENT_CACHE_TTL = 600  # 10 minutes for documents
-CHAT_CACHE_TTL = 300  # 5 minutes for chat sessions
+CHAT_CACHE_TTL = 1800  # 30 minutes for chat sessions (was 300)
 BO_WORKFLOW_CACHE_TTL = 30  # 30 seconds for BO workflows (short-lived)
 AI_COSTS_CACHE_TTL = 900  # 15 minutes for AI costs summary
 
@@ -2096,6 +2096,50 @@ class SupabaseBackend(DatabaseBackend):
                 return None
             logger.error(f"[SUPABASE] Error getting document {file_id}: {e}")
             return None
+
+    def get_documents_batch(self, file_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """
+        Get multiple documents by file_id in a single query.
+
+        Returns a dict mapping file_id -> document data.
+        Uses cache for individual documents and batch queries for uncached.
+        """
+        if not file_ids:
+            return {}
+
+        result: dict[str, dict[str, Any]] = {}
+        uncached_ids: list[str] = []
+
+        # Check cache first for each file_id
+        for file_id in file_ids:
+            cache_key = f"document:{file_id}"
+            cached = _run_async(self._cache_get(cache_key))
+            if cached is not None:
+                result[file_id] = cached
+            else:
+                uncached_ids.append(file_id)
+
+        if not uncached_ids:
+            logger.debug(f"[CACHE] Documents batch: all {len(file_ids)} from cache")
+            return result
+
+        # Single batch query for all uncached documents
+        try:
+            client = self._get_client()
+            response = client.table("documents").select("*").in_("file_id", uncached_ids).execute()
+
+            for doc in response.data:
+                fid = doc.get("file_id")
+                if fid:
+                    result[fid] = doc
+                    # Cache each document individually
+                    _run_async(self._cache_set(f"document:{fid}", doc, ttl=DOCUMENT_CACHE_TTL))
+
+            logger.debug(f"[SUPABASE] Documents batch: {len(result) - (len(file_ids) - len(uncached_ids))} from DB, {len(file_ids) - len(uncached_ids)} from cache")
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error in batch document lookup: {e}")
+
+        return result
 
     def get_document_by_hash(self, file_hash: str) -> dict[str, Any] | None:
         """Get a document by file hash (for deduplication, cached)."""
