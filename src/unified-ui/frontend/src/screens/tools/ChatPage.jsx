@@ -29,6 +29,7 @@ export function ChatPage() {
 
   const fileRef = useRef(null);
   const abortRef = useRef(null);
+  const paginationAbortRef = useRef(null); // Abort controller for pagination requests
   const stickToBottomRef = useRef(true);
 
   // Streaming update batching - reduces re-renders from 11+ per chunk to 1 per frame
@@ -82,6 +83,23 @@ export function ChatPage() {
   // Lazy attachment loading with pre-fetching
   const { urls: attachmentUrls, loadAttachments } = useAttachmentLoader(attachmentFileIds);
 
+  // Ensure ALL messages' file IDs are tracked for URL resolution
+  useEffect(() => {
+    const allFileIds = messages.flatMap(m =>
+      m.files?.map(f => f.file_id).filter(Boolean) || []
+    );
+
+    // Only update if the set of file IDs actually changed
+    setAttachmentFileIds(prev => {
+      const prevSet = new Set(prev);
+      const newSet = new Set(allFileIds);
+      if (prevSet.size === newSet.size && [...prevSet].every(id => newSet.has(id))) {
+        return prev; // No change
+      }
+      return allFileIds;
+    });
+  }, [messages]);
+
   const canSend = useMemo(
     () => (value.trim().length > 0 || Boolean(pendingFile)) && !streaming,
     [value, pendingFile, streaming]
@@ -91,13 +109,22 @@ export function ChatPage() {
   const loadOlderMessages = useCallback(async () => {
     if (loadingMore || !hasMore) return;
 
+    // Abort previous pagination request if still running
+    paginationAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    paginationAbortRef.current = ctrl;
+
     try {
       setLoadingMore(true);
       const history = await chatApi.getHistory({
         limit: PAGE_SIZE,
         offset: offsetRef.current,
         newestFirst: true,
+        signal: ctrl.signal, // Pass abort signal to API
       });
+
+      // Check if aborted before updating state
+      if (ctrl.signal.aborted) return;
 
       if (history?.messages?.length) {
         const olderMsgs = history.messages.map(normalizeHistoryMessage);
@@ -114,9 +141,13 @@ export function ChatPage() {
         setHasMore(false);
       }
     } catch (err) {
+      // Ignore abort errors
+      if (err.name === 'AbortError') return;
       console.error("[ChatPage] Failed to load older messages:", err);
     } finally {
-      setLoadingMore(false);
+      if (!ctrl.signal.aborted) {
+        setLoadingMore(false);
+      }
     }
   }, [loadingMore, hasMore]);
 
@@ -130,6 +161,19 @@ export function ChatPage() {
 
   // Stable callback for media load - prevents Message re-renders
   const handleMediaLoad = useCallback(() => scrollToBottom("auto"), [scrollToBottom]);
+
+  // Create stable callback wrappers using refs to prevent Message re-renders
+  const loadAttachmentsRef = useRef();
+  loadAttachmentsRef.current = loadAttachments;
+  const stableLoadAttachments = useCallback((fileIds) => {
+    loadAttachmentsRef.current?.(fileIds);
+  }, []); // No dependencies - stable reference
+
+  const handleMediaLoadRef = useRef();
+  handleMediaLoadRef.current = handleMediaLoad;
+  const stableHandleMediaLoad = useCallback(() => {
+    handleMediaLoadRef.current?.();
+  }, []); // No dependencies - stable reference
 
   // Batched message update - coalesces rapid streaming updates into single RAF
   const queueMessageUpdate = useCallback((msgId, updateFn) => {
@@ -158,15 +202,23 @@ export function ChatPage() {
     }
   }, []);
 
+  // Consolidated scroll trigger - prevents duplicate scroll effects
+  const scrollTrigger = useMemo(() => ({
+    messagesLength: messages.length,
+    historyHydrated,
+    lastMessageId: messages[messages.length - 1]?.id,
+    streaming
+  }), [messages, historyHydrated, streaming]);
+
   useEffect(() => {
-    const behavior = streaming ? "auto" : "smooth";
-    requestAnimationFrame(() => scrollToBottom(behavior));
-  }, [messages, streaming, scrollToBottom]);
-  useEffect(() => {
-    if (historyHydrated) {
-      requestAnimationFrame(() => scrollToBottom("auto", true));
+    // Only scroll if at bottom or if history just loaded
+    if (stickToBottomRef.current || historyHydrated) {
+      const behavior = streaming ? "auto" : "smooth";
+      const force = historyHydrated && !stickToBottomRef.current;
+      requestAnimationFrame(() => scrollToBottom(behavior, force));
     }
-  }, [historyHydrated, scrollToBottom]);
+  }, [scrollTrigger, scrollToBottom, streaming, historyHydrated]);
+
   useEffect(() => () => abortRef.current?.abort?.(), []);
 
   async function send() {
@@ -254,6 +306,9 @@ export function ChatPage() {
         fileIds,
         signal: ctrl.signal,
         onEvent: (evt) => {
+          // Guard against events firing after abort
+          if (ctrl.signal.aborted) return;
+
           const pdfFilename = evt?.result?.pdf_filename || evt?.pdf_filename;
           const decorateFile = (file) => {
             if (!file) return file;
@@ -262,10 +317,8 @@ export function ChatPage() {
             return { ...file, pdf_filename: pdfFilename };
           };
           if (pdfFilename) {
-            setMessages((prev) =>
-              prev.map((mm) =>
-                mm.id === assistantMsgId && !mm.pdf_filename ? { ...mm, pdf_filename: pdfFilename } : mm
-              )
+            queueMessageUpdate(assistantMsgId, (mm) =>
+              !mm.pdf_filename ? { ...mm, pdf_filename: pdfFilename } : mm
             );
           }
           // Mirrors old chat.js event types
@@ -274,12 +327,19 @@ export function ChatPage() {
           }
 
           if (evt?.error) {
-            setMessages((prev) => prev.map((mm) => (mm.id === assistantMsgId ? { ...mm, status: null, content: `Error: ${evt.error}` } : mm)));
+            queueMessageUpdate(assistantMsgId, (mm) => ({
+              ...mm,
+              status: null,
+              content: `Error: ${evt.error}`
+            }));
             return;
           }
 
           if (evt?.type === "status") {
-            setMessages((prev) => prev.map((mm) => (mm.id === assistantMsgId ? { ...mm, status: evt.content || "Processing..." } : mm)));
+            queueMessageUpdate(assistantMsgId, (mm) => ({
+              ...mm,
+              status: evt.content || "Processing..."
+            }));
             if (evt.message_id) currentMessageId = evt.message_id;
             return;
           }
@@ -288,14 +348,21 @@ export function ChatPage() {
             if (evt.message_id && evt.message_id === currentMessageId) {
               fullContent = "";
               currentMessageId = null;
-              setMessages((prev) => prev.map((mm) => (mm.id === assistantMsgId ? { ...mm, status: "Thinking...", content: "" } : mm)));
+              queueMessageUpdate(assistantMsgId, (mm) => ({
+                ...mm,
+                status: "Thinking...",
+                content: ""
+              }));
             }
             return;
           }
 
           if (evt?.type === "tool_call") {
             const toolName = evt.tool?.name || "processing";
-            setMessages((prev) => prev.map((mm) => (mm.id === assistantMsgId ? { ...mm, status: `Processing ${toolName}...` } : mm)));
+            queueMessageUpdate(assistantMsgId, (mm) => ({
+              ...mm,
+              status: `Processing ${toolName}...`
+            }));
             return;
           }
 
@@ -319,22 +386,19 @@ export function ChatPage() {
 
           if (evt?.type === "files" && evt.files) {
             filesReceived = true;
-            setMessages((prev) =>
-              prev.map((mm) =>
-                mm.id === assistantMsgId
-                  ? { ...mm, files: [...(mm.files || []), ...evt.files.map(decorateFile)] }
-                  : mm
-              )
-            );
+            queueMessageUpdate(assistantMsgId, (mm) => ({
+              ...mm,
+              files: [...(mm.files || []), ...evt.files.map(decorateFile)]
+            }));
             if (!fullContent) {
               const withComment = evt.files.find((f) => f.comment);
               if (withComment?.comment) {
                 fullContent = withComment.comment;
-                setMessages((prev) =>
-                  prev.map((mm) =>
-                    mm.id === assistantMsgId ? { ...mm, status: null, content: fullContent } : mm
-                  )
-                );
+                queueMessageUpdate(assistantMsgId, (mm) => ({
+                  ...mm,
+                  status: null,
+                  content: fullContent
+                }));
               }
             }
             return;
@@ -343,33 +407,27 @@ export function ChatPage() {
           if (evt?.type === "file" && (evt.file || evt.url)) {
             const fileData = decorateFile(evt.file || evt);
             filesReceived = true;
-            setMessages((prev) =>
-              prev.map((mm) =>
-                mm.id === assistantMsgId
-                  ? { ...mm, files: [...(mm.files || []), fileData] }
-                  : mm
-              )
-            );
+            queueMessageUpdate(assistantMsgId, (mm) => ({
+              ...mm,
+              files: [...(mm.files || []), fileData]
+            }));
             if (!fullContent && fileData.comment) {
               fullContent = fileData.comment;
-              setMessages((prev) =>
-                prev.map((mm) =>
-                  mm.id === assistantMsgId ? { ...mm, status: null, content: fullContent } : mm
-                )
-              );
+              queueMessageUpdate(assistantMsgId, (mm) => ({
+                ...mm,
+                status: null,
+                content: fullContent
+              }));
             }
             return;
           }
 
           if (evt?.files) {
             filesReceived = true;
-            setMessages((prev) =>
-              prev.map((mm) =>
-                mm.id === assistantMsgId
-                  ? { ...mm, files: [...(mm.files || []), ...evt.files.map(decorateFile)] }
-                  : mm
-              )
-            );
+            queueMessageUpdate(assistantMsgId, (mm) => ({
+              ...mm,
+              files: [...(mm.files || []), ...evt.files.map(decorateFile)]
+            }));
             return;
           }
 
@@ -382,24 +440,20 @@ export function ChatPage() {
         },
         onDone: () => {
           if (!fullContent && !filesReceived) {
-            setMessages((prev) =>
-              prev.map((mm) =>
-                mm.id === assistantMsgId
-                  ? { ...mm, status: null, content: "I'm ready to help. What would you like to do?" }
-                  : mm
-              )
-            );
+            queueMessageUpdate(assistantMsgId, (mm) => ({
+              ...mm,
+              status: null,
+              content: "I'm ready to help. What would you like to do?"
+            }));
           }
         },
       });
     } catch (e) {
-      setMessages((prev) =>
-        prev.map((mm) =>
-          mm.id === assistantMsgId
-            ? { ...mm, status: null, content: e?.message || "Failed to get response" }
-            : mm
-        )
-      );
+      queueMessageUpdate(assistantMsgId, (mm) => ({
+        ...mm,
+        status: null,
+        content: e?.message || "Failed to get response"
+      }));
     } finally {
       setStreaming(false);
     }
@@ -420,9 +474,11 @@ export function ChatPage() {
             ref={virtuosoRef}
             className="h-full scrollbar-thin"
             data={messages}
-            followOutput="smooth"
+            followOutput={(isAtBottom) => {
+              // Auto-scroll only if user is at bottom or streaming
+              return (isAtBottom || streaming) ? 'smooth' : false;
+            }}
             firstItemIndex={hasMore ? 1000000 - messages.length : 0}
-            initialTopMostItemIndex={messages.length - 1}
             startReached={loadOlderMessages}
             atBottomStateChange={(atBottom) => {
               stickToBottomRef.current = atBottom;
@@ -443,8 +499,8 @@ export function ChatPage() {
                 <Message
                   msg={msg}
                   attachmentUrls={attachmentUrls}
-                  onAttachmentVisible={loadAttachments}
-                  onMediaLoad={handleMediaLoad}
+                  onAttachmentVisible={stableLoadAttachments}
+                  onMediaLoad={stableHandleMediaLoad}
                 />
               </div>
             )}
@@ -529,6 +585,11 @@ const Message = React.memo(function Message({ msg, attachmentUrls = {}, onAttach
     return () => observer.disconnect();
   }, [msg.files, onAttachmentVisible]);
 
+  // Generate stable key for file attachments (avoid index fallback)
+  const getFileKey = (file, index) => {
+    return file.file_id || `${msg.id}-file-${index}`;
+  };
+
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
       <div
@@ -549,10 +610,13 @@ const Message = React.memo(function Message({ msg, attachmentUrls = {}, onAttach
         {msg.files?.length ? (
           <div ref={attachmentRef} className="mt-2 space-y-1">
             {msg.files.map((f, i) => {
-              // Check for refreshed URL first, then fallback to resolveFileUrl
-              const refreshedUrl = f.file_id ? attachmentUrls[f.file_id] : null;
-              const url = refreshedUrl || filesApi.resolveFileUrl(f);
-              if (!url) return null;
+              // Single source of truth for URLs:
+              // 1. For files with file_id: use signed URL from attachmentUrls (required for Supabase)
+              // 2. For local files (no file_id): use resolveFileUrl for blob URLs
+              const url = f.file_id
+                ? attachmentUrls[f.file_id] // Only use signed URLs for server files
+                : filesApi.resolveFileUrl(f); // Use local resolution for preview blobs
+              if (!url) return null; // Don't render until URL available
               const resolvedPdfFilename = f.pdf_filename || msg.pdf_filename;
               const displayName = getFriendlyFileName(
                 resolvedPdfFilename ? { ...f, pdf_filename: resolvedPdfFilename } : f,
@@ -567,7 +631,7 @@ const Message = React.memo(function Message({ msg, attachmentUrls = {}, onAttach
               if (isImage) {
                 return (
                   <div
-                    key={f.file_id || url || i}
+                    key={getFileKey(f, i)}
                     className="rounded-xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 p-2"
                   >
                     {showActions ? (
@@ -628,7 +692,7 @@ const Message = React.memo(function Message({ msg, attachmentUrls = {}, onAttach
 
               return (
                 <div
-                  key={f.file_id || url || i}
+                  key={getFileKey(f, i)}
                   className="rounded-xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -695,6 +759,26 @@ const Message = React.memo(function Message({ msg, attachmentUrls = {}, onAttach
       </div>
     </div>
   );
+}, (prevProps, nextProps) => {
+  // Custom memo comparison to prevent unnecessary re-renders
+  // Return true to SKIP re-render, false to re-render
+
+  // Always re-render if msg object reference changed (content, status, files updated)
+  if (prevProps.msg !== nextProps.msg) return false;
+
+  // Check if attachment URLs for THIS message's files changed
+  const prevUrls = prevProps.msg.files?.map(f => prevProps.attachmentUrls[f.file_id]) || [];
+  const nextUrls = nextProps.msg.files?.map(f => nextProps.attachmentUrls[f.file_id]) || [];
+
+  // Compare URL arrays
+  if (prevUrls.length !== nextUrls.length) return false;
+  for (let i = 0; i < prevUrls.length; i++) {
+    if (prevUrls[i] !== nextUrls[i]) return false;
+  }
+
+  // Callbacks are stabilized via refs, so we can ignore them
+  // Skip re-render if message and relevant URLs haven't changed
+  return true;
 });
 
 /**
@@ -716,8 +800,8 @@ function ImageWithPlaceholder({ src, alt, onLoad, className = "" }) {
   }, []);
 
   return (
-    <div className={`relative ${className}`} style={{ minHeight: loaded ? "auto" : "160px" }}>
-      {/* Loading placeholder - shown until image loads */}
+    <div className={`relative ${className}`} style={{ minHeight: loaded ? "auto" : "256px" }}>
+      {/* Loading placeholder - shown until image loads (256px matches max-h-64) */}
       {!loaded && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/5 dark:bg-white/5 rounded-lg">
           <Loader2 size={24} className="animate-spin text-black/30 dark:text-white/30" />
