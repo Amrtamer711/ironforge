@@ -6,7 +6,7 @@
 
 # - [ ] Make the changes to mockup and proposal generation LLM chats with new location structure.
 # - [ ] Lazy Load Chat Messages so that the user is not stuck with loading conversations after login (Clarify if reducing the no of chats loaded will have positive impact).
-- [ ] Check the indoor locations - Why images are not loading. Error message below #Error01
+- [ ] Check the indoor locations - Why images are not loading. Details below : #Error01, #Explanation01
 
 
 ### Part 1: Unified Architecture ✅ DONE
@@ -162,3 +162,23 @@ crm-unified-ui.onrender.com/api/base/auth/me clientIP="94.200.129.142" requestID
 
 end Error01
 
+#Explanation01
+
+Observed behavior
+
+After saving mockup frames for multiple selected locations with venue_type=indoor, template images do not load for indoor templates.
+Immediately after save, templates are inconsistent across locations: some return templates, others don’t. Sometimes templates appear only after refresh/logout/reselect.
+Frontend flow (MockupPage.jsx / mockup.js)
+
+Save: POST /api/sales/mockup/save-frame (multipart) with:
+location_keys (JSON array), venue_type, optional asset_type_key, time_of_day, side, frames_data, photo
+Refresh: invalidates and refetches templates for each selected location:
+GET /api/sales/mockup/templates/{locationKey}?time_of_day=...&side=...&venue_type=...
+Image load: GET /api/sales/mockup/photo/{locationKey}?photo_filename=...&time_of_day=...&side=...
+Questions for backend
+
+Is template creation asynchronous or delayed after save-frame?
+Is there any caching (API, CDN, DB, or service-layer) that could return stale template lists or photos right after save?
+
+
+end Explanation01
