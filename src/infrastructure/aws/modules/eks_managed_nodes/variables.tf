@@ -58,7 +58,7 @@ variable "general_name" {
 variable "general_instance_types" {
   type        = list(string)
   description = "EC2 instance types for the general-purpose node group."
-  default     = ["m6i.large"]
+  default     = ["m6i.xlarge"]
 }
 
 variable "general_min_size" {
@@ -110,7 +110,7 @@ variable "sales_name" {
 variable "sales_instance_types" {
   type        = list(string)
   description = "EC2 instance types for the sales node group."
-  default     = ["r6i.xlarge"]
+  default     = ["r6i.2xlarge"]
 }
 
 variable "sales_min_size" {
@@ -158,4 +158,3 @@ variable "tags" {
   description = "Tags applied to resources where supported."
   default     = {}
 }
-

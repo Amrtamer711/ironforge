@@ -190,7 +190,7 @@ variable "eks_node_disk_size" {
 variable "eks_general_instance_types" {
   type        = list(string)
   description = "EC2 instance types for the general-purpose node group."
-  default     = ["m6i.large"]
+  default     = ["m6i.xlarge"]
 }
 
 variable "eks_general_min_size" {
@@ -213,8 +213,8 @@ variable "eks_general_max_size" {
 
 variable "eks_sales_instance_types" {
   type        = list(string)
-  description = "EC2 instance types for the dedicated sales node group (start with r6i.xlarge)."
-  default     = ["r6i.xlarge"]
+  description = "EC2 instance types for the dedicated sales node group (start with r6i.2xlarge)."
+  default     = ["r6i.2xlarge"]
 }
 
 variable "eks_sales_min_size" {
