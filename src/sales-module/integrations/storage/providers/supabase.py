@@ -5,8 +5,11 @@ Implements StorageProvider using Supabase Storage (S3-compatible).
 Recommended for production deployments already using Supabase.
 """
 
+import base64
 import contextlib
+import json
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -475,6 +478,23 @@ class SupabaseStorageProvider(StorageProvider):
             logger.error(f"[STORAGE:SUPABASE] Get public URL failed {bucket}/{key}: {e}")
             return None
 
+    def _decode_jwt_claims(self, token: str) -> dict | None:
+        """Decode JWT claims without verification (for debugging)."""
+        try:
+            # JWT format: header.payload.signature
+            parts = token.split(".")
+            if len(parts) != 3:
+                return None
+            # Decode payload (add padding if needed)
+            payload = parts[1]
+            padding = 4 - len(payload) % 4
+            if padding != 4:
+                payload += "=" * padding
+            decoded = base64.urlsafe_b64decode(payload)
+            return json.loads(decoded)
+        except Exception:
+            return None
+
     async def get_signed_url(
         self,
         bucket: str,
@@ -486,15 +506,38 @@ class SupabaseStorageProvider(StorageProvider):
             client = self._get_client()
             key = self.normalize_key(key)
 
+            logger.info(f"[STORAGE:SUPABASE] Creating signed URL: bucket={bucket}, key={key}, expires_in={expires_in}s, url={self._url}")
             response = client.storage.from_(bucket).create_signed_url(key, expires_in)
+            logger.info(f"[STORAGE:SUPABASE] Signed URL response: {response}")
 
+            signed_url = None
             if response and "signedURL" in response:
-                return response["signedURL"]
+                signed_url = response["signedURL"]
+            elif response and "signedUrl" in response:
+                signed_url = response["signedUrl"]
 
+            if signed_url:
+                # Debug: decode and log JWT claims to check expiration
+                if "token=" in signed_url:
+                    token = signed_url.split("token=")[1].split("&")[0]
+                    claims = self._decode_jwt_claims(token)
+                    if claims:
+                        now = int(time.time())
+                        exp = claims.get("exp", 0)
+                        time_until_exp = exp - now
+                        logger.info(f"[STORAGE:SUPABASE] JWT claims: exp={exp}, now={now}, seconds_until_expiry={time_until_exp}")
+                        if time_until_exp < 0:
+                            logger.error(f"[STORAGE:SUPABASE] TOKEN ALREADY EXPIRED! exp={exp} < now={now}")
+                return signed_url
+
+            if response and "error" in response:
+                logger.error(f"[STORAGE:SUPABASE] Error from Supabase: {response.get('error')}")
+
+            logger.warning(f"[STORAGE:SUPABASE] Unexpected response format: {response}")
             return None
 
         except Exception as e:
-            logger.error(f"[STORAGE:SUPABASE] Get signed URL failed {bucket}/{key}: {e}")
+            logger.error(f"[STORAGE:SUPABASE] Get signed URL failed {bucket}/{key}: {e}", exc_info=True)
             return None
 
     # =========================================================================

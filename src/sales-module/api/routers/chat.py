@@ -282,6 +282,7 @@ async def get_chat_history(
     user: AuthUser = Depends(require_permission("sales:chat:use")),
     limit: int | None = None,
     offset: int = 0,
+    newest_first: bool = False,
 ):
     """
     Load persisted chat history for the authenticated user.
@@ -297,13 +298,16 @@ async def get_chat_history(
 
     Args:
         limit: Maximum number of messages to return (None = all messages)
-        offset: Number of messages to skip from the start (for pagination)
+        offset: Number of messages to skip (from start if newest_first=False, from end if newest_first=True)
+        newest_first: If True, return newest messages first (for infinite scroll)
+                      offset=0 returns last `limit` messages
+                      offset=50 returns messages before the last 50
 
     Returns:
         messages: List of message objects with role, content, timestamp
         session_id: The conversation session ID
         message_count: Total number of messages (before pagination)
-        has_more: Whether there are more messages after this page
+        has_more: Whether there are more messages to load
         attachment_file_ids: List of file_ids for lazy-loading attachments
     """
     from db.database import db
@@ -327,8 +331,18 @@ async def get_chat_history(
 
         # Apply pagination if limit is specified
         if limit is not None:
-            messages = all_messages[offset:offset + limit]
-            has_more = (offset + limit) < total_count
+            if newest_first:
+                # For infinite scroll: offset from end, return in chronological order
+                # offset=0, limit=50 → last 50 messages (index [total-50:total])
+                # offset=50, limit=50 → previous 50 messages (index [total-100:total-50])
+                end_idx = total_count - offset
+                start_idx = max(0, end_idx - limit)
+                messages = all_messages[start_idx:end_idx]
+                has_more = start_idx > 0
+            else:
+                # Original behavior: offset from start
+                messages = all_messages[offset:offset + limit]
+                has_more = (offset + limit) < total_count
         else:
             messages = all_messages[offset:] if offset > 0 else all_messages
             has_more = False
@@ -422,14 +436,23 @@ async def refresh_attachment_urls(
             logger.warning(f"[CHAT] refresh_one {file_id}: provider={doc.get('storage_provider')} (not supabase)")
             return (file_id, None)
         try:
+            bucket = doc["storage_bucket"]
+            key = doc["storage_key"]
+            logger.info(f"[CHAT] refresh_one {file_id}: generating signed URL for bucket={bucket}, key={key}")
             url = await storage_client.get_signed_url(
-                bucket=doc["storage_bucket"],
-                key=doc["storage_key"],
+                bucket=bucket,
+                key=key,
                 expires_in=86400,  # 24 hours
             )
+            # Log the generated URL (truncate token for security)
+            if url:
+                url_preview = url[:100] + "..." if len(url) > 100 else url
+                logger.info(f"[CHAT] refresh_one {file_id}: signed URL generated: {url_preview}")
+            else:
+                logger.warning(f"[CHAT] refresh_one {file_id}: get_signed_url returned None")
             return (file_id, url)
         except Exception as e:
-            logger.warning(f"[CHAT] Failed to refresh URL for {file_id}: {e}")
+            logger.warning(f"[CHAT] Failed to refresh URL for {file_id}: {e}", exc_info=True)
             return (file_id, None)
 
     tasks = [refresh_one(fid) for fid in all_ids]

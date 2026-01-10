@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Virtuoso } from "react-virtuoso";
-import { ExternalLink, Download , FileText, Paperclip, Send } from "lucide-react";
+import { ExternalLink, Download, FileText, ImageIcon, Loader2, Paperclip, Send } from "lucide-react";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { LoadingEllipsis } from "../../components/ui/loading-ellipsis";
@@ -10,14 +9,23 @@ import * as filesApi from "../../api/files";
 import { getAuthToken } from "../../lib/token";
 import { useAttachmentLoader } from "../../hooks/useAttachmentLoader";
 
+// Pagination config
+const PAGE_SIZE = 50;
+
 export function ChatPage() {
   const [conversationId, setConversationId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [value, setValue] = useState("");
   const [pendingFile, setPendingFile] = useState(null);
   const [streaming, setStreaming] = useState(false);
-  const [historyHydrated, setHistoryHydrated] = useState(false);
   const [attachmentFileIds, setAttachmentFileIds] = useState([]);
+
+  // Pagination state
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyHydrated, setHistoryHydrated] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const offsetRef = useRef(0); // Track how many messages we've loaded from the end
 
   const fileRef = useRef(null);
   const abortRef = useRef(null);
@@ -30,12 +38,46 @@ export function ChatPage() {
   // Virtuoso ref for programmatic scrolling
   const virtuosoRef = useRef(null);
 
-  const historyQuery = useQuery({
-    queryKey: ["chat", "history"],
-    queryFn: chatApi.getHistory,
-    staleTime: 5 * 60 * 1000, // 5 minutes - avoid refetching on every mount
-    refetchOnMount: false,
-  });
+  // Initial history load - fetch last PAGE_SIZE messages
+  useEffect(() => {
+    if (historyHydrated) return;
+
+    async function loadInitialHistory() {
+      try {
+        setHistoryLoading(true);
+        const history = await chatApi.getHistory({
+          limit: PAGE_SIZE,
+          offset: 0,
+          newestFirst: true,
+        });
+
+        if (history && (history.messages?.length || history.session_id || history.conversation_id)) {
+          setConversationId(history.session_id || history.conversation_id || null);
+          const msgs = (history.messages || []).map(normalizeHistoryMessage);
+          setMessages(msgs.length ? msgs : [createGreeting()]);
+          setHasMore(history.has_more || false);
+          offsetRef.current = msgs.length;
+
+          // Capture attachment file IDs for lazy loading
+          if (history.attachment_file_ids?.length) {
+            setAttachmentFileIds(history.attachment_file_ids);
+          }
+        } else {
+          setMessages([createGreeting()]);
+          setHasMore(false);
+        }
+      } catch (err) {
+        console.error("[ChatPage] Failed to load history:", err);
+        setMessages([createGreeting()]);
+        setHasMore(false);
+      } finally {
+        setHistoryLoading(false);
+        setHistoryHydrated(true);
+      }
+    }
+
+    loadInitialHistory();
+  }, [historyHydrated]);
 
   // Lazy attachment loading with pre-fetching
   const { urls: attachmentUrls, loadAttachments } = useAttachmentLoader(attachmentFileIds);
@@ -45,25 +87,38 @@ export function ChatPage() {
     [value, pendingFile, streaming]
   );
 
-  useEffect(() => {
-    if (historyHydrated) return;
-    if (historyQuery.isLoading) return;
+  // Load older messages when scrolling to top
+  const loadOlderMessages = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
 
-    const history = historyQuery.data;
-    if (history && (history.messages?.length || history.session_id || history.conversation_id)) {
-      setConversationId(history.session_id || history.conversation_id || null);
-      const msgs = (history.messages || []).map(normalizeHistoryMessage);
-      setMessages(msgs.length ? msgs : [createGreeting()]);
+    try {
+      setLoadingMore(true);
+      const history = await chatApi.getHistory({
+        limit: PAGE_SIZE,
+        offset: offsetRef.current,
+        newestFirst: true,
+      });
 
-      // Capture attachment file IDs for lazy loading
-      if (history.attachment_file_ids?.length) {
-        setAttachmentFileIds(history.attachment_file_ids);
+      if (history?.messages?.length) {
+        const olderMsgs = history.messages.map(normalizeHistoryMessage);
+        // Prepend older messages
+        setMessages((prev) => [...olderMsgs, ...prev]);
+        setHasMore(history.has_more || false);
+        offsetRef.current += olderMsgs.length;
+
+        // Accumulate attachment file IDs
+        if (history.attachment_file_ids?.length) {
+          setAttachmentFileIds((prev) => [...history.attachment_file_ids, ...prev]);
+        }
+      } else {
+        setHasMore(false);
       }
-    } else {
-      setMessages([createGreeting()]);
+    } catch (err) {
+      console.error("[ChatPage] Failed to load older messages:", err);
+    } finally {
+      setLoadingMore(false);
     }
-    setHistoryHydrated(true);
-  }, [historyQuery.data, historyQuery.isLoading, historyHydrated]);
+  }, [loadingMore, hasMore]);
 
   const scrollToBottom = useCallback((behavior = "smooth", force = false) => {
     if (!force && !stickToBottomRef.current) return;
@@ -353,7 +408,7 @@ export function ChatPage() {
   return (
     <div className="h-full flex flex-col gap-4 min-h-0">
       <Card className="p-4 overflow-hidden flex-1 min-h-0">
-        {!historyHydrated && historyQuery.isLoading ? (
+        {historyLoading ? (
           <div className="h-full flex items-center justify-center">
             <LoadingEllipsis
               text="Loading conversation"
@@ -366,8 +421,22 @@ export function ChatPage() {
             className="h-full scrollbar-thin"
             data={messages}
             followOutput="smooth"
+            firstItemIndex={hasMore ? 1000000 - messages.length : 0}
+            initialTopMostItemIndex={messages.length - 1}
+            startReached={loadOlderMessages}
             atBottomStateChange={(atBottom) => {
               stickToBottomRef.current = atBottom;
+            }}
+            components={{
+              Header: () =>
+                loadingMore ? (
+                  <div className="flex justify-center py-3">
+                    <LoadingEllipsis
+                      text="Loading older messages"
+                      className="text-xs text-black/50 dark:text-white/50"
+                    />
+                  </div>
+                ) : null,
             }}
             itemContent={(index, msg) => (
               <div className="px-2 py-1.5">
@@ -504,11 +573,9 @@ const Message = React.memo(function Message({ msg, attachmentUrls = {}, onAttach
                     {showActions ? (
                       <>
                         <a href={url} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-lg">
-                          <img
+                          <ImageWithPlaceholder
                             src={url}
                             alt={displayName}
-                            className="max-h-64 w-full object-cover"
-                            loading="lazy"
                             onLoad={onMediaLoad}
                           />
                         </a>
@@ -548,11 +615,9 @@ const Message = React.memo(function Message({ msg, attachmentUrls = {}, onAttach
                       </>
                     ) : (
                       <div className="overflow-hidden rounded-lg">
-                        <img
+                        <ImageWithPlaceholder
                           src={url}
                           alt={displayName}
-                          className="max-h-64 w-full object-cover"
-                          loading="lazy"
                           onLoad={onMediaLoad}
                         />
                       </div>
@@ -631,6 +696,57 @@ const Message = React.memo(function Message({ msg, attachmentUrls = {}, onAttach
     </div>
   );
 });
+
+/**
+ * Image component with placeholder to prevent layout shifts.
+ * Shows a fixed-height loading state until the image loads.
+ */
+function ImageWithPlaceholder({ src, alt, onLoad, className = "" }) {
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+
+  const handleLoad = useCallback(() => {
+    setLoaded(true);
+    onLoad?.();
+  }, [onLoad]);
+
+  const handleError = useCallback(() => {
+    setError(true);
+    setLoaded(true); // Stop showing loader on error
+  }, []);
+
+  return (
+    <div className={`relative ${className}`} style={{ minHeight: loaded ? "auto" : "160px" }}>
+      {/* Loading placeholder - shown until image loads */}
+      {!loaded && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/5 dark:bg-white/5 rounded-lg">
+          <Loader2 size={24} className="animate-spin text-black/30 dark:text-white/30" />
+          <span className="mt-2 text-xs text-black/40 dark:text-white/40">Loading image...</span>
+        </div>
+      )}
+
+      {/* Error state */}
+      {error && loaded && (
+        <div className="flex flex-col items-center justify-center py-8 bg-black/5 dark:bg-white/5 rounded-lg">
+          <ImageIcon size={24} className="text-black/30 dark:text-white/30" />
+          <span className="mt-2 text-xs text-black/40 dark:text-white/40">Failed to load image</span>
+        </div>
+      )}
+
+      {/* Actual image - hidden until loaded */}
+      {!error && (
+        <img
+          src={src}
+          alt={alt}
+          className={`max-h-64 w-full object-cover rounded-lg transition-opacity duration-200 ${loaded ? "opacity-100" : "opacity-0 absolute inset-0"}`}
+          loading="lazy"
+          onLoad={handleLoad}
+          onError={handleError}
+        />
+      )}
+    </div>
+  );
+}
 
 function Textarea5({ value, onChange, placeholder, onEnter, disabled }) {
   const ref = useRef(null);

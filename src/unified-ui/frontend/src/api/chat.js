@@ -26,8 +26,22 @@ export async function deleteConversation(id) {
   return apiRequest(`/api/sales/chat/conversation/${id}`, { method: "DELETE" });
 }
 
-export async function getHistory() {
-  return apiRequest("/api/sales/chat/history");
+/**
+ * Fetch chat history with optional pagination.
+ * @param {Object} options - Pagination options
+ * @param {number} [options.limit] - Max messages to return
+ * @param {number} [options.offset=0] - Messages to skip
+ * @param {boolean} [options.newestFirst=false] - If true, offset counts from end (for infinite scroll)
+ * @returns {Promise<{messages: Array, session_id: string, message_count: number, has_more: boolean, attachment_file_ids: string[]}>}
+ */
+export async function getHistory({ limit, offset = 0, newestFirst = false } = {}) {
+  const params = new URLSearchParams();
+  if (limit != null) params.set("limit", limit);
+  if (offset > 0) params.set("offset", offset);
+  if (newestFirst) params.set("newest_first", "true");
+
+  const query = params.toString();
+  return apiRequest(`/api/sales/chat/history${query ? `?${query}` : ""}`);
 }
 
 /**
