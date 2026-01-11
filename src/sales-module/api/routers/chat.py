@@ -292,9 +292,9 @@ async def get_chat_history(
     This endpoint loads chat messages from the database, which persist
     across server restarts. Use this on login to restore previous conversations.
 
-    PERFORMANCE: This endpoint returns messages immediately WITHOUT refreshing
-    attachment URLs. Use POST /attachments/refresh to lazy-load attachment URLs
-    when they become visible in the viewport.
+    Messages include enriched attachment data with:
+    - Signed URLs for full images and thumbnails (24h expiry)
+    - Image dimensions for correct placeholder sizing
 
     Requires sales:chat:use permission.
 
@@ -306,13 +306,13 @@ async def get_chat_history(
                       offset=50 returns messages before the last 50
 
     Returns:
-        messages: List of message objects with role, content, timestamp
+        messages: List of message objects with role, content, timestamp, enriched attachments
         session_id: The conversation session ID
         message_count: Total number of messages (before pagination)
         has_more: Whether there are more messages to load
-        attachment_file_ids: List of file_ids for lazy-loading attachments
     """
     from db.database import db
+    from integrations.storage import get_storage_client
 
     try:
         # Single database call - get full session (cached)
@@ -325,7 +325,6 @@ async def get_chat_history(
                 "message_count": 0,
                 "has_more": False,
                 "last_updated": None,
-                "attachment_file_ids": [],
             }
 
         all_messages = session.get("messages", [])
@@ -351,10 +350,7 @@ async def get_chat_history(
             messages = all_messages[offset:] if offset > 0 else all_messages
             has_more = False
 
-        # Collect attachment file_ids for frontend lazy loading (only for returned messages)
-        # NO URL REFRESH HERE - done via /attachments/refresh endpoint
-        # Optimized: single list comprehension instead of nested loops with append
-        # Filter out any None messages (defensive against corrupted data)
+        # Collect all attachment file_ids for batch enrichment
         attachment_ids = [
             att["file_id"]
             for msg in messages
@@ -363,15 +359,115 @@ async def get_chat_history(
             if att and att.get("file_id")
         ]
 
-        logger.info(f"[CHAT] Loaded {len(messages)}/{total_count} messages ({len(attachment_ids)} attachments) for {user.email}")
+        # Enrich attachments with signed URLs and dimensions
+        storage_client = get_storage_client()
+        url_cache = {}
+
+        if attachment_ids and storage_client and storage_client.provider_name != "local":
+            # Batch lookup documents
+            docs = db.get_documents_batch(attachment_ids)
+
+            # Collect keys by bucket for batch URL generation
+            uploads_keys = {}  # key -> file_id mapping
+            thumbnails_keys = {}  # key -> file_id mapping
+            file_id_to_doc = {}  # for dimension lookup
+
+            for file_id in attachment_ids:
+                doc = docs.get(file_id)
+                if not doc or doc.get("storage_provider") != "supabase":
+                    continue
+
+                file_id_to_doc[file_id] = doc
+                key = doc.get("storage_key")
+                if key:
+                    uploads_keys[key] = file_id
+
+                thumb_key = doc.get("thumbnail_key")
+                if thumb_key:
+                    thumbnails_keys[thumb_key] = file_id
+
+            # Generate signed URLs in batch (2 API calls instead of N*2)
+            uploads_urls = {}
+            thumbnails_urls = {}
+
+            if uploads_keys:
+                if hasattr(storage_client, 'get_signed_urls_batch'):
+                    uploads_urls = await storage_client.get_signed_urls_batch(
+                        bucket="uploads",
+                        keys=list(uploads_keys.keys()),
+                        expires_in=86400,
+                    )
+                else:
+                    # Fallback to individual calls if batch not available
+                    for key, file_id in uploads_keys.items():
+                        url = await storage_client.get_signed_url("uploads", key, 86400)
+                        if url:
+                            uploads_urls[key] = url
+
+            if thumbnails_keys:
+                if hasattr(storage_client, 'get_signed_urls_batch'):
+                    thumbnails_urls = await storage_client.get_signed_urls_batch(
+                        bucket="thumbnails",
+                        keys=list(thumbnails_keys.keys()),
+                        expires_in=86400,
+                    )
+                else:
+                    # Fallback to individual calls if batch not available
+                    for key, file_id in thumbnails_keys.items():
+                        url = await storage_client.get_signed_url("thumbnails", key, 86400)
+                        if url:
+                            thumbnails_urls[key] = url
+
+            # Build url_cache from batch results
+            for file_id, doc in file_id_to_doc.items():
+                key = doc.get("storage_key")
+                thumb_key = doc.get("thumbnail_key")
+
+                full_url = uploads_urls.get(key)
+                thumbnail_url = thumbnails_urls.get(thumb_key) if thumb_key else None
+
+                if full_url:
+                    url_cache[file_id] = {
+                        "url": full_url,
+                        "thumbnail_url": thumbnail_url,
+                        "width": doc.get("image_width"),
+                        "height": doc.get("image_height"),
+                    }
+
+        # Enrich messages with URL data
+        enriched_messages = []
+        for msg in messages:
+            if msg is None:
+                continue
+            msg_copy = dict(msg)
+            attachments = msg_copy.get("attachments") or msg_copy.get("files") or []
+            enriched_attachments = []
+            for att in attachments:
+                if not att:
+                    continue
+                att_copy = dict(att)
+                file_id = att.get("file_id")
+                if file_id and file_id in url_cache:
+                    url_data = url_cache[file_id]
+                    att_copy["url"] = url_data.get("url")
+                    att_copy["thumbnail_url"] = url_data.get("thumbnail_url")
+                    att_copy["width"] = url_data.get("width")
+                    att_copy["height"] = url_data.get("height")
+                enriched_attachments.append(att_copy)
+            # Use consistent key name
+            msg_copy["files"] = enriched_attachments
+            if "attachments" in msg_copy:
+                del msg_copy["attachments"]
+            enriched_messages.append(msg_copy)
+
+        logger.info(f"[CHAT] Loaded {len(enriched_messages)}/{total_count} messages ({len(attachment_ids)} attachments) for {user.email}")
 
         return {
-            "messages": messages,
+            "messages": enriched_messages,
             "session_id": session.get("session_id"),
             "message_count": total_count,
             "has_more": has_more,
             "last_updated": session.get("updated_at"),
-            "attachment_file_ids": attachment_ids,
         }
     except Exception as e:
         logger.error(f"[CHAT] Error loading history for {user.email}: {e}", exc_info=True)
@@ -381,7 +477,6 @@ async def get_chat_history(
             "message_count": 0,
             "has_more": False,
             "error": str(e),
-            "attachment_file_ids": [],
         }
 
 

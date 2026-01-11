@@ -43,6 +43,9 @@ class UploadResponse(BaseModel):
     url: str
     size: int
     content_type: str
+    # Image dimensions (only set for images)
+    image_width: int | None = None
+    image_height: int | None = None
 
 
 class MultiUploadResponse(BaseModel):
@@ -114,12 +117,69 @@ async def upload_file(
 
         logger.info(f"[FILES] Upload success: {result.file_id} ({file_size} bytes) for {user.email}")
 
+        # For images: generate thumbnail and extract dimensions at upload time
+        image_width = None
+        image_height = None
+
+        if content_type.startswith("image/"):
+            try:
+                from io import BytesIO
+                from datetime import datetime
+                from PIL import Image
+                from core.utils.thumbnail import generate_thumbnail
+                from integrations.storage import get_storage_client
+                from db.database import db
+
+                # Extract original dimensions
+                img = Image.open(BytesIO(content))
+                image_width, image_height = img.size
+                logger.info(f"[FILES] Image dimensions: {image_width}x{image_height}")
+
+                # Generate thumbnail
+                thumb_bytes, thumb_w, thumb_h = await generate_thumbnail(content)
+
+                # Upload thumbnail to thumbnails bucket
+                storage_client = get_storage_client()
+                if storage_client:
+                    thumbnail_key = f"{user.id}/{result.file_id}/thumb_256.jpg"
+                    thumb_result = await storage_client.upload(
+                        bucket="thumbnails",
+                        key=thumbnail_key,
+                        data=thumb_bytes,
+                        content_type="image/jpeg"
+                    )
+
+                    if thumb_result.success:
+                        # Update document record with dimensions and thumbnail
+                        db.update_document(result.file_id, {
+                            "image_width": image_width,
+                            "image_height": image_height,
+                            "thumbnail_key": thumbnail_key,
+                            "thumbnail_generated_at": datetime.now().isoformat()
+                        })
+                        logger.info(f"[FILES] Generated thumbnail for {result.file_id}: {thumb_w}x{thumb_h}")
+                    else:
+                        logger.warning(f"[FILES] Failed to upload thumbnail: {thumb_result.error}")
+                        # Still store dimensions even if thumbnail upload failed
+                        db.update_document(result.file_id, {
+                            "image_width": image_width,
+                            "image_height": image_height,
+                        })
+                else:
+                    logger.warning("[FILES] No storage client for thumbnail upload")
+
+            except Exception as img_err:
+                logger.warning(f"[FILES] Failed to process image (non-fatal): {img_err}")
+                # Continue - image will work without thumbnail
+
         return UploadResponse(
             file_id=result.file_id,
             filename=file.filename or "upload",
             url=result.url,
             size=file_size,
             content_type=content_type,
+            image_width=image_width,
+            image_height=image_height,
         )
 
     except HTTPException:
@@ -179,12 +239,61 @@ async def upload_multiple_files(
             )
 
             if result.success:
+                # For images: generate thumbnail and extract dimensions
+                image_width = None
+                image_height = None
+                content_type = file.content_type or "application/octet-stream"
+
+                if content_type.startswith("image/"):
+                    try:
+                        from io import BytesIO
+                        from datetime import datetime
+                        from PIL import Image
+                        from core.utils.thumbnail import generate_thumbnail
+                        from integrations.storage import get_storage_client
+                        from db.database import db
+
+                        # Extract original dimensions
+                        img = Image.open(BytesIO(content))
+                        image_width, image_height = img.size
+
+                        # Generate thumbnail
+                        thumb_bytes, _, _ = await generate_thumbnail(content)
+
+                        # Upload thumbnail
+                        storage_client = get_storage_client()
+                        if storage_client:
+                            thumbnail_key = f"{user.id}/{result.file_id}/thumb_256.jpg"
+                            thumb_result = await storage_client.upload(
+                                bucket="thumbnails",
+                                key=thumbnail_key,
+                                data=thumb_bytes,
+                                content_type="image/jpeg"
+                            )
+
+                            if thumb_result.success:
+                                db.update_document(result.file_id, {
+                                    "image_width": image_width,
+                                    "image_height": image_height,
+                                    "thumbnail_key": thumbnail_key,
+                                    "thumbnail_generated_at": datetime.now().isoformat()
+                                })
+                            else:
+                                db.update_document(result.file_id, {
+                                    "image_width": image_width,
+                                    "image_height": image_height,
+                                })
+                    except Exception as img_err:
+                        logger.warning(f"[FILES] Failed to process image {file.filename}: {img_err}")
+
                 results.append(UploadResponse(
                     file_id=result.file_id,
                     filename=file.filename or "upload",
                     url=result.url,
                     size=len(content),
-                    content_type=file.content_type or "application/octet-stream",
+                    content_type=content_type,
+                    image_width=image_width,
+                    image_height=image_height,
                 ))
             else:
                 errors.append(f"{file.filename}: {result.error or 'Upload failed'}")
