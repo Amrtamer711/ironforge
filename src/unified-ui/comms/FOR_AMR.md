@@ -8,6 +8,8 @@
 # - [ ] Lazy Load Chat Messages so that the user is not stuck with loading conversations after login (Clarify if reducing the no of chats loaded will have positive impact).
 - [ ] Check the indoor locations - Why images are not loading. Maybe we can solve this by using the venue_type that is being sent from UI, but API is not accepting the venue_type. Details below : #Error01, #Explanation01, #Error02 
 - [ ] Chat history of new items not visible. Does this mean anything #Error03
+- [ ] Chat history displaying the First 500 messages only, not the latest messages. 
+- [ ] Proposal bot calling supbase storage so many times. looks like file links. Is this necessary? That may be blocking the history endpoint response. #Error04
 
 
 
@@ -293,3 +295,76 @@ End Error02
 [22:57:07] [Sales] ERROR: 18:57:07 ERROR    [fe090267] proposal-bot: [CHAT PERSIST] Failed to append messages for ee7eabae-3214-4364-8e48-12b8ffc0532a: '_DatabaseNamespace' object has no attribute 'append_chat_messages'
 [22:57:07] [Sales] INFO: 18:57:07 INFO     [fe090267] api.chat: [CHAT] Stream completed for r.shahzad@mmg.global
 end #Error03
+
+
+
+
+#Error04
+
+
+[01:11:04] [Assets] INFO: 2026-01-11 21:11:04,491 - asset-management - INFO - [SUPABASE] Expanded ['backlite_abudhabi', 'backlite_uk', 'viola', 'backlite_dubai'] -> ['backlite_abudhabi', 'backlite_dubai', 'backlite_uk', 'viola']
+[01:11:04] [Assets] INFO: 2026-01-11 21:11:04,492 - crm_security.middleware - INFO - [HTTP] POST /api/companies/expand -> 200 (233ms) user=- request_id=0e0b2dfc-5de3-43af-baee-20025524c02c
+[01:11:04] [Assets] INFO: INFO:     127.0.0.1:50668 - "POST /api/companies/expand?company_codes=backlite_abudhabi&company_codes=backlite_uk&company_codes=viola&company_codes=backlite_dubai HTTP/1.1" 200 OK
+[01:11:04] [UI] INFO: 2026-01-11 21:11:04,494 - unified-ui - INFO - [AUTH] Expanded companies: ['backlite_abudhabi', 'backlite_uk', 'viola', 'backlite_dubai'] -> ['backlite_abudhabi', 'backlite_dubai', 'backlite_uk', 'viola']
+[01:11:04] [UI] INFO: 2026-01-11 21:11:04,494 - unified-ui - INFO - [PROXY] GET /api/sales/chat/history -> http://localhost:8000/api/chat/history?limit=500
+[01:11:04] [UI] INFO: 2026-01-11 21:11:04,494 - unified-ui - INFO - [PROXY] User: r.shahzad@mmg.global | Profile: system_admin
+[01:11:04] [Sales] INFO: 21:11:04 INFO     [8e5d3420] api.request: GET /api/chat/history
+[01:11:04] [Sales] DEBUG: 21:11:04 DEBUG    [8e5d3420] proposal-bot: [CACHE] Chat session cache hit: ee7eabae-3214-4364-8e48-12b8ffc0532a
+[01:11:08] [Sales] DEBUG: 21:11:08 DEBUG    [8e5d3420] proposal-bot: [CACHE] Documents batch: all 73 from cache
+[01:11:08] [Sales] INFO: 21:11:08 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] ========== SIGNED URL REQUEST START ==========
+[01:11:08] [Sales] INFO: 21:11:08 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] System time BEFORE call: 1768151468.742707 (2026-01-11T17:11:08.742707+00:00)
+[01:11:08] [Sales] INFO: 21:11:08 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Bucket: uploads, Key: ee7eabae-3214-4364-8e48-12b8ffc0532a/2025/12/23/846fb1cc-9c8b-445b-8ff3-78810ffc802a_MMG Back.png
+[01:11:08] [Sales] INFO: 21:11:08 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Requested expires_in: 86400s (24.0 hours)
+[01:11:08] [Sales] INFO: 21:11:08 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Supabase URL: https://hqhwddnaynbimltpqlli.supabase.co
+[01:11:08] [Sales] INFO: 21:11:08 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Service key prefix: sb_secret_eL3x1ZJz2c...
+[01:11:08] [Sales] INFO: 21:11:08 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Calling Supabase create_signed_url API...
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] System time AFTER call: 1768151469.318826 (2026-01-11T17:11:09.318826+00:00)
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] API call took: 0.576s
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Raw response: {'signedURL': 'https://hqhwddnaynbimltpqlli.supabase.co/storage/v1/object/sign/uploads/ee7eabae-3214-4364-8e48-12b8ffc0532a/2025/12/23/846fb1cc-9c8b-445b-8ff3-78810ffc802a_MMG%20Back.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8wNTU0MzQ3My1kOWExLTRiNWYtYWRmYS1lNGEzODQ4ZmM0ZDUiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ1cGxvYWRzL2VlN2VhYmFlLTMyMTQtNDM2NC04ZTQ4LTEyYjhmZmMwNTMyYS8yMDI1LzEyLzIzLzg0NmZiMWNjLTljOGItNDQ1Yi04ZmYzLTc4ODEwZmZjODAyYV9NTUcgQmFjay5wbmciLCJpYXQiOjE3NjgxNTE0NjksImV4cCI6MTc2ODIzNzg2OX0.O6niwMa54rVi751_xfwcZzmO13O3Jf4WkcnDX56VJCc', 'signedUrl': 'https://hqhwddnaynbimltpqlli.supabase.co/storage/v1/object/sign/uploads/ee7eabae-3214-4364-8e48-12b8ffc0532a/2025/12/23/846fb1cc-9c8b-445b-8ff3-78810ffc802a_MMG%20Back.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8wNTU0MzQ3My1kOWExLTRiNWYtYWRmYS1lNGEzODQ4ZmM0ZDUiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ1cGxvYWRzL2VlN2VhYmFlLTMyMTQtNDM2NC04ZTQ4LTEyYjhmZmMwNTMyYS8yMDI1LzEyLzIzLzg0NmZiMWNjLTljOGItNDQ1Yi04ZmYzLTc4ODEwZmZjODAyYV9NTUcgQmFjay5wbmciLCJpYXQiOjE3NjgxNTE0NjksImV4cCI6MTc2ODIzNzg2OX0.O6niwMa54rVi751_xfwcZzmO13O3Jf4WkcnDX56VJCc'}
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Signed URL generated (length: 534)
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Extracted JWT token (length: 356)
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] ===== JWT TOKEN ANALYSIS =====
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Full JWT claims: {
+[01:11:09] [Sales] INFO:   "url": "uploads/ee7eabae-3214-4364-8e48-12b8ffc0532a/2025/12/23/846fb1cc-9c8b-445b-8ff3-78810ffc802a_MMG Back.png",
+[01:11:09] [Sales] INFO:   "iat": 1768151469,
+[01:11:09] [Sales] INFO:   "exp": 1768237869
+[01:11:09] [Sales] INFO: }
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Current server time: 1768151469 (2026-01-11T17:11:09+00:00)
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Token issued at (iat): 1768151469 (2026-01-11T17:11:09+00:00)
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Token expires at (exp): 1768237869 (2026-01-12T17:11:09+00:00)
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Time until expiry: 86400s (24.00 hours)
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Time since token issued: 0s
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Expected exp (server_time + 86400): 1768237868
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Actual exp drift from expected: 1s
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] ✅ Token appears valid and will expire in 24.00 hours
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] ========== SIGNED URL REQUEST END ==========
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] ========== SIGNED URL REQUEST START ==========
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] System time BEFORE call: 1768151469.31917 (2026-01-11T17:11:09.319170+00:00)
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Bucket: uploads, Key: ee7eabae-3214-4364-8e48-12b8ffc0532a/2025/12/23/7a15605c-1f0f-42ec-a70a-528e1202240e_MMG Back.png
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Requested expires_in: 86400s (24.0 hours)
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Supabase URL: https://hqhwddnaynbimltpqlli.supabase.co
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Service key prefix: sb_secret_eL3x1ZJz2c...
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Calling Supabase create_signed_url API...
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] System time AFTER call: 1768151469.5422878 (2026-01-11T17:11:09.542288+00:00)
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] API call took: 0.223s
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Raw response: {'signedURL': 'https://hqhwddnaynbimltpqlli.supabase.co/storage/v1/object/sign/uploads/ee7eabae-3214-4364-8e48-12b8ffc0532a/2025/12/23/7a15605c-1f0f-42ec-a70a-528e1202240e_MMG%20Back.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8wNTU0MzQ3My1kOWExLTRiNWYtYWRmYS1lNGEzODQ4ZmM0ZDUiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ1cGxvYWRzL2VlN2VhYmFlLTMyMTQtNDM2NC04ZTQ4LTEyYjhmZmMwNTMyYS8yMDI1LzEyLzIzLzdhMTU2MDVjLTFmMGYtNDJlYy1hNzBhLTUyOGUxMjAyMjQwZV9NTUcgQmFjay5wbmciLCJpYXQiOjE3NjgxNTE0NjksImV4cCI6MTc2ODIzNzg2OX0.RmcJgZM22PIeehBESlatiJv5vfDHBEaaiPz3kHsL78Q', 'signedUrl': 'https://hqhwddnaynbimltpqlli.supabase.co/storage/v1/object/sign/uploads/ee7eabae-3214-4364-8e48-12b8ffc0532a/2025/12/23/7a15605c-1f0f-42ec-a70a-528e1202240e_MMG%20Back.png?token=eyJraWQiOiJzdG9yYWdlLXVybC1zaWduaW5nLWtleV8wNTU0MzQ3My1kOWExLTRiNWYtYWRmYS1lNGEzODQ4ZmM0ZDUiLCJhbGciOiJIUzI1NiJ9.eyJ1cmwiOiJ1cGxvYWRzL2VlN2VhYmFlLTMyMTQtNDM2NC04ZTQ4LTEyYjhmZmMwNTMyYS8yMDI1LzEyLzIzLzdhMTU2MDVjLTFmMGYtNDJlYy1hNzBhLTUyOGUxMjAyMjQwZV9NTUcgQmFjay5wbmciLCJpYXQiOjE3NjgxNTE0NjksImV4cCI6MTc2ODIzNzg2OX0.RmcJgZM22PIeehBESlatiJv5vfDHBEaaiPz3kHsL78Q'}
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Signed URL generated (length: 534)
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Extracted JWT token (length: 356)
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] ===== JWT TOKEN ANALYSIS =====
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Full JWT claims: {
+[01:11:09] [Sales] INFO:   "url": "uploads/ee7eabae-3214-4364-8e48-12b8ffc0532a/2025/12/23/7a15605c-1f0f-42ec-a70a-528e1202240e_MMG Back.png",
+[01:11:09] [Sales] INFO:   "iat": 1768151469,
+[01:11:09] [Sales] INFO:   "exp": 1768237869
+[01:11:09] [Sales] INFO: }
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Current server time: 1768151469 (2026-01-11T17:11:09+00:00)
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Token issued at (iat): 1768151469 (2026-01-11T17:11:09+00:00)
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Token expires at (exp): 1768237869 (2026-01-12T17:11:09+00:00)
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Time until expiry: 86400s (24.00 hours)
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Time since token issued: 0s
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Expected exp (server_time + 86400): 1768237869
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] Actual exp drift from expected: 0s
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] ✅ Token appears valid and will expire in 24.00 hours
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] ========== SIGNED URL REQUEST END ==========
+[01:11:09] [Sales] INFO: 21:11:09 INFO     [8e5d3420] proposal-bot: [STORAGE:SUPABASE] ========== SIGNED URL REQUEST START ==========
+
+end #Error04
