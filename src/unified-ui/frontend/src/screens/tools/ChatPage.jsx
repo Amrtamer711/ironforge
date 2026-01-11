@@ -656,7 +656,24 @@ const Message = React.memo(function Message({ msg, attachmentUrls = {}, onAttach
               const urlData = f.file_id
                 ? attachmentUrls[f.file_id] // Object with {thumbnail, full, width, height}
                 : null;
-              const url = urlData?.full || filesApi.resolveFileUrl(f); // Fallback for local files
+
+              // For remote files (with file_id), MUST wait for signed URLs
+              // Using API endpoint URLs directly fails with 401 (no auth in browser requests)
+              if (f.file_id && !urlData?.full) {
+                // Show placeholder while waiting for signed URL
+                return (
+                  <div key={getFileKey(f, i)} className="rounded-xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 p-2">
+                    <div className="relative" style={{ aspectRatio: '16 / 9', width: '100%', maxWidth: '512px' }}>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/5 dark:bg-white/5 rounded-lg">
+                        <Loader2 size={24} className="animate-spin text-black/30 dark:text-white/30" />
+                        <span className="mt-2 text-xs text-black/50 dark:text-white/50">Loading...</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+
+              const url = urlData?.full || filesApi.resolveFileUrl(f); // Fallback for local files only
               if (!url) return null; // Don't render until URL available
               const resolvedPdfFilename = f.pdf_filename || msg.pdf_filename;
               const displayName = getFriendlyFileName(

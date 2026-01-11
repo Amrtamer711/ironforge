@@ -89,7 +89,8 @@ def _build_file_info(stored_info: Any, file_id: str) -> dict | None:
     """Build file info dict from stored info. Extracted helper to avoid duplication."""
     if not stored_info:
         return None
-    url = f"/api/files/{file_id}/{stored_info.filename}" if stored_info.filename else f"/api/files/{file_id}/file"
+    # Use module-specific URL path for proper proxy routing
+    url = f"/api/sales/files/{file_id}/{stored_info.filename}" if stored_info.filename else f"/api/sales/files/{file_id}/file"
     return {
         "file_id": file_id,
         "filename": stored_info.filename,
@@ -327,6 +328,8 @@ async def get_chat_history(
             }
 
         all_messages = session.get("messages", [])
+        # Filter out any None/null messages (defensive against corrupted data)
+        all_messages = [m for m in all_messages if m is not None]
         total_count = len(all_messages)
 
         # Apply pagination if limit is specified
@@ -350,11 +353,13 @@ async def get_chat_history(
         # Collect attachment file_ids for frontend lazy loading (only for returned messages)
         # NO URL REFRESH HERE - done via /attachments/refresh endpoint
         # Optimized: single list comprehension instead of nested loops with append
+        # Filter out any None messages (defensive against corrupted data)
         attachment_ids = [
             att["file_id"]
             for msg in messages
+            if msg is not None
             for att in (msg.get("attachments") or msg.get("files") or [])
-            if att.get("file_id")
+            if att and att.get("file_id")
         ]
 
         logger.info(f"[CHAT] Loaded {len(messages)}/{total_count} messages ({len(attachment_ids)} attachments) for {user.email}")
