@@ -292,9 +292,9 @@ async def get_chat_history(
     This endpoint loads chat messages from the database, which persist
     across server restarts. Use this on login to restore previous conversations.
 
-    Messages include enriched attachment data with:
-    - Signed URLs for full images and thumbnails (24h expiry)
-    - Image dimensions for correct placeholder sizing
+    Messages include attachment metadata with dimensions for placeholder sizing.
+    URLs are NOT included for fast response - use /attachments/refresh to get
+    signed URLs for visible images (lazy loading).
 
     Requires sales:chat:use permission.
 
@@ -312,7 +312,6 @@ async def get_chat_history(
         has_more: Whether there are more messages to load
     """
     from db.database import db
-    from integrations.storage import get_storage_client
 
     try:
         # Single database call - get full session (cached)
@@ -350,7 +349,8 @@ async def get_chat_history(
             messages = all_messages[offset:] if offset > 0 else all_messages
             has_more = False
 
-        # Collect all attachment file_ids for batch enrichment
+        # Collect all attachment file_ids for dimension enrichment (no URL generation)
+        # URLs are loaded lazily via /attachments/refresh for faster initial load
         attachment_ids = [
             att["file_id"]
             for msg in messages
@@ -359,82 +359,19 @@ async def get_chat_history(
             if att and att.get("file_id")
         ]
 
-        # Enrich attachments with signed URLs and dimensions
-        storage_client = get_storage_client()
-        url_cache = {}
-
-        if attachment_ids and storage_client and storage_client.provider_name != "local":
-            # Batch lookup documents
+        # Only fetch dimensions from DB - skip URL generation for fast response
+        # Frontend will call /attachments/refresh to get URLs for visible images
+        dimension_cache = {}
+        if attachment_ids:
             docs = db.get_documents_batch(attachment_ids)
-
-            # Collect keys by bucket for batch URL generation
-            uploads_keys = {}  # key -> file_id mapping
-            thumbnails_keys = {}  # key -> file_id mapping
-            file_id_to_doc = {}  # for dimension lookup
-
-            for file_id in attachment_ids:
-                doc = docs.get(file_id)
-                if not doc or doc.get("storage_provider") != "supabase":
-                    continue
-
-                file_id_to_doc[file_id] = doc
-                key = doc.get("storage_key")
-                if key:
-                    uploads_keys[key] = file_id
-
-                thumb_key = doc.get("thumbnail_key")
-                if thumb_key:
-                    thumbnails_keys[thumb_key] = file_id
-
-            # Generate signed URLs in batch (2 API calls instead of N*2)
-            uploads_urls = {}
-            thumbnails_urls = {}
-
-            if uploads_keys:
-                if hasattr(storage_client, 'get_signed_urls_batch'):
-                    uploads_urls = await storage_client.get_signed_urls_batch(
-                        bucket="uploads",
-                        keys=list(uploads_keys.keys()),
-                        expires_in=86400,
-                    )
-                else:
-                    # Fallback to individual calls if batch not available
-                    for key, file_id in uploads_keys.items():
-                        url = await storage_client.get_signed_url("uploads", key, 86400)
-                        if url:
-                            uploads_urls[key] = url
-
-            if thumbnails_keys:
-                if hasattr(storage_client, 'get_signed_urls_batch'):
-                    thumbnails_urls = await storage_client.get_signed_urls_batch(
-                        bucket="thumbnails",
-                        keys=list(thumbnails_keys.keys()),
-                        expires_in=86400,
-                    )
-                else:
-                    # Fallback to individual calls if batch not available
-                    for key, file_id in thumbnails_keys.items():
-                        url = await storage_client.get_signed_url("thumbnails", key, 86400)
-                        if url:
-                            thumbnails_urls[key] = url
-
-            # Build url_cache from batch results
-            for file_id, doc in file_id_to_doc.items():
-                key = doc.get("storage_key")
-                thumb_key = doc.get("thumbnail_key")
-
-                full_url = uploads_urls.get(key)
-                thumbnail_url = thumbnails_urls.get(thumb_key) if thumb_key else None
-
-                if full_url:
-                    url_cache[file_id] = {
-                        "url": full_url,
-                        "thumbnail_url": thumbnail_url,
+            for file_id, doc in docs.items():
+                if doc:
+                    dimension_cache[file_id] = {
                         "width": doc.get("image_width"),
                         "height": doc.get("image_height"),
                     }
 
-        # Enrich messages with URL data
+        # Enrich messages with dimensions only (URLs loaded lazily by frontend)
         enriched_messages = []
         for msg in messages:
             if msg is None:
@@ -447,12 +384,10 @@ async def get_chat_history(
                     continue
                 att_copy = dict(att)
                 file_id = att.get("file_id")
-                if file_id and file_id in url_cache:
-                    url_data = url_cache[file_id]
-                    att_copy["url"] = url_data.get("url")
-                    att_copy["thumbnail_url"] = url_data.get("thumbnail_url")
-                    att_copy["width"] = url_data.get("width")
-                    att_copy["height"] = url_data.get("height")
+                if file_id and file_id in dimension_cache:
+                    dim_data = dimension_cache[file_id]
+                    att_copy["width"] = dim_data.get("width")
+                    att_copy["height"] = dim_data.get("height")
                 enriched_attachments.append(att_copy)
             # Use consistent key name
             msg_copy["files"] = enriched_attachments
@@ -516,25 +451,16 @@ async def refresh_attachment_urls(
         return {"urls": {}}
 
     storage_client = get_storage_client()
-    logger.info(f"[CHAT] attachment refresh: storage_client={storage_client}, provider={storage_client.provider_name if storage_client else 'None'}")
     if not storage_client or storage_client.provider_name == "local":
-        # Local storage doesn't need signed URLs
-        logger.info(f"[CHAT] attachment refresh: returning empty (local storage or no client)")
         return {"urls": {}}
 
-    # 1. Single batch DB lookup
+    # Single batch DB lookup
     docs = db.get_documents_batch(all_ids)
 
-    logger.info(f"[CHAT] attachment refresh: requested={all_ids}, found_in_db={list(docs.keys())}")
-
-    # 2. Parallel URL generation with thumbnail support
+    # Parallel URL generation with thumbnail support
     async def refresh_one(file_id: str) -> tuple[str, dict | None]:
         doc = docs.get(file_id)
-        if not doc:
-            logger.warning(f"[CHAT] refresh_one {file_id}: no document record")
-            return (file_id, None)
-        if doc.get("storage_provider") != "supabase":
-            logger.warning(f"[CHAT] refresh_one {file_id}: provider={doc.get('storage_provider')} (not supabase)")
+        if not doc or doc.get("storage_provider") != "supabase":
             return (file_id, None)
 
         try:
@@ -564,34 +490,24 @@ async def refresh_attachment_urls(
                         key=doc["thumbnail_key"],
                         expires_in=86400,
                     )
-                    logger.debug(f"[CHAT] Using existing thumbnail for {file_id}")
                 else:
                     # Generate thumbnail on-demand
                     try:
-                        logger.info(f"[CHAT] Generating thumbnail for {file_id}")
-
                         # Download original image
-                        download_result = await storage_client.download(
-                            bucket=bucket,
-                            key=key
-                        )
+                        download_result = await storage_client.download(bucket=bucket, key=key)
                         original_bytes = download_result.data
 
-                        # Get ORIGINAL image dimensions BEFORE generating thumbnail
-                        # This is critical for correct aspect ratios in the frontend
+                        # Get original dimensions for aspect ratio
                         from PIL import Image as PILImage
                         orig_width, orig_height = None, None
                         try:
                             with PILImage.open(io.BytesIO(original_bytes)) as img:
                                 orig_width, orig_height = img.size
-                            logger.info(f"[CHAT] Original image dimensions for {file_id}: {orig_width}x{orig_height}")
-                        except Exception as dim_err:
-                            logger.warning(f"[CHAT] Could not get original dimensions for {file_id}: {dim_err}")
+                        except Exception:
+                            pass
 
-                        # Generate thumbnail
+                        # Generate and upload thumbnail
                         thumb_bytes, thumb_width, thumb_height = await generate_thumbnail(original_bytes)
-
-                        # Upload to thumbnails bucket
                         thumbnail_key = f"{user.id}/{file_id}/thumb_256.jpg"
                         await storage_client.upload(
                             bucket="thumbnails",
@@ -600,31 +516,24 @@ async def refresh_attachment_urls(
                             content_type="image/jpeg"
                         )
 
-                        # Update database with ORIGINAL dimensions (not thumbnail!)
-                        # This ensures frontend gets correct aspect ratio for placeholders
+                        # Update database with dimensions
                         db.update_document(file_id, {
                             "thumbnail_key": thumbnail_key,
                             "thumbnail_generated_at": datetime.now(),
-                            "image_width": orig_width or thumb_width,    # Use original if available
-                            "image_height": orig_height or thumb_height  # Fallback to thumbnail if failed
+                            "image_width": orig_width or thumb_width,
+                            "image_height": orig_height or thumb_height
                         })
 
-                        # Get signed URL for thumbnail
                         thumbnail_url = await storage_client.get_signed_url(
                             bucket="thumbnails",
                             key=thumbnail_key,
                             expires_in=86400,
                         )
-
-                        # Return ORIGINAL dimensions for frontend aspect ratio calculation
                         width = orig_width or thumb_width
                         height = orig_height or thumb_height
 
-                        logger.info(f"[CHAT] Generated thumbnail for {file_id}: thumb={thumb_width}x{thumb_height}, returning orig={width}x{height}")
-
                     except Exception as e:
-                        logger.warning(f"[CHAT] Failed to generate thumbnail for {file_id}: {e}", exc_info=True)
-                        # Continue with full image only
+                        logger.warning(f"[CHAT] Thumbnail generation failed for {file_id}: {e}")
 
             return (file_id, {
                 "full": full_url,

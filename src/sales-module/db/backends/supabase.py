@@ -1997,18 +1997,22 @@ class SupabaseBackend(DatabaseBackend):
             client = self._get_client()
 
             # First check if session exists
+            logger.info(f"[SUPABASE] Checking for existing chat session for user: {user_id}")
             existing = client.table("chat_sessions").select("session_id").eq("user_id", user_id).single().execute()
 
             if existing.data:
                 # Atomic append using PostgreSQL JSONB concatenation
                 # This is race-condition safe - concurrent appends both succeed
+                logger.info(f"[SUPABASE] Calling RPC append_chat_messages for user: {user_id}, {len(new_messages)} messages")
                 client.rpc("append_chat_messages", {
                     "p_user_id": user_id,
                     "p_new_messages": new_messages,
                     "p_updated_at": now,
                 }).execute()
+                logger.info(f"[SUPABASE] RPC append_chat_messages succeeded for user: {user_id}")
             else:
                 # Create new session with initial messages
+                logger.info(f"[SUPABASE] Creating new chat session for user: {user_id}")
                 client.table("chat_sessions").insert({
                     "user_id": user_id,
                     "session_id": session_id,
@@ -2016,11 +2020,12 @@ class SupabaseBackend(DatabaseBackend):
                     "created_at": now,
                     "updated_at": now,
                 }).execute()
+                logger.info(f"[SUPABASE] Created new chat session for user: {user_id}")
 
             # Invalidate cache
             _run_async(self._cache_delete(f"chat:{user_id}"))
 
-            logger.debug(f"[SUPABASE] Appended {len(new_messages)} messages for user: {user_id}")
+            logger.info(f"[SUPABASE] Successfully appended {len(new_messages)} messages for user: {user_id}")
             return True
         except Exception as e:
             # If RPC doesn't exist, fall back to full save

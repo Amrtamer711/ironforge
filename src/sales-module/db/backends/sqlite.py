@@ -1793,6 +1793,67 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
+    def append_chat_messages(
+        self,
+        user_id: str,
+        new_messages: list[dict[str, Any]],
+        session_id: str | None = None,
+    ) -> bool:
+        """
+        Append messages to a user's chat session.
+
+        For SQLite, we read-modify-write since we don't have RPC.
+        Uses a transaction for safety.
+        """
+        import uuid
+        from datetime import datetime
+
+        if not new_messages:
+            return True
+
+        now = datetime.now().isoformat()
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN")
+
+            # Get existing messages
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT session_id, messages FROM chat_sessions WHERE user_id = ?",
+                (user_id,)
+            )
+            row = cursor.fetchone()
+
+            if row:
+                existing_session_id = row[0]
+                existing_messages = json.loads(row[1]) if row[1] else []
+                combined = existing_messages + new_messages
+
+                conn.execute(
+                    "UPDATE chat_sessions SET messages = ?, updated_at = ? WHERE user_id = ?",
+                    (json.dumps(combined), now, user_id)
+                )
+            else:
+                # No existing session - create one
+                new_session_id = session_id or str(uuid.uuid4())
+                conn.execute(
+                    """
+                    INSERT INTO chat_sessions (user_id, session_id, messages, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (user_id, new_session_id, json.dumps(new_messages), now, now)
+                )
+
+            conn.execute("COMMIT")
+            logger.info(f"[DB] Appended {len(new_messages)} messages for user: {user_id}")
+            return True
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            logger.error(f"[DB] Error appending chat messages for {user_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
     # =========================================================================
     # DOCUMENTS
     # =========================================================================

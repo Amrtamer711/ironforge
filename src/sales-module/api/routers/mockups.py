@@ -318,6 +318,171 @@ async def save_mockup_frame(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.put("/api/mockup/update-frame")
+async def update_mockup_frame(
+    location_key: str = Form(..., max_length=500),  # Single location key
+    photo_filename: str = Form(..., max_length=500),  # Existing photo filename to update
+    asset_type_key: str | None = Form(None),  # For traditional networks
+    time_of_day: str = Form("day"),
+    side: str = Form("gold"),
+    venue_type: str = Form("outdoor"),  # indoor or outdoor
+    frames_data: str = Form(..., max_length=50000),
+    config_json: str | None = Form(None, max_length=10000),
+    photo: UploadFile | None = File(None),  # Optional - only if replacing photo
+    user: AuthUser = Depends(require_permission("sales:mockups:setup"))
+):
+    """Update an existing mockup frame in place.
+
+    Unlike save-frame which creates new records with auto-numbered filenames,
+    this endpoint updates an existing frame identified by photo_filename.
+
+    Args:
+        location_key: Single location key (not array like save-frame)
+        photo_filename: Existing photo filename to update (required)
+        asset_type_key: Asset type key for traditional networks
+        venue_type: "indoor" or "outdoor"
+        frames_data: JSON array of frame data
+        config_json: Optional config JSON
+        photo: Optional new photo file (replaces existing if provided)
+    """
+    from generators import mockup as mockup_generator
+
+    # Validate enum parameters
+    if time_of_day not in VALID_TIME_OF_DAY:
+        raise HTTPException(status_code=400, detail=f"Invalid time_of_day: {time_of_day}")
+    if side not in VALID_SIDE:
+        raise HTTPException(status_code=400, detail=f"Invalid side: {side}")
+    if venue_type not in VALID_VENUE_TYPE:
+        raise HTTPException(status_code=400, detail=f"Invalid venue_type: {venue_type}")
+
+    # Validate photo if provided
+    photo_data = None
+    if photo:
+        try:
+            photo_data = await photo.read()
+            validate_image_upload(photo.content_type, len(photo_data))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+    logger.info("[MOCKUP API] ====== UPDATE FRAME REQUEST ======")
+    logger.info(f"[MOCKUP API] RECEIVED location_key: '{location_key}'")
+    logger.info(f"[MOCKUP API] RECEIVED photo_filename: '{photo_filename}'")
+    logger.info(f"[MOCKUP API] RECEIVED asset_type_key: '{asset_type_key}'")
+    logger.info(f"[MOCKUP API] RECEIVED time_of_day: '{time_of_day}'")
+    logger.info(f"[MOCKUP API] RECEIVED side: '{side}'")
+    logger.info(f"[MOCKUP API] RECEIVED venue_type: '{venue_type}'")
+    logger.info(f"[MOCKUP API] RECEIVED photo: {'yes' if photo_data else 'no'}")
+    logger.info("[MOCKUP API] ====================================")
+
+    try:
+        # Parse frames data
+        frames = json.loads(frames_data)
+        if not isinstance(frames, list) or len(frames) == 0:
+            raise HTTPException(status_code=400, detail="frames_data must be a non-empty list")
+
+        # Validate each frame
+        for i, frame in enumerate(frames):
+            if not isinstance(frame, dict):
+                raise HTTPException(status_code=400, detail=f"Frame {i} must be an object")
+            if 'points' not in frame:
+                raise HTTPException(status_code=400, detail=f"Frame {i} missing 'points'")
+            if not isinstance(frame['points'], list) or len(frame['points']) != 4:
+                raise HTTPException(status_code=400, detail=f"Frame {i} must have exactly 4 points")
+
+        # Parse config if provided
+        config_dict = None
+        if config_json:
+            try:
+                config_dict = json.loads(config_json)
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="Invalid config JSON")
+
+        # Map venue_type to environment parameter
+        environment = venue_type
+
+        # Validate location access
+        asset_service = get_asset_service()
+        from integrations.asset_management import asset_mgmt_client
+
+        has_access, error_msg = await asset_service.validate_location_access(location_key, user.companies)
+        if not has_access:
+            raise HTTPException(status_code=403, detail=error_msg or "Location not accessible")
+
+        # Get location data for company schema
+        location_data = await asset_service.get_location_by_key(location_key, user.companies)
+        if not location_data:
+            raise HTTPException(status_code=404, detail="Location not found")
+
+        company_schema = location_data.get("company") or location_data.get("company_schema")
+        if not company_schema:
+            raise HTTPException(status_code=400, detail="No company assigned to location")
+
+        # Determine storage key based on network type
+        storage_info = await asset_mgmt_client.get_mockup_storage_info(
+            network_key=location_key,
+            companies=user.companies,
+        )
+
+        is_standalone = storage_info.get("is_standalone", True) if storage_info else True
+
+        if is_standalone:
+            storage_key = location_key
+        else:
+            if not asset_type_key:
+                raise HTTPException(status_code=400, detail="asset_type_key required for traditional network")
+            storage_key = f"{location_key}/{asset_type_key}"
+
+        # Update via Asset-Management API
+        logger.info(f"[MOCKUP API] Updating frame via asset-management: {company_schema}.{storage_key}/{photo_filename}")
+        result = await asset_mgmt_client.update_mockup_frame(
+            company=company_schema,
+            location_key=storage_key,
+            photo_filename=photo_filename,
+            frames_data=frames,
+            environment=environment,
+            time_of_day=time_of_day,
+            side=side,
+            config=config_dict,
+            photo_data=photo_data,
+            original_photo_filename=photo.filename if photo else None,
+        )
+
+        if not result or not result.get("success"):
+            raise HTTPException(status_code=404, detail="Frame not found or update failed")
+
+        logger.info(f"[MOCKUP API] ✓ Asset-management update complete for {storage_key}/{photo_filename}")
+
+        # If new photo was provided, also update on disk
+        if photo_data:
+            logger.info(f"[MOCKUP API] Updating photo on disk for {storage_key}: {photo_filename}")
+            photo_path = mockup_generator.save_location_photo(
+                company_schema, storage_key, photo_filename, photo_data,
+                environment=environment, time_of_day=time_of_day, side=side
+            )
+            logger.info(f"[MOCKUP API] ✓ Photo updated on disk at: {photo_path}")
+
+        return {
+            "success": True,
+            "location_key": location_key,
+            "storage_key": storage_key,
+            "photo_filename": photo_filename,
+            "time_of_day": time_of_day,
+            "side": side,
+            "venue_type": venue_type,
+            "frames_count": len(frames),
+            "photo_replaced": photo_data is not None,
+        }
+
+    except json.JSONDecodeError as e:
+        logger.error(f"[MOCKUP API] JSON decode error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="Invalid frames_data JSON")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[MOCKUP API] Error updating frame: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/api/mockup/test-preview")
 async def test_preview_mockup(
     billboard_photo: UploadFile = File(...),

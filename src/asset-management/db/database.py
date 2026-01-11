@@ -518,6 +518,23 @@ class _DatabaseNamespace:
             location_key, company, photo_filename, environment, time_of_day, side
         )
 
+    def update_mockup_frame(
+        self,
+        location_key: str,
+        photo_filename: str,
+        frames_data: list[dict],
+        company_schema: str,
+        environment: str = "outdoor",
+        time_of_day: str = "day",
+        side: str = "gold",
+        config: dict | None = None,
+    ) -> bool:
+        """Update an existing mockup frame in place."""
+        return self._backend.update_mockup_frame(
+            location_key, photo_filename, frames_data, company_schema,
+            environment, time_of_day, side, config
+        )
+
     # =========================================================================
     # MOCKUP STORAGE INFO (Unified Architecture)
     # =========================================================================

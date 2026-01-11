@@ -26,6 +26,11 @@ export async function saveSetupPhoto(formData) {
   return apiRequest("/api/sales/mockup/save-frame", { method: "POST", body: formData });
 }
 
+export async function updateSetupPhoto(formData) {
+  // Update an existing mockup frame in place (doesn't create new auto-numbered filename)
+  return apiRequest("/api/sales/mockup/update-frame", { method: "PUT", body: formData });
+}
+
 export async function deleteSetupPhoto(location, photo) {
   // location is path param (supports slashes like "network/type/asset"), photo is query param
   return apiRequest(`/api/sales/mockup/photo/${location}?photo_filename=${encodeURIComponent(photo)}`, {

@@ -138,13 +138,20 @@ def append_chat_messages(
         True if appended successfully
     """
     if not new_messages:
+        logger.debug(f"[CHAT PERSIST] No messages to append for {user_id}")
         return True
 
     try:
         db = _get_db()
-        return db.append_chat_messages(user_id, new_messages, session_id)
+        logger.info(f"[CHAT PERSIST] Appending {len(new_messages)} messages for {user_id} (session={session_id})")
+        result = db.append_chat_messages(user_id, new_messages, session_id)
+        if result:
+            logger.info(f"[CHAT PERSIST] Successfully appended {len(new_messages)} messages for {user_id}")
+        else:
+            logger.error(f"[CHAT PERSIST] db.append_chat_messages returned False for {user_id}")
+        return result
     except Exception as e:
-        logger.error(f"[CHAT PERSIST] Failed to append messages for {user_id}: {e}")
+        logger.error(f"[CHAT PERSIST] Failed to append messages for {user_id}: {e}", exc_info=True)
         return False
 
 

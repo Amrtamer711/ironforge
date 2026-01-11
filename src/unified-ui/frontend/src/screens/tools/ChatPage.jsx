@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Virtuoso } from "react-virtuoso";
-import { ExternalLink, Download, FileText, ImageIcon, Loader2, Paperclip, Send } from "lucide-react";
+import { ExternalLink, Download, FileText, ImageIcon, Paperclip, Send } from "lucide-react";
 import { Card } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
+import { LoadingEllipsis } from "../../components/ui/loading-ellipsis";
 import * as chatApi from "../../api/chat";
 import * as filesApi from "../../api/files";
 import { getAuthToken } from "../../lib/token";
@@ -27,26 +28,76 @@ export function ChatPage() {
   const abortRef = useRef(null);
   const virtuosoRef = useRef(null);
 
-  // Load history on mount
+  // Load history on mount - messages load fast, URLs load lazily in background
   useEffect(() => {
+    console.log("[ChatPage] Mount - starting loadHistory, showing loading spinner");
     async function loadHistory() {
       try {
-        const history = await chatApi.getHistory({ limit: 500 });
+        console.log("[ChatPage] Fetching history from API...");
+        // newestFirst: true to get the LAST 500 messages (most recent conversation)
+        const history = await chatApi.getHistory({ limit: 500, newestFirst: true });
+        console.log("[ChatPage] History received:", { messageCount: history?.messages?.length || 0 });
+
         if (history?.messages?.length) {
-          setMessages(history.messages.map(normalizeMessage));
+          const normalizedMessages = history.messages.map(normalizeMessage);
+          setMessages(normalizedMessages);
           setConversationId(history.session_id || null);
+          setLoading(false);
+          console.log("[ChatPage] Loading complete - hiding spinner, showing messages");
+
+          // Scroll to bottom after Virtuoso has rendered
+          // Use setTimeout to ensure Virtuoso has measured and rendered items
+          setTimeout(() => {
+            virtuosoRef.current?.scrollToIndex({ index: "LAST", behavior: "auto" });
+          }, 50);
+
+          // Load image URLs in background (don't block UI)
+          const fileIds = normalizedMessages
+            .flatMap(m => m.files || [])
+            .filter(f => f?.file_id)
+            .map(f => f.file_id);
+
+          if (fileIds.length > 0) {
+            console.log("[ChatPage] Loading URLs for", fileIds.length, "attachments in background...");
+            chatApi.refreshAttachmentUrls(fileIds).then(result => {
+              console.log("[ChatPage] Attachment URLs loaded:", Object.keys(result?.urls || {}).length);
+              if (result?.urls) {
+                setMessages(prev => prev.map(msg => ({
+                  ...msg,
+                  files: (msg.files || []).map(f => {
+                    const urlData = result.urls[f.file_id];
+                    if (urlData) {
+                      return {
+                        ...f,
+                        url: urlData.full,
+                        thumbnail_url: urlData.thumbnail,
+                        width: urlData.width || f.width,
+                        height: urlData.height || f.height,
+                      };
+                    }
+                    return f;
+                  })
+                })));
+              }
+            }).catch(err => {
+              console.warn("[ChatPage] Failed to load attachment URLs:", err);
+            });
+          }
         } else {
+          console.log("[ChatPage] No history - showing greeting");
           setMessages([createGreeting()]);
+          setLoading(false);
+          setTimeout(() => {
+            virtuosoRef.current?.scrollToIndex({ index: "LAST", behavior: "auto" });
+          }, 50);
         }
       } catch (err) {
         console.error("[ChatPage] Failed to load history:", err);
         setMessages([createGreeting()]);
-      } finally {
         setLoading(false);
-        // Ensure scroll to bottom after render
-        requestAnimationFrame(() => {
+        setTimeout(() => {
           virtuosoRef.current?.scrollToIndex({ index: "LAST", behavior: "auto" });
-        });
+        }, 50);
       }
     }
     loadHistory();
@@ -224,34 +275,29 @@ export function ChatPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="h-full flex flex-col gap-4 min-h-0">
-        <Card className="p-4 overflow-hidden flex-1 min-h-0 flex items-center justify-center">
-          <div className="text-center">
-            <Loader2 className="animate-spin mx-auto mb-2" size={32} />
-            <p className="text-sm text-black/50 dark:text-white/50">Loading conversation...</p>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="h-full flex flex-col gap-4 min-h-0">
       <Card className="p-4 overflow-hidden flex-1 min-h-0">
-        <Virtuoso
-          ref={virtuosoRef}
-          className="h-full scrollbar-thin"
-          data={messages}
-          initialTopMostItemIndex={messages.length - 1}
-          followOutput="smooth"
-          overscan={200}
-          increaseViewportBy={{ top: 200, bottom: 200 }}
-          computeItemKey={(_, msg) => msg.id}
-          itemContent={renderMessage}
-          skipAnimationFrameInResizeObserver={true}
-        />
+        {loading ? (
+          <div className="h-full flex items-center justify-center">
+            <div className="rounded-2xl bg-white/55 dark:bg-white/5 backdrop-blur-md shadow-soft ring-1 ring-black/5 dark:ring-white/10 px-5 py-4 text-sm">
+              <LoadingEllipsis text="Loading conversation" />
+            </div>
+          </div>
+        ) : (
+          <Virtuoso
+            ref={virtuosoRef}
+            className="h-full scrollbar-thin"
+            data={messages}
+            initialTopMostItemIndex={messages.length - 1}
+            followOutput="smooth"
+            overscan={200}
+            increaseViewportBy={{ top: 200, bottom: 200 }}
+            computeItemKey={(_, msg) => msg.id}
+            itemContent={renderMessage}
+            skipAnimationFrameInResizeObserver={true}
+          />
+        )}
       </Card>
 
       <Card className="p-3">
@@ -337,10 +383,13 @@ const Attachment = React.memo(function Attachment({ file, isUser }) {
 
   // For local files (blob URLs), use preview_url
   // For remote files, use thumbnail_url or url from API
-  const imageUrl = file.preview_url || file.thumbnail_url || file.url;
-  const fullUrl = file.url || file.preview_url;
+  // IMPORTANT: Skip old-format URLs (/api/sales/files/...) since <img> can't send auth headers
+  const isSignedUrl = (url) => url && !url.startsWith('/api/');
+  const imageUrl = file.preview_url || file.thumbnail_url || (isSignedUrl(file.url) ? file.url : null);
+  const fullUrl = (isSignedUrl(file.url) ? file.url : null) || file.preview_url;
 
-  if (isImage && imageUrl) {
+  // Show image with placeholder (or loading state if URL not yet available)
+  if (isImage) {
     return (
       <div className="rounded-xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 p-2">
         <ImageWithPlaceholder
@@ -351,7 +400,7 @@ const Attachment = React.memo(function Attachment({ file, isUser }) {
           height={file.height}
           isUser={isUser}
         />
-        {!isUser && fullUrl && (
+        {!isUser && fullUrl && isSignedUrl(fullUrl) && (
           <div className="mt-2 flex items-center gap-2">
             <Button asChild size="sm" variant="ghost" className="rounded-xl">
               <a href={fullUrl} target="_blank" rel="noopener noreferrer">
@@ -416,13 +465,25 @@ const DEFAULT_HEIGHT = 200;
 const ImageWithPlaceholder = React.memo(function ImageWithPlaceholder({ src, fullUrl, alt, width, height, isUser }) {
   // Check global cache FIRST - if image was loaded before, skip placeholder entirely
   // This prevents the flash when Virtuoso remounts items during scrolling
-  const alreadyCached = loadedImagesCache.has(src);
+  const alreadyCached = src && loadedImagesCache.has(src);
   const [loaded, setLoaded] = useState(alreadyCached);
   const [error, setError] = useState(false);
 
+  // Reset loaded state when src changes (e.g., URL becomes available)
+  useEffect(() => {
+    if (src && loadedImagesCache.has(src)) {
+      setLoaded(true);
+    } else if (src) {
+      setLoaded(false);
+      setError(false);
+    }
+  }, [src]);
+
   // Stable callback that adds to global cache when image loads
   const handleLoad = useCallback(() => {
-    loadedImagesCache.add(src);
+    if (src) {
+      loadedImagesCache.add(src);
+    }
     setLoaded(true);
   }, [src]);
 
@@ -457,6 +518,15 @@ const ImageWithPlaceholder = React.memo(function ImageWithPlaceholder({ src, ful
       maxHeight: h,
     };
   }, [width, height]);
+
+  // Show loading placeholder while URL is being fetched
+  if (!src) {
+    return (
+      <div className="flex items-center justify-center bg-black/5 dark:bg-white/5 rounded-lg animate-pulse" style={containerStyle}>
+        <ImageIcon className="text-black/20 dark:text-white/20" size={24} />
+      </div>
+    );
+  }
 
   if (error) {
     return (

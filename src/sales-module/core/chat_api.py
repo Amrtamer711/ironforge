@@ -186,9 +186,14 @@ async def process_chat_message(
         try:
             new_messages = session.messages[messages_before:]
             if new_messages:
-                append_chat_messages(user_id, new_messages, session.conversation_id)
+                logger.info(f"[WebChat:sync] Persisting {len(new_messages)} new messages for user={user_id}")
+                persist_result = append_chat_messages(user_id, new_messages, session.conversation_id)
+                if persist_result:
+                    logger.info(f"[WebChat:sync] Successfully persisted {len(new_messages)} messages for user={user_id}")
+                else:
+                    logger.error(f"[WebChat:sync] append_chat_messages returned False for user={user_id}")
         except Exception as persist_err:
-            logger.warning(f"[WebChat] Failed to persist messages: {persist_err}")
+            logger.error(f"[WebChat:sync] Failed to persist messages for user={user_id}: {persist_err}", exc_info=True)
 
         return result
 
@@ -396,9 +401,16 @@ async def stream_chat_message(
         try:
             new_messages = session.messages[messages_before:]
             if new_messages:
-                append_chat_messages(user_id, new_messages, session.conversation_id)
+                logger.info(f"[WebChat] Persisting {len(new_messages)} new messages for user={user_id}")
+                result = append_chat_messages(user_id, new_messages, session.conversation_id)
+                if result:
+                    logger.info(f"[WebChat] Successfully persisted {len(new_messages)} messages for user={user_id}")
+                else:
+                    logger.error(f"[WebChat] append_chat_messages returned False for user={user_id}")
+            else:
+                logger.info(f"[WebChat] No new messages to persist for user={user_id}")
         except Exception as persist_err:
-            logger.warning(f"[WebChat] Failed to persist messages: {persist_err}")
+            logger.error(f"[WebChat] Failed to persist messages for user={user_id}: {persist_err}", exc_info=True)
 
         yield "data: [DONE]\n\n"
 

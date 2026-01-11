@@ -315,21 +315,23 @@ else:
 # DEV TOOLS - Explicit routes for development panels
 # =============================================================================
 
+# Dev tools are stored separately from Vite build output to avoid being deleted
+DEV_TOOLS_PATH = Path(__file__).parent.parent / "dev-tools"
+
+
 @app.get("/logs-panel.html")
 async def serve_logs_panel():
     """Serve the logs panel directly (bypasses SPA routing)."""
     logger.info("[UI] Serving /logs-panel.html (explicit route)")
-    if FRONTEND_PATH.exists():
-        logs_panel = FRONTEND_PATH / "logs-panel.html"
-        logger.info(f"[UI] Looking for: {logs_panel}, exists: {logs_panel.exists()}")
-        if logs_panel.exists():
-            # Prevent caching in development to ensure fresh content
-            headers = {}
-            if not settings.is_production:
-                headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-                headers["Pragma"] = "no-cache"
-                headers["Expires"] = "0"
-            return FileResponse(logs_panel, media_type="text/html", headers=headers)
+    logs_panel = DEV_TOOLS_PATH / "logs-panel.html"
+    if logs_panel.exists():
+        # Prevent caching in development to ensure fresh content
+        headers = {}
+        if not settings.is_production:
+            headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            headers["Pragma"] = "no-cache"
+            headers["Expires"] = "0"
+        return FileResponse(logs_panel, media_type="text/html", headers=headers)
     raise HTTPException(status_code=404, detail="Logs panel not found")
 
 
@@ -337,16 +339,15 @@ async def serve_logs_panel():
 async def serve_dev_panel():
     """Serve the dev panel directly (bypasses SPA routing)."""
     logger.info("[UI] Serving /dev-panel.html (explicit route)")
-    if FRONTEND_PATH.exists():
-        dev_panel_file = FRONTEND_PATH / "dev-panel.html"
-        if dev_panel_file.exists():
-            # Prevent caching in development to ensure fresh content
-            headers = {}
-            if not settings.is_production:
-                headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-                headers["Pragma"] = "no-cache"
-                headers["Expires"] = "0"
-            return FileResponse(dev_panel_file, media_type="text/html", headers=headers)
+    dev_panel_file = DEV_TOOLS_PATH / "dev-panel.html"
+    if dev_panel_file.exists():
+        # Prevent caching in development to ensure fresh content
+        headers = {}
+        if not settings.is_production:
+            headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            headers["Pragma"] = "no-cache"
+            headers["Expires"] = "0"
+        return FileResponse(dev_panel_file, media_type="text/html", headers=headers)
     raise HTTPException(status_code=404, detail="Dev panel not found")
 
 

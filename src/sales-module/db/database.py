@@ -479,6 +479,18 @@ class _DatabaseNamespace:
         """Delete a user's chat session."""
         return self._backend.delete_chat_session(user_id)
 
+    def append_chat_messages(
+        self,
+        user_id: str,
+        new_messages: list[dict[str, Any]],
+        session_id: str | None = None,
+    ) -> bool:
+        """
+        Atomically append messages to a user's chat session.
+        Uses PostgreSQL RPC for atomic append on Supabase, with fallback on SQLite.
+        """
+        return self._backend.append_chat_messages(user_id, new_messages, session_id)
+
     # =========================================================================
     # DOCUMENT MANAGEMENT
     # =========================================================================

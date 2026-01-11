@@ -5,7 +5,6 @@ Implements StorageProvider using Supabase Storage (S3-compatible).
 Recommended for production deployments already using Supabase.
 """
 
-import base64
 import contextlib
 import json
 import logging
@@ -478,23 +477,6 @@ class SupabaseStorageProvider(StorageProvider):
             logger.error(f"[STORAGE:SUPABASE] Get public URL failed {bucket}/{key}: {e}")
             return None
 
-    def _decode_jwt_claims(self, token: str) -> dict | None:
-        """Decode JWT claims without verification (for debugging)."""
-        try:
-            # JWT format: header.payload.signature
-            parts = token.split(".")
-            if len(parts) != 3:
-                return None
-            # Decode payload (add padding if needed)
-            payload = parts[1]
-            padding = 4 - len(payload) % 4
-            if padding != 4:
-                payload += "=" * padding
-            decoded = base64.urlsafe_b64decode(payload)
-            return json.loads(decoded)
-        except Exception:
-            return None
-
     async def get_signed_url(
         self,
         bucket: str,
@@ -503,102 +485,20 @@ class SupabaseStorageProvider(StorageProvider):
     ) -> str | None:
         """Get signed URL for temporary access."""
         try:
-            import datetime
-
-            # STEP 1: Log system time BEFORE API call
-            time_before_call = time.time()
-            dt_before = datetime.datetime.fromtimestamp(time_before_call, tz=datetime.timezone.utc)
-            logger.info(f"[STORAGE:SUPABASE] ========== SIGNED URL REQUEST START ==========")
-            logger.info(f"[STORAGE:SUPABASE] System time BEFORE call: {time_before_call} ({dt_before.isoformat()})")
-            logger.info(f"[STORAGE:SUPABASE] Bucket: {bucket}, Key: {key}")
-            logger.info(f"[STORAGE:SUPABASE] Requested expires_in: {expires_in}s ({expires_in/3600:.1f} hours)")
-            logger.info(f"[STORAGE:SUPABASE] Supabase URL: {self._url}")
-            logger.info(f"[STORAGE:SUPABASE] Service key prefix: {self._key[:20]}...")
-
             client = self._get_client()
             key = self.normalize_key(key)
-
-            # STEP 2: Make API call and measure time
-            logger.info(f"[STORAGE:SUPABASE] Calling Supabase create_signed_url API...")
             response = client.storage.from_(bucket).create_signed_url(key, expires_in)
 
-            time_after_call = time.time()
-            dt_after = datetime.datetime.fromtimestamp(time_after_call, tz=datetime.timezone.utc)
-            api_duration = time_after_call - time_before_call
-            logger.info(f"[STORAGE:SUPABASE] System time AFTER call: {time_after_call} ({dt_after.isoformat()})")
-            logger.info(f"[STORAGE:SUPABASE] API call took: {api_duration:.3f}s")
-            logger.info(f"[STORAGE:SUPABASE] Raw response: {response}")
-
-            signed_url = None
-            if response and "signedURL" in response:
-                signed_url = response["signedURL"]
-            elif response and "signedUrl" in response:
-                signed_url = response["signedUrl"]
-
+            signed_url = response.get("signedURL") or response.get("signedUrl")
             if signed_url:
-                logger.info(f"[STORAGE:SUPABASE] Signed URL generated (length: {len(signed_url)})")
-
-                # STEP 3: Decode and analyze JWT token
-                if "token=" in signed_url:
-                    token = signed_url.split("token=")[1].split("&")[0]
-                    logger.info(f"[STORAGE:SUPABASE] Extracted JWT token (length: {len(token)})")
-
-                    claims = self._decode_jwt_claims(token)
-                    if claims:
-                        logger.info(f"[STORAGE:SUPABASE] ===== JWT TOKEN ANALYSIS =====")
-                        logger.info(f"[STORAGE:SUPABASE] Full JWT claims: {json.dumps(claims, indent=2)}")
-
-                        now = int(time.time())
-                        exp = claims.get("exp", 0)
-                        iat = claims.get("iat", 0)  # issued at time
-
-                        time_until_exp = exp - now
-                        time_since_issued = now - iat if iat else None
-                        expected_exp = int(time_before_call) + expires_in
-                        exp_drift = exp - expected_exp
-
-                        dt_exp = datetime.datetime.fromtimestamp(exp, tz=datetime.timezone.utc)
-                        dt_iat = datetime.datetime.fromtimestamp(iat, tz=datetime.timezone.utc) if iat else None
-
-                        logger.info(f"[STORAGE:SUPABASE] Current server time: {now} ({datetime.datetime.fromtimestamp(now, tz=datetime.timezone.utc).isoformat()})")
-                        logger.info(f"[STORAGE:SUPABASE] Token issued at (iat): {iat} ({dt_iat.isoformat() if dt_iat else 'N/A'})")
-                        logger.info(f"[STORAGE:SUPABASE] Token expires at (exp): {exp} ({dt_exp.isoformat()})")
-                        logger.info(f"[STORAGE:SUPABASE] Time until expiry: {time_until_exp}s ({time_until_exp/3600:.2f} hours)")
-
-                        if time_since_issued is not None:
-                            logger.info(f"[STORAGE:SUPABASE] Time since token issued: {time_since_issued}s")
-
-                        logger.info(f"[STORAGE:SUPABASE] Expected exp (server_time + {expires_in}): {expected_exp}")
-                        logger.info(f"[STORAGE:SUPABASE] Actual exp drift from expected: {exp_drift}s")
-
-                        if time_until_exp < 0:
-                            logger.error(f"[STORAGE:SUPABASE] ❌ TOKEN ALREADY EXPIRED!")
-                            logger.error(f"[STORAGE:SUPABASE] Token expired {abs(time_until_exp)}s ago")
-                            logger.error(f"[STORAGE:SUPABASE] This suggests CLOCK SKEW between your server and Supabase")
-                        elif time_until_exp < 60:
-                            logger.warning(f"[STORAGE:SUPABASE] ⚠️ Token expires in less than 60s!")
-                        elif abs(exp_drift) > 300:  # More than 5 min drift
-                            logger.warning(f"[STORAGE:SUPABASE] ⚠️ Large drift ({exp_drift}s) between expected and actual expiry")
-                        else:
-                            logger.info(f"[STORAGE:SUPABASE] ✅ Token appears valid and will expire in {time_until_exp/3600:.2f} hours")
-                    else:
-                        logger.warning(f"[STORAGE:SUPABASE] Failed to decode JWT claims")
-                else:
-                    logger.warning(f"[STORAGE:SUPABASE] No token parameter found in signed URL")
-
-                logger.info(f"[STORAGE:SUPABASE] ========== SIGNED URL REQUEST END ==========")
                 return signed_url
 
-            if response and "error" in response:
-                logger.error(f"[STORAGE:SUPABASE] Error from Supabase: {response.get('error')}")
-
-            logger.warning(f"[STORAGE:SUPABASE] Unexpected response format: {response}")
-            logger.info(f"[STORAGE:SUPABASE] ========== SIGNED URL REQUEST END (FAILED) ==========")
+            if response.get("error"):
+                logger.warning(f"[STORAGE:SUPABASE] Signed URL error for {bucket}/{key}: {response.get('error')}")
             return None
 
         except Exception as e:
-            logger.error(f"[STORAGE:SUPABASE] Get signed URL failed {bucket}/{key}: {e}", exc_info=True)
-            logger.info(f"[STORAGE:SUPABASE] ========== SIGNED URL REQUEST END (EXCEPTION) ==========")
+            logger.error(f"[STORAGE:SUPABASE] Get signed URL failed {bucket}/{key}: {e}")
             return None
 
     async def get_signed_urls_batch(

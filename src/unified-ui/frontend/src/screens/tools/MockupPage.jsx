@@ -516,16 +516,37 @@ export function MockupPage() {
     try {
       setSetupSaving(true);
       const formData = new FormData();
-      formData.append("location_keys", JSON.stringify(locations));
-      formData.append("venue_type", venueType);
-      if (assetType) formData.append("asset_type_key", assetType);
-      formData.append("time_of_day", effectiveTimeOfDay || "all");
-      formData.append("side", side || "all");
-      formData.append("frames_data", JSON.stringify(framesPayload));
-      formData.append("photo", setupPhoto);
 
-      await mockupApi.saveSetupPhoto(formData);
-      setSetupMessage("Saved frames successfully");
+      if (editingTemplate) {
+        // UPDATE existing frame - single location, includes photo_filename
+        formData.append("location_key", primaryLocation);
+        formData.append("photo_filename", editingTemplate.photo);
+        formData.append("venue_type", venueType);
+        if (assetType) formData.append("asset_type_key", assetType);
+        formData.append("time_of_day", effectiveTimeOfDay || "all");
+        formData.append("side", side || "all");
+        formData.append("frames_data", JSON.stringify(framesPayload));
+        // Only include photo if user uploaded a new one (file name differs from original)
+        if (setupPhoto && setupPhoto.name !== editingTemplate.photo) {
+          formData.append("photo", setupPhoto);
+        }
+
+        await mockupApi.updateSetupPhoto(formData);
+        setSetupMessage("Updated frames successfully");
+      } else {
+        // CREATE new frame - multiple locations, auto-numbered filename
+        formData.append("location_keys", JSON.stringify(locations));
+        formData.append("venue_type", venueType);
+        if (assetType) formData.append("asset_type_key", assetType);
+        formData.append("time_of_day", effectiveTimeOfDay || "all");
+        formData.append("side", side || "all");
+        formData.append("frames_data", JSON.stringify(framesPayload));
+        formData.append("photo", setupPhoto);
+
+        await mockupApi.saveSetupPhoto(formData);
+        setSetupMessage("Saved frames successfully");
+      }
+
       clearAllFrames(true);
       setEditingTemplate(null);
       setEditingTemplateLoading(false);

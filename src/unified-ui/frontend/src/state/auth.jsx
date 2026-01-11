@@ -148,20 +148,29 @@ export function AuthProvider({ children }) {
     let unsub = null;
 
     async function init() {
+      console.log("[Auth] init() starting");
       try {
         if (!supabase) {
           // Dev/backend-only mode
+          console.log("[Auth] No supabase client - dev mode");
           const stored = localStorage.getItem("mmg_user") || localStorage.getItem("userData");
           if (stored) setUser(JSON.parse(stored));
           setAuthReady(true);
+          console.log("[Auth] Dev mode ready");
           return;
         }
 
+        console.log("[Auth] Getting supabase session...");
         const { data } = await supabase.auth.getSession();
         const s = data?.session || null;
+        console.log("[Auth] Session retrieved", { hasSession: !!s, hasToken: !!s?.access_token });
 
         setSession(s || null);
+        setAuthReady(true);  // Mark ready immediately after session check
+        console.log("[Auth] authReady set to true");
+
         if (!s) {
+          console.log("[Auth] No session - clearing auth");
           clearAuthToken();
           setUser(null);
           localStorage.removeItem("mmg_user");
@@ -169,29 +178,40 @@ export function AuthProvider({ children }) {
         }
         if (s?.access_token) setAuthToken(s.access_token);
 
-        // Always refresh RBAC profile from backend
+        // Refresh RBAC profile in background (non-blocking)
         if (s?.access_token) {
-          await refreshProfile(s.access_token, s.user);
+          console.log("[Auth] Starting background profile refresh");
+          refreshProfile(s.access_token, s.user).catch(console.error);
         }
 
         unsub = supabase.auth.onAuthStateChange(async (_event, newSession) => {
+          console.log("[Auth] onAuthStateChange", { event: _event, hasSession: !!newSession });
+
+          // Skip INITIAL_SESSION - we already handled it above after getSession()
+          if (_event === "INITIAL_SESSION") {
+            console.log("[Auth] Skipping INITIAL_SESSION (already handled)");
+            return;
+          }
+
           setSession(newSession || null);
 
           if (newSession?.access_token) {
             setAuthToken(newSession.access_token);
             if (!pendingAccess) {
-              await refreshProfile(newSession.access_token, newSession.user);
+              // Non-blocking profile refresh
+              console.log("[Auth] Auth state change - refreshing profile");
+              refreshProfile(newSession.access_token, newSession.user).catch(console.error);
             }
           } else {
+            console.log("[Auth] Auth state change - no session, clearing");
             clearAuthToken();
             setUser(null);
             localStorage.removeItem("mmg_user");
             localStorage.removeItem("userData");
           }
         }).data.subscription;
-
-        setAuthReady(true);
-      } catch {
+      } catch (err) {
+        console.log("[Auth] init() error", err);
         setAuthReady(true);
       }
     }
@@ -213,13 +233,17 @@ export function AuthProvider({ children }) {
   }, []);
 
   async function refreshProfile(accessToken, sessionUser = null) {
+    console.log("[Auth] refreshProfile() starting");
     // Source of truth for roles/permissions (same endpoint as old auth.js)
     try {
+      console.log("[Auth] Fetching /api/base/auth/me...");
       const profile = await apiRequest("/api/base/auth/me", {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
+      console.log("[Auth] /api/base/auth/me response received", { hasProfile: !!profile });
 
       if (!profile) {
+        console.log("[Auth] No profile returned");
         return null;
       }
 
@@ -242,12 +266,14 @@ export function AuthProvider({ children }) {
         raw: profile,
       };
 
+      console.log("[Auth] Profile loaded, setting user", { email: normalized.email, roles: normalized.roles });
       setUser(normalized);
       localStorage.setItem("mmg_user", JSON.stringify(normalized));
       localStorage.setItem("userData", JSON.stringify(normalized));
       setPendingAccess(null);
       return normalized;
     } catch (error) {
+      console.log("[Auth] refreshProfile error", error);
       if (error?.status === 403 && error?.data?.requiresLogout) {
         const email = sessionUser?.email || user?.email || "";
         if (error?.data?.code === "USER_PENDING_APPROVAL") {
@@ -264,6 +290,7 @@ export function AuthProvider({ children }) {
 
       // Fallback to session user metadata if backend not reachable
       if (sessionUser) {
+        console.log("[Auth] Using fallback session user data");
         const profileName = sessionUser.user_metadata?.profile || "sales_user";
         const rolesFromProfile = profileToRoles[profileName] || ["sales_person"];
         const fallbackUser = {
@@ -276,12 +303,14 @@ export function AuthProvider({ children }) {
           permissions: [],
           raw: sessionUser,
         };
+        console.log("[Auth] Fallback user set", { email: fallbackUser.email });
         setUser(fallbackUser);
         localStorage.setItem("mmg_user", JSON.stringify(fallbackUser));
         localStorage.setItem("userData", JSON.stringify(fallbackUser));
         setPendingAccess(null);
         return fallbackUser;
       }
+      console.log("[Auth] No fallback available, returning null");
       return null;
     }
   }

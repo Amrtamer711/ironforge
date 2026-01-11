@@ -2,22 +2,19 @@ import React from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "../state/auth";
 import { AccessPending } from "../screens/AccessPending";
-import { LoadingEllipsis } from "../components/ui/loading-ellipsis";
 
 export function ProtectedRoute({ children }) {
   const { user, authReady, session, pendingAccess, logout } = useAuth();
   const loc = useLocation();
 
-  // Wait for Supabase session + backend profile
-  if (!authReady) {
-    return (
-      <div className="min-h-screen grid place-items-center px-4">
-        <div className="rounded-2xl bg-white/55 dark:bg-white/5 backdrop-blur-md shadow-soft ring-1 ring-black/5 dark:ring-white/10 px-5 py-4 text-sm">
-          <LoadingEllipsis text="Loading" />
-        </div>
-      </div>
-    );
+  // No loading screen here - let individual pages handle their own loading states
+  // This prevents multiple loading spinners and improves perceived performance
+  if (!authReady || (session && !user)) {
+    console.log("[ProtectedRoute] Waiting for auth", { authReady, hasSession: !!session, hasUser: !!user });
+    return null;
   }
+
+  console.log("[ProtectedRoute] Auth ready, rendering children", { user: user?.email });
 
   if (pendingAccess) {
     return (
@@ -26,17 +23,6 @@ export function ProtectedRoute({ children }) {
         message={pendingAccess.message}
         onSignOut={logout}
       />
-    );
-  }
-
-  // Session exists but user not yet loaded from /api/base/auth/me
-  if (session && !user) {
-    return (
-      <div className="min-h-screen grid place-items-center px-4">
-        <div className="rounded-2xl bg-white/55 dark:bg-white/5 backdrop-blur-md shadow-soft ring-1 ring-black/5 dark:ring-white/10 px-5 py-4 text-sm">
-          <LoadingEllipsis text="Finalizing sign-in" />
-        </div>
-      </div>
     );
   }
 

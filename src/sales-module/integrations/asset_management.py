@@ -739,6 +739,79 @@ class AssetManagementClient:
             logger.error(f"[ASSET CLIENT] Failed to save mockup frame: {e}")
             return None
 
+    async def update_mockup_frame(
+        self,
+        company: str,
+        location_key: str,
+        photo_filename: str,
+        frames_data: list[dict],
+        environment: str = "outdoor",
+        time_of_day: str = "day",
+        side: str = "gold",
+        config: dict | None = None,
+        photo_data: bytes | None = None,
+        original_photo_filename: str | None = None,
+    ) -> dict | None:
+        """
+        Update an existing mockup frame in Asset-Management (database + optionally storage).
+
+        Args:
+            company: Company schema (e.g., "backlite_dubai")
+            location_key: Location identifier
+            photo_filename: Existing photo filename to update
+            frames_data: List of frame coordinate dicts
+            environment: "indoor" or "outdoor"
+            time_of_day: "day" or "night" (ignored for indoor)
+            side: "gold", "silver", or "single_side" (ignored for indoor)
+            config: Optional config dict
+            photo_data: Optional new photo bytes (replaces existing if provided)
+            original_photo_filename: Original filename if photo_data is provided
+
+        Returns:
+            Result dict with photo_filename, success, storage_url or None on error
+        """
+        import json as json_module
+
+        try:
+            client = await self._get_http_client()
+            headers = self._get_headers()
+            # Remove Content-Type for multipart - httpx will set it
+            headers.pop("Content-Type", None)
+
+            # Prepare form data
+            data = {
+                "frames_data": json_module.dumps(frames_data),
+                "environment": environment,
+                "time_of_day": time_of_day,
+                "side": side,
+            }
+            if config:
+                data["config_json"] = json_module.dumps(config)
+
+            # Prepare multipart files if photo is provided
+            files = None
+            if photo_data and original_photo_filename:
+                files = {
+                    "photo": (original_photo_filename, photo_data, "image/jpeg"),
+                }
+
+            # URL-encode location_key to handle traditional networks with slashes
+            encoded_location = quote(location_key, safe='')
+            # photo_filename goes in query params
+            response = await client.put(
+                f"/api/mockup-frames/{company}/{encoded_location}",
+                headers=headers,
+                params={"photo_filename": photo_filename},
+                files=files,
+                data=data,
+            )
+            response.raise_for_status()
+            return response.json()
+
+        except Exception as e:
+            logger.error(f"[ASSET CLIENT] Failed to update mockup frame: {e}")
+            return None
+
     async def get_mockup_photo(
         self,
         company: str,

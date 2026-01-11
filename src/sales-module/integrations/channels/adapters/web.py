@@ -318,14 +318,45 @@ class WebAdapter(ChannelAdapter):
                 session.messages = persisted_messages
 
                 # Rebuild LLM context from persisted messages (last 10)
+                # Include file references so AI remembers what files were discussed
                 llm_history = []
                 for msg in persisted_messages:
                     role = msg.get("role")
-                    content = msg.get("content")
-                    if role in ("user", "assistant") and content:
+                    content = msg.get("content", "")
+
+                    if role not in ("user", "assistant"):
+                        continue
+
+                    # Build content with file references
+                    full_content = content
+
+                    # Add user file references
+                    files = msg.get("files", [])
+                    if files and role == "user":
+                        file_refs = []
+                        for f in files:
+                            filename = f.get("filename", "file")
+                            file_refs.append(f"[Attached file: {filename}]")
+                        if file_refs:
+                            file_text = "\n".join(file_refs)
+                            full_content = f"{file_text}\n{content}" if content else file_text
+
+                    # Add assistant file/attachment references
+                    attachments = msg.get("attachments", [])
+                    if attachments and role == "assistant":
+                        att_refs = []
+                        for a in attachments:
+                            filename = a.get("filename") or a.get("title", "file")
+                            att_refs.append(f"[Generated file: {filename}]")
+                        if att_refs:
+                            att_text = "\n".join(att_refs)
+                            full_content = f"{content}\n{att_text}" if content else att_text
+
+                    # Only add if there's actual content
+                    if full_content:
                         llm_history.append({
                             "role": role,
-                            "content": content,
+                            "content": full_content,
                             "timestamp": msg.get("timestamp", "")
                         })
 
@@ -844,37 +875,40 @@ class WebAdapter(ChannelAdapter):
 
                     logger.info(f"[WebAdapter] File uploaded to {storage_client.provider_name}: {actual_filename} -> {bucket}/{storage_key} (hash={file_hash[:16] if file_hash else 'N/A'}...)")
 
-                    # Add message with attachment if comment provided
+                    # Always add message with attachment for proper history tracking
                     session = self.get_session(channel_id)
                     if session:
-                        if comment:
-                            # Get parent_id to link this response to the originating user message
-                            parent_id = current_parent_message_id.get()
-                            session.messages.append({
-                                "id": str(uuid.uuid4()),
-                                "role": "assistant",
-                                "content": comment,
-                                "timestamp": datetime.now().isoformat(),
-                                "parent_id": parent_id,
-                                "attachments": [{
-                                    "file_id": file_id,
-                                    "url": url,
-                                    "filename": actual_filename,
-                                    "title": title
-                                }]
-                            })
+                        # Get parent_id to link this response to the originating user message
+                        parent_id = current_parent_message_id.get()
+                        req_id = current_request_id.get()
+                        timestamp = datetime.now().isoformat()
+
+                        # Create message with file attachment (content can be empty)
+                        session.messages.append({
+                            "id": str(uuid.uuid4()),
+                            "role": "assistant",
+                            "content": comment or "",
+                            "timestamp": timestamp,
+                            "parent_id": parent_id,
+                            "attachments": [{
+                                "file_id": file_id,
+                                "url": url,
+                                "filename": actual_filename,
+                                "title": title
+                            }]
+                        })
 
                         # Push file event for real-time streaming (tagged with request_id)
-                        req_id = current_request_id.get()
                         session.events.append({
                             "type": "file",
                             "request_id": req_id,
+                            "parent_id": parent_id,
                             "file_id": file_id,
                             "url": url,
                             "filename": actual_filename,
                             "title": title,
                             "comment": comment,
-                            "timestamp": datetime.now().isoformat(),
+                            "timestamp": timestamp,
                         })
 
                     return FileUpload(
@@ -929,37 +963,40 @@ class WebAdapter(ChannelAdapter):
 
         logger.info(f"[WebAdapter] File stored locally: {actual_filename} -> {url} (hash={file_hash[:16] if file_hash else 'N/A'}...)")
 
-        # If there's a comment, add as message with attachment
+        # Always add message with attachment for proper history tracking
         session = self.get_session(channel_id)
         if session:
-            if comment:
-                # Get parent_id to link this response to the originating user message
-                parent_id = current_parent_message_id.get()
-                session.messages.append({
-                    "id": str(uuid.uuid4()),
-                    "role": "assistant",
-                    "content": comment,
-                    "timestamp": datetime.now().isoformat(),
-                    "parent_id": parent_id,
-                    "attachments": [{
-                        "file_id": file_id,
-                        "url": url,
-                        "filename": actual_filename,
-                        "title": title
-                    }]
-                })
+            # Get parent_id to link this response to the originating user message
+            parent_id = current_parent_message_id.get()
+            req_id = current_request_id.get()
+            timestamp = datetime.now().isoformat()
+
+            # Create message with file attachment (content can be empty)
+            session.messages.append({
+                "id": str(uuid.uuid4()),
+                "role": "assistant",
+                "content": comment or "",
+                "timestamp": timestamp,
+                "parent_id": parent_id,
+                "attachments": [{
+                    "file_id": file_id,
+                    "url": url,
+                    "filename": actual_filename,
+                    "title": title
+                }]
+            })
 
             # Push file event for real-time streaming (tagged with request_id)
-            req_id = current_request_id.get()
             session.events.append({
                 "type": "file",
                 "request_id": req_id,
+                "parent_id": parent_id,
                 "file_id": file_id,
                 "url": url,
                 "filename": actual_filename,
                 "title": title,
                 "comment": comment,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": timestamp,
             })
 
         return FileUpload(
@@ -1078,24 +1115,41 @@ class WebAdapter(ChannelAdapter):
 
                     logger.info(f"[WebAdapter] File bytes uploaded to {storage_client.provider_name}: {filename} -> {bucket}/{storage_key} (hash={file_hash[:16] if file_hash else 'N/A'}...)")
 
-                    if comment:
-                        session = self.get_session(channel_id)
-                        if session:
-                            # Get parent_id to link this response to the originating user message
-                            parent_id = current_parent_message_id.get()
-                            session.messages.append({
-                                "id": str(uuid.uuid4()),
-                                "role": "assistant",
-                                "content": comment,
-                                "timestamp": datetime.now().isoformat(),
-                                "parent_id": parent_id,
-                                "attachments": [{
-                                    "file_id": file_id,
-                                    "url": url,
-                                    "filename": filename,
-                                    "title": title
-                                }]
-                            })
+                    # Always add message with attachment for proper history tracking
+                    session = self.get_session(channel_id)
+                    if session:
+                        # Get parent_id to link this response to the originating user message
+                        parent_id = current_parent_message_id.get()
+                        req_id = current_request_id.get()
+                        timestamp = datetime.now().isoformat()
+
+                        # Create message with file attachment (content can be empty)
+                        session.messages.append({
+                            "id": str(uuid.uuid4()),
+                            "role": "assistant",
+                            "content": comment or "",
+                            "timestamp": timestamp,
+                            "parent_id": parent_id,
+                            "attachments": [{
+                                "file_id": file_id,
+                                "url": url,
+                                "filename": filename,
+                                "title": title
+                            }]
+                        })
+
+                        # Push file event for real-time streaming
+                        session.events.append({
+                            "type": "file",
+                            "request_id": req_id,
+                            "parent_id": parent_id,
+                            "file_id": file_id,
+                            "url": url,
+                            "filename": filename,
+                            "title": title,
+                            "comment": comment,
+                            "timestamp": timestamp,
+                        })
 
                     return FileUpload(
                         success=True,

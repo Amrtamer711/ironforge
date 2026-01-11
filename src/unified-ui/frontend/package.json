@@ -7,6 +7,8 @@
     "dev": "vite --host",
     "dev:clean": "rm -rf node_modules/.vite dist && vite --host",
     "build": "vite build",
+    "build:local": "vite build --outDir ../public --emptyOutDir",
+    "build:watch": "vite build --watch --outDir ../public",
     "preview": "vite preview",
     "lint": "eslint .",
     "clear-cache": "rm -rf node_modules/.vite dist && echo 'Vite cache cleared. Also clear browser cache: DevTools > Right-click Refresh > Empty Cache and Hard Reload'"
