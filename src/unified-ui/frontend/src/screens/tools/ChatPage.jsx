@@ -8,6 +8,7 @@ import * as chatApi from "../../api/chat";
 import * as filesApi from "../../api/files";
 import { getAuthToken } from "../../lib/token";
 import { useAttachmentLoader } from "../../hooks/useAttachmentLoader";
+import { useImagePrefetch } from "../../hooks/useImagePrefetch";
 
 // Pagination config
 const PAGE_SIZE = 50;
@@ -99,6 +100,45 @@ export function ChatPage() {
       return allFileIds;
     });
   }, [messages]);
+
+  // Initial preload: Load last 50 messages' images immediately
+  useEffect(() => {
+    if (!historyHydrated || messages.length === 0) return;
+
+    // Get last 50 messages' file IDs
+    const last50 = messages.slice(-50);
+    const fileIds = last50.flatMap(m =>
+      m.files?.map(f => f.file_id).filter(Boolean) || []
+    );
+
+    if (fileIds.length > 0) {
+      // Aggressively load all URLs for last 50 messages
+      console.log(`[ChatPage] Preloading ${fileIds.length} images from last 50 messages`);
+      loadAttachments(fileIds);
+    }
+  }, [historyHydrated, messages, loadAttachments]);
+
+  // Prefetch next page of images
+  const prefetchUrls = useMemo(() => {
+    // Calculate next page to prefetch
+    const lastVisibleIdx = messages.length - 1;
+    const currentPage = Math.floor(lastVisibleIdx / PAGE_SIZE);
+    const nextPageStart = (currentPage + 1) * PAGE_SIZE;
+    const nextPageEnd = nextPageStart + PAGE_SIZE;
+
+    const nextPageMessages = messages.slice(nextPageStart, nextPageEnd);
+
+    return nextPageMessages.flatMap(m =>
+      m.files?.map(f => ({
+        fileId: f.file_id,
+        thumbnailUrl: attachmentUrls[f.file_id]?.thumbnail,
+        fullUrl: attachmentUrls[f.file_id]?.full
+      })).filter(item => item.fileId && (item.thumbnailUrl || item.fullUrl)) || []
+    );
+  }, [messages, attachmentUrls]);
+
+  // Activate prefetch system
+  useImagePrefetch(prefetchUrls);
 
   const canSend = useMemo(
     () => (value.trim().length > 0 || Boolean(pendingFile)) && !streaming,
@@ -613,9 +653,10 @@ const Message = React.memo(function Message({ msg, attachmentUrls = {}, onAttach
               // Single source of truth for URLs:
               // 1. For files with file_id: use signed URL from attachmentUrls (required for Supabase)
               // 2. For local files (no file_id): use resolveFileUrl for blob URLs
-              const url = f.file_id
-                ? attachmentUrls[f.file_id] // Only use signed URLs for server files
-                : filesApi.resolveFileUrl(f); // Use local resolution for preview blobs
+              const urlData = f.file_id
+                ? attachmentUrls[f.file_id] // Object with {thumbnail, full, width, height}
+                : null;
+              const url = urlData?.full || filesApi.resolveFileUrl(f); // Fallback for local files
               if (!url) return null; // Don't render until URL available
               const resolvedPdfFilename = f.pdf_filename || msg.pdf_filename;
               const displayName = getFriendlyFileName(
@@ -638,7 +679,8 @@ const Message = React.memo(function Message({ msg, attachmentUrls = {}, onAttach
                       <>
                         <a href={url} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-lg">
                           <ImageWithPlaceholder
-                            src={url}
+                            fileId={f.file_id}
+                            urlData={urlData}
                             alt={displayName}
                             onLoad={onMediaLoad}
                           />
@@ -680,7 +722,8 @@ const Message = React.memo(function Message({ msg, attachmentUrls = {}, onAttach
                     ) : (
                       <div className="overflow-hidden rounded-lg">
                         <ImageWithPlaceholder
-                          src={url}
+                          fileId={f.file_id}
+                          urlData={urlData}
                           alt={displayName}
                           onLoad={onMediaLoad}
                         />
@@ -785,44 +828,98 @@ const Message = React.memo(function Message({ msg, attachmentUrls = {}, onAttach
  * Image component with placeholder to prevent layout shifts.
  * Shows a fixed-height loading state until the image loads.
  */
-function ImageWithPlaceholder({ src, alt, onLoad, className = "" }) {
-  const [loaded, setLoaded] = useState(false);
+function ImageWithPlaceholder({ fileId, urlData, alt, onLoad, className = "" }) {
+  const [currentUrl, setCurrentUrl] = useState(null);
+  const [loadState, setLoadState] = useState('loading'); // loading, thumbnail, full
   const [error, setError] = useState(false);
+  const fullImgRef = useRef(null);
+
+  const thumbnailUrl = urlData?.thumbnail;
+  const fullUrl = urlData?.full;
+  const aspectRatio = urlData?.width && urlData?.height
+    ? `${urlData.width} / ${urlData.height}`
+    : '16 / 9';
+
+  useEffect(() => {
+    if (!thumbnailUrl && !fullUrl) {
+      setLoadState('loading');
+      return;
+    }
+
+    // Phase 1: Load thumbnail immediately
+    if (thumbnailUrl) {
+      setCurrentUrl(thumbnailUrl);
+      setLoadState('thumbnail');
+
+      // Phase 2: Preload full image in background
+      if (fullUrl) {
+        const img = new Image();
+        img.onload = () => {
+          fullImgRef.current = fullUrl;
+          // Swap to full image after loaded
+          setTimeout(() => {
+            setCurrentUrl(fullUrl);
+            setLoadState('full');
+          }, 100);
+        };
+        img.src = fullUrl;
+      }
+    } else if (fullUrl) {
+      // No thumbnail available, load full directly
+      setCurrentUrl(fullUrl);
+      setLoadState('full');
+    }
+  }, [thumbnailUrl, fullUrl]);
 
   const handleLoad = useCallback(() => {
-    setLoaded(true);
     onLoad?.();
   }, [onLoad]);
 
   const handleError = useCallback(() => {
     setError(true);
-    setLoaded(true); // Stop showing loader on error
+    setLoadState('error');
   }, []);
 
   return (
-    <div className={`relative ${className}`} style={{ minHeight: loaded ? "auto" : "256px" }}>
-      {/* Loading placeholder - shown until image loads (256px matches max-h-64) */}
-      {!loaded && (
+    <div
+      className={`relative ${className}`}
+      style={{
+        aspectRatio,
+        width: '100%',
+        maxWidth: '512px'
+      }}
+    >
+      {/* Loading placeholder */}
+      {loadState === 'loading' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/5 dark:bg-white/5 rounded-lg">
           <Loader2 size={24} className="animate-spin text-black/30 dark:text-white/30" />
-          <span className="mt-2 text-xs text-black/40 dark:text-white/40">Loading image...</span>
+          <span className="mt-2 text-xs text-black/50 dark:text-white/50">Loading image...</span>
+        </div>
+      )}
+
+      {/* Thumbnail indicator */}
+      {loadState === 'thumbnail' && (
+        <div className="absolute top-2 right-2 z-10 bg-black/50 text-white text-xs px-2 py-1 rounded">
+          HD Loading...
         </div>
       )}
 
       {/* Error state */}
-      {error && loaded && (
-        <div className="flex flex-col items-center justify-center py-8 bg-black/5 dark:bg-white/5 rounded-lg">
-          <ImageIcon size={24} className="text-black/30 dark:text-white/30" />
-          <span className="mt-2 text-xs text-black/40 dark:text-white/40">Failed to load image</span>
+      {error && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-red-50 dark:bg-red-900/20 rounded-lg">
+          <ImageIcon className="text-red-500" size={32} />
+          <span className="mt-2 text-sm text-red-600 dark:text-red-400">Failed to load</span>
         </div>
       )}
 
-      {/* Actual image - hidden until loaded */}
-      {!error && (
+      {/* Actual image */}
+      {!error && currentUrl && (
         <img
-          src={src}
+          src={currentUrl}
           alt={alt}
-          className={`max-h-64 w-full object-cover rounded-lg transition-opacity duration-200 ${loaded ? "opacity-100" : "opacity-0 absolute inset-0"}`}
+          className={`w-full h-full object-contain rounded-lg transition-opacity duration-300 ${
+            loadState === 'loading' ? 'opacity-0' : 'opacity-100'
+          }`}
           loading="lazy"
           onLoad={handleLoad}
           onError={handleError}
