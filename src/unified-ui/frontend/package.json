@@ -5,9 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
+    "dev:clean": "rm -rf node_modules/.vite dist && vite --host",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "clear-cache": "rm -rf node_modules/.vite dist && echo 'Vite cache cleared. Also clear browser cache: DevTools > Right-click Refresh > Empty Cache and Hard Reload'"
   },
   "dependencies": {
     "@radix-ui/react-dropdown-menu": "^2.1.6",

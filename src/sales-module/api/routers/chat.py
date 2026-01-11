@@ -6,6 +6,7 @@ authenticated user token rather than being passed in the request body.
 """
 
 import asyncio
+import io
 import time
 from typing import Any
 
@@ -481,6 +482,17 @@ async def refresh_attachment_urls(
                         )
                         original_bytes = download_result.data
 
+                        # Get ORIGINAL image dimensions BEFORE generating thumbnail
+                        # This is critical for correct aspect ratios in the frontend
+                        from PIL import Image as PILImage
+                        orig_width, orig_height = None, None
+                        try:
+                            with PILImage.open(io.BytesIO(original_bytes)) as img:
+                                orig_width, orig_height = img.size
+                            logger.info(f"[CHAT] Original image dimensions for {file_id}: {orig_width}x{orig_height}")
+                        except Exception as dim_err:
+                            logger.warning(f"[CHAT] Could not get original dimensions for {file_id}: {dim_err}")
+
                         # Generate thumbnail
                         thumb_bytes, thumb_width, thumb_height = await generate_thumbnail(original_bytes)
 
@@ -493,12 +505,13 @@ async def refresh_attachment_urls(
                             content_type="image/jpeg"
                         )
 
-                        # Update database with thumbnail info
+                        # Update database with ORIGINAL dimensions (not thumbnail!)
+                        # This ensures frontend gets correct aspect ratio for placeholders
                         db.update_document(file_id, {
                             "thumbnail_key": thumbnail_key,
                             "thumbnail_generated_at": datetime.now(),
-                            "image_width": thumb_width,
-                            "image_height": thumb_height
+                            "image_width": orig_width or thumb_width,    # Use original if available
+                            "image_height": orig_height or thumb_height  # Fallback to thumbnail if failed
                         })
 
                         # Get signed URL for thumbnail
@@ -508,10 +521,11 @@ async def refresh_attachment_urls(
                             expires_in=86400,
                         )
 
-                        width = thumb_width
-                        height = thumb_height
+                        # Return ORIGINAL dimensions for frontend aspect ratio calculation
+                        width = orig_width or thumb_width
+                        height = orig_height or thumb_height
 
-                        logger.info(f"[CHAT] Generated and uploaded thumbnail for {file_id} ({len(thumb_bytes)} bytes)")
+                        logger.info(f"[CHAT] Generated thumbnail for {file_id}: thumb={thumb_width}x{thumb_height}, returning orig={width}x{height}")
 
                     except Exception as e:
                         logger.warning(f"[CHAT] Failed to generate thumbnail for {file_id}: {e}", exc_info=True)

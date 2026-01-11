@@ -503,26 +503,29 @@ export function ChatPage() {
     <div className="h-full flex flex-col gap-4 min-h-0">
       <Card className="p-4 overflow-hidden flex-1 min-h-0">
         {historyLoading ? (
-          <div className="h-full flex items-center justify-center">
-            <LoadingEllipsis
-              text="Loading conversation"
-              className="text-sm text-black/60 dark:text-white/65"
-            />
-          </div>
+          <ChatSkeleton />
         ) : (
           <Virtuoso
             ref={virtuosoRef}
             className="h-full scrollbar-thin"
             data={messages}
+            // Start at bottom of conversation on initial load
+            initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
+            // Auto-scroll behavior for streaming and new messages
             followOutput={(isAtBottom) => {
-              // Auto-scroll only if user is at bottom or streaming
-              return (isAtBottom || streaming) ? 'smooth' : false;
+              if (streaming) return 'smooth';
+              return isAtBottom ? 'smooth' : false;
             }}
+            // For prepending older messages - large base number for stable indices
             firstItemIndex={hasMore ? 1000000 - messages.length : 0}
+            // Trigger when scrolled to top
             startReached={loadOlderMessages}
+            // Track scroll position
             atBottomStateChange={(atBottom) => {
               stickToBottomRef.current = atBottom;
             }}
+            // Overscan for smoother scrolling (render extra items above/below viewport)
+            overscan={200}
             components={{
               Header: () =>
                 loadingMore ? (
@@ -580,6 +583,40 @@ export function ChatPage() {
           AI can make mistakes. Verify important information.
         </div>
       </Card>
+    </div>
+  );
+}
+
+/**
+ * Chat skeleton loading state.
+ * Shows placeholder messages that mimic the chat layout to reduce perceived loading time.
+ * Positioned at the bottom (like real messages) for smooth transition.
+ */
+function ChatSkeleton() {
+  return (
+    <div className="h-full flex flex-col justify-end p-2 gap-2">
+      {/* Render skeleton messages that look like a conversation */}
+      {[
+        { side: 'left', width: 'w-48', height: 'h-10' },
+        { side: 'right', width: 'w-32', height: 'h-8' },
+        { side: 'left', width: 'w-64', height: 'h-14' },
+        { side: 'right', width: 'w-40', height: 'h-8' },
+        { side: 'left', width: 'w-56', height: 'h-12' },
+        { side: 'left', width: 'w-36', height: 'h-8' },
+      ].map((item, i) => (
+        <div
+          key={i}
+          className={`flex ${item.side === 'right' ? 'justify-end' : 'justify-start'}`}
+        >
+          <div
+            className={`${item.width} ${item.height} rounded-2xl animate-pulse ${
+              item.side === 'right'
+                ? 'bg-black/10 dark:bg-white/10'
+                : 'bg-white/50 dark:bg-white/5'
+            }`}
+          />
+        </div>
+      ))}
     </div>
   );
 }
@@ -841,106 +878,139 @@ const Message = React.memo(function Message({ msg, attachmentUrls = {}, onAttach
   return true;
 });
 
+// Fixed maximum dimensions for images to prevent oversized placeholders
+const IMAGE_MAX_WIDTH = 400;
+const IMAGE_MAX_HEIGHT = 400;
+const IMAGE_DEFAULT_WIDTH = 300;
+const IMAGE_DEFAULT_HEIGHT = 200;
+
 /**
- * Image component with placeholder to prevent layout shifts.
- * Shows a fixed-height loading state until the image loads.
+ * Image component with FIXED pixel dimensions to prevent layout shifts.
+ * Uses explicit width/height (not CSS aspect-ratio) for stable placeholders.
+ *
+ * Progressive loading:
+ * 1. Show skeleton with exact dimensions
+ * 2. Load thumbnail (blurry preview)
+ * 3. Preload full image in background
+ * 4. Swap to full image when ready
  */
 function ImageWithPlaceholder({ fileId, urlData, alt, onLoad, className = "" }) {
-  const [currentUrl, setCurrentUrl] = useState(null);
-  const [loadState, setLoadState] = useState('loading'); // loading, thumbnail, full
-  const [error, setError] = useState(false);
-  const fullImgRef = useRef(null);
+  const [loadState, setLoadState] = useState('skeleton'); // skeleton, thumbnail, full, error
+  const [showFull, setShowFull] = useState(false);
 
   const thumbnailUrl = urlData?.thumbnail;
   const fullUrl = urlData?.full;
-  const aspectRatio = urlData?.width && urlData?.height
-    ? `${urlData.width} / ${urlData.height}`
-    : '16 / 9';
 
+  // Calculate FIXED container dimensions based on original image aspect ratio
+  // This prevents any layout shift - container is sized before image loads
+  const containerStyle = useMemo(() => {
+    const origWidth = urlData?.width;
+    const origHeight = urlData?.height;
+
+    if (origWidth && origHeight && origWidth > 0 && origHeight > 0) {
+      const aspect = origWidth / origHeight;
+
+      if (aspect >= 1) {
+        // Landscape or square - constrain by width
+        const w = Math.min(origWidth, IMAGE_MAX_WIDTH);
+        const h = Math.round(w / aspect);
+        return { width: w, height: Math.min(h, IMAGE_MAX_HEIGHT) };
+      } else {
+        // Portrait - constrain by height
+        const h = Math.min(origHeight, IMAGE_MAX_HEIGHT);
+        const w = Math.round(h * aspect);
+        return { width: Math.min(w, IMAGE_MAX_WIDTH), height: h };
+      }
+    }
+
+    // Fallback: fixed default size (no layout shift even without dimensions)
+    return { width: IMAGE_DEFAULT_WIDTH, height: IMAGE_DEFAULT_HEIGHT };
+  }, [urlData?.width, urlData?.height]);
+
+  // Handle progressive image loading
   useEffect(() => {
     if (!thumbnailUrl && !fullUrl) {
-      setLoadState('loading');
+      setLoadState('skeleton');
       return;
     }
 
-    // Phase 1: Load thumbnail immediately
+    // Reset state when URLs change
+    setLoadState('skeleton');
+    setShowFull(false);
+
+    // Phase 1: Load thumbnail
     if (thumbnailUrl) {
-      setCurrentUrl(thumbnailUrl);
-      setLoadState('thumbnail');
-
-      // Phase 2: Preload full image in background
-      if (fullUrl) {
-        const img = new Image();
-        img.onload = () => {
-          fullImgRef.current = fullUrl;
-          // Swap to full image after loaded
-          setTimeout(() => {
-            setCurrentUrl(fullUrl);
-            setLoadState('full');
-          }, 100);
-        };
-        img.src = fullUrl;
-      }
-    } else if (fullUrl) {
-      // No thumbnail available, load full directly
-      setCurrentUrl(fullUrl);
-      setLoadState('full');
+      const thumbImg = new window.Image();
+      thumbImg.onload = () => setLoadState('thumbnail');
+      thumbImg.onerror = () => setLoadState('error');
+      thumbImg.src = thumbnailUrl;
     }
-  }, [thumbnailUrl, fullUrl]);
 
-  const handleLoad = useCallback(() => {
-    onLoad?.();
-  }, [onLoad]);
-
-  const handleError = useCallback(() => {
-    setError(true);
-    setLoadState('error');
-  }, []);
+    // Phase 2: Preload full image in background
+    if (fullUrl) {
+      const fullImg = new window.Image();
+      fullImg.onload = () => {
+        // Small delay for smoother transition
+        setTimeout(() => {
+          setShowFull(true);
+          setLoadState('full');
+          onLoad?.();
+        }, 50);
+      };
+      fullImg.src = fullUrl;
+    } else if (!thumbnailUrl) {
+      // No URLs at all
+      setLoadState('skeleton');
+    }
+  }, [thumbnailUrl, fullUrl, onLoad]);
 
   return (
     <div
-      className={`relative ${className}`}
-      style={{
-        aspectRatio,
-        width: '100%',
-        maxWidth: '512px'
-      }}
+      className={`relative overflow-hidden rounded-lg bg-black/5 dark:bg-white/5 ${className}`}
+      style={containerStyle}
     >
-      {/* Loading placeholder */}
-      {loadState === 'loading' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/5 dark:bg-white/5 rounded-lg">
-          <Loader2 size={24} className="animate-spin text-black/30 dark:text-white/30" />
-          <span className="mt-2 text-xs text-black/50 dark:text-white/50">Loading image...</span>
-        </div>
-      )}
-
-      {/* Thumbnail indicator */}
-      {loadState === 'thumbnail' && (
-        <div className="absolute top-2 right-2 z-10 bg-black/50 text-white text-xs px-2 py-1 rounded">
-          HD Loading...
+      {/* Skeleton - always rendered first, hidden when image loads */}
+      {loadState === 'skeleton' && (
+        <div className="absolute inset-0 flex items-center justify-center animate-pulse">
+          <div className="w-8 h-8 rounded-full bg-black/10 dark:bg-white/10" />
         </div>
       )}
 
       {/* Error state */}
-      {error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-red-50 dark:bg-red-900/20 rounded-lg">
-          <ImageIcon className="text-red-500" size={32} />
-          <span className="mt-2 text-sm text-red-600 dark:text-red-400">Failed to load</span>
+      {loadState === 'error' && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <ImageIcon className="text-red-400 dark:text-red-500" size={24} />
+          <span className="mt-1 text-xs text-red-500 dark:text-red-400">Failed</span>
         </div>
       )}
 
-      {/* Actual image */}
-      {!error && currentUrl && (
+      {/* Thumbnail layer - shows blurry preview while full loads */}
+      {thumbnailUrl && (loadState === 'thumbnail' || loadState === 'full') && (
         <img
-          src={currentUrl}
-          alt={alt}
-          className={`w-full h-full object-contain rounded-lg transition-opacity duration-300 ${
-            loadState === 'loading' ? 'opacity-0' : 'opacity-100'
+          src={thumbnailUrl}
+          alt=""
+          aria-hidden="true"
+          className={`absolute inset-0 w-full h-full object-contain transition-opacity duration-200 ${
+            showFull ? 'opacity-0' : 'opacity-100'
           }`}
-          loading="lazy"
-          onLoad={handleLoad}
-          onError={handleError}
         />
+      )}
+
+      {/* Full image layer - fades in over thumbnail */}
+      {fullUrl && showFull && (
+        <img
+          src={fullUrl}
+          alt={alt}
+          className="absolute inset-0 w-full h-full object-contain"
+          loading="lazy"
+        />
+      )}
+
+      {/* HD loading indicator */}
+      {loadState === 'thumbnail' && !showFull && (
+        <div className="absolute bottom-1 right-1 bg-black/40 text-white text-[10px] px-1.5 py-0.5 rounded">
+          HD...
+        </div>
       )}
     </div>
   );
