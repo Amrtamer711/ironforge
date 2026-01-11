@@ -7,7 +7,7 @@
 # - [ ] Make the changes to mockup and proposal generation LLM chats with new location structure.
 # - [ ] Lazy Load Chat Messages so that the user is not stuck with loading conversations after login (Clarify if reducing the no of chats loaded will have positive impact).
 - [ ] Check the indoor locations - Why images are not loading. Maybe we can solve this by using the venue_type that is being sent from UI, but API is not accepting the venue_type. Details below : #Error01, #Explanation01, #Error02 
-- [ ] Chat history of new items not visible.
+- [ ] Chat history of new items not visible. Does this mean anything #Error03
 
 
 
@@ -267,3 +267,29 @@ end Explanation01
 [22:31:47] [Sales] INFO: 18:31:47 INFO     [909b4ab0] api.request: GET /api/mockup/photo/dna04 -> 404 (3282ms)
 
 End Error02
+
+
+#Error03
+
+[22:57:07] [Sales] INFO: 18:57:07 INFO     [fe090267] proposal-bot: [STORAGE:SUPABASE] Signed URL generated (length: 546)
+[22:57:07] [Sales] INFO: 18:57:07 INFO     [fe090267] proposal-bot: [STORAGE:SUPABASE] Extracted JWT token (length: 364)
+[22:57:07] [Sales] INFO: 18:57:07 INFO     [fe090267] proposal-bot: [STORAGE:SUPABASE] ===== JWT TOKEN ANALYSIS =====
+[22:57:07] [Sales] INFO: 18:57:07 INFO     [fe090267] proposal-bot: [STORAGE:SUPABASE] Full JWT claims: {
+[22:57:07] [Sales] INFO:   "url": "uploads/ee7eabae-3214-4364-8e48-12b8ffc0532a/2026/01/11/a6ed01ea-a5ac-466f-a608-d79205aca4d2_dior_185611126.pdf",
+[22:57:07] [Sales] INFO:   "iat": 1768143427,
+[22:57:07] [Sales] INFO:   "exp": 1768229827
+[22:57:07] [Sales] INFO: }
+[22:57:07] [Sales] INFO: 18:57:07 INFO     [fe090267] proposal-bot: [STORAGE:SUPABASE] Current server time: 1768143427 (2026-01-11T14:57:07+00:00)
+[22:57:07] [Sales] INFO: 18:57:07 INFO     [fe090267] proposal-bot: [STORAGE:SUPABASE] Token issued at (iat): 1768143427 (2026-01-11T14:57:07+00:00)
+[22:57:07] [Sales] INFO: 18:57:07 INFO     [fe090267] proposal-bot: [STORAGE:SUPABASE] Token expires at (exp): 1768229827 (2026-01-12T14:57:07+00:00)
+[22:57:07] [Sales] INFO: 18:57:07 INFO     [fe090267] proposal-bot: [STORAGE:SUPABASE] Time until expiry: 86400s (24.00 hours)
+[22:57:07] [Sales] INFO: 18:57:07 INFO     [fe090267] proposal-bot: [STORAGE:SUPABASE] Time since token issued: 0s
+[22:57:07] [Sales] INFO: 18:57:07 INFO     [fe090267] proposal-bot: [STORAGE:SUPABASE] Expected exp (server_time + 86400): 1768229827
+[22:57:07] [Sales] INFO: 18:57:07 INFO     [fe090267] proposal-bot: [STORAGE:SUPABASE] Actual exp drift from expected: 0s
+[22:57:07] [Sales] INFO: 18:57:07 INFO     [fe090267] proposal-bot: [STORAGE:SUPABASE] ✅ Token appears valid and will expire in 24.00 hours
+[22:57:07] [Sales] INFO: 18:57:07 INFO     [fe090267] proposal-bot: [STORAGE:SUPABASE] ========== SIGNED URL REQUEST END ==========
+[22:57:07] [Sales] INFO: 18:57:07 INFO     [fe090267] integrations.channels.adapters.web: [WebAdapter] File uploaded to supabase: dior_185611126.pdf -> uploads/ee7eabae-3214-4364-8e48-12b8ffc0532a/2026/01/11/a6ed01ea-a5ac-466f-a608-d79205aca4d2_dior_185611126.pdf (hash=b9ce794c260609ef...)
+[22:57:07] [Sales] DEBUG: 18:57:07 DEBUG    [fe090267] integrations.channels.adapters.web: [WebAdapter] Completed request 4ba9c971... for ee7eabae-3214-4364-8e48-12b8ffc0532a
+[22:57:07] [Sales] ERROR: 18:57:07 ERROR    [fe090267] proposal-bot: [CHAT PERSIST] Failed to append messages for ee7eabae-3214-4364-8e48-12b8ffc0532a: '_DatabaseNamespace' object has no attribute 'append_chat_messages'
+[22:57:07] [Sales] INFO: 18:57:07 INFO     [fe090267] api.chat: [CHAT] Stream completed for r.shahzad@mmg.global
+end #Error03
