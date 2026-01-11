@@ -42,13 +42,14 @@ export async function generateMockup(formData) {
   return apiRequest("/api/sales/mockup/generate", { method: "POST", body: formData });
 }
 
-export function getTemplatePhotoUrl(location, photo, { company } = {}) {
+export function getTemplatePhotoUrl(location, photo, { company, venueType } = {}) {
   if (!location || !photo) return "";
   // location is path param (supports slashes like "network/type/asset"), photo is query param
   // company is optional hint for O(1) lookup (avoids searching all companies)
   const params = new URLSearchParams();
   params.set("photo_filename", photo);
   if (company) params.set("company", company);
+  if (venueType) params.set("venue_type", venueType);
   return `${runtimeConfig.API_BASE_URL}/api/sales/mockup/photo/${location}?${params.toString()}`;
 }
 
@@ -57,20 +58,21 @@ export async function getHistory() {
   return apiRequest("/api/sales/mockup/history");
 }
 
-export async function getTemplatePhotoBlob(location, photo, { timeOfDay, side, company } = {}) {
+export async function getTemplatePhotoBlob(location, photo, { timeOfDay, side, company, venueType } = {}) {
   if (!location || !photo) return null;
   const params = new URLSearchParams();
   params.set("photo_filename", photo);  // Required query param
   if (timeOfDay) params.set("time_of_day", timeOfDay);
   if (side) params.set("side", side);
   if (company) params.set("company", company);  // O(1) lookup hint
+  if (venueType) params.set("venue_type", venueType);
   // location is path param (supports slashes like "network/type/asset"), photo is query param
   const path = `/api/sales/mockup/photo/${location}?${params.toString()}`;
   return apiBlob(path);
 }
 
-export async function getTemplatePhotoBlobUrl(location, photo, { timeOfDay, side, company } = {}) {
-  const blob = await getTemplatePhotoBlob(location, photo, { timeOfDay, side, company });
+export async function getTemplatePhotoBlobUrl(location, photo, { timeOfDay, side, company, venueType } = {}) {
+  const blob = await getTemplatePhotoBlob(location, photo, { timeOfDay, side, company, venueType });
   return blob ? URL.createObjectURL(blob) : "";
 }
 

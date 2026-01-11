@@ -395,6 +395,7 @@ export function MockupPage() {
               timeOfDay: t.time_of_day || effectiveTimeOfDay,
               side: t.side || side,
               company: t.company,  // O(1) lookup hint from templates response
+              venueType: t.venue_type || t.environment || venueType,
             });
           } catch {
             url = "";
@@ -431,7 +432,7 @@ export function MockupPage() {
     return () => {
       active = false;
     };
-  }, [primaryLocation, activeTemplateSignature, effectiveTimeOfDay, side, getTemplateKey]);
+  }, [primaryLocation, activeTemplateSignature, effectiveTimeOfDay, side, venueType, getTemplateKey]);
 
   useEffect(() => {
     return () => {
@@ -682,6 +683,7 @@ export function MockupPage() {
         timeOfDay: template.time_of_day || effectiveTimeOfDay,
         side: template.side || side,
         company: template.company,  // O(1) lookup hint from templates response
+        venueType: template.venue_type || template.environment || venueType,
       });
       if (!photoBlob) throw new Error("Failed to load template image");
       const photoUrl = URL.createObjectURL(photoBlob);

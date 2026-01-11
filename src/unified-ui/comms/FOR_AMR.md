@@ -6,7 +6,7 @@
 
 # - [ ] Make the changes to mockup and proposal generation LLM chats with new location structure.
 # - [ ] Lazy Load Chat Messages so that the user is not stuck with loading conversations after login (Clarify if reducing the no of chats loaded will have positive impact).
-- [ ] Check the indoor locations - Why images are not loading. Details below : #Error01, #Explanation01
+- [ ] Check the indoor locations - Why images are not loading. Maybe we can solve this by using the venue_type that is being sent from UI, but API is not accepting the venue_type. Details below : #Error01, #Explanation01, #Error02 
 
 
 ### Part 1: Unified Architecture ✅ DONE
@@ -174,7 +174,7 @@ Save: POST /api/sales/mockup/save-frame (multipart) with:
 location_keys (JSON array), venue_type, optional asset_type_key, time_of_day, side, frames_data, photo
 Refresh: invalidates and refetches templates for each selected location:
 GET /api/sales/mockup/templates/{locationKey}?time_of_day=...&side=...&venue_type=...
-Image load: GET /api/sales/mockup/photo/{locationKey}?photo_filename=...&time_of_day=...&side=...
+Image load: GET /api/sales/mockup/photo/{locationKey}?photo_filename=...&time_of_day=...&side=...&venue_type=...
 Questions for backend
 
 Is template creation asynchronous or delayed after save-frame?
@@ -182,3 +182,86 @@ Is there any caching (API, CDN, DB, or service-layer) that could return stale te
 
 
 end Explanation01
+
+
+
+#Error02
+[22:31:43] [UI] INFO: 2026-01-11 18:31:43,770 - unified-ui - INFO - [AUTH] Expanded companies: ['backlite_abudhabi', 'backlite_uk', 'viola', 'backlite_dubai'] -> ['backlite_abudhabi', 'backlite_dubai', 'backlite_uk', 'viola']
+[22:31:43] [UI] INFO: 2026-01-11 18:31:43,772 - unified-ui - INFO - [PROXY] GET /api/sales/mockup/photo/dna04 -> http://localhost:8000/api/mockup/photo/dna04?photo_filename=Dna04_3.jpg&time_of_day=day&side=gold&company=backlite_dubai&venue_type=indoor
+[22:31:43] [UI] INFO: 2026-01-11 18:31:43,772 - unified-ui - INFO - [PROXY] User: r.shahzad@mmg.global | Profile: system_admin
+[22:31:43] [UI] INFO: 2026-01-11 18:31:43,773 - unified-ui - INFO - [AUTH] Expanded companies: ['backlite_abudhabi', 'backlite_uk', 'viola', 'backlite_dubai'] -> ['backlite_abudhabi', 'backlite_dubai', 'backlite_uk', 'viola']
+[22:31:43] [UI] INFO: 2026-01-11 18:31:43,773 - unified-ui - INFO - [AUTH] Expanded companies: ['backlite_abudhabi', 'backlite_uk', 'viola', 'backlite_dubai'] -> ['backlite_abudhabi', 'backlite_dubai', 'backlite_uk', 'viola']
+[22:31:43] [UI] INFO: 2026-01-11 18:31:43,774 - unified-ui - INFO - [PROXY] GET /api/sales/mockup/photo/dna04 -> http://localhost:8000/api/mockup/photo/dna04?photo_filename=Dna04_2.jpg&time_of_day=day&side=gold&company=backlite_dubai&venue_type=indoor
+[22:31:43] [UI] INFO: 2026-01-11 18:31:43,774 - unified-ui - INFO - [PROXY] User: r.shahzad@mmg.global | Profile: system_admin
+[22:31:43] [UI] INFO: 2026-01-11 18:31:43,775 - unified-ui - INFO - [PROXY] GET /api/sales/mockup/photo/dna04 -> http://localhost:8000/api/mockup/photo/dna04?photo_filename=Dna04_4.jpg&time_of_day=day&side=gold&company=backlite_dubai&venue_type=indoor
+[22:31:43] [UI] INFO: 2026-01-11 18:31:43,775 - unified-ui - INFO - [PROXY] User: r.shahzad@mmg.global | Profile: system_admin
+[22:31:43] [Sales] INFO: 18:31:43 INFO     [3357699a] api.request: GET /api/mockup/photo/dna04
+[22:31:43] [Sales] INFO: 18:31:43 INFO     [909b4ab0] api.request: GET /api/mockup/photo/dna04
+[22:31:43] [Sales] INFO: 18:31:43 INFO     [3357699a] proposal-bot: [PHOTO GET] Request for photo: dna04/Dna04_3.jpg (time_of_day=day, side=gold, company=backlite_dubai)
+[22:31:43] [Sales] INFO: 18:31:43 INFO     [3357699a] core.services.mockup_frame_service: [MOCKUP_FRAME_SERVICE] Downloading photo: dna04/outdoor/day/gold/Dna04_3.jpg
+[22:31:43] [Sales] INFO: 18:31:43 INFO     [ca11492e] api.request: GET /api/mockup/photo/dna04
+[22:31:43] [Sales] INFO: 18:31:43 INFO     [909b4ab0] proposal-bot: [PHOTO GET] Request for photo: dna04/Dna04_2.jpg (time_of_day=day, side=gold, company=backlite_dubai)
+[22:31:43] [Sales] INFO: 18:31:43 INFO     [909b4ab0] core.services.mockup_frame_service: [MOCKUP_FRAME_SERVICE] Downloading photo: dna04/outdoor/day/gold/Dna04_2.jpg
+[22:31:43] [Sales] INFO: 18:31:43 INFO     [ca11492e] proposal-bot: [PHOTO GET] Request for photo: dna04/Dna04_4.jpg (time_of_day=day, side=gold, company=backlite_dubai)
+[22:31:43] [Sales] INFO: 18:31:43 INFO     [ca11492e] core.services.mockup_frame_service: [MOCKUP_FRAME_SERVICE] Downloading photo: dna04/outdoor/day/gold/Dna04_4.jpg
+[22:31:43] [Assets] INFO: 2026-01-11 18:31:43,821 - asset-management - INFO - [STORAGE] Getting mockup photo: backlite_dubai/dna04/outdoor/day/gold/Dna04_2.jpg
+[22:31:43] [Assets] INFO: 2026-01-11 18:31:43,831 - asset-management - INFO - [STORAGE] Getting mockup photo: backlite_dubai/dna04/outdoor/day/gold/Dna04_4.jpg
+[22:31:44] [Assets] ERROR: 2026-01-11 18:31:44,594 - asset-management - DEBUG - [STORAGE] Mockup photo not found: backlite_dubai/dna04/outdoor/day/gold/Dna04_2.jpg - {'statusCode': 404, 'error': not_found, 'message': Object not found}
+[22:31:44] [Assets] INFO: 2026-01-11 18:31:44,594 - crm_security.middleware - INFO - [HTTP] GET /api/storage/mockups/backlite_dubai/dna04/outdoor/day/gold/Dna04_2.jpg -> 404 (774ms) user=- request_id=b76e6db7-1f98-4c47-aa97-ff6594151c4a
+[22:31:44] [Assets] INFO: INFO:     127.0.0.1:53588 - "GET /api/storage/mockups/backlite_dubai/dna04/outdoor/day/gold/Dna04_2.jpg HTTP/1.1" 404 Not Found
+[22:31:44] [Assets] INFO: 2026-01-11 18:31:44,600 - asset-management - INFO - [STORAGE] Getting mockup photo: backlite_abudhabi/dna04/outdoor/day/gold/Dna04_2.jpg
+[22:31:44] [Assets] ERROR: 2026-01-11 18:31:44,656 - asset-management - DEBUG - [STORAGE] Mockup photo not found: backlite_dubai/dna04/outdoor/day/gold/Dna04_4.jpg - {'statusCode': 404, 'error': not_found, 'message': Object not found}
+[22:31:44] [Assets] INFO: 2026-01-11 18:31:44,656 - crm_security.middleware - INFO - [HTTP] GET /api/storage/mockups/backlite_dubai/dna04/outdoor/day/gold/Dna04_4.jpg -> 404 (835ms) user=- request_id=4199f903-dc97-4e06-b032-048ec000700a
+[22:31:44] [Assets] INFO: INFO:     127.0.0.1:53590 - "GET /api/storage/mockups/backlite_dubai/dna04/outdoor/day/gold/Dna04_4.jpg HTTP/1.1" 404 Not Found
+[22:31:44] [Assets] INFO: 2026-01-11 18:31:44,658 - asset-management - INFO - [STORAGE] Getting mockup photo: backlite_abudhabi/dna04/outdoor/day/gold/Dna04_4.jpg
+[22:31:44] [Assets] ERROR: 2026-01-11 18:31:44,669 - asset-management - DEBUG - [STORAGE] Mockup photo not found: backlite_dubai/dna04/outdoor/day/gold/Dna04_3.jpg - {'statusCode': 404, 'error': not_found, 'message': Object not found}
+[22:31:44] [Assets] INFO: 2026-01-11 18:31:44,673 - crm_security.middleware - INFO - [HTTP] GET /api/storage/mockups/backlite_dubai/dna04/outdoor/day/gold/Dna04_3.jpg -> 404 (865ms) user=- request_id=3c381273-da81-4128-aad0-7eb8bfccfe11
+[22:31:44] [Assets] INFO: INFO:     127.0.0.1:53474 - "GET /api/storage/mockups/backlite_dubai/dna04/outdoor/day/gold/Dna04_3.jpg HTTP/1.1" 404 Not Found
+[22:31:44] [Assets] INFO: 2026-01-11 18:31:44,674 - asset-management - INFO - [STORAGE] Getting mockup photo: backlite_abudhabi/dna04/outdoor/day/gold/Dna04_3.jpg
+[22:31:45] [Assets] ERROR: 2026-01-11 18:31:45,415 - asset-management - DEBUG - [STORAGE] Mockup photo not found: backlite_abudhabi/dna04/outdoor/day/gold/Dna04_3.jpg - {'statusCode': 404, 'error': not_found, 'message': Object not found}
+[22:31:45] [Assets] INFO: 2026-01-11 18:31:45,416 - crm_security.middleware - INFO - [HTTP] GET /api/storage/mockups/backlite_abudhabi/dna04/outdoor/day/gold/Dna04_3.jpg -> 404 (741ms) user=- request_id=2d7589ee-6ad5-4c46-aa3d-e655364bde8e
+[22:31:45] [Assets] INFO: INFO:     127.0.0.1:53474 - "GET /api/storage/mockups/backlite_abudhabi/dna04/outdoor/day/gold/Dna04_3.jpg HTTP/1.1" 404 Not Found
+[22:31:45] [Assets] INFO: 2026-01-11 18:31:45,419 - asset-management - INFO - [STORAGE] Getting mockup photo: backlite_uk/dna04/outdoor/day/gold/Dna04_3.jpg
+[22:31:45] [Assets] ERROR: 2026-01-11 18:31:45,532 - asset-management - DEBUG - [STORAGE] Mockup photo not found: backlite_abudhabi/dna04/outdoor/day/gold/Dna04_4.jpg - {'statusCode': 404, 'error': not_found, 'message': Object not found}
+[22:31:45] [Assets] INFO: 2026-01-11 18:31:45,532 - crm_security.middleware - INFO - [HTTP] GET /api/storage/mockups/backlite_abudhabi/dna04/outdoor/day/gold/Dna04_4.jpg -> 404 (874ms) user=- request_id=f800367e-bb18-4898-b9b8-d8f8d9c741c4
+[22:31:45] [Assets] INFO: INFO:     127.0.0.1:53590 - "GET /api/storage/mockups/backlite_abudhabi/dna04/outdoor/day/gold/Dna04_4.jpg HTTP/1.1" 404 Not Found
+[22:31:45] [Assets] INFO: 2026-01-11 18:31:45,535 - asset-management - INFO - [STORAGE] Getting mockup photo: backlite_uk/dna04/outdoor/day/gold/Dna04_4.jpg
+[22:31:45] [Assets] ERROR: 2026-01-11 18:31:45,549 - asset-management - DEBUG - [STORAGE] Mockup photo not found: backlite_abudhabi/dna04/outdoor/day/gold/Dna04_2.jpg - {'statusCode': 404, 'error': not_found, 'message': Object not found}
+[22:31:45] [Assets] INFO: 2026-01-11 18:31:45,549 - crm_security.middleware - INFO - [HTTP] GET /api/storage/mockups/backlite_abudhabi/dna04/outdoor/day/gold/Dna04_2.jpg -> 404 (949ms) user=- request_id=32339d8f-430e-4cfc-bf1c-66fc47f3bfe2
+[22:31:45] [Assets] INFO: INFO:     127.0.0.1:53588 - "GET /api/storage/mockups/backlite_abudhabi/dna04/outdoor/day/gold/Dna04_2.jpg HTTP/1.1" 404 Not Found
+[22:31:45] [Assets] INFO: 2026-01-11 18:31:45,551 - asset-management - INFO - [STORAGE] Getting mockup photo: backlite_uk/dna04/outdoor/day/gold/Dna04_2.jpg
+[22:31:46] [Assets] ERROR: 2026-01-11 18:31:46,335 - asset-management - DEBUG - [STORAGE] Mockup photo not found: backlite_uk/dna04/outdoor/day/gold/Dna04_4.jpg - {'statusCode': 404, 'error': not_found, 'message': Object not found}
+[22:31:46] [Assets] ERROR: 2026-01-11 18:31:46,335 - asset-management - DEBUG - [STORAGE] Mockup photo not found: backlite_uk/dna04/outdoor/day/gold/Dna04_2.jpg - {'statusCode': 404, 'error': not_found, 'message': Object not found}
+[22:31:46] [Assets] ERROR: 2026-01-11 18:31:46,335 - asset-management - DEBUG - [STORAGE] Mockup photo not found: backlite_uk/dna04/outdoor/day/gold/Dna04_3.jpg - {'statusCode': 404, 'error': not_found, 'message': Object not found}
+[22:31:46] [Assets] INFO: 2026-01-11 18:31:46,335 - crm_security.middleware - INFO - [HTTP] GET /api/storage/mockups/backlite_uk/dna04/outdoor/day/gold/Dna04_4.jpg -> 404 (801ms) user=- request_id=49a2ed02-5b82-4c80-a3ef-91b022b22348
+[22:31:46] [Assets] INFO: 2026-01-11 18:31:46,335 - crm_security.middleware - INFO - [HTTP] GET /api/storage/mockups/backlite_uk/dna04/outdoor/day/gold/Dna04_2.jpg -> 404 (785ms) user=- request_id=18fb599f-01db-4a71-bb48-1406b8b6819c
+[22:31:46] [Assets] INFO: 2026-01-11 18:31:46,335 - crm_security.middleware - INFO - [HTTP] GET /api/storage/mockups/backlite_uk/dna04/outdoor/day/gold/Dna04_3.jpg -> 404 (917ms) user=- request_id=5d151e12-7202-45d7-a543-a00affdca5c4
+[22:31:46] [Assets] INFO: INFO:     127.0.0.1:53590 - "GET /api/storage/mockups/backlite_uk/dna04/outdoor/day/gold/Dna04_4.jpg HTTP/1.1" 404 Not Found
+[22:31:46] [Assets] INFO: INFO:     127.0.0.1:53588 - "GET /api/storage/mockups/backlite_uk/dna04/outdoor/day/gold/Dna04_2.jpg HTTP/1.1" 404 Not Found
+[22:31:46] [Assets] INFO: INFO:     127.0.0.1:53474 - "GET /api/storage/mockups/backlite_uk/dna04/outdoor/day/gold/Dna04_3.jpg HTTP/1.1" 404 Not Found
+[22:31:46] [Assets] INFO: 2026-01-11 18:31:46,339 - asset-management - INFO - [STORAGE] Getting mockup photo: viola/dna04/outdoor/day/gold/Dna04_4.jpg
+[22:31:46] [Assets] INFO: 2026-01-11 18:31:46,356 - asset-management - INFO - [STORAGE] Getting mockup photo: viola/dna04/outdoor/day/gold/Dna04_2.jpg
+[22:31:46] [Assets] INFO: 2026-01-11 18:31:46,368 - asset-management - INFO - [STORAGE] Getting mockup photo: viola/dna04/outdoor/day/gold/Dna04_3.jpg
+[22:31:47] [Assets] ERROR: 2026-01-11 18:31:47,052 - asset-management - DEBUG - [STORAGE] Mockup photo not found: viola/dna04/outdoor/day/gold/Dna04_4.jpg - {'statusCode': 404, 'error': not_found, 'message': Object not found}
+[22:31:47] [Assets] INFO: 2026-01-11 18:31:47,052 - crm_security.middleware - INFO - [HTTP] GET /api/storage/mockups/viola/dna04/outdoor/day/gold/Dna04_4.jpg -> 404 (713ms) user=- request_id=d5862e55-a29c-48e1-bb60-89a156981f97
+[22:31:47] [Assets] INFO: INFO:     127.0.0.1:53590 - "GET /api/storage/mockups/viola/dna04/outdoor/day/gold/Dna04_4.jpg HTTP/1.1" 404 Not Found
+[22:31:47] [Sales] WARN: 18:31:47 WARNING  [ca11492e] core.services.mockup_frame_service: [MOCKUP_FRAME_SERVICE] Photo not found in any company
+[22:31:47] [Sales] ERROR: 18:31:47 ERROR    [ca11492e] proposal-bot: [PHOTO GET] ✗ Photo not found: dna04/Dna04_4.jpg
+[22:31:47] [Sales] INFO: 18:31:47 INFO     [ca11492e] api.request: GET /api/mockup/photo/dna04 -> 404 (3249ms)
+[22:31:47] [UI] INFO: 2026-01-11 18:31:47,056 - unified-ui - INFO - [PROXY] Response: 404
+[22:31:47] [UI] INFO: 2026-01-11 18:31:47,058 - unified-ui - INFO - [UI] GET /api/sales/mockup/photo/dna04 -> 404 (4188ms)
+[22:31:47] [UI] INFO: INFO:     127.0.0.1:53666 - "GET /api/sales/mockup/photo/dna04?photo_filename=Dna04_4.jpg&time_of_day=day&side=gold&company=backlite_dubai&venue_type=indoor HTTP/1.1" 404 Not Found
+[22:31:47] [Assets] ERROR: 2026-01-11 18:31:47,085 - asset-management - DEBUG - [STORAGE] Mockup photo not found: viola/dna04/outdoor/day/gold/Dna04_3.jpg - {'statusCode': 404, 'error': not_found, 'message': Object not found}
+[22:31:47] [Assets] ERROR: 2026-01-11 18:31:47,085 - asset-management - DEBUG - [STORAGE] Mockup photo not found: viola/dna04/outdoor/day/gold/Dna04_2.jpg - {'statusCode': 404, 'error': not_found, 'message': Object not found}
+[22:31:47] [Assets] INFO: 2026-01-11 18:31:47,085 - crm_security.middleware - INFO - [HTTP] GET /api/storage/mockups/viola/dna04/outdoor/day/gold/Dna04_3.jpg -> 404 (746ms) user=- request_id=80b8792f-b549-4f65-bdd2-07582967ea25
+[22:31:47] [Assets] INFO: 2026-01-11 18:31:47,085 - crm_security.middleware - INFO - [HTTP] GET /api/storage/mockups/viola/dna04/outdoor/day/gold/Dna04_2.jpg -> 404 (746ms) user=- request_id=16e62a53-fa8b-411a-aaa1-1710bd8508dd
+[22:31:47] [Assets] INFO: INFO:     127.0.0.1:53474 - "GET /api/storage/mockups/viola/dna04/outdoor/day/gold/Dna04_3.jpg HTTP/1.1" 404 Not Found
+[22:31:47] [Assets] INFO: INFO:     127.0.0.1:53588 - "GET /api/storage/mockups/viola/dna04/outdoor/day/gold/Dna04_2.jpg HTTP/1.1" 404 Not Found
+[22:31:47] [Sales] WARN: 18:31:47 WARNING  [3357699a] core.services.mockup_frame_service: [MOCKUP_FRAME_SERVICE] Photo not found in any company
+[22:31:47] [Sales] ERROR: 18:31:47 ERROR    [3357699a] proposal-bot: [PHOTO GET] ✗ Photo not found: dna04/Dna04_3.jpg
+[22:31:47] [Sales] WARN: 18:31:47 WARNING  [909b4ab0] core.services.mockup_frame_service: [MOCKUP_FRAME_SERVICE] Photo not found in any company
+[22:31:47] [Sales] ERROR: 18:31:47 ERROR    [909b4ab0] proposal-bot: [PHOTO GET] ✗ Photo not found: dna04/Dna04_2.jpg
+[22:31:47] [Sales] INFO: 18:31:47 INFO     [3357699a] api.request: GET /api/mockup/photo/dna04 -> 404 (3283ms)
+[22:31:47] [Sales] INFO: 18:31:47 INFO     [909b4ab0] api.request: GET /api/mockup/photo/dna04 -> 404 (3282ms)
+
+End Error02
