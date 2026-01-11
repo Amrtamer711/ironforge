@@ -9,8 +9,13 @@ export default defineConfig({
       injectRegister: null,
       registerType: "autoUpdate",
       devOptions: {
-        enabled: true,
+        enabled: false,  // Disable PWA in dev to avoid cache issues
         suppressWarnings: true
+      },
+      workbox: {
+        skipWaiting: true,      // New SW takes over immediately
+        clientsClaim: true,     // Claim all clients right away
+        cleanupOutdatedCaches: true
       },
       manifest: {
         name: "MMG Nova",
