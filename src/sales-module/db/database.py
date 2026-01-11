@@ -516,6 +516,19 @@ class _DatabaseNamespace:
         """Get multiple documents by file_id in a single query."""
         return self._backend.get_documents_batch(file_ids)
 
+    def update_document(self, file_id: str, updates: dict[str, Any]) -> bool:
+        """
+        Update document metadata fields.
+
+        Args:
+            file_id: The document file_id to update
+            updates: Dictionary of field names and values to update
+
+        Returns:
+            True if update was successful, False otherwise
+        """
+        return self._backend.update_document(file_id, updates)
+
     def get_document_by_hash(self, file_hash: str) -> dict[str, Any] | None:
         """Get a document by file hash (for deduplication)."""
         return self._backend.get_document_by_hash(file_hash)

@@ -1941,6 +1941,51 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
+    def update_document(self, file_id: str, updates: dict[str, Any]) -> bool:
+        """
+        Update document metadata fields.
+
+        Args:
+            file_id: The document file_id to update
+            updates: Dictionary of field names and values to update
+
+        Returns:
+            True if update was successful, False otherwise
+        """
+        if not updates:
+            return False
+
+        conn = self._connect()
+        try:
+            cursor = conn.cursor()
+            # Build SET clause dynamically
+            set_clauses = [f"{key} = ?" for key in updates.keys()]
+            values = list(updates.values()) + [file_id]
+
+            cursor.execute(
+                f"""
+                UPDATE documents
+                SET {', '.join(set_clauses)}
+                WHERE file_id = ?
+                """,
+                values
+            )
+            conn.commit()
+
+            if cursor.rowcount > 0:
+                logger.debug(f"[DB] Updated document {file_id} with fields: {list(updates.keys())}")
+                return True
+
+            logger.warning(f"[DB] No document found to update: {file_id}")
+            return False
+
+        except Exception as e:
+            logger.error(f"[DB] Error updating document {file_id}: {e}", exc_info=True)
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+
     def get_document_by_hash(self, file_hash: str) -> dict[str, Any] | None:
         """Get a document by file hash (for deduplication)."""
         conn = self._connect()

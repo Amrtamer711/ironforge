@@ -385,21 +385,28 @@ async def refresh_attachment_urls(
     user: AuthUser = Depends(require_permission("sales:chat:use")),
 ):
     """
-    Batch refresh signed URLs for chat attachments.
+    Batch refresh signed URLs for chat attachments with thumbnail support.
 
     This endpoint is called by the frontend when attachments become visible
-    in the viewport. It supports pre-fetching: pass prefetch_ids to load
-    the next batch of attachments ahead of time.
+    in the viewport. It supports pre-fetching and thumbnail generation.
+
+    Features:
+    - Generates thumbnails on-demand (256x256 JPEG)
+    - Returns both thumbnail and full image URLs
+    - Caches thumbnails in Supabase storage
+    - Tracks image dimensions for aspect ratio
 
     Pre-fetch Strategy:
     - file_ids: Currently visible attachments (refresh NOW)
     - prefetch_ids: Next page of attachments (load ahead for smooth scrolling)
 
     Returns:
-        urls: Dict mapping file_id -> signed_url (24h expiry)
+        urls: Dict mapping file_id -> {thumbnail, full, width, height} (24h expiry)
     """
+    from datetime import datetime
     from db.database import db
     from integrations.storage import get_storage_client
+    from core.utils.thumbnail import generate_thumbnail
 
     # Combine visible + prefetch, deduplicate
     all_ids = list(set(request.file_ids + request.prefetch_ids))
@@ -414,20 +421,13 @@ async def refresh_attachment_urls(
         logger.info(f"[CHAT] attachment refresh: returning empty (local storage or no client)")
         return {"urls": {}}
 
-    # 1. Single batch DB lookup (instead of N sequential calls)
+    # 1. Single batch DB lookup
     docs = db.get_documents_batch(all_ids)
 
-    # DEBUG: Log what we got from the database
     logger.info(f"[CHAT] attachment refresh: requested={all_ids}, found_in_db={list(docs.keys())}")
-    for fid in all_ids:
-        doc = docs.get(fid)
-        if doc:
-            logger.info(f"[CHAT] doc {fid}: provider={doc.get('storage_provider')}, bucket={doc.get('storage_bucket')}, key={doc.get('storage_key')}")
-        else:
-            logger.warning(f"[CHAT] doc {fid}: NOT FOUND in documents table")
 
-    # 2. Parallel signed URL generation (instead of sequential)
-    async def refresh_one(file_id: str) -> tuple[str, str | None]:
+    # 2. Parallel URL generation with thumbnail support
+    async def refresh_one(file_id: str) -> tuple[str, dict | None]:
         doc = docs.get(file_id)
         if not doc:
             logger.warning(f"[CHAT] refresh_one {file_id}: no document record")
@@ -435,22 +435,90 @@ async def refresh_attachment_urls(
         if doc.get("storage_provider") != "supabase":
             logger.warning(f"[CHAT] refresh_one {file_id}: provider={doc.get('storage_provider')} (not supabase)")
             return (file_id, None)
+
         try:
             bucket = doc["storage_bucket"]
             key = doc["storage_key"]
-            logger.info(f"[CHAT] refresh_one {file_id}: generating signed URL for bucket={bucket}, key={key}")
-            url = await storage_client.get_signed_url(
+
+            # Get signed URL for full image
+            full_url = await storage_client.get_signed_url(
                 bucket=bucket,
                 key=key,
                 expires_in=86400,  # 24 hours
             )
-            # Log the generated URL (truncate token for security)
-            if url:
-                url_preview = url[:100] + "..." if len(url) > 100 else url
-                logger.info(f"[CHAT] refresh_one {file_id}: signed URL generated: {url_preview}")
-            else:
-                logger.warning(f"[CHAT] refresh_one {file_id}: get_signed_url returned None")
-            return (file_id, url)
+
+            # Check if this is an image file
+            file_ext = doc.get("file_extension", "").lower()
+            is_image = file_ext in ["jpg", "jpeg", "png", "gif", "webp", "bmp"]
+
+            thumbnail_url = None
+            width = doc.get("image_width")
+            height = doc.get("image_height")
+
+            if is_image:
+                # Check if thumbnail already exists
+                if doc.get("thumbnail_key"):
+                    thumbnail_url = await storage_client.get_signed_url(
+                        bucket="thumbnails",
+                        key=doc["thumbnail_key"],
+                        expires_in=86400,
+                    )
+                    logger.debug(f"[CHAT] Using existing thumbnail for {file_id}")
+                else:
+                    # Generate thumbnail on-demand
+                    try:
+                        logger.info(f"[CHAT] Generating thumbnail for {file_id}")
+
+                        # Download original image
+                        download_result = await storage_client.download(
+                            bucket=bucket,
+                            key=key
+                        )
+                        original_bytes = download_result.data
+
+                        # Generate thumbnail
+                        thumb_bytes, thumb_width, thumb_height = await generate_thumbnail(original_bytes)
+
+                        # Upload to thumbnails bucket
+                        thumbnail_key = f"{user.id}/{file_id}/thumb_256.jpg"
+                        await storage_client.upload(
+                            bucket="thumbnails",
+                            key=thumbnail_key,
+                            data=thumb_bytes,
+                            content_type="image/jpeg"
+                        )
+
+                        # Update database with thumbnail info
+                        db.update_document(file_id, {
+                            "thumbnail_key": thumbnail_key,
+                            "thumbnail_generated_at": datetime.now(),
+                            "image_width": thumb_width,
+                            "image_height": thumb_height
+                        })
+
+                        # Get signed URL for thumbnail
+                        thumbnail_url = await storage_client.get_signed_url(
+                            bucket="thumbnails",
+                            key=thumbnail_key,
+                            expires_in=86400,
+                        )
+
+                        width = thumb_width
+                        height = thumb_height
+
+                        logger.info(f"[CHAT] Generated and uploaded thumbnail for {file_id} ({len(thumb_bytes)} bytes)")
+
+                    except Exception as e:
+                        logger.warning(f"[CHAT] Failed to generate thumbnail for {file_id}: {e}", exc_info=True)
+                        # Continue with full image only
+
+            return (file_id, {
+                "full": full_url,
+                "thumbnail": thumbnail_url,
+                "width": width,
+                "height": height,
+            })
+
         except Exception as e:
             logger.warning(f"[CHAT] Failed to refresh URL for {file_id}: {e}", exc_info=True)
             return (file_id, None)
@@ -459,7 +527,7 @@ async def refresh_attachment_urls(
     results = await asyncio.gather(*tasks)
 
     # Build response (only include successful refreshes)
-    urls = {fid: url for fid, url in results if url}
+    urls = {fid: data for fid, data in results if data}
 
     logger.info(f"[CHAT] Refreshed {len(urls)}/{len(all_ids)} attachment URLs for {user.email}")
 

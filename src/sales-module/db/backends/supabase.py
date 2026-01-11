@@ -2285,6 +2285,39 @@ class SupabaseBackend(DatabaseBackend):
 
         return result
 
+    def update_document(self, file_id: str, updates: dict[str, Any]) -> bool:
+        """
+        Update document metadata fields.
+
+        Args:
+            file_id: The document file_id to update
+            updates: Dictionary of field names and values to update
+
+        Returns:
+            True if update was successful, False otherwise
+        """
+        try:
+            client = self._get_client()
+            response = (
+                client.table("documents")
+                .update(updates)
+                .eq("file_id", file_id)
+                .execute()
+            )
+
+            if response.data:
+                # Invalidate cache for this document
+                _run_async(self._cache_delete(f"document:{file_id}"))
+                logger.debug(f"[SUPABASE] Updated document {file_id} with fields: {list(updates.keys())}")
+                return True
+
+            logger.warning(f"[SUPABASE] No document found to update: {file_id}")
+            return False
+
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error updating document {file_id}: {e}", exc_info=True)
+            return False
+
     def get_document_by_hash(self, file_hash: str) -> dict[str, Any] | None:
         """Get a document by file hash (for deduplication, cached)."""
         cache_key = f"document:hash:{file_hash}"
