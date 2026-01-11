@@ -97,7 +97,7 @@ export function ChatPage() {
       role: "assistant",
       content: "",
       files: [],
-      status: "Thinking...",
+      status: "Thinking",
     };
 
     setMessages(m => [...m, userMsg, assistantMsg]);
@@ -160,7 +160,7 @@ export function ChatPage() {
 
           if (evt?.type === "status") {
             setMessages(prev => prev.map(m =>
-              m.id === assistantMsgId ? { ...m, status: evt.content || "Processing..." } : m
+              m.id === assistantMsgId ? { ...m, status: evt.content || "Processing" } : m
             ));
             return;
           }
@@ -168,7 +168,7 @@ export function ChatPage() {
           if (evt?.type === "delete") {
             fullContent = "";
             setMessages(prev => prev.map(m =>
-              m.id === assistantMsgId ? { ...m, status: "Thinking...", content: "" } : m
+              m.id === assistantMsgId ? { ...m, status: "Thinking", content: "" } : m
             ));
             return;
           }
@@ -176,7 +176,7 @@ export function ChatPage() {
           if (evt?.type === "tool_call") {
             const toolName = evt.tool?.name || "processing";
             setMessages(prev => prev.map(m =>
-              m.id === assistantMsgId ? { ...m, status: `Processing ${toolName}...` } : m
+              m.id === assistantMsgId ? { ...m, status: `Processing ${toolName}` } : m
             ));
             return;
           }
@@ -525,9 +525,10 @@ function TextArea({ value, onChange, placeholder, onEnter }) {
 }
 
 function StatusLine({ text }) {
+  const displayText = (text || "Thinking").replace(/\s*\.{3,}$/, "");
   return (
     <span className="inline-flex items-center gap-2 opacity-80">
-      <span>{text || "Thinking"}</span>
+      <span>{displayText}</span>
       <span className="mmg-ellipsis" aria-hidden="true">
         <span className="mmg-ellipsis-dot" style={{ animationDelay: "0ms" }} />
         <span className="mmg-ellipsis-dot" style={{ animationDelay: "120ms" }} />

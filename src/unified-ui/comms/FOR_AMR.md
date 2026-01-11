@@ -7,6 +7,8 @@
 # - [ ] Make the changes to mockup and proposal generation LLM chats with new location structure.
 # - [ ] Lazy Load Chat Messages so that the user is not stuck with loading conversations after login (Clarify if reducing the no of chats loaded will have positive impact).
 - [ ] Check the indoor locations - Why images are not loading. Maybe we can solve this by using the venue_type that is being sent from UI, but API is not accepting the venue_type. Details below : #Error01, #Explanation01, #Error02 
+- [ ] Chat history of new items not visible.
+
 
 
 ### Part 1: Unified Architecture ✅ DONE
