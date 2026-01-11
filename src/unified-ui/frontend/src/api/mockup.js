@@ -31,9 +31,51 @@ export async function updateSetupPhoto(formData) {
   return apiRequest("/api/sales/mockup/update-frame", { method: "PUT", body: formData });
 }
 
-export async function deleteSetupPhoto(location, photo) {
+export async function deleteSetupPhoto(location, photo, { timeOfDay, side } = {}) {
   // location is path param (supports slashes like "network/type/asset"), photo is query param
-  return apiRequest(`/api/sales/mockup/photo/${location}?photo_filename=${encodeURIComponent(photo)}`, {
+  const params = new URLSearchParams();
+  params.set("photo_filename", photo);
+  if (timeOfDay) params.set("time_of_day", timeOfDay);
+  if (side) params.set("side", side);
+  return apiRequest(`/api/sales/mockup/photo/${location}?${params.toString()}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getMockupFrameFromAssets({
+  company,
+  locationKey,
+  environment = "outdoor",
+  timeOfDay = "day",
+  side = "gold",
+  photoFilename,
+} = {}) {
+  if (!company || !locationKey) return null;
+  const params = new URLSearchParams();
+  if (environment) params.set("environment", environment);
+  if (timeOfDay) params.set("time_of_day", timeOfDay);
+  if (side) params.set("side", side);
+  if (photoFilename) params.set("photo_filename", photoFilename);
+  const encodedLocation = encodeURIComponent(locationKey);
+  return apiRequest(`/api/assets/mockup-frames/${company}/${encodedLocation}/frame?${params.toString()}`);
+}
+
+export async function deleteMockupFrameFromAssets({
+  company,
+  locationKey,
+  environment = "outdoor",
+  timeOfDay = "day",
+  side = "gold",
+  photoFilename,
+} = {}) {
+  if (!company || !locationKey || !photoFilename) return null;
+  const params = new URLSearchParams();
+  if (environment) params.set("environment", environment);
+  if (timeOfDay) params.set("time_of_day", timeOfDay);
+  if (side) params.set("side", side);
+  params.set("photo_filename", photoFilename);
+  const encodedLocation = encodeURIComponent(locationKey);
+  return apiRequest(`/api/assets/mockup-frames/${company}/${encodedLocation}?${params.toString()}`, {
     method: "DELETE",
   });
 }

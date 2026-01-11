@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../../components/ui/card";
 import { FormField } from "../../../components/ui/form-field";
 import { MultiSelect } from "../../../components/ui/multi-select";
+import { ConfirmModal } from "../../../components/ui/modal";
 import { SoftCard } from "../../../components/ui/soft-card";
 import { LoadingEllipsis } from "../../../components/ui/loading-ellipsis";
 import { SelectDropdown } from "../../../components/ui/select-dropdown";
@@ -109,12 +110,40 @@ export function SetupTab({
   frameCount,
   useNativeSelects,
 }) {
+  const [confirmDelete, setConfirmDelete] = useState({ open: false, template: null });
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+
+  const deleteTimeOfDay = confirmDelete.template?.time_of_day || "all";
+  const deleteSide = confirmDelete.template?.side || "all";
+  const deleteLocation = confirmDelete.template?.storage_key || "";
+  const deleteLocationLabel = deleteLocation ? ` for ${deleteLocation}` : "";
+  const deleteMessage = confirmDelete.template
+    ? `Delete "${confirmDelete.template.photo}" (${deleteTimeOfDay}/${deleteSide})${deleteLocationLabel}? This removes the photo and its frames.`
+    : "Delete this template? This removes the photo and its frames.";
+
+  async function handleConfirmDelete() {
+    if (!confirmDelete.template || deleteSubmitting) return;
+    setDeleteSubmitting(true);
+    try {
+      await deleteTemplate(confirmDelete.template);
+    } finally {
+      setDeleteSubmitting(false);
+      setConfirmDelete({ open: false, template: null });
+    }
+  }
+
+  function handleCloseDelete() {
+    if (deleteSubmitting) return;
+    setConfirmDelete({ open: false, template: null });
+  }
+
   return (
-    <Card className="h-full flex flex-col">
-          <CardHeader>
-            <CardTitle>Mockup Setup</CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-4">
+    <>
+      <Card className="h-full flex flex-col">
+        <CardHeader>
+          <CardTitle>Mockup Setup</CardTitle>
+        </CardHeader>
+        <CardContent className="flex-1 min-h-0 overflow-y-auto space-y-4">
         <div className="space-y-4">
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
@@ -273,28 +302,26 @@ export function SetupTab({
                                 {t.time_of_day}/{t.side} - {t.frame_count} frame
                                 {t.frame_count > 1 ? "s" : ""}
                               </div>
-                              {/* Template actions hidden until fully implemented. */}
-                              {false ? (
-                                <div className="flex gap-2">
-                                  <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    className="rounded-xl"
-                                    onClick={() => startEditTemplate(t)}
-                                    disabled={editingTemplateLoading}
-                                  >
-                                    Edit
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="rounded-xl"
-                                    onClick={() => deleteTemplate(t.photo)}
-                                  >
-                                    Delete
-                                  </Button>
-                                </div>
-                              ) : null}
+                              <div className="flex gap-2">
+                                <Button
+                                  variant="secondary"
+                                  size="sm"
+                                  className="rounded-xl"
+                                  onClick={() => startEditTemplate(t)}
+                                  disabled={editingTemplateLoading || deleteSubmitting}
+                                >
+                                  Edit
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="rounded-xl"
+                                  onClick={() => setConfirmDelete({ open: true, template: t })}
+                                  disabled={deleteSubmitting}
+                                >
+                                  Delete
+                                </Button>
+                              </div>
                             </div>
                           </div>
                         );
@@ -630,7 +657,15 @@ export function SetupTab({
             Frames configured: {frameCount}
           </div>
         ) : null}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+
+      <ConfirmModal
+        open={confirmDelete.open}
+        message={deleteMessage}
+        onClose={handleCloseDelete}
+        onConfirm={handleConfirmDelete}
+      />
+    </>
   );
 }
