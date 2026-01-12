@@ -576,7 +576,17 @@ async def get_service_visibility(
     determine which services to show in the sidebar.
 
     Returns defaults if no settings are stored.
+
+    When DEV_ALL_SERVICES_VISIBLE env var is set, returns all services as visible
+    (dev mode bypass for testing).
     """
+    import os
+
+    # Dev mode bypass - when running with --dev-all-services flag
+    if os.environ.get("DEV_ALL_SERVICES_VISIBLE") == "true":
+        logger.debug("[UI Admin] Dev mode: forcing all services visible")
+        return {**DEFAULT_SERVICE_VISIBILITY, "_dev_mode": True}
+
     supabase = get_supabase()
     if not supabase:
         # Return defaults if Supabase not configured

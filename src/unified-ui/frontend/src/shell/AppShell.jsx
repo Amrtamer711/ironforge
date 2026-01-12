@@ -168,6 +168,19 @@ export function AppShell() {
     return isToolVisible(toolKey, visibility);
   };
 
+  // Show loading screen until service visibility settings are loaded
+  // This prevents hidden services from flashing visible on page load
+  if (visibilityQuery.isLoading && !visibilityQuery.data) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-white dark:bg-neutral-950">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-black/10 border-t-black/50 dark:border-white/10 dark:border-t-white/50" />
+          <span className="text-sm text-black/50 dark:text-white/50">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       {/* ambient <div className="mmg-particle one" />

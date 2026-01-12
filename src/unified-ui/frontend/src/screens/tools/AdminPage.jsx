@@ -82,11 +82,6 @@ export function AdminPage() {
 
   const queryClient = useQueryClient();
 
-  const serviceVisibilityQuery = useQuery({
-    queryKey: ["service-visibility"],
-    queryFn: adminApi.getServiceVisibility,
-  });
-
   const defaultVisibility = {
     chat: true,
     video_critique: true,
@@ -96,8 +91,22 @@ export function AdminPage() {
     asset_management: true,
   };
 
+  const serviceVisibilityQuery = useQuery({
+    queryKey: ["service-visibility"],
+    queryFn: adminApi.getServiceVisibility,
+    // Provide placeholder data during initial load to prevent UI flash
+    placeholderData: defaultVisibility,
+    // Keep previous data during refetch to prevent flicker
+    keepPreviousData: true,
+  });
+
   // Backend returns visibility dict directly (not wrapped)
+  // Using isPlaceholderData to distinguish initial load from actual data
   const serviceVisibility = serviceVisibilityQuery.data || defaultVisibility;
+  const isInitializing = serviceVisibilityQuery.isLoading && !serviceVisibilityQuery.isFetched;
+
+  // Check if running in dev mode (all services forced visible)
+  const isDevMode = serviceVisibility._dev_mode === true;
 
   const updateVisibilityMutation = useMutation({
     mutationFn: adminApi.updateServiceVisibility,
@@ -474,7 +483,7 @@ export function AdminPage() {
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
-              {serviceVisibilityQuery.isLoading || !serviceVisibilityQuery.data ? (
+              {isInitializing ? (
                 <div className="space-y-6 animate-pulse">
                   {/* Skeleton for General Services */}
                   <div className="space-y-3">
@@ -509,6 +518,19 @@ export function AdminPage() {
                 </div>
               ) : (
                 <>
+                  {/* Dev Mode Banner */}
+                  {isDevMode && (
+                    <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 p-3 mb-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-amber-600 dark:text-amber-400 font-medium text-sm">Dev Mode Active</span>
+                      </div>
+                      <p className="text-xs text-amber-600/80 dark:text-amber-400/80 mt-1">
+                        All services are forced visible. Running with <code className="bg-amber-500/20 px-1 rounded">--dev-all-services</code> flag.
+                        Toggles are disabled in this mode.
+                      </p>
+                    </div>
+                  )}
+
                   {/* General Services */}
                   <div className="space-y-3">
                     <h3 className="text-sm font-medium text-black/70 dark:text-white/75">General Services</h3>
@@ -520,7 +542,7 @@ export function AdminPage() {
                           description={service.description}
                           enabled={serviceVisibility[service.key] === true}
                           onChange={() => handleToggleService(service.key, serviceVisibility[service.key])}
-                          disabled={updateVisibilityMutation.isPending}
+                          disabled={isDevMode || updateVisibilityMutation.isPending}
                         />
                       ))}
                     </div>
@@ -540,7 +562,7 @@ export function AdminPage() {
                           description={service.description}
                           enabled={serviceVisibility[service.key] === true}
                           onChange={() => handleToggleService(service.key, serviceVisibility[service.key])}
-                          disabled={updateVisibilityMutation.isPending}
+                          disabled={isDevMode || updateVisibilityMutation.isPending}
                         />
                       ))}
                     </div>
