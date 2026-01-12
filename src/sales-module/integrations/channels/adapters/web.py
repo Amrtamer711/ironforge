@@ -511,6 +511,7 @@ class WebAdapter(ChannelAdapter):
         format: MessageFormat = MessageFormat.MARKDOWN,
         ephemeral: bool = False,
         user_id: str | None = None,
+        is_tool_response: bool = False,
     ) -> Message:
         """
         Send a message to the web session.
@@ -532,6 +533,7 @@ class WebAdapter(ChannelAdapter):
             "content": content,
             "timestamp": timestamp,
             "parent_id": parent_id,  # Link to the user message that triggered this response
+            "is_tool_response": is_tool_response,  # Hide from permanent chat display
             "buttons": [
                 {
                     "action_id": b.action_id,
@@ -566,6 +568,7 @@ class WebAdapter(ChannelAdapter):
                 "content": content,
                 "attachments": message_data.get("attachments", []),
                 "timestamp": timestamp,
+                "is_tool_response": is_tool_response,  # Frontend filters these from permanent display
             })
 
         logger.debug(f"[WebAdapter] Sent message to {target_user}: {content[:50]}...")

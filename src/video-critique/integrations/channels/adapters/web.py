@@ -269,6 +269,7 @@ class WebAdapter(ChannelAdapter):
         format: MessageFormat = MessageFormat.MARKDOWN,
         ephemeral: bool = False,
         user_id: str | None = None,
+        is_tool_response: bool = False,
     ) -> Message:
         """Send a message to the web session."""
         target_user = user_id or channel_id
@@ -284,6 +285,7 @@ class WebAdapter(ChannelAdapter):
             "content": content,
             "timestamp": timestamp,
             "parent_id": parent_id,
+            "is_tool_response": is_tool_response,
             "buttons": [
                 {
                     "action_id": b.action_id,
@@ -319,6 +321,7 @@ class WebAdapter(ChannelAdapter):
                 "attachments": message_data.get("attachments", []),
                 "buttons": message_data.get("buttons", []),
                 "timestamp": timestamp,
+                "is_tool_response": is_tool_response,
             })
 
         logger.debug(f"[WebAdapter] Sent message to {target_user}: {content[:50]}...")
