@@ -19,7 +19,7 @@ patches:
     patch: |-
       - op: replace
         path: /spec/replicas
-        value: 2
+        value: 3
       - op: add
         path: /spec/template/spec/containers/0/envFrom
         value:
@@ -52,10 +52,13 @@ patches:
           failureThreshold: 30
       - op: add
         path: /spec/template/spec/containers/0/readinessProbe/timeoutSeconds
-        value: 5
+        value: 10
+      - op: add
+        path: /spec/template/spec/containers/0/readinessProbe/failureThreshold
+        value: 6
       - op: add
         path: /spec/template/spec/containers/0/livenessProbe/timeoutSeconds
-        value: 5
+        value: 10
       - op: add
         path: /spec/template/spec/containers/0/livenessProbe/failureThreshold
-        value: 6
+        value: 10
