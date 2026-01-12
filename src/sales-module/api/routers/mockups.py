@@ -81,8 +81,6 @@ async def get_network_asset_types(
             "asset_types": list[dict] - Type details with type_key, type_name, etc.
         }
     """
-    from integrations.asset_management import asset_mgmt_client
-
     if not user.has_company_access:
         raise HTTPException(
             status_code=403,
@@ -90,10 +88,8 @@ async def get_network_asset_types(
         )
 
     try:
-        result = await asset_mgmt_client.get_network_asset_types(
-            network_key=network_key,
-            companies=user.companies,
-        )
+        service = MockupFrameService(companies=user.companies)
+        result = await service.get_network_asset_types(network_key=network_key)
 
         if not result:
             raise HTTPException(status_code=404, detail=f"Network not found: {network_key}")
@@ -202,7 +198,7 @@ async def save_mockup_frame(
 
         # Process each location
         asset_service = get_asset_service()
-        from integrations.asset_management import asset_mgmt_client
+        mockup_service = MockupFrameService(companies=user.companies)
 
         results = []
         failed_locations = []
@@ -228,9 +224,9 @@ async def save_mockup_frame(
 
                 # Determine storage key based on network type
                 # Get storage info to check if standalone or traditional
-                storage_info = await asset_mgmt_client.get_mockup_storage_info(
-                    network_key=network_key,
-                    companies=user.companies,
+                storage_info = await mockup_service.get_storage_info(
+                    location_key=network_key,
+                    company_hint=company_schema,
                 )
 
                 is_standalone = storage_info.get("is_standalone", True) if storage_info else True
@@ -248,10 +244,9 @@ async def save_mockup_frame(
                         continue
                     storage_key = f"{network_key}/{asset_type_key}"
 
-                # Save via Asset-Management API (handles database + storage)
-                logger.info(f"[MOCKUP API] Saving {len(frames)} frame(s) via asset-management for {company_schema}.{storage_key}/{time_of_day}/{side}/{environment}")
-                result = await asset_mgmt_client.save_mockup_frame(
-                    company=company_schema,
+                # Save via MockupFrameService (handles database + storage)
+                logger.info(f"[MOCKUP API] Saving {len(frames)} frame(s) via MockupFrameService for {company_schema}.{storage_key}/{time_of_day}/{side}/{environment}")
+                result = await mockup_service.save_frame(
                     location_key=storage_key,  # Use storage_key (may include asset_type)
                     photo_data=photo_data,
                     photo_filename=photo.filename,
@@ -261,6 +256,7 @@ async def save_mockup_frame(
                     environment=environment,
                     created_by=user.email,
                     config=config_dict,
+                    company_hint=company_schema,
                 )
                 if not result or not result.get("success"):
                     failed_locations.append({"location": network_key, "error": "Asset-management save failed"})
@@ -402,7 +398,7 @@ async def update_mockup_frame(
 
         # Validate location access
         asset_service = get_asset_service()
-        from integrations.asset_management import asset_mgmt_client
+        mockup_service = MockupFrameService(companies=user.companies)
 
         has_access, error_msg = await asset_service.validate_location_access(location_key, user.companies)
         if not has_access:
@@ -418,9 +414,9 @@ async def update_mockup_frame(
             raise HTTPException(status_code=400, detail="No company assigned to location")
 
         # Determine storage key based on network type
-        storage_info = await asset_mgmt_client.get_mockup_storage_info(
-            network_key=location_key,
-            companies=user.companies,
+        storage_info = await mockup_service.get_storage_info(
+            location_key=location_key,
+            company_hint=company_schema,
         )
 
         is_standalone = storage_info.get("is_standalone", True) if storage_info else True
@@ -432,10 +428,9 @@ async def update_mockup_frame(
                 raise HTTPException(status_code=400, detail="asset_type_key required for traditional network")
             storage_key = f"{location_key}/{asset_type_key}"
 
-        # Update via Asset-Management API
-        logger.info(f"[MOCKUP API] Updating frame via asset-management: {company_schema}.{storage_key}/{photo_filename}")
-        result = await asset_mgmt_client.update_mockup_frame(
-            company=company_schema,
+        # Update via MockupFrameService
+        logger.info(f"[MOCKUP API] Updating frame via MockupFrameService: {company_schema}.{storage_key}/{photo_filename}")
+        result = await mockup_service.update_frame(
             location_key=storage_key,
             photo_filename=photo_filename,
             frames_data=frames,
@@ -445,6 +440,7 @@ async def update_mockup_frame(
             config=config_dict,
             photo_data=photo_data,
             original_photo_filename=photo.filename if photo else None,
+            company_hint=company_schema,
         )
 
         if not result or not result.get("success"):
@@ -1039,12 +1035,12 @@ async def generate_mockup_api(
 
         # Check if this is a multi-type generation scenario
         # Multi-type: traditional network + no storage_key provided + no specific_photo
-        from integrations.asset_management import asset_mgmt_client
         import base64
 
-        storage_info_result = await asset_mgmt_client.get_mockup_storage_info(
-            network_key=network_key,
-            companies=user.companies,
+        mockup_service = MockupFrameService(companies=user.companies)
+        storage_info_result = await mockup_service.get_storage_info(
+            location_key=network_key,
+            company_hint=company_schema,
         )
 
         is_standalone = storage_info_result.get("is_standalone", True) if storage_info_result else True

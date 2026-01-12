@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 import config
 from db.database import db
+from core.services.asset_service import get_asset_service
 from crm_security import (
     AuthUser,
     require_auth_user as require_auth,
@@ -388,30 +389,26 @@ async def create_proposal(
                 detail="Combined proposals require at least 2 locations"
             )
 
-    # OPTIMIZED: Batch validate all locations in single query
-    # Instead of N individual lookups, fetch all locations once and validate in memory
-    unique_locations = set()
+    # OPTIMIZED: Batch validate all locations via AssetService
+    # Uses O(1) lookup per location after single batch fetch
+    unique_locations = []
     for proposal in request.proposals:
         location_key = proposal.location.strip().lower().replace(" ", "_")
-        unique_locations.add(location_key)
+        if location_key not in unique_locations:
+            unique_locations.append(location_key)
 
-    # Fetch all locations once (uses caching under the hood)
-    all_user_locations = db.get_locations_for_companies(user_companies)
+    asset_service = get_asset_service()
+    location_index, validation_errors = await asset_service.validate_locations_batch(
+        location_keys=unique_locations,
+        user_companies=user_companies,
+    )
 
-    # Build index for O(1) lookup
-    location_index = {}
-    for loc in all_user_locations:
-        key = loc.get("location_key", "").lower()
-        if key:
-            location_index[key] = loc
-
-    # Validate all locations
-    for location_key in unique_locations:
-        if location_key not in location_index:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Location '{location_key}' not found in your accessible companies."
-            )
+    if validation_errors:
+        # Return first error for consistency with previous behavior
+        raise HTTPException(
+            status_code=403,
+            detail=validation_errors[0]
+        )
 
     try:
         # Transform request to processor format (handles both LLM and simple formats)

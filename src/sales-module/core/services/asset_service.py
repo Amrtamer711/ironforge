@@ -260,6 +260,55 @@ class AssetService:
 
         return True, None
 
+    async def validate_locations_batch(
+        self,
+        location_keys: list[str],
+        user_companies: list[str],
+    ) -> tuple[dict[str, dict], list[str]]:
+        """
+        Batch validate multiple locations with O(1) per-location lookup.
+
+        More efficient than calling validate_location_access() in a loop
+        when validating multiple locations (e.g., for multi-location proposals).
+
+        Args:
+            location_keys: List of location keys to validate
+            user_companies: Companies user has access to
+
+        Returns:
+            Tuple of (location_index, errors)
+            - location_index: Dict mapping location_key -> location_data for valid locations
+            - errors: List of error messages for invalid/inaccessible locations
+        """
+        if not user_companies:
+            return {}, ["No company access configured"]
+
+        if not location_keys:
+            return {}, []
+
+        # Fetch all locations for user's companies in one batch call
+        all_locations = await self.get_locations_for_companies(user_companies)
+
+        # Build index for O(1) lookup
+        location_index: dict[str, dict] = {}
+        for loc in all_locations:
+            key = loc.get("location_key", "").lower()
+            if key:
+                location_index[key] = loc
+
+        # Validate each requested location
+        errors: list[str] = []
+        valid_locations: dict[str, dict] = {}
+
+        for location_key in location_keys:
+            normalized_key = location_key.lower().strip()
+            if normalized_key in location_index:
+                valid_locations[normalized_key] = location_index[normalized_key]
+            else:
+                errors.append(f"Location '{location_key}' not found or not accessible")
+
+        return valid_locations, errors
+
     # =========================================================================
     # ELIGIBILITY & PRICING
     # =========================================================================

@@ -138,6 +138,8 @@ class MockupCoordinator:
         user_id: str = None,
         uploaded_creatives: list[Path] = None,
         ai_prompts: list[str] = None,
+        venue_type: str = "all",
+        asset_type_key: str | None = None,
     ) -> tuple[Path | None, list[Path], dict[str, Any], str | None]:
         """
         Generate mockup using appropriate strategy.
@@ -155,6 +157,8 @@ class MockupCoordinator:
             user_id: User identifier
             uploaded_creatives: List of uploaded creative paths
             ai_prompts: List of AI prompts
+            venue_type: Venue type filter ("indoor", "outdoor", "all")
+            asset_type_key: Optional asset type key for traditional networks
 
         Returns:
             Tuple of (result_path, creative_paths, metadata, error_message)
@@ -180,9 +184,10 @@ class MockupCoordinator:
         # Normalize parameters
         time_of_day = (time_of_day or "all").strip().lower()
         side = (side or "all").strip().lower()
+        venue_type = (venue_type or "all").strip().lower()
 
         self.logger.info(f"[COORDINATOR] Generating mockup for {location_name}")
-        self.logger.info(f"[COORDINATOR] Time: {time_of_day}, Side: {side}")
+        self.logger.info(f"[COORDINATOR] Time: {time_of_day}, Side: {side}, Venue: {venue_type}")
 
         # Resolve location (async)
         location_key, error_msg = await self.resolve_location(location_name)
@@ -230,6 +235,8 @@ class MockupCoordinator:
                 location_name=location_name,
                 time_of_day=time_of_day,
                 side=side,
+                venue_type=venue_type,
+                asset_type_key=asset_type_key,
                 user_companies=self.user_companies,
                 **request_params  # Includes user_id, uploaded_creatives, ai_prompts
             )

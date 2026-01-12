@@ -825,6 +825,178 @@ class MockupFrameService:
             self.logger.error(f"[MOCKUP_FRAME_SERVICE] Error getting storage info: {e}")
             return None
 
+    async def get_network_asset_types(
+        self,
+        network_key: str,
+        company_hint: str | None = None,
+    ) -> dict | None:
+        """
+        Get asset types for a traditional network.
+
+        Used by mockup setup UI to show the asset type picker.
+        For standalone networks, returns empty list.
+
+        Args:
+            network_key: The network/location key
+            company_hint: Optional company to try first (prioritized lookup)
+
+        Returns:
+            Dict with network_key, company, is_standalone, asset_types
+        """
+        self.logger.info(f"[MOCKUP_FRAME_SERVICE] Getting asset types for {network_key}")
+
+        # Prioritize company_hint if provided
+        companies_to_search = self.companies
+        if company_hint and company_hint in self.companies:
+            companies_to_search = [company_hint] + [c for c in self.companies if c != company_hint]
+
+        try:
+            result = await asset_mgmt_client.get_network_asset_types(
+                network_key=network_key,
+                companies=companies_to_search,
+            )
+            return result
+        except Exception as e:
+            self.logger.error(f"[MOCKUP_FRAME_SERVICE] Error getting asset types: {e}")
+            return None
+
+    async def save_frame(
+        self,
+        location_key: str,
+        photo_data: bytes,
+        photo_filename: str,
+        frames_data: list[dict],
+        environment: str = "outdoor",
+        time_of_day: str = "day",
+        side: str = "gold",
+        created_by: str | None = None,
+        config: dict | None = None,
+        company_hint: str | None = None,
+    ) -> dict | None:
+        """
+        Save a mockup frame to Asset-Management.
+
+        Args:
+            location_key: Location identifier
+            photo_data: Photo file bytes
+            photo_filename: Original photo filename
+            frames_data: List of frame coordinate dicts
+            environment: "indoor" or "outdoor"
+            time_of_day: "day" or "night" (ignored for indoor)
+            side: "gold", "silver", or "single_side" (ignored for indoor)
+            created_by: User email who created this
+            config: Optional config dict
+            company_hint: Optional company to use (resolves via storage_info if not provided)
+
+        Returns:
+            Result dict with photo_filename, success, storage_url or None on error
+        """
+        self.logger.info(
+            f"[MOCKUP_FRAME_SERVICE] Saving frame for {location_key} "
+            f"(env={environment}, time={time_of_day}, side={side})"
+        )
+
+        # Resolve company from storage info if not provided
+        company = company_hint
+        if not company:
+            storage_info = await self.get_storage_info(location_key, company_hint=company_hint)
+            if storage_info:
+                company = storage_info.get("company")
+
+        if not company:
+            self.logger.error(f"[MOCKUP_FRAME_SERVICE] Could not resolve company for {location_key}")
+            return None
+
+        try:
+            result = await asset_mgmt_client.save_mockup_frame(
+                company=company,
+                location_key=location_key,
+                photo_data=photo_data,
+                photo_filename=photo_filename,
+                frames_data=frames_data,
+                environment=environment,
+                time_of_day=time_of_day,
+                side=side,
+                created_by=created_by,
+                config=config,
+            )
+            if result:
+                self.logger.info(
+                    f"[MOCKUP_FRAME_SERVICE] Frame saved: {result.get('photo_filename')}"
+                )
+            return result
+        except Exception as e:
+            self.logger.error(f"[MOCKUP_FRAME_SERVICE] Error saving frame: {e}")
+            return None
+
+    async def update_frame(
+        self,
+        location_key: str,
+        photo_filename: str,
+        frames_data: list[dict],
+        environment: str = "outdoor",
+        time_of_day: str = "day",
+        side: str = "gold",
+        config: dict | None = None,
+        photo_data: bytes | None = None,
+        original_photo_filename: str | None = None,
+        company_hint: str | None = None,
+    ) -> dict | None:
+        """
+        Update an existing mockup frame in Asset-Management.
+
+        Args:
+            location_key: Location identifier
+            photo_filename: Existing photo filename to update
+            frames_data: List of frame coordinate dicts
+            environment: "indoor" or "outdoor"
+            time_of_day: "day" or "night" (ignored for indoor)
+            side: "gold", "silver", or "single_side" (ignored for indoor)
+            config: Optional config dict
+            photo_data: Optional new photo bytes (replaces existing if provided)
+            original_photo_filename: Original filename if photo_data is provided
+            company_hint: Optional company to use (resolves via storage_info if not provided)
+
+        Returns:
+            Result dict with photo_filename, success, storage_url or None on error
+        """
+        self.logger.info(
+            f"[MOCKUP_FRAME_SERVICE] Updating frame {photo_filename} for {location_key}"
+        )
+
+        # Resolve company from storage info if not provided
+        company = company_hint
+        if not company:
+            storage_info = await self.get_storage_info(location_key, company_hint=company_hint)
+            if storage_info:
+                company = storage_info.get("company")
+
+        if not company:
+            self.logger.error(f"[MOCKUP_FRAME_SERVICE] Could not resolve company for {location_key}")
+            return None
+
+        try:
+            result = await asset_mgmt_client.update_mockup_frame(
+                company=company,
+                location_key=location_key,
+                photo_filename=photo_filename,
+                frames_data=frames_data,
+                environment=environment,
+                time_of_day=time_of_day,
+                side=side,
+                config=config,
+                photo_data=photo_data,
+                original_photo_filename=original_photo_filename,
+            )
+            if result:
+                self.logger.info(
+                    f"[MOCKUP_FRAME_SERVICE] Frame updated: {result.get('photo_filename')}"
+                )
+            return result
+        except Exception as e:
+            self.logger.error(f"[MOCKUP_FRAME_SERVICE] Error updating frame: {e}")
+            return None
+
     async def get_mockup_storage_keys(
         self,
         location_key: str,
