@@ -863,13 +863,8 @@ function TextArea({ value, onChange, placeholder, onEnter }) {
 function StatusLine({ text }) {
   const displayText = normalizeBackendStatus(text || "Thinking");
   return (
-    <span className="inline-flex items-center gap-2 opacity-80">
-      <span>{displayText}</span>
-      <span className="mmg-ellipsis" aria-hidden="true">
-        <span className="mmg-ellipsis-dot" style={{ animationDelay: "0ms" }} />
-        <span className="mmg-ellipsis-dot" style={{ animationDelay: "120ms" }} />
-        <span className="mmg-ellipsis-dot" style={{ animationDelay: "240ms" }} />
-      </span>
+    <span className="inline-flex items-center opacity-80">
+      <LoadingEllipsis text={displayText} />
     </span>
   );
 }
