@@ -136,7 +136,7 @@ function isToolVisible(toolKey, visibility) {
 }
 
 export function AppShell() {
-  const { user, logout } = useAuth();
+  const { user, logout, authReady } = useAuth();
   const loc = useLocation();
   const nav = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
@@ -168,9 +168,12 @@ export function AppShell() {
     return isToolVisible(toolKey, visibility);
   };
 
-  // Show loading screen until service visibility settings are loaded
-  // This prevents hidden services from flashing visible on page load
-  if (visibilityQuery.isLoading && !visibilityQuery.data) {
+  // Show loading screen until BOTH auth is ready AND service visibility settings are loaded
+  // This prevents:
+  // 1. Hidden services from flashing visible on page load
+  // 2. API calls (like chat history) from firing before auth token is available
+  const isInitializing = !authReady || (visibilityQuery.isLoading && !visibilityQuery.data);
+  if (isInitializing) {
     return (
       <div className="h-screen flex items-center justify-center bg-white dark:bg-neutral-950">
         <div className="flex flex-col items-center gap-4">
