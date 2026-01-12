@@ -27,7 +27,7 @@ router = APIRouter(tags=["rbac-companies"])
 async def list_companies(
     active_only: bool = Query(default=True, description="Only return active companies"),
     leaf_only: bool = Query(default=True, description="Only return leaf companies (not groups)"),
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     List all companies in the system.
@@ -76,7 +76,7 @@ async def list_companies(
 
 @router.get("/companies/hierarchy")
 async def get_company_hierarchy(
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Get the full company hierarchy tree.
@@ -127,7 +127,7 @@ async def get_company_hierarchy(
 @router.post("/companies/expand")
 async def expand_companies(
     company_codes: list[str] = Query(..., description="Company codes to expand (may include groups)"),
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Expand company codes to all accessible leaf companies.

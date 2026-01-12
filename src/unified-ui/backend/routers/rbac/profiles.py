@@ -40,7 +40,7 @@ router = APIRouter()
 @router.get("/user/{user_id}")
 async def get_user_rbac_info(
     user_id: str,
-    user: AuthUser = Depends(require_permission("admin:users:read")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Get user's profile and permissions.
@@ -135,7 +135,7 @@ async def get_user_rbac_info(
 async def check_permission(
     user_id: str = Query(...),
     permission: str = Query(...),
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Check if user has a specific permission.
@@ -201,7 +201,7 @@ async def check_permission(
 
 @router.get("/profiles")
 async def list_profiles(
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> list[dict[str, Any]]:
     """
     List all profiles.
@@ -257,7 +257,7 @@ async def list_profiles(
 @router.get("/profiles/{profile_id}")
 async def get_profile(
     profile_id: int,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Get single profile by ID.
@@ -311,7 +311,7 @@ async def get_profile(
 @router.post("/profiles", status_code=201)
 async def create_profile(
     request: CreateProfileRequest,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Create profile.
@@ -405,7 +405,7 @@ async def create_profile(
 async def update_profile(
     profile_id: int,
     request: UpdateProfileRequest,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Update profile.
@@ -527,7 +527,7 @@ async def update_profile(
 @router.delete("/profiles/{profile_id}")
 async def delete_profile(
     profile_id: int,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Delete profile.
@@ -619,7 +619,7 @@ async def delete_profile(
 
 @router.get("/permissions")
 async def list_permissions(
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> list[dict[str, Any]]:
     """
     List all permissions.
@@ -653,7 +653,7 @@ async def list_permissions(
 
 @router.get("/permissions/grouped")
 async def list_permissions_grouped(
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, list[dict[str, Any]]]:
     """
     Get permissions grouped by resource.
@@ -702,7 +702,7 @@ class CreatePermissionRequest(BaseModel):
 @router.post("/permissions")
 async def create_permission(
     request: CreatePermissionRequest,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Create a new permission in the database.
@@ -772,7 +772,7 @@ async def create_permission(
 @router.delete("/permissions/{permission_name:path}")
 async def delete_permission(
     permission_name: str,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Delete a permission from the database.

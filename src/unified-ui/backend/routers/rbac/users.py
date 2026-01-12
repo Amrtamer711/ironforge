@@ -78,7 +78,7 @@ async def list_users(
     profile: str | None = None,
     team: int | None = None,
     is_active: str | None = None,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     List all users with pagination and filters.
@@ -162,7 +162,7 @@ async def list_users(
 async def update_user(
     user_id: str,
     request: UpdateUserRequest,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Update user details.
@@ -237,7 +237,7 @@ async def update_user(
 @router.post("/users/{user_id}/deactivate")
 async def deactivate_user(
     user_id: str,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Deactivate user (soft delete).
@@ -337,7 +337,7 @@ async def deactivate_user(
 @router.post("/users/{user_id}/reactivate")
 async def reactivate_user(
     user_id: str,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Reactivate user.
@@ -379,7 +379,7 @@ async def reactivate_user(
 async def assign_user_profile(
     user_id: str,
     request: AssignUserProfileRequest,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Assign a profile to a user by profile name.
@@ -445,7 +445,7 @@ async def assign_user_profile(
 @router.get("/users/{user_id}/permissions")
 async def get_user_permissions(
     user_id: str,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Get all permissions for a user (from profile + permission sets).
@@ -543,7 +543,7 @@ async def get_audit_log(
     resource_type: str | None = None,
     from_date: str | None = None,
     to_date: str | None = None,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Get audit log with filters.
@@ -608,7 +608,7 @@ async def get_audit_log(
 @router.get("/user/{user_id}")
 async def get_user(
     user_id: str,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Get a single user by ID with profile and team info.
@@ -651,7 +651,7 @@ async def get_user(
 @router.post("/users")
 async def create_user(
     request: CreateUserRequest,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Pre-create a user for SSO approval flow.
@@ -767,7 +767,7 @@ async def create_user(
 @router.delete("/users/{user_id}")
 async def delete_user(
     user_id: str,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Permanently delete a user.
@@ -849,7 +849,7 @@ async def delete_user(
 async def set_user_permissions(
     user_id: str,
     request: SetUserPermissionsRequest,
-    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Set direct permissions for a user (via a custom permission set).
