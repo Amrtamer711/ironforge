@@ -30,6 +30,8 @@ async def handle_mockup_generation(
     generate_mockup_queued_func: Callable = None,
     generate_ai_mockup_queued_func: Callable = None,
     company_hint: str | None = None,
+    venue_type: str = "all",
+    asset_type_key: str | None = None,
 ) -> bool:
     """
     Handle mockup generation request from chat channels.
@@ -55,6 +57,8 @@ async def handle_mockup_generation(
         generate_mockup_queued_func: Function for queued mockup generation
         generate_ai_mockup_queued_func: Function for queued AI mockup generation
         company_hint: Optional company to try first for O(1) asset lookups
+        venue_type: Venue type filter ("indoor", "outdoor", "all")
+        asset_type_key: Optional asset type key for traditional networks
 
     Returns:
         True when handled (success or error)
@@ -65,6 +69,7 @@ async def handle_mockup_generation(
     # Normalize parameters
     time_of_day = (time_of_day or "all").strip().lower()
     side = (side or "all").strip().lower()
+    venue_type = (venue_type or "all").strip().lower()
 
     # Clean and validate AI prompts
     if not isinstance(ai_prompts, list):
@@ -90,6 +95,8 @@ async def handle_mockup_generation(
         user_id=user_id,
         uploaded_creatives=uploaded_creatives,
         ai_prompts=ai_prompts,
+        venue_type=venue_type,
+        asset_type_key=asset_type_key,
     )
 
     channel_adapter = config.get_channel_adapter()

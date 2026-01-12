@@ -26,8 +26,37 @@ export async function deleteConversation(id) {
   return apiRequest(`/api/sales/chat/conversation/${id}`, { method: "DELETE" });
 }
 
-export async function getHistory() {
-  return apiRequest("/api/sales/chat/history");
+/**
+ * Fetch chat history with optional pagination.
+ * @param {Object} options - Pagination options
+ * @param {number} [options.limit] - Max messages to return
+ * @param {number} [options.offset=0] - Messages to skip
+ * @param {boolean} [options.newestFirst=false] - If true, offset counts from end (for infinite scroll)
+ * @param {AbortSignal} [options.signal] - Optional abort signal to cancel the request
+ * @returns {Promise<{messages: Array, session_id: string, message_count: number, has_more: boolean, attachment_file_ids: string[]}>}
+ */
+export async function getHistory({ limit, offset = 0, newestFirst = false, signal } = {}) {
+  const params = new URLSearchParams();
+  if (limit != null) params.set("limit", limit);
+  if (offset > 0) params.set("offset", offset);
+  if (newestFirst) params.set("newest_first", "true");
+
+  const query = params.toString();
+  return apiRequest(`/api/sales/chat/history${query ? `?${query}` : ""}`, { signal });
+}
+
+/**
+ * Batch refresh signed URLs for chat attachments.
+ * Supports pre-fetching: pass prefetchIds for next batch to load ahead.
+ * @param {string[]} fileIds - Currently visible attachment file_ids
+ * @param {string[]} prefetchIds - Next batch to pre-fetch (optional)
+ * @returns {Promise<{urls: Record<string, string>}>}
+ */
+export async function refreshAttachmentUrls(fileIds, prefetchIds = []) {
+  return apiRequest("/api/sales/chat/attachments/refresh", {
+    method: "POST",
+    body: JSON.stringify({ file_ids: fileIds, prefetch_ids: prefetchIds }),
+  });
 }
 
 // SSE stream (legacy-compatible)

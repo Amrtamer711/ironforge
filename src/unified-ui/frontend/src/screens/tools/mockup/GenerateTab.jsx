@@ -304,6 +304,9 @@ export function GenerateTab({
                 const key = getTemplateKey(t);
                 const isSelected = key === templateKey;
                 const thumb = templateThumbs[key];
+                const displayVenueType = t.environment || venueType || "all";
+                const displayTimeOfDay = t.time_of_day || (timeOfDayDisabled ? "all" : timeOfDay) || "all";
+                const displaySide = t.side || (sideDisabled ? "all" : side) || "all";
                 return (
                   <div
                     key={key}
@@ -333,7 +336,7 @@ export function GenerateTab({
                       <div className="mt-auto pt-2 space-y-1">
                         <div className="font-semibold truncate">{t.photo}</div>
                         <div className="text-xs text-black/55 dark:text-white/60">
-                          {t.time_of_day}/{t.side} - {t.frame_count} frame
+                          {displayVenueType}/{displayTimeOfDay}/{displaySide} - {t.frame_count} frame
                           {t.frame_count > 1 ? "s" : ""}
                         </div>
                       </div>

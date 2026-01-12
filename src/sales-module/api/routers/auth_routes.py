@@ -5,6 +5,7 @@ NOTE: This file only handles auth endpoints needed by the sales module.
 Invite token management is handled by unified-ui (Node.js service).
 """
 
+import time
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -16,6 +17,10 @@ from core.utils.logging import get_logger
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 logger = get_logger("api.auth")
+
+# Simple TTL cache for /me endpoint to avoid repeated RBAC lookups
+_me_cache: dict[str, tuple[dict, float]] = {}
+ME_CACHE_TTL = 300  # 5 minutes
 
 
 class LoginRequest(BaseModel):
@@ -75,30 +80,37 @@ async def auth_logout():
 @router.get("/me")
 async def auth_me(user: AuthUser | None = Depends(get_current_user)):
     """Get current user info from token."""
-    logger.info(f"[AUTH] /me request, user: {user.email if user else 'None'}")
     if not user:
-        logger.warning("[AUTH] /me called without authentication")
         raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # Check cache first
+    now = time.time()
+    if user.id in _me_cache:
+        cached_data, cached_at = _me_cache[user.id]
+        if now - cached_at < ME_CACHE_TTL:
+            return cached_data
 
     # Get profile and permissions from RBAC
     from integrations.rbac import get_rbac_client
     rbac = get_rbac_client()
     profile = await rbac.get_user_profile(user.id)
     profile_name = profile.name if profile else user.metadata.get("role", "sales_user")
-
-    # Get user permissions for frontend authorization
     permissions = await rbac.get_user_permissions(user.id)
 
-    logger.info(f"[AUTH] /me returning user {user.email} with profile: {profile_name}, {len(permissions)} permissions")
-    return {
+    result = {
         "id": user.id,
         "name": user.name,
         "email": user.email,
         "avatar_url": user.avatar_url,
         "profile": profile_name,
-        "profile_name": profile_name,  # Alias for frontend compatibility
+        "profile_name": profile_name,
         "permissions": list(permissions)
     }
+
+    # Cache result
+    _me_cache[user.id] = (result, now)
+    logger.info(f"[AUTH] /me: {user.email}, profile: {profile_name}")
+    return result
 
 
 # NOTE: User sync is now handled by unified-ui during signup/login.

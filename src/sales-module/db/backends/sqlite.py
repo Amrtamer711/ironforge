@@ -1793,6 +1793,67 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
+    def append_chat_messages(
+        self,
+        user_id: str,
+        new_messages: list[dict[str, Any]],
+        session_id: str | None = None,
+    ) -> bool:
+        """
+        Append messages to a user's chat session.
+
+        For SQLite, we read-modify-write since we don't have RPC.
+        Uses a transaction for safety.
+        """
+        import uuid
+        from datetime import datetime
+
+        if not new_messages:
+            return True
+
+        now = datetime.now().isoformat()
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN")
+
+            # Get existing messages
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT session_id, messages FROM chat_sessions WHERE user_id = ?",
+                (user_id,)
+            )
+            row = cursor.fetchone()
+
+            if row:
+                existing_session_id = row[0]
+                existing_messages = json.loads(row[1]) if row[1] else []
+                combined = existing_messages + new_messages
+
+                conn.execute(
+                    "UPDATE chat_sessions SET messages = ?, updated_at = ? WHERE user_id = ?",
+                    (json.dumps(combined), now, user_id)
+                )
+            else:
+                # No existing session - create one
+                new_session_id = session_id or str(uuid.uuid4())
+                conn.execute(
+                    """
+                    INSERT INTO chat_sessions (user_id, session_id, messages, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (user_id, new_session_id, json.dumps(new_messages), now, now)
+                )
+
+            conn.execute("COMMIT")
+            logger.info(f"[DB] Appended {len(new_messages)} messages for user: {user_id}")
+            return True
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            logger.error(f"[DB] Error appending chat messages for {user_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
     # =========================================================================
     # DOCUMENTS
     # =========================================================================
@@ -1884,6 +1945,105 @@ class SQLiteBackend(DatabaseBackend):
         except Exception as e:
             logger.error(f"[DB] Error getting document {file_id}: {e}")
             return None
+        finally:
+            conn.close()
+
+    def get_documents_batch(self, file_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """
+        Get multiple documents by file_id in a single query.
+
+        Returns a dict mapping file_id -> document data.
+        """
+        if not file_ids:
+            return {}
+
+        result: dict[str, dict[str, Any]] = {}
+        conn = self._connect()
+        try:
+            cursor = conn.cursor()
+            # Build placeholders for IN clause
+            placeholders = ",".join("?" * len(file_ids))
+            cursor.execute(
+                f"""
+                SELECT file_id, user_id, original_filename, file_type,
+                       storage_provider, storage_bucket, storage_key,
+                       file_size, file_extension, file_hash,
+                       document_type, bo_id, proposal_id,
+                       created_at, is_deleted, deleted_at
+                FROM documents WHERE file_id IN ({placeholders})
+                """,
+                file_ids
+            )
+            rows = cursor.fetchall()
+            for row in rows:
+                doc = {
+                    "file_id": row[0],
+                    "user_id": row[1],
+                    "original_filename": row[2],
+                    "file_type": row[3],
+                    "storage_provider": row[4],
+                    "storage_bucket": row[5],
+                    "storage_key": row[6],
+                    "file_size": row[7],
+                    "file_extension": row[8],
+                    "file_hash": row[9],
+                    "document_type": row[10],
+                    "bo_id": row[11],
+                    "proposal_id": row[12],
+                    "created_at": row[13],
+                    "is_deleted": bool(row[14]),
+                    "deleted_at": row[15],
+                }
+                result[doc["file_id"]] = doc
+            return result
+        except Exception as e:
+            logger.error(f"[DB] Error in batch document lookup: {e}")
+            return result
+        finally:
+            conn.close()
+
+    def update_document(self, file_id: str, updates: dict[str, Any]) -> bool:
+        """
+        Update document metadata fields.
+
+        Args:
+            file_id: The document file_id to update
+            updates: Dictionary of field names and values to update
+
+        Returns:
+            True if update was successful, False otherwise
+        """
+        if not updates:
+            return False
+
+        conn = self._connect()
+        try:
+            cursor = conn.cursor()
+            # Build SET clause dynamically
+            set_clauses = [f"{key} = ?" for key in updates.keys()]
+            values = list(updates.values()) + [file_id]
+
+            cursor.execute(
+                f"""
+                UPDATE documents
+                SET {', '.join(set_clauses)}
+                WHERE file_id = ?
+                """,
+                values
+            )
+            conn.commit()
+
+            if cursor.rowcount > 0:
+                logger.debug(f"[DB] Updated document {file_id} with fields: {list(updates.keys())}")
+                return True
+
+            logger.warning(f"[DB] No document found to update: {file_id}")
+            return False
+
+        except Exception as e:
+            logger.error(f"[DB] Error updating document {file_id}: {e}", exc_info=True)
+            conn.rollback()
+            return False
         finally:
             conn.close()
 

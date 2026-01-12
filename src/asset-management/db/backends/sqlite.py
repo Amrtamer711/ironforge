@@ -1693,6 +1693,60 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
+    def update_mockup_frame(
+        self,
+        location_key: str,
+        photo_filename: str,
+        frames_data: list[dict],
+        company_schema: str,
+        environment: str = "outdoor",
+        time_of_day: str = "day",
+        side: str = "gold",
+        config: dict | None = None,
+    ) -> bool:
+        """Update an existing mockup frame in place."""
+        conn = self._connect()
+        try:
+            frames_json = json.dumps(frames_data)
+            config_json = json.dumps(config) if config else None
+            updated_at = datetime.now().isoformat()
+
+            if environment == "indoor":
+                # For indoor, ignore time_of_day and side
+                cursor = conn.execute(
+                    """
+                    UPDATE mockup_frames
+                    SET frames_data = ?, config = ?, updated_at = ?
+                    WHERE location_key = ? AND company = ?
+                    AND photo_filename = ? AND environment = ?
+                    """,
+                    (frames_json, config_json, updated_at, location_key, company_schema, photo_filename, environment),
+                )
+            else:
+                # For outdoor, match all fields
+                cursor = conn.execute(
+                    """
+                    UPDATE mockup_frames
+                    SET frames_data = ?, config = ?, updated_at = ?
+                    WHERE location_key = ? AND company = ?
+                    AND photo_filename = ? AND environment = ? AND time_of_day = ? AND side = ?
+                    """,
+                    (frames_json, config_json, updated_at, location_key, company_schema, photo_filename, environment, time_of_day, side),
+                )
+            conn.commit()
+
+            if cursor.rowcount > 0:
+                logger.info(f"[SQLITE] Updated mockup frame: {location_key}/{environment}/{photo_filename}")
+                return True
+            else:
+                logger.warning(f"[SQLITE] No frame found to update: {location_key}/{photo_filename}")
+                return False
+        except Exception as e:
+            logger.error(f"[SQLITE] Failed to update mockup frame: {e}")
+            return False
+        finally:
+            conn.close()
+
     # =========================================================================
     # COMPANIES
     # =========================================================================

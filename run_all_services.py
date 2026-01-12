@@ -93,6 +93,17 @@ COLORS = {
 # Note: Services are independent and can run standalone.
 # When running together, unified-ui can proxy to proposal-bot.
 SERVICES = {
+    "vite-watch": {
+        "name": "vite-watch",
+        "display_name": "Frontend Build (Vite)",
+        "directory": "src/unified-ui/frontend",
+        "default_port": None,  # Not an HTTP service
+        "color": "yellow",
+        "health_endpoint": None,  # No health check - file watcher
+        "depends_on": [],
+        "command": ["npm", "run", "build:watch"],  # Custom command
+        "auto_with": ["unified-ui"],  # Auto-start when unified-ui starts
+    },
     "proposal-bot": {
         "name": "proposal-bot",
         "display_name": "Sales Module (proposal-bot)",
@@ -109,7 +120,7 @@ SERVICES = {
         "default_port": 3005,
         "color": "magenta",
         "health_endpoint": "/health",
-        "depends_on": [],  # No hard dependencies - can run standalone
+        "depends_on": ["vite-watch"],  # Wait for initial build
     },
     "asset-management": {
         "name": "asset-management",
@@ -565,12 +576,13 @@ class ServiceProcess:
         self,
         name: str,
         directory: str,
-        port: int,
+        port: Optional[int],
         env: str,
         foreground: bool = False,
         log_file: Optional[Path] = None,
         extra_env: Optional[dict] = None,
         use_log_aggregator: bool = False,
+        command: Optional[list[str]] = None,
     ):
         self.name = name
         self.directory = ROOT_DIR / directory
@@ -580,6 +592,7 @@ class ServiceProcess:
         self.log_file = log_file
         self.extra_env = extra_env or {}
         self.use_log_aggregator = use_log_aggregator
+        self.command = command  # Custom command, defaults to python run_service.py
         self.process: Optional[subprocess.Popen] = None
         self._output_thread: Optional[threading.Thread] = None
         self._log_handle = None
@@ -589,7 +602,8 @@ class ServiceProcess:
         global log_aggregator
 
         env = os.environ.copy()
-        env["PORT"] = str(self.port)
+        if self.port:
+            env["PORT"] = str(self.port)
         env["ENVIRONMENT"] = self.env
         env["PYTHONUNBUFFERED"] = "1"  # Force unbuffered output for real-time logs
         # Always output DEBUG logs when using logs panel - frontend filters what to display
@@ -611,7 +625,11 @@ class ServiceProcess:
             shared_paths.append(existing_pythonpath)
         env["PYTHONPATH"] = os.pathsep.join(shared_paths)
 
-        log(self.name, f"Starting on port {self.port} (env: {self.env})...")
+        # Log startup message
+        if self.port:
+            log(self.name, f"Starting on port {self.port} (env: {self.env})...")
+        else:
+            log(self.name, f"Starting (env: {self.env})...")
 
         # Initialize log aggregator for this service
         if self.use_log_aggregator and log_aggregator:
@@ -631,8 +649,10 @@ class ServiceProcess:
             stderr = subprocess.DEVNULL
 
         try:
+            # Use custom command if provided, otherwise default to python run_service.py
+            cmd = self.command if self.command else [sys.executable, "run_service.py"]
             self.process = subprocess.Popen(
-                [sys.executable, "run_service.py"],
+                cmd,
                 cwd=self.directory,
                 env=env,
                 stdout=stdout,
@@ -771,14 +791,22 @@ class ServiceManager:
             # Wait for dependencies
             for dep in config["depends_on"]:
                 if dep in self.services:
-                    if self.args.health_check:
-                        dep_port = self._get_port(dep)
-                        log(service_name, f"Waiting for {dep} to be healthy...")
-                        if not wait_for_health(dep, dep_port, self.args.timeout):
-                            log(service_name, f"Dependency {dep} not healthy", level="error")
-                            return False
+                    dep_config = SERVICES.get(dep, {})
+                    dep_port = self._get_port(dep)
+
+                    if dep_config.get("health_endpoint") and dep_port:
+                        # HTTP service - wait for health check
+                        if self.args.health_check:
+                            log(service_name, f"Waiting for {dep} to be healthy...")
+                            if not wait_for_health(dep, dep_port, self.args.timeout):
+                                log(service_name, f"Dependency {dep} not healthy", level="error")
+                                return False
+                        else:
+                            time.sleep(2)  # Brief pause for dependency startup
                     else:
-                        time.sleep(2)  # Brief pause for dependency startup
+                        # Non-HTTP service (e.g., vite-watch) - wait for initial work
+                        log(service_name, f"Waiting for {dep} to complete initial task...")
+                        time.sleep(5)  # Wait for Vite initial build
 
             # Prepare extra environment
             extra_env = {}
@@ -803,6 +831,7 @@ class ServiceManager:
                 log_file=log_file,
                 extra_env=extra_env,
                 use_log_aggregator=self.use_logs_panel,
+                command=config.get("command"),  # Custom command for npm services etc.
             )
 
             if not service.start():
@@ -815,20 +844,39 @@ class ServiceManager:
     def _get_services_to_start(self) -> list[str]:
         """Get list of services to start based on args."""
         if self.args.sales_only:
-            return ["proposal-bot"]
+            services = ["proposal-bot"]
         elif self.args.ui_only:
-            return ["unified-ui"]
+            services = ["unified-ui"]
         elif self.args.assets_only:
-            return ["asset-management"]
+            services = ["asset-management"]
         elif self.args.security_only:
-            return ["security-service"]
+            services = ["security-service"]
         elif self.args.video_only:
-            return ["video-critique"]
+            services = ["video-critique"]
         else:
-            return ["proposal-bot", "unified-ui", "asset-management", "security-service", "video-critique"]
+            services = ["proposal-bot", "unified-ui", "asset-management", "security-service", "video-critique"]
 
-    def _get_port(self, service_name: str) -> int:
-        """Get port for a service."""
+        # Add auto-start services (e.g., vite-watch auto-starts with unified-ui)
+        final_services = []
+        for svc_name, config in SERVICES.items():
+            auto_with = config.get("auto_with", [])
+            if auto_with and any(s in services for s in auto_with):
+                if svc_name not in final_services:
+                    final_services.append(svc_name)
+
+        # Add the main services after auto-start services
+        for svc in services:
+            if svc not in final_services:
+                final_services.append(svc)
+
+        return final_services
+
+    def _get_port(self, service_name: str) -> Optional[int]:
+        """Get port for a service. Returns None for non-HTTP services."""
+        default_port = SERVICES.get(service_name, {}).get("default_port")
+        if default_port is None:
+            return None  # Non-HTTP service (e.g., vite-watch)
+
         if service_name == "proposal-bot":
             return self.args.sales_port
         elif service_name == "unified-ui":
@@ -839,7 +887,7 @@ class ServiceManager:
             return self.args.security_port
         elif service_name == "video-critique":
             return self.args.video_port
-        return SERVICES[service_name]["default_port"]
+        return default_port
 
     def wait_for_healthy(self) -> bool:
         """Wait for all services to become healthy."""
@@ -850,8 +898,14 @@ class ServiceManager:
         log("runner", "Waiting for services to become healthy...")
 
         for name in self.services:
+            # Skip services without health endpoints (e.g., vite-watch)
+            config = SERVICES.get(name, {})
+            if not config.get("health_endpoint"):
+                log(name, color("No health check (non-HTTP)", "yellow"))
+                continue
+
             port = self._get_port(name)
-            if wait_for_health(name, port, self.args.timeout):
+            if port and wait_for_health(name, port, self.args.timeout):
                 log(name, color("Healthy ✓", "green"))
             else:
                 log(name, color("Not responding", "red"), level="error")

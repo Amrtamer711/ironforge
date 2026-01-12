@@ -806,6 +806,36 @@ class DatabaseBackend(ABC):
         """
         pass
 
+    @abstractmethod
+    def update_mockup_frame(
+        self,
+        location_key: str,
+        photo_filename: str,
+        frames_data: list[dict],
+        company_schema: str,
+        environment: str = "outdoor",
+        time_of_day: str = "day",
+        side: str = "gold",
+        config: dict | None = None,
+    ) -> bool:
+        """
+        Update an existing mockup frame in place.
+
+        Args:
+            location_key: Location identifier
+            photo_filename: Existing photo filename to update
+            frames_data: List of frame coordinate/config dicts
+            company_schema: Company schema name
+            environment: "indoor" or "outdoor"
+            time_of_day: "day" or "night" (ignored for indoor)
+            side: "gold", "silver", or "single_side" (ignored for indoor)
+            config: Optional global config dict
+
+        Returns:
+            True if updated successfully
+        """
+        pass
+
     # =========================================================================
     # COMPANIES
     # =========================================================================

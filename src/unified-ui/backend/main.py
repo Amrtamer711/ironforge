@@ -315,15 +315,23 @@ else:
 # DEV TOOLS - Explicit routes for development panels
 # =============================================================================
 
+# Dev tools are stored separately from Vite build output to avoid being deleted
+DEV_TOOLS_PATH = Path(__file__).parent.parent / "dev-tools"
+
+
 @app.get("/logs-panel.html")
 async def serve_logs_panel():
     """Serve the logs panel directly (bypasses SPA routing)."""
     logger.info("[UI] Serving /logs-panel.html (explicit route)")
-    if FRONTEND_PATH.exists():
-        logs_panel = FRONTEND_PATH / "logs-panel.html"
-        logger.info(f"[UI] Looking for: {logs_panel}, exists: {logs_panel.exists()}")
-        if logs_panel.exists():
-            return FileResponse(logs_panel, media_type="text/html")
+    logs_panel = DEV_TOOLS_PATH / "logs-panel.html"
+    if logs_panel.exists():
+        # Prevent caching in development to ensure fresh content
+        headers = {}
+        if not settings.is_production:
+            headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            headers["Pragma"] = "no-cache"
+            headers["Expires"] = "0"
+        return FileResponse(logs_panel, media_type="text/html", headers=headers)
     raise HTTPException(status_code=404, detail="Logs panel not found")
 
 
@@ -331,10 +339,15 @@ async def serve_logs_panel():
 async def serve_dev_panel():
     """Serve the dev panel directly (bypasses SPA routing)."""
     logger.info("[UI] Serving /dev-panel.html (explicit route)")
-    if FRONTEND_PATH.exists():
-        dev_panel = FRONTEND_PATH / "dev-panel.html"
-        if dev_panel.exists():
-            return FileResponse(dev_panel, media_type="text/html")
+    dev_panel_file = DEV_TOOLS_PATH / "dev-panel.html"
+    if dev_panel_file.exists():
+        # Prevent caching in development to ensure fresh content
+        headers = {}
+        if not settings.is_production:
+            headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            headers["Pragma"] = "no-cache"
+            headers["Expires"] = "0"
+        return FileResponse(dev_panel_file, media_type="text/html", headers=headers)
     raise HTTPException(status_code=404, detail="Dev panel not found")
 
 
@@ -357,18 +370,32 @@ async def serve_frontend(full_path: str):
     if full_path.startswith("api/"):
         raise HTTPException(status_code=404, detail="Not found")
 
+    # Prepare cache headers for development (no caching for HTML/JS/CSS)
+    def get_dev_headers(file_path: str) -> dict:
+        """Get cache-control headers for development mode."""
+        if settings.is_production:
+            return {}
+        # Disable caching for HTML, JS, CSS in development
+        if file_path.endswith((".html", ".js", ".css", ".json")):
+            return {
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            }
+        return {}
+
     # Check for static file first (icons, etc.)
     if FRONTEND_PATH.exists():
         static_file = FRONTEND_PATH / full_path
         if static_file.exists() and static_file.is_file():
             logger.info(f"[UI] Serving static file: {static_file}")
-            return FileResponse(static_file)
+            return FileResponse(static_file, headers=get_dev_headers(full_path))
 
         # Serve index.html for SPA routing
         index_path = FRONTEND_PATH / "index.html"
         if index_path.exists():
             logger.info(f"[UI] Falling back to index.html for: /{full_path}")
-            return FileResponse(index_path)
+            return FileResponse(index_path, headers=get_dev_headers("index.html"))
 
     raise HTTPException(status_code=404, detail="Frontend not found")
 

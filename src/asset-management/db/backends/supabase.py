@@ -2308,6 +2308,57 @@ class SupabaseBackend(DatabaseBackend):
             logger.error(f"[SUPABASE] Failed to delete mockup frame: {e}")
             return False
 
+    def update_mockup_frame(
+        self,
+        location_key: str,
+        photo_filename: str,
+        frames_data: list[dict],
+        company_schema: str,
+        environment: str = "outdoor",
+        time_of_day: str = "day",
+        side: str = "gold",
+        config: dict | None = None,
+    ) -> bool:
+        """Update an existing mockup frame in place. Returns True if updated."""
+        client = self._get_client()
+        try:
+            # Build update data
+            update_data = {
+                "frames_data": frames_data,
+                "updated_at": datetime.now().isoformat(),
+            }
+            if config is not None:
+                update_data["config"] = config
+
+            # Build query to find the exact record
+            query = (
+                client.schema(company_schema)
+                .table("mockup_frames")
+                .update(update_data)
+                .eq("location_key", location_key)
+                .eq("photo_filename", photo_filename)
+                .eq("environment", environment)
+            )
+
+            # Add outdoor-specific filters
+            if environment == "outdoor":
+                query = query.eq("time_of_day", time_of_day).eq("side", side)
+
+            response = query.execute()
+
+            # Invalidate cache for this location
+            _run_async(self._cache_delete(f"frames:{location_key.lower()}:{company_schema}"))
+
+            if response.data:
+                logger.info(f"[SUPABASE] Updated mockup frame: {company_schema}.{location_key}/{environment}/{photo_filename}")
+                return True
+            else:
+                logger.warning(f"[SUPABASE] No frame found to update: {location_key}/{photo_filename}")
+                return False
+        except Exception as e:
+            logger.error(f"[SUPABASE] Failed to update mockup frame: {e}", exc_info=True)
+            return False
+
     # =========================================================================
     # MOCKUP STORAGE INFO (Unified Architecture)
     # =========================================================================

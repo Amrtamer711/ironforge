@@ -843,6 +843,25 @@ async def _process_llm_streaming(
                 assistant_summary = f"[Called {tool_call.name}]"
             history.append({"role": "assistant", "content": assistant_summary, "timestamp": datetime.now().isoformat()})
 
+            # Also add tool summary to session.messages for persistence (web adapter)
+            try:
+                adapter = config.get_channel_adapter()
+                if adapter and hasattr(adapter, 'get_session'):
+                    session = adapter.get_session(user_id)
+                    if session:
+                        from integrations.channels.adapters.web import current_parent_message_id
+                        parent_id = current_parent_message_id.get()
+                        session.messages.append({
+                            "id": f"tool-{tool_call.id}",
+                            "role": "assistant",
+                            "content": assistant_summary,
+                            "timestamp": datetime.now().isoformat(),
+                            "parent_id": parent_id,
+                            "tool_call": tool_call.name,
+                        })
+            except Exception as e:
+                logger.debug(f"[LLM] Could not add tool summary to session: {e}")
+
             # Dispatch to tool router
             from handlers.tool_router import handle_tool_call
             await handle_tool_call(
@@ -1689,6 +1708,25 @@ async def main_llm_loop(
                 except (KeyError, TypeError, AttributeError):
                     assistant_summary = f"[Called {tool_call.name}]"
                 history.append({"role": "assistant", "content": assistant_summary, "timestamp": datetime.now().isoformat()})
+
+                # Also add tool summary to session.messages for persistence (web adapter)
+                try:
+                    adapter = config.get_channel_adapter()
+                    if adapter and hasattr(adapter, 'get_session'):
+                        session = adapter.get_session(user_id)
+                        if session:
+                            from integrations.channels.adapters.web import current_parent_message_id
+                            parent_id = current_parent_message_id.get()
+                            session.messages.append({
+                                "id": f"tool-{tool_call.id}",
+                                "role": "assistant",
+                                "content": assistant_summary,
+                                "timestamp": datetime.now().isoformat(),
+                                "parent_id": parent_id,
+                                "tool_call": tool_call.name,
+                            })
+                except Exception as e:
+                    logger.debug(f"[LLM] Could not add tool summary to session: {e}")
 
                 # Dispatch to tool router
                 from handlers.tool_router import handle_tool_call

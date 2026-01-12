@@ -6,7 +6,9 @@ Recommended for production deployments already using Supabase.
 """
 
 import contextlib
+import json
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -485,17 +487,74 @@ class SupabaseStorageProvider(StorageProvider):
         try:
             client = self._get_client()
             key = self.normalize_key(key)
-
             response = client.storage.from_(bucket).create_signed_url(key, expires_in)
 
-            if response and "signedURL" in response:
-                return response["signedURL"]
+            signed_url = response.get("signedURL") or response.get("signedUrl")
+            if signed_url:
+                return signed_url
 
+            if response.get("error"):
+                logger.warning(f"[STORAGE:SUPABASE] Signed URL error for {bucket}/{key}: {response.get('error')}")
             return None
 
         except Exception as e:
             logger.error(f"[STORAGE:SUPABASE] Get signed URL failed {bucket}/{key}: {e}")
             return None
+
+    async def get_signed_urls_batch(
+        self,
+        bucket: str,
+        keys: list[str],
+        expires_in: int = 3600,
+    ) -> dict[str, str]:
+        """
+        Get signed URLs for multiple files in a single API call.
+
+        This is much faster than calling get_signed_url repeatedly since it
+        makes only one HTTP request to Supabase instead of N requests.
+
+        Args:
+            bucket: The storage bucket name
+            keys: List of file keys to generate URLs for
+            expires_in: URL expiry time in seconds (default 1 hour)
+
+        Returns:
+            Dictionary mapping key -> signed_url (only successful URLs included)
+        """
+        if not keys:
+            return {}
+
+        try:
+            client = self._get_client()
+            normalized_keys = [self.normalize_key(k) for k in keys]
+
+            logger.info(f"[STORAGE:SUPABASE] Batch signed URLs: {len(keys)} files from {bucket}")
+
+            # Use Supabase's batch signed URL method
+            response = client.storage.from_(bucket).create_signed_urls(
+                normalized_keys,
+                expires_in
+            )
+
+            result = {}
+            if response:
+                for item in response:
+                    # Handle both response formats
+                    key = item.get("path")
+                    url = item.get("signedURL") or item.get("signedUrl")
+                    error = item.get("error")
+
+                    if url and not error:
+                        result[key] = url
+                    elif error:
+                        logger.warning(f"[STORAGE:SUPABASE] Batch URL failed for {key}: {error}")
+
+            logger.info(f"[STORAGE:SUPABASE] Batch signed URLs: {len(result)}/{len(keys)} successful")
+            return result
+
+        except Exception as e:
+            logger.error(f"[STORAGE:SUPABASE] Batch signed URLs failed for {bucket}: {e}")
+            return {}
 
     # =========================================================================
     # BUCKET OPERATIONS

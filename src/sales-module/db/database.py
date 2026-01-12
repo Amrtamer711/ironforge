@@ -479,6 +479,18 @@ class _DatabaseNamespace:
         """Delete a user's chat session."""
         return self._backend.delete_chat_session(user_id)
 
+    def append_chat_messages(
+        self,
+        user_id: str,
+        new_messages: list[dict[str, Any]],
+        session_id: str | None = None,
+    ) -> bool:
+        """
+        Atomically append messages to a user's chat session.
+        Uses PostgreSQL RPC for atomic append on Supabase, with fallback on SQLite.
+        """
+        return self._backend.append_chat_messages(user_id, new_messages, session_id)
+
     # =========================================================================
     # DOCUMENT MANAGEMENT
     # =========================================================================
@@ -511,6 +523,23 @@ class _DatabaseNamespace:
     def get_document(self, file_id: str) -> dict[str, Any] | None:
         """Get a document by file_id."""
         return self._backend.get_document(file_id)
+
+    def get_documents_batch(self, file_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """Get multiple documents by file_id in a single query."""
+        return self._backend.get_documents_batch(file_ids)
+
+    def update_document(self, file_id: str, updates: dict[str, Any]) -> bool:
+        """
+        Update document metadata fields.
+
+        Args:
+            file_id: The document file_id to update
+            updates: Dictionary of field names and values to update
+
+        Returns:
+            True if update was successful, False otherwise
+        """
+        return self._backend.update_document(file_id, updates)
 
     def get_document_by_hash(self, file_hash: str) -> dict[str, Any] | None:
         """Get a document by file hash (for deduplication)."""

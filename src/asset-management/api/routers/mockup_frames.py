@@ -329,6 +329,136 @@ async def save_mockup_frame(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.put("/{company}/{location_key}", response_model=SaveResponse)
+async def update_mockup_frame(
+    company: str,
+    location_key: str,
+    photo_filename: str = Query(..., description="Existing photo filename to update"),
+    frames_data: str = Form(..., description="JSON array of frame data"),
+    environment: str = Form(default="outdoor"),
+    time_of_day: str = Form(default="day"),
+    side: str = Form(default="gold"),
+    config_json: str | None = Form(default=None),
+    photo: UploadFile | None = File(default=None),
+) -> dict[str, Any]:
+    """
+    Update an existing mockup frame in place.
+
+    Unlike save_mockup_frame which creates a new record with auto-numbered filename,
+    this endpoint updates the specified existing record.
+
+    Args:
+        company: Company schema (e.g., "backlite_dubai")
+        location_key: Location identifier
+        photo_filename: Existing photo filename to update (required)
+        frames_data: JSON array of frame coordinate data
+        environment: "indoor" or "outdoor" (default outdoor)
+        time_of_day: "day" or "night" (ignored for indoor)
+        side: "gold", "silver", or "single_side" (ignored for indoor)
+        config_json: Optional JSON config
+        photo: Optional new photo file (replaces existing if provided)
+
+    Returns:
+        Update result with same photo_filename
+    """
+    logger.info(
+        f"[MOCKUP_FRAMES] Updating frame for {company}/{location_key} "
+        f"({environment}/{time_of_day}/{side}/{photo_filename})"
+    )
+
+    # Validate environment
+    if environment not in {"indoor", "outdoor"}:
+        raise HTTPException(status_code=400, detail=f"Invalid environment: {environment}")
+
+    # Validate time_of_day and side for outdoor
+    if environment == "outdoor":
+        if time_of_day not in {"day", "night"}:
+            raise HTTPException(status_code=400, detail=f"Invalid time_of_day: {time_of_day}")
+        if side not in {"gold", "silver", "single_side"}:
+            raise HTTPException(status_code=400, detail=f"Invalid side: {side}")
+    else:
+        # For indoor, set defaults (they're ignored in path)
+        time_of_day = "day"
+        side = "gold"
+
+    try:
+        # Parse frames data
+        frames = json.loads(frames_data)
+        if not isinstance(frames, list) or len(frames) == 0:
+            raise HTTPException(status_code=400, detail="frames_data must be a non-empty list")
+
+        # Parse config if provided
+        config_dict = None
+        if config_json:
+            config_dict = json.loads(config_json)
+
+        # Update database record
+        updated = db.update_mockup_frame(
+            location_key=location_key,
+            photo_filename=photo_filename,
+            frames_data=frames,
+            company_schema=company,
+            environment=environment,
+            time_of_day=time_of_day,
+            side=side,
+            config=config_dict,
+        )
+
+        if not updated:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Frame not found: {location_key}/{photo_filename}"
+            )
+
+        # If new photo provided, upload to storage (replace existing)
+        storage_url = None
+        if photo:
+            try:
+                photo_data = await photo.read()
+                from db.database import _backend
+                if hasattr(_backend, '_get_client'):
+                    client = _backend._get_client()
+                    storage_key = _build_mockup_storage_key(
+                        company, location_key, environment, time_of_day, side, photo_filename
+                    )
+                    content_type = photo.content_type or "image/jpeg"
+
+                    # Upload to mockups bucket (upsert mode to replace existing)
+                    result = client.storage.from_("mockups").upload(
+                        storage_key,
+                        photo_data,
+                        {"content-type": content_type, "upsert": "true"},
+                    )
+                    if result:
+                        url_result = client.storage.from_("mockups").get_public_url(storage_key)
+                        storage_url = url_result
+                        logger.info(f"[MOCKUP_FRAMES] Photo replaced in storage: {storage_key}")
+            except Exception as storage_err:
+                logger.warning(f"[MOCKUP_FRAMES] Storage upload failed (non-critical): {storage_err}")
+
+        logger.info(f"[MOCKUP_FRAMES] ✓ Updated frame: {company}/{location_key}/{photo_filename}")
+
+        return {
+            "success": True,
+            "photo_filename": photo_filename,
+            "location_key": location_key,
+            "environment": environment,
+            "time_of_day": time_of_day,
+            "side": side,
+            "frames_count": len(frames),
+            "storage_url": storage_url,
+        }
+
+    except json.JSONDecodeError as e:
+        logger.error(f"[MOCKUP_FRAMES] JSON decode error: {e}")
+        raise HTTPException(status_code=400, detail="Invalid JSON in frames_data or config_json")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[MOCKUP_FRAMES] Failed to update frame: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class DeleteResponse(BaseModel):
     """Response for delete operations."""
     success: bool

@@ -11,6 +11,7 @@ from typing import Any
 
 import config
 from core.proposals import process_proposals
+from core.services.asset_service import get_asset_service
 from core.workflow_context import WorkflowContext
 from db.cache import pending_location_additions
 from db.database import db
@@ -119,6 +120,54 @@ class ToolRouter:
         # Handle both field names: Asset-Management returns 'company', internal code uses 'company_schema'
         company_schema = location.get("company_schema") or location.get("company")
         return True, "", company_schema
+
+    @staticmethod
+    async def validate_locations_batch(
+        location_keys: list[str],
+        user_companies: list[str],
+        workflow_ctx: WorkflowContext | None = None,
+    ) -> tuple[dict[str, dict], list[str]]:
+        """
+        Batch validate multiple locations with O(1) per-location lookup.
+
+        Uses workflow_ctx for O(1) in-memory lookup when available,
+        falls back to AssetService batch validation otherwise.
+
+        Args:
+            location_keys: List of location keys to validate
+            user_companies: Companies user has access to
+            workflow_ctx: Optional pre-loaded context for O(1) lookups
+
+        Returns:
+            Tuple of (location_index, errors)
+            - location_index: Dict mapping location_key -> location_data for valid locations
+            - errors: List of error messages for invalid/inaccessible locations
+        """
+        if not user_companies:
+            return {}, ["No company access configured"]
+
+        if not location_keys:
+            return {}, []
+
+        valid_locations: dict[str, dict] = {}
+        errors: list[str] = []
+
+        # If workflow_ctx available, use O(1) in-memory lookups
+        if workflow_ctx is not None:
+            for location_key in location_keys:
+                normalized_key = location_key.lower().strip()
+                location = workflow_ctx.get_location(normalized_key)
+                if location:
+                    valid_locations[normalized_key] = location
+                else:
+                    errors.append(
+                        f"Location '{location_key}' not found in your accessible companies."
+                    )
+            return valid_locations, errors
+
+        # Fallback to AssetService batch validation
+        asset_service = get_asset_service()
+        return await asset_service.validate_locations_batch(location_keys, user_companies)
 
     # =========================================================================
     # MAIN ROUTING METHOD
@@ -240,15 +289,22 @@ class ToolRouter:
             await self._channel.send_message(channel_id=channel, content="❌ **Error:** No proposals data provided")
             return
 
-        # Validate all requested locations
-        for proposal in proposals_data:
-            location_key = proposal.get("location", "").strip().lower().replace(" ", "_")
-            if location_key:
-                is_valid, loc_error, _ = self.validate_location_access(location_key, user_companies, workflow_ctx)
-                if not is_valid:
-                    await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-                    await self._channel.send_message(channel_id=channel, content=loc_error)
-                    return
+        # Batch validate all locations with O(1) lookups
+        location_keys = [
+            p.get("location", "").strip().lower().replace(" ", "_")
+            for p in proposals_data
+            if p.get("location")
+        ]
+        _, validation_errors = await self.validate_locations_batch(location_keys, user_companies, workflow_ctx)
+        if validation_errors:
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            error_msg = (
+                f"❌ **Location Not Found**\n\n"
+                f"{validation_errors[0]} "
+                f"Use 'list locations' to see available locations."
+            )
+            await self._channel.send_message(channel_id=channel, content=error_msg)
+            return
 
         # Update status
         await self._channel.update_message(channel_id=channel, message_id=status_ts, content="⏳ _Building Proposal..._")
@@ -298,15 +354,22 @@ class ToolRouter:
             await self._channel.send_message(channel_id=channel, content="❌ **Error:** Combined package requires at least 2 locations")
             return
 
-        # Validate all requested locations
-        for proposal in proposals_data:
-            location_key = proposal.get("location", "").strip().lower().replace(" ", "_")
-            if location_key:
-                is_valid, loc_error, _ = self.validate_location_access(location_key, user_companies, workflow_ctx)
-                if not is_valid:
-                    await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-                    await self._channel.send_message(channel_id=channel, content=loc_error)
-                    return
+        # Batch validate all locations with O(1) lookups
+        location_keys = [
+            p.get("location", "").strip().lower().replace(" ", "_")
+            for p in proposals_data
+            if p.get("location")
+        ]
+        _, validation_errors = await self.validate_locations_batch(location_keys, user_companies, workflow_ctx)
+        if validation_errors:
+            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+            error_msg = (
+                f"❌ **Location Not Found**\n\n"
+                f"{validation_errors[0]} "
+                f"Use 'list locations' to see available locations."
+            )
+            await self._channel.send_message(channel_id=channel, content=error_msg)
+            return
 
         # Update status
         await self._channel.update_message(channel_id=channel, message_id=status_ts, content="⏳ _Building Proposal..._")
@@ -1036,6 +1099,8 @@ class ToolRouter:
             generate_mockup_queued_func=generate_mockup_queued_func,
             generate_ai_mockup_queued_func=generate_ai_mockup_queued_func,
             company_hint=company_hint,
+            venue_type=args.get("venue_type", "").strip().lower() or "all",
+            asset_type_key=args.get("asset_type_key"),
         )
 
 

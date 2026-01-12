@@ -35,7 +35,7 @@ BOOKING_ORDER_CACHE_TTL = 300  # 5 minutes for booking orders
 STATS_CACHE_TTL = 600  # 10 minutes for statistics
 PROPOSAL_CACHE_TTL = 300  # 5 minutes for proposals
 DOCUMENT_CACHE_TTL = 600  # 10 minutes for documents
-CHAT_CACHE_TTL = 300  # 5 minutes for chat sessions
+CHAT_CACHE_TTL = 300  # 5 minutes for chat sessions (reduced from 30min for freshness)
 BO_WORKFLOW_CACHE_TTL = 30  # 30 seconds for BO workflows (short-lived)
 AI_COSTS_CACHE_TTL = 900  # 15 minutes for AI costs summary
 
@@ -124,6 +124,23 @@ class SupabaseBackend(DatabaseBackend):
         except Exception as e:
             logger.debug(f"[CACHE] Get error: {e}")
             return None
+
+    async def _cache_get_batch(self, keys: list[str]) -> dict[str, Any]:
+        """Get multiple values from cache in a single async operation."""
+        cache = self._get_cache()
+        if not cache or not keys:
+            return {}
+        try:
+            import asyncio
+            tasks = [cache.get(key) for key in keys]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            return {
+                key: val for key, val in zip(keys, results)
+                if val is not None and not isinstance(val, Exception)
+            }
+        except Exception as e:
+            logger.debug(f"[CACHE] Batch get error: {e}")
+            return {}
 
     async def _cache_set(self, key: str, value: Any, ttl: int = 300) -> None:
         """Set value in cache."""
@@ -1936,7 +1953,7 @@ class SupabaseBackend(DatabaseBackend):
         messages: list[dict[str, Any]],
         session_id: str | None = None,
     ) -> bool:
-        """Save or update a user's chat session."""
+        """Save or update a user's chat session (full replacement)."""
         import uuid
 
         now = datetime.now().isoformat()
@@ -1963,6 +1980,155 @@ class SupabaseBackend(DatabaseBackend):
         except Exception as e:
             logger.error(f"[SUPABASE] Error saving chat session for {user_id}: {e}")
             return False
+
+    def append_chat_messages(
+        self,
+        user_id: str,
+        new_messages: list[dict[str, Any]],
+        session_id: str | None = None,
+    ) -> bool:
+        """
+        Atomically append messages to a user's chat session.
+
+        This uses PostgreSQL's JSONB concatenation to prevent race conditions
+        where concurrent saves could lose messages. Much safer than read-modify-write.
+
+        Args:
+            user_id: The user's ID
+            new_messages: List of messages to append
+            session_id: Optional session ID (creates new if not exists)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        import uuid
+
+        if not new_messages:
+            return True
+
+        now = datetime.now().isoformat()
+        if not session_id:
+            session_id = str(uuid.uuid4())
+
+        try:
+            client = self._get_client()
+
+            # First check if session exists
+            logger.info(f"[SUPABASE] Checking for existing chat session for user: {user_id}")
+            existing = client.table("chat_sessions").select("session_id").eq("user_id", user_id).single().execute()
+
+            if existing.data:
+                # Atomic append using PostgreSQL JSONB concatenation
+                # This is race-condition safe - concurrent appends both succeed
+                logger.info(f"[SUPABASE] Calling RPC append_chat_messages for user: {user_id}, {len(new_messages)} messages")
+                client.rpc("append_chat_messages", {
+                    "p_user_id": user_id,
+                    "p_new_messages": new_messages,
+                    "p_updated_at": now,
+                }).execute()
+                logger.info(f"[SUPABASE] RPC append_chat_messages succeeded for user: {user_id}")
+            else:
+                # Create new session with initial messages
+                logger.info(f"[SUPABASE] Creating new chat session for user: {user_id}")
+                client.table("chat_sessions").insert({
+                    "user_id": user_id,
+                    "session_id": session_id,
+                    "messages": new_messages,
+                    "created_at": now,
+                    "updated_at": now,
+                }).execute()
+                logger.info(f"[SUPABASE] Created new chat session for user: {user_id}")
+
+            # Invalidate cache
+            _run_async(self._cache_delete(f"chat:{user_id}"))
+
+            logger.info(f"[SUPABASE] Successfully appended {len(new_messages)} messages for user: {user_id}")
+            return True
+        except Exception as e:
+            # If RPC doesn't exist, fall back to full save
+            if "function" in str(e).lower() and "not exist" in str(e).lower():
+                logger.warning(f"[SUPABASE] append_chat_messages RPC not found, using fallback")
+                return self._append_chat_messages_fallback(user_id, new_messages, session_id)
+            logger.error(f"[SUPABASE] Error appending chat messages for {user_id}: {e}")
+            return False
+
+    def _append_chat_messages_fallback(
+        self,
+        user_id: str,
+        new_messages: list[dict[str, Any]],
+        session_id: str | None = None,
+    ) -> bool:
+        """
+        Fallback append using optimistic locking pattern.
+
+        If the RPC function doesn't exist, this provides a safer alternative
+        to raw read-modify-write by using updated_at as a version check.
+        """
+        import uuid
+
+        now = datetime.now().isoformat()
+        if not session_id:
+            session_id = str(uuid.uuid4())
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                client = self._get_client()
+
+                # Read current state
+                existing = client.table("chat_sessions").select("*").eq("user_id", user_id).single().execute()
+
+                if existing.data:
+                    current_messages = existing.data.get("messages", [])
+                    current_updated = existing.data.get("updated_at")
+
+                    # Append new messages
+                    updated_messages = current_messages + new_messages
+
+                    # Optimistic lock: only update if updated_at hasn't changed
+                    result = client.table("chat_sessions").update({
+                        "messages": updated_messages,
+                        "updated_at": now,
+                    }).eq("user_id", user_id).eq("updated_at", current_updated).execute()
+
+                    if result.data:
+                        _run_async(self._cache_delete(f"chat:{user_id}"))
+                        return True
+                    else:
+                        # Conflict - retry
+                        logger.warning(f"[SUPABASE] Optimistic lock conflict for {user_id}, retry {attempt + 1}")
+                        continue
+                else:
+                    # Create new
+                    client.table("chat_sessions").insert({
+                        "user_id": user_id,
+                        "session_id": session_id,
+                        "messages": new_messages,
+                        "created_at": now,
+                        "updated_at": now,
+                    }).execute()
+                    _run_async(self._cache_delete(f"chat:{user_id}"))
+                    return True
+
+            except Exception as e:
+                if "PGRST116" in str(e):  # No row found, create new
+                    try:
+                        client.table("chat_sessions").insert({
+                            "user_id": user_id,
+                            "session_id": session_id,
+                            "messages": new_messages,
+                            "created_at": now,
+                            "updated_at": now,
+                        }).execute()
+                        _run_async(self._cache_delete(f"chat:{user_id}"))
+                        return True
+                    except Exception as insert_err:
+                        logger.error(f"[SUPABASE] Error creating chat session: {insert_err}")
+                        return False
+                logger.error(f"[SUPABASE] Error in fallback append for {user_id}: {e}")
+
+        logger.error(f"[SUPABASE] Failed to append messages after {max_retries} retries")
+        return False
 
     def get_chat_session(self, user_id: str) -> dict[str, Any] | None:
         """Get a user's chat session (cached with short TTL)."""
@@ -2096,6 +2262,86 @@ class SupabaseBackend(DatabaseBackend):
                 return None
             logger.error(f"[SUPABASE] Error getting document {file_id}: {e}")
             return None
+
+    def get_documents_batch(self, file_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """
+        Get multiple documents by file_id in a single query.
+
+        Returns a dict mapping file_id -> document data.
+        Uses cache for individual documents and batch queries for uncached.
+        """
+        if not file_ids:
+            return {}
+
+        result: dict[str, dict[str, Any]] = {}
+        uncached_ids: list[str] = []
+
+        # Batch cache lookup - single async operation instead of N sequential
+        cache_keys = [f"document:{fid}" for fid in file_ids]
+        cached_docs = _run_async(self._cache_get_batch(cache_keys))
+
+        # Identify cached vs uncached
+        for fid in file_ids:
+            cache_key = f"document:{fid}"
+            if cache_key in cached_docs:
+                result[fid] = cached_docs[cache_key]
+            else:
+                uncached_ids.append(fid)
+
+        if not uncached_ids:
+            logger.debug(f"[CACHE] Documents batch: all {len(file_ids)} from cache")
+            return result
+
+        # Single batch query for all uncached documents
+        try:
+            client = self._get_client()
+            response = client.table("documents").select("*").in_("file_id", uncached_ids).execute()
+
+            for doc in response.data:
+                fid = doc.get("file_id")
+                if fid:
+                    result[fid] = doc
+                    # Cache each document individually
+                    _run_async(self._cache_set(f"document:{fid}", doc, ttl=DOCUMENT_CACHE_TTL))
+
+            logger.debug(f"[SUPABASE] Documents batch: {len(result) - (len(file_ids) - len(uncached_ids))} from DB, {len(file_ids) - len(uncached_ids)} from cache")
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error in batch document lookup: {e}")
+
+        return result
+
+    def update_document(self, file_id: str, updates: dict[str, Any]) -> bool:
+        """
+        Update document metadata fields.
+
+        Args:
+            file_id: The document file_id to update
+            updates: Dictionary of field names and values to update
+
+        Returns:
+            True if update was successful, False otherwise
+        """
+        try:
+            client = self._get_client()
+            response = (
+                client.table("documents")
+                .update(updates)
+                .eq("file_id", file_id)
+                .execute()
+            )
+
+            if response.data:
+                # Invalidate cache for this document
+                _run_async(self._cache_delete(f"document:{file_id}"))
+                logger.debug(f"[SUPABASE] Updated document {file_id} with fields: {list(updates.keys())}")
+                return True
+
+            logger.warning(f"[SUPABASE] No document found to update: {file_id}")
+            return False
+
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error updating document {file_id}: {e}", exc_info=True)
+            return False
 
     def get_document_by_hash(self, file_hash: str) -> dict[str, Any] | None:
         """Get a document by file hash (for deduplication, cached)."""

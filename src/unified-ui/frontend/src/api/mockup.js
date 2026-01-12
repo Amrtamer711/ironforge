@@ -26,9 +26,56 @@ export async function saveSetupPhoto(formData) {
   return apiRequest("/api/sales/mockup/save-frame", { method: "POST", body: formData });
 }
 
-export async function deleteSetupPhoto(location, photo) {
+export async function updateSetupPhoto(formData) {
+  // Update an existing mockup frame in place (doesn't create new auto-numbered filename)
+  return apiRequest("/api/sales/mockup/update-frame", { method: "PUT", body: formData });
+}
+
+export async function deleteSetupPhoto(location, photo, { timeOfDay, side } = {}) {
   // location is path param (supports slashes like "network/type/asset"), photo is query param
-  return apiRequest(`/api/sales/mockup/photo/${location}?photo_filename=${encodeURIComponent(photo)}`, {
+  const params = new URLSearchParams();
+  params.set("photo_filename", photo);
+  if (timeOfDay) params.set("time_of_day", timeOfDay);
+  if (side) params.set("side", side);
+  return apiRequest(`/api/sales/mockup/photo/${location}?${params.toString()}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getMockupFrameFromAssets({
+  company,
+  locationKey,
+  environment = "outdoor",
+  timeOfDay = "day",
+  side = "gold",
+  photoFilename,
+} = {}) {
+  if (!company || !locationKey) return null;
+  const params = new URLSearchParams();
+  if (environment) params.set("environment", environment);
+  if (timeOfDay) params.set("time_of_day", timeOfDay);
+  if (side) params.set("side", side);
+  if (photoFilename) params.set("photo_filename", photoFilename);
+  const encodedLocation = encodeURIComponent(locationKey);
+  return apiRequest(`/api/assets/mockup-frames/${company}/${encodedLocation}/frame?${params.toString()}`);
+}
+
+export async function deleteMockupFrameFromAssets({
+  company,
+  locationKey,
+  environment = "outdoor",
+  timeOfDay = "day",
+  side = "gold",
+  photoFilename,
+} = {}) {
+  if (!company || !locationKey || !photoFilename) return null;
+  const params = new URLSearchParams();
+  if (environment) params.set("environment", environment);
+  if (timeOfDay) params.set("time_of_day", timeOfDay);
+  if (side) params.set("side", side);
+  params.set("photo_filename", photoFilename);
+  const encodedLocation = encodeURIComponent(locationKey);
+  return apiRequest(`/api/assets/mockup-frames/${company}/${encodedLocation}?${params.toString()}`, {
     method: "DELETE",
   });
 }
@@ -42,13 +89,14 @@ export async function generateMockup(formData) {
   return apiRequest("/api/sales/mockup/generate", { method: "POST", body: formData });
 }
 
-export function getTemplatePhotoUrl(location, photo, { company } = {}) {
+export function getTemplatePhotoUrl(location, photo, { company, venueType } = {}) {
   if (!location || !photo) return "";
   // location is path param (supports slashes like "network/type/asset"), photo is query param
   // company is optional hint for O(1) lookup (avoids searching all companies)
   const params = new URLSearchParams();
   params.set("photo_filename", photo);
   if (company) params.set("company", company);
+  if (venueType) params.set("venue_type", venueType);
   return `${runtimeConfig.API_BASE_URL}/api/sales/mockup/photo/${location}?${params.toString()}`;
 }
 
@@ -57,20 +105,21 @@ export async function getHistory() {
   return apiRequest("/api/sales/mockup/history");
 }
 
-export async function getTemplatePhotoBlob(location, photo, { timeOfDay, side, company } = {}) {
+export async function getTemplatePhotoBlob(location, photo, { timeOfDay, side, company, venueType } = {}) {
   if (!location || !photo) return null;
   const params = new URLSearchParams();
   params.set("photo_filename", photo);  // Required query param
   if (timeOfDay) params.set("time_of_day", timeOfDay);
   if (side) params.set("side", side);
   if (company) params.set("company", company);  // O(1) lookup hint
+  if (venueType) params.set("venue_type", venueType);
   // location is path param (supports slashes like "network/type/asset"), photo is query param
   const path = `/api/sales/mockup/photo/${location}?${params.toString()}`;
   return apiBlob(path);
 }
 
-export async function getTemplatePhotoBlobUrl(location, photo, { timeOfDay, side, company } = {}) {
-  const blob = await getTemplatePhotoBlob(location, photo, { timeOfDay, side, company });
+export async function getTemplatePhotoBlobUrl(location, photo, { timeOfDay, side, company, venueType } = {}) {
+  const blob = await getTemplatePhotoBlob(location, photo, { timeOfDay, side, company, venueType });
   return blob ? URL.createObjectURL(blob) : "";
 }
 

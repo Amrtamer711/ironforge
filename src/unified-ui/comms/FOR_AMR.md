@@ -4,8 +4,11 @@
 
 ## DEV TO-DO: Unified Asset Management
 
-- [ ] Make the changes to mockup and proposal generation LLM chats with new location structure.
-- [ ] Lazy Load Chat Messages so that the user is not stuck with loading conversations after login (Clarify if reducing the no of chats loaded will have positive impact).
+# - [ ] Make the changes to mockup and proposal generation LLM chats with new location structure.
+# - [ ] Lazy Load Chat Messages so that the user is not stuck with loading conversations after login (Clarify if reducing the no of chats loaded will have positive impact).
+- [ ] Chat history displaying the First 500 messages only, not the latest messages.
+
+
 
 ### Part 1: Unified Architecture ✅ DONE
 
@@ -40,7 +43,7 @@
 ## Authentication
 
 1. Authentication issue where 401 causes logout within a specific time. maybe token expiry?
-2. Change the Auth redirect to new mmg-nova.com in supabase
+# 2. Change the Auth redirect to new mmg-nova.com in supabase
 
 
 ## Profiles 
@@ -70,8 +73,8 @@ Chief Revenue Officer
 2. **User - multiple Profile sets** - Assign/list multiple profiles per user
 3. **User - multiple Permission sets** - Assign multiple permission sets per user
 4. **Profile to Permission-Set relation** - Link profiles to permission sets
-5. **Hide unused tabs** - Hide teams, sharing rules etc. that are not in use
-6. **Add Location UI** - List out the locations for admins
+# 5. **Hide unused tabs** - Hide teams, sharing rules etc. that are not in use
+# 6. **Add Location UI** - List out the locations for admins
 
 ### Mockups
 
@@ -79,9 +82,11 @@ Chief Revenue Officer
 2. **Mockup history** - Show history with date + generated image
 3. **Mockup frame edit endpoint** - Endpoint to get frame details/config for editing existing templates
    - **Answer**: Yes, use `GET /api/mockup-frames/{company}/{location_key}/frame?time_of_day=day&finish=gold` to get frame data
-4. 502 bad gateway while generating the test preview on render deployment. Not in local.
-5. company_schema : "unknown" in api/locations endpoint
+# 4. 502 bad gateway while generating the test preview on render deployment. Not in local.
+# 5. company_schema : "unknown" in api/locations endpoint
 6. Save the mockups generated with details in the Generate Page and to be available as links in a history endpoint just like proposal history.
+7. Generate and Setup shows different list of Locations.
+
 
 ---
 
@@ -135,3 +140,4 @@ crm-unified-ui.onrender.com/favicon.ico clientIP="94.200.129.142" requestID="c23
 [GET]
 crm-unified-ui.onrender.com/api/base/auth/me clientIP="94.200.129.142" requestID="e78aa9b4-9f8a-47e1" responseTimeMS=40 responseBytes=459 userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 2026-01-07 05:48:22,128 - unified-ui - ERROR - [UI Auth] Error: Session from session_id claim in JWT does not exist
+

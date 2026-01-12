@@ -14,12 +14,19 @@ File Storage:
 
 import contextvars
 import logging
+import re
+import time
 import uuid
+from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+# Pre-compiled regex patterns for performance (avoid recompilation on every call)
+_INLINE_CODE_RE = re.compile(r'__INLINE_CODE_\d+__')
+_CODE_BLOCK_RE = re.compile(r'__CODE_BLOCK_\d+__')
 
 # Context variable to track current request ID for parallel request support
 # This allows adapter methods to tag events with the correct request_id
@@ -86,7 +93,8 @@ class WebSession:
 
     # Real-time event queue for SSE streaming (supports parallel requests)
     # Events: {"type": "status"|"message"|"file"|"delete"|"done", "request_id": str, ...}
-    events: list[dict[str, Any]] = field(default_factory=list)
+    # Using bounded deque to prevent unbounded memory growth
+    events: deque = field(default_factory=lambda: deque(maxlen=100))
 
     # Track active requests by request_id (supports parallel processing)
     active_requests: dict[str, bool] = field(default_factory=dict)
@@ -111,6 +119,9 @@ class WebAdapter(ChannelAdapter):
     - Files organized by bucket: 'uploads' for user files, 'proposals' for generated docs
     """
 
+    # Session TTL in seconds (30 minutes of inactivity)
+    SESSION_TTL = 1800
+
     def __init__(self, file_base_url: str = "/api/files"):
         """
         Initialize the web adapter.
@@ -129,6 +140,9 @@ class WebAdapter(ChannelAdapter):
 
         # Storage client (lazy loaded)
         self._storage_client = None
+
+        # Track last cleanup time for session eviction
+        self._last_cleanup = time.time()
 
     def _get_storage_client(self):
         """Get or create the storage client."""
@@ -203,11 +217,53 @@ class WebAdapter(ChannelAdapter):
         return session
 
     def get_session(self, user_id: str) -> WebSession | None:
-        """Get existing session for a user."""
+        """
+        Get existing session for a user.
+
+        Checks session TTL and returns None if session has expired.
+        Periodically triggers cleanup of all stale sessions.
+        """
+        # Periodically cleanup stale sessions (every 5 minutes)
+        now = time.time()
+        if now - self._last_cleanup > 300:
+            self._cleanup_stale_sessions()
+            self._last_cleanup = now
+
         session = self._sessions.get(user_id)
         if session:
-            session.last_activity = datetime.now()
+            # Cache datetime for this check (avoid 2 datetime.now() calls)
+            request_time = datetime.now()
+            # Check if session has expired
+            session_age = (request_time - session.last_activity).total_seconds()
+            if session_age > self.SESSION_TTL:
+                # Session expired, remove it
+                del self._sessions[user_id]
+                logger.debug(f"[WebAdapter] Session expired for user {user_id}")
+                return None
+            # Update last activity
+            session.last_activity = request_time
         return session
+
+    def _cleanup_stale_sessions(self) -> int:
+        """
+        Remove all sessions that have exceeded the TTL.
+
+        Returns the number of sessions removed.
+        """
+        now = datetime.now()
+        stale_users = []
+        for user_id, session in self._sessions.items():
+            session_age = (now - session.last_activity).total_seconds()
+            if session_age > self.SESSION_TTL:
+                stale_users.append(user_id)
+
+        for user_id in stale_users:
+            del self._sessions[user_id]
+
+        if stale_users:
+            logger.info(f"[WebAdapter] Cleaned up {len(stale_users)} stale sessions")
+
+        return len(stale_users)
 
     def get_or_create_session(
         self,
@@ -237,9 +293,9 @@ class WebAdapter(ChannelAdapter):
         """
         if not text:
             return text
-        import re
-        text = re.sub(r'__INLINE_CODE_\d+__', '', text)
-        text = re.sub(r'__CODE_BLOCK_\d+__', '', text)
+        # Use pre-compiled regex patterns for performance
+        text = _INLINE_CODE_RE.sub('', text)
+        text = _CODE_BLOCK_RE.sub('', text)
         return text
 
     def _restore_session_state(self, user_id: str, session: WebSession) -> None:
@@ -262,14 +318,45 @@ class WebAdapter(ChannelAdapter):
                 session.messages = persisted_messages
 
                 # Rebuild LLM context from persisted messages (last 10)
+                # Include file references so AI remembers what files were discussed
                 llm_history = []
                 for msg in persisted_messages:
                     role = msg.get("role")
-                    content = msg.get("content")
-                    if role in ("user", "assistant") and content:
+                    content = msg.get("content", "")
+
+                    if role not in ("user", "assistant"):
+                        continue
+
+                    # Build content with file references
+                    full_content = content
+
+                    # Add user file references
+                    files = msg.get("files", [])
+                    if files and role == "user":
+                        file_refs = []
+                        for f in files:
+                            filename = f.get("filename", "file")
+                            file_refs.append(f"[Attached file: {filename}]")
+                        if file_refs:
+                            file_text = "\n".join(file_refs)
+                            full_content = f"{file_text}\n{content}" if content else file_text
+
+                    # Add assistant file/attachment references
+                    attachments = msg.get("attachments", [])
+                    if attachments and role == "assistant":
+                        att_refs = []
+                        for a in attachments:
+                            filename = a.get("filename") or a.get("title", "file")
+                            att_refs.append(f"[Generated file: {filename}]")
+                        if att_refs:
+                            att_text = "\n".join(att_refs)
+                            full_content = f"{content}\n{att_text}" if content else att_text
+
+                    # Only add if there's actual content
+                    if full_content:
                         llm_history.append({
                             "role": role,
-                            "content": content,
+                            "content": full_content,
                             "timestamp": msg.get("timestamp", "")
                         })
 
@@ -335,14 +422,14 @@ class WebAdapter(ChannelAdapter):
         # Keep events that are either:
         # 1. From active requests, OR
         # 2. Less than max_age_seconds old
-        cleaned_events = []
+        events_to_keep = []
         for event in session.events:
             req_id = event.get("request_id")
             timestamp_str = event.get("timestamp", "")
 
             # Keep if request is still active
             if req_id and session.active_requests.get(req_id, False):
-                cleaned_events.append(event)
+                events_to_keep.append(event)
                 continue
 
             # Keep if event is recent enough
@@ -350,13 +437,15 @@ class WebAdapter(ChannelAdapter):
                 event_time = datetime.fromisoformat(timestamp_str)
                 age = (now - event_time).total_seconds()
                 if age < max_age_seconds:
-                    cleaned_events.append(event)
+                    events_to_keep.append(event)
             except (ValueError, TypeError):
                 # Can't parse timestamp, keep event to be safe
-                cleaned_events.append(event)
+                events_to_keep.append(event)
 
-        session.events = cleaned_events
-        removed = initial_count - len(cleaned_events)
+        # Preserve deque type with maxlen (don't convert to list)
+        session.events.clear()
+        session.events.extend(events_to_keep)
+        removed = initial_count - len(events_to_keep)
 
         if removed > 0:
             logger.debug(f"[WebAdapter] Cleaned up {removed} old events for {user_id}")
@@ -786,37 +875,40 @@ class WebAdapter(ChannelAdapter):
 
                     logger.info(f"[WebAdapter] File uploaded to {storage_client.provider_name}: {actual_filename} -> {bucket}/{storage_key} (hash={file_hash[:16] if file_hash else 'N/A'}...)")
 
-                    # Add message with attachment if comment provided
+                    # Always add message with attachment for proper history tracking
                     session = self.get_session(channel_id)
                     if session:
-                        if comment:
-                            # Get parent_id to link this response to the originating user message
-                            parent_id = current_parent_message_id.get()
-                            session.messages.append({
-                                "id": str(uuid.uuid4()),
-                                "role": "assistant",
-                                "content": comment,
-                                "timestamp": datetime.now().isoformat(),
-                                "parent_id": parent_id,
-                                "attachments": [{
-                                    "file_id": file_id,
-                                    "url": url,
-                                    "filename": actual_filename,
-                                    "title": title
-                                }]
-                            })
+                        # Get parent_id to link this response to the originating user message
+                        parent_id = current_parent_message_id.get()
+                        req_id = current_request_id.get()
+                        timestamp = datetime.now().isoformat()
+
+                        # Create message with file attachment (content can be empty)
+                        session.messages.append({
+                            "id": str(uuid.uuid4()),
+                            "role": "assistant",
+                            "content": comment or "",
+                            "timestamp": timestamp,
+                            "parent_id": parent_id,
+                            "attachments": [{
+                                "file_id": file_id,
+                                "url": url,
+                                "filename": actual_filename,
+                                "title": title
+                            }]
+                        })
 
                         # Push file event for real-time streaming (tagged with request_id)
-                        req_id = current_request_id.get()
                         session.events.append({
                             "type": "file",
                             "request_id": req_id,
+                            "parent_id": parent_id,
                             "file_id": file_id,
                             "url": url,
                             "filename": actual_filename,
                             "title": title,
                             "comment": comment,
-                            "timestamp": datetime.now().isoformat(),
+                            "timestamp": timestamp,
                         })
 
                     return FileUpload(
@@ -871,37 +963,40 @@ class WebAdapter(ChannelAdapter):
 
         logger.info(f"[WebAdapter] File stored locally: {actual_filename} -> {url} (hash={file_hash[:16] if file_hash else 'N/A'}...)")
 
-        # If there's a comment, add as message with attachment
+        # Always add message with attachment for proper history tracking
         session = self.get_session(channel_id)
         if session:
-            if comment:
-                # Get parent_id to link this response to the originating user message
-                parent_id = current_parent_message_id.get()
-                session.messages.append({
-                    "id": str(uuid.uuid4()),
-                    "role": "assistant",
-                    "content": comment,
-                    "timestamp": datetime.now().isoformat(),
-                    "parent_id": parent_id,
-                    "attachments": [{
-                        "file_id": file_id,
-                        "url": url,
-                        "filename": actual_filename,
-                        "title": title
-                    }]
-                })
+            # Get parent_id to link this response to the originating user message
+            parent_id = current_parent_message_id.get()
+            req_id = current_request_id.get()
+            timestamp = datetime.now().isoformat()
+
+            # Create message with file attachment (content can be empty)
+            session.messages.append({
+                "id": str(uuid.uuid4()),
+                "role": "assistant",
+                "content": comment or "",
+                "timestamp": timestamp,
+                "parent_id": parent_id,
+                "attachments": [{
+                    "file_id": file_id,
+                    "url": url,
+                    "filename": actual_filename,
+                    "title": title
+                }]
+            })
 
             # Push file event for real-time streaming (tagged with request_id)
-            req_id = current_request_id.get()
             session.events.append({
                 "type": "file",
                 "request_id": req_id,
+                "parent_id": parent_id,
                 "file_id": file_id,
                 "url": url,
                 "filename": actual_filename,
                 "title": title,
                 "comment": comment,
-                "timestamp": datetime.now().isoformat(),
+                "timestamp": timestamp,
             })
 
         return FileUpload(
@@ -1020,24 +1115,41 @@ class WebAdapter(ChannelAdapter):
 
                     logger.info(f"[WebAdapter] File bytes uploaded to {storage_client.provider_name}: {filename} -> {bucket}/{storage_key} (hash={file_hash[:16] if file_hash else 'N/A'}...)")
 
-                    if comment:
-                        session = self.get_session(channel_id)
-                        if session:
-                            # Get parent_id to link this response to the originating user message
-                            parent_id = current_parent_message_id.get()
-                            session.messages.append({
-                                "id": str(uuid.uuid4()),
-                                "role": "assistant",
-                                "content": comment,
-                                "timestamp": datetime.now().isoformat(),
-                                "parent_id": parent_id,
-                                "attachments": [{
-                                    "file_id": file_id,
-                                    "url": url,
-                                    "filename": filename,
-                                    "title": title
-                                }]
-                            })
+                    # Always add message with attachment for proper history tracking
+                    session = self.get_session(channel_id)
+                    if session:
+                        # Get parent_id to link this response to the originating user message
+                        parent_id = current_parent_message_id.get()
+                        req_id = current_request_id.get()
+                        timestamp = datetime.now().isoformat()
+
+                        # Create message with file attachment (content can be empty)
+                        session.messages.append({
+                            "id": str(uuid.uuid4()),
+                            "role": "assistant",
+                            "content": comment or "",
+                            "timestamp": timestamp,
+                            "parent_id": parent_id,
+                            "attachments": [{
+                                "file_id": file_id,
+                                "url": url,
+                                "filename": filename,
+                                "title": title
+                            }]
+                        })
+
+                        # Push file event for real-time streaming
+                        session.events.append({
+                            "type": "file",
+                            "request_id": req_id,
+                            "parent_id": parent_id,
+                            "file_id": file_id,
+                            "url": url,
+                            "filename": filename,
+                            "title": title,
+                            "comment": comment,
+                            "timestamp": timestamp,
+                        })
 
                     return FileUpload(
                         success=True,
@@ -1077,8 +1189,39 @@ class WebAdapter(ChannelAdapter):
         return self._uploaded_files.get(file_id)
 
     def get_stored_file_info(self, file_id: str) -> StoredFileInfo | None:
-        """Get storage metadata for a file."""
-        return self._stored_files.get(file_id)
+        """
+        Get storage metadata for a file.
+
+        First checks in-memory cache, then falls back to database.
+        This ensures file metadata is available even after server restart.
+        """
+        # Try in-memory cache first
+        stored = self._stored_files.get(file_id)
+        if stored:
+            return stored
+
+        # Fallback to database (for files uploaded before server restart)
+        try:
+            from db.database import db
+            doc = db.get_document(file_id)
+            if doc:
+                # Reconstruct StoredFileInfo from database record
+                stored = StoredFileInfo(
+                    file_id=file_id,
+                    bucket=doc.get("storage_bucket", "uploads"),
+                    key=doc.get("storage_key", ""),
+                    filename=doc.get("original_filename", ""),
+                    content_type=doc.get("file_type", "application/octet-stream"),
+                    size=doc.get("file_size", 0),
+                    user_id=doc.get("user_id"),
+                )
+                # Cache it for future lookups
+                self._stored_files[file_id] = stored
+                return stored
+        except Exception as e:
+            logger.warning(f"[WebAdapter] Failed to get file info from DB for {file_id}: {e}")
+
+        return None
 
     async def get_file_download_url(self, file_id: str, expires_in: int = 3600) -> str | None:
         """

@@ -395,6 +395,7 @@ export function MockupPage() {
               timeOfDay: t.time_of_day || effectiveTimeOfDay,
               side: t.side || side,
               company: t.company,  // O(1) lookup hint from templates response
+              venueType: t.venue_type || t.environment || venueType,
             });
           } catch {
             url = "";
@@ -431,7 +432,7 @@ export function MockupPage() {
     return () => {
       active = false;
     };
-  }, [primaryLocation, activeTemplateSignature, effectiveTimeOfDay, side, getTemplateKey]);
+  }, [primaryLocation, activeTemplateSignature, effectiveTimeOfDay, side, venueType, getTemplateKey]);
 
   useEffect(() => {
     return () => {
@@ -486,6 +487,7 @@ export function MockupPage() {
   async function saveSetup() {
     setSetupMessage("");
     setSetupError("");
+    const editedTemplateKey = editingTemplate ? getTemplateKey(editingTemplate) : null;
 
     if (!locations.length) {
       setSetupError("Select at least one location first");
@@ -515,22 +517,53 @@ export function MockupPage() {
     try {
       setSetupSaving(true);
       const formData = new FormData();
-      formData.append("location_keys", JSON.stringify(locations));
-      formData.append("venue_type", venueType);
-      if (assetType) formData.append("asset_type_key", assetType);
-      formData.append("time_of_day", effectiveTimeOfDay || "all");
-      formData.append("side", side || "all");
-      formData.append("frames_data", JSON.stringify(framesPayload));
-      formData.append("photo", setupPhoto);
 
-      await mockupApi.saveSetupPhoto(formData);
-      setSetupMessage("Saved frames successfully");
+      if (editingTemplate) {
+        // UPDATE existing frame - single location, includes photo_filename
+        formData.append("location_key", editingTemplate.storage_key || primaryLocation);
+        formData.append("photo_filename", editingTemplate.photo);
+        formData.append("venue_type", venueType);
+        if (assetType) formData.append("asset_type_key", assetType);
+        formData.append("time_of_day", effectiveTimeOfDay || "all");
+        formData.append("side", side || "all");
+        formData.append("frames_data", JSON.stringify(framesPayload));
+        // Only include photo if user uploaded a new one (file name differs from original)
+        if (setupPhoto && setupPhoto.name !== editingTemplate.photo) {
+          formData.append("photo", setupPhoto);
+        }
+
+        await mockupApi.updateSetupPhoto(formData);
+        setSetupMessage("Updated frames successfully");
+      } else {
+        // CREATE new frame - multiple locations, auto-numbered filename
+        formData.append("location_keys", JSON.stringify(locations));
+        formData.append("venue_type", venueType);
+        if (assetType) formData.append("asset_type_key", assetType);
+        formData.append("time_of_day", effectiveTimeOfDay || "all");
+        formData.append("side", side || "all");
+        formData.append("frames_data", JSON.stringify(framesPayload));
+        formData.append("photo", setupPhoto);
+
+        await mockupApi.saveSetupPhoto(formData);
+        setSetupMessage("Saved frames successfully");
+      }
+
       clearAllFrames(true);
       setEditingTemplate(null);
       setEditingTemplateLoading(false);
       setSetupPhoto(null);
       previewImgRef.current = null;
       setSetupImageReady(false);
+      if (editedTemplateKey) {
+        setTemplateThumbs((prev) => {
+          if (!prev[editedTemplateKey]) return prev;
+          const next = { ...prev };
+          const existingUrl = next[editedTemplateKey];
+          if (existingUrl) URL.revokeObjectURL(existingUrl);
+          delete next[editedTemplateKey];
+          return next;
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["mockup", "templates"] });
       queryClient.refetchQueries({ queryKey: ["mockup", "templates"], type: "active" });
       drawPreview();
@@ -541,11 +574,31 @@ export function MockupPage() {
     }
   }
 
-  async function deleteTemplate(photo) {
-    if (!primaryLocation) return;
+  async function deleteTemplate(template) {
+    const locationKey = template?.storage_key || primaryLocation;
+    if (!locationKey || !template?.photo) return;
+    const environment = template?.environment || template?.venue_type || "outdoor";
+    const timeOfDay =
+      template?.time_of_day && template.time_of_day !== "all" ? template.time_of_day : "day";
+    const side = template?.side && template.side !== "all" ? template.side : "gold";
     try {
-      await mockupApi.deleteSetupPhoto(primaryLocation, photo);
+      if (template?.company) {
+        await mockupApi.deleteMockupFrameFromAssets({
+          company: template.company,
+          locationKey,
+          environment,
+          timeOfDay,
+          side,
+          photoFilename: template.photo,
+        });
+      } else {
+        await mockupApi.deleteSetupPhoto(locationKey, template.photo, {
+          timeOfDay: template.time_of_day,
+          side: template.side,
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["mockup", "templates"] });
+      queryClient.refetchQueries({ queryKey: ["mockup", "templates"], type: "active" });
     } catch (err) {
       setSetupError(err?.message || "Failed to delete template");
     }
@@ -667,21 +720,32 @@ export function MockupPage() {
     setSetupPhoto(null);
 
     try {
-      if (template.time_of_day && template.time_of_day !== "all") {
-        setTimeOfDay(template.time_of_day);
-      } else {
+      const nextVenueType = template.venue_type || template.environment || "outdoor";
+      const nextTimeOfDay =
+        template.time_of_day && template.time_of_day !== "all" ? template.time_of_day : "day";
+      const nextSide = template.side && template.side !== "all" ? template.side : "gold";
+      setVenueType(nextVenueType);
+      if (nextVenueType === "indoor") {
         setTimeOfDay("");
-      }
-      if (template.side && template.side !== "all") {
-        setSide(template.side);
-      } else {
         setSide("");
+      } else {
+        if (template.time_of_day && template.time_of_day !== "all") {
+          setTimeOfDay(template.time_of_day);
+        } else {
+          setTimeOfDay("");
+        }
+        if (template.side && template.side !== "all") {
+          setSide(template.side);
+        } else {
+          setSide("");
+        }
       }
 
       const photoBlob = await mockupApi.getTemplatePhotoBlob(template.storage_key || primaryLocation, template.photo, {
         timeOfDay: template.time_of_day || effectiveTimeOfDay,
         side: template.side || side,
         company: template.company,  // O(1) lookup hint from templates response
+        venueType: template.venue_type || template.environment || venueType,
       });
       if (!photoBlob) throw new Error("Failed to load template image");
       const photoUrl = URL.createObjectURL(photoBlob);
@@ -691,7 +755,29 @@ export function MockupPage() {
         URL.revokeObjectURL(photoUrl);
       }
 
-      const frames = extractFramesFromTemplate(template);
+      let frameTemplate = template;
+      if (template.company) {
+        const frameResponse = await mockupApi.getMockupFrameFromAssets({
+          company: template.company,
+          locationKey: template.storage_key || primaryLocation,
+          environment: nextVenueType,
+          timeOfDay: nextTimeOfDay,
+          side: nextSide,
+          photoFilename: template.photo,
+        });
+        if (frameResponse?.frames_data) {
+          frameTemplate = {
+            ...template,
+            frames_data: frameResponse.frames_data,
+            config: frameResponse.config ?? template.config,
+            time_of_day: frameResponse.time_of_day || template.time_of_day,
+            side: frameResponse.side || template.side,
+            environment: frameResponse.environment || template.environment,
+          };
+        }
+      }
+
+      const frames = extractFramesFromTemplate(frameTemplate);
       allFramesRef.current = frames;
       currentPointsRef.current = [];
       clearActiveSelection();

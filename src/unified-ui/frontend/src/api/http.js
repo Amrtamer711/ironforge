@@ -2,6 +2,10 @@ import { runtimeConfig } from "../lib/runtimeConfig";
 import { clearAuthToken, getAuthToken, setAuthToken } from "../lib/token";
 import { getSupabaseClient } from "../lib/supabaseClient";
 
+// Flag to prevent concurrent refresh attempts
+let isRefreshing = false;
+let refreshPromise = null;
+
 async function resolveAuthToken() {
   const stored = getAuthToken();
   if (stored) return stored;
@@ -13,6 +17,37 @@ async function resolveAuthToken() {
   const token = data?.session?.access_token || null;
   if (token) setAuthToken(token);
   return token;
+}
+
+async function tryRefreshToken() {
+  // Prevent concurrent refresh attempts
+  if (isRefreshing) {
+    return refreshPromise;
+  }
+
+  isRefreshing = true;
+  refreshPromise = (async () => {
+    try {
+      const supabase = getSupabaseClient();
+      if (!supabase) return null;
+
+      const { data, error } = await supabase.auth.refreshSession();
+      if (error || !data.session?.access_token) {
+        return null;
+      }
+
+      setAuthToken(data.session.access_token);
+      return data.session.access_token;
+    } catch (e) {
+      console.error("Token refresh failed:", e);
+      return null;
+    } finally {
+      isRefreshing = false;
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 }
 
 export async function apiRequest(path, options = {}) {
@@ -31,13 +66,29 @@ export async function apiRequest(path, options = {}) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const res = await fetch(url, { ...fetchOptions, headers });
+  let res = await fetch(url, { ...fetchOptions, headers });
 
-  // old behavior: auto logout on 401
+  // On 401: try refresh token first, then retry request
   if (res.status === 401) {
-    clearAuthToken();
-    window.dispatchEvent(new CustomEvent("auth:logout"));
-    return null;
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      // Retry with new token
+      headers.set("Authorization", `Bearer ${newToken}`);
+      res = await fetch(url, { ...fetchOptions, headers });
+      if (res.ok || res.status !== 401) {
+        // Proceed with response handling below
+      } else {
+        // Still 401 after refresh - logout
+        clearAuthToken();
+        window.dispatchEvent(new CustomEvent("auth:logout"));
+        return null;
+      }
+    } else {
+      // Refresh failed - logout
+      clearAuthToken();
+      window.dispatchEvent(new CustomEvent("auth:logout"));
+      return null;
+    }
   }
 
   if (!res.ok) {
@@ -67,13 +118,31 @@ export async function apiBlob(path, options = {}) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const res = await fetch(url, { ...fetchOptions, headers });
+  let res = await fetch(url, { ...fetchOptions, headers });
 
+  // On 401: try refresh token first, then retry request
   if (res.status === 401) {
-    clearAuthToken();
-    window.dispatchEvent(new CustomEvent("auth:logout"));
-    return null;
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      // Retry with new token
+      headers.set("Authorization", `Bearer ${newToken}`);
+      res = await fetch(url, { ...fetchOptions, headers });
+      if (res.ok || res.status !== 401) {
+        // Proceed with response handling below
+      } else {
+        // Still 401 after refresh - logout
+        clearAuthToken();
+        window.dispatchEvent(new CustomEvent("auth:logout"));
+        return null;
+      }
+    } else {
+      // Refresh failed - logout
+      clearAuthToken();
+      window.dispatchEvent(new CustomEvent("auth:logout"));
+      return null;
+    }
   }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "Request failed" }));
     const error = new Error(err.detail || err.error || `Request failed: ${res.status}`);

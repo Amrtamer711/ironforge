@@ -5,6 +5,10 @@ All chat endpoints require authentication. User info is extracted from the
 authenticated user token rather than being passed in the request body.
 """
 
+import asyncio
+import io
+import time
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
@@ -20,6 +24,10 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 # Security limits
 MAX_MESSAGE_LENGTH = 10_000  # 10k characters max per message
+
+# Profile cache for RBAC lookups (avoids 100-500ms per request)
+_profile_cache: dict[str, tuple[list[str], float]] = {}
+PROFILE_CACHE_TTL = 600  # 10 minutes
 
 
 class ChatMessageRequest(BaseModel):
@@ -56,13 +64,62 @@ class ChatMessageResponse(BaseModel):
     conversation_id: str | None = None
 
 
+class AttachmentRefreshRequest(BaseModel):
+    """Request model for batch attachment URL refresh."""
+    file_ids: list[str]  # Visible attachments to refresh
+    prefetch_ids: list[str] = []  # Next page (pre-fetch for scroll-ahead)
+
+    @field_validator("file_ids")
+    @classmethod
+    def validate_file_ids(cls, v: list[str]) -> list[str]:
+        """Validate file_ids list."""
+        if len(v) > 100:
+            raise ValueError("Maximum 100 file_ids per request")
+        return v
+
+    @field_validator("prefetch_ids")
+    @classmethod
+    def validate_prefetch_ids(cls, v: list[str]) -> list[str]:
+        """Validate prefetch_ids list."""
+        if len(v) > 50:
+            raise ValueError("Maximum 50 prefetch_ids per request")
+        return v
+
+
+def _build_file_info(stored_info: Any, file_id: str) -> dict | None:
+    """Build file info dict from stored info. Extracted helper to avoid duplication."""
+    if not stored_info:
+        return None
+    # Use module-specific URL path for proper proxy routing
+    url = f"/api/sales/files/{file_id}/{stored_info.filename}" if stored_info.filename else f"/api/sales/files/{file_id}/file"
+    return {
+        "file_id": file_id,
+        "filename": stored_info.filename,
+        "mimetype": stored_info.content_type,
+        "size": stored_info.size,
+        "url": url,
+    }
+
+
 async def _get_user_profile(user: AuthUser) -> list[str]:
-    """Get profile name for a user from RBAC."""
+    """Get profile name for a user from RBAC (cached)."""
+    cache_key = user.id
+    now = time.time()
+
+    # Check cache first
+    if cache_key in _profile_cache:
+        roles, cached_at = _profile_cache[cache_key]
+        if now - cached_at < PROFILE_CACHE_TTL:
+            return roles
+
+    # Fetch from RBAC
     try:
         rbac = get_rbac_client()
         profile = await rbac.get_user_profile(user.id)
         profile_name = profile.name if profile else user.metadata.get("role", "sales_user")
-        return [profile_name]
+        roles = [profile_name]
+        _profile_cache[cache_key] = (roles, now)
+        return roles
     except Exception as e:
         logger.warning(f"[CHAT] Failed to get profile for {user.email}: {e}")
         return [user.metadata.get("role", "sales_user")]
@@ -92,21 +149,14 @@ async def chat_message(
         files = None
         if request.file_ids:
             web_adapter = get_web_adapter()
-            files = []
-            for file_id in request.file_ids:
-                stored_info = web_adapter.get_stored_file_info(file_id)
-                if stored_info:
-                    # Include URL for persistence
-                    url = f"/api/files/{file_id}/{stored_info.filename}" if stored_info.filename else f"/api/files/{file_id}/file"
-                    files.append({
-                        "file_id": file_id,
-                        "filename": stored_info.filename,
-                        "mimetype": stored_info.content_type,
-                        "size": stored_info.size,
-                        "url": url,
-                    })
-                else:
-                    logger.warning(f"[CHAT] File not found: {file_id}")
+            # Build file infos (using helper to avoid duplication)
+            file_infos = [
+                _build_file_info(web_adapter.get_stored_file_info(fid), fid)
+                for fid in request.file_ids
+            ]
+            files = [f for f in file_infos if f]
+            if len(files) < len(request.file_ids):
+                logger.warning(f"[CHAT] Some files not found for {user.email}")
 
         result = await process_chat_message(
             user_id=user.id,
@@ -154,23 +204,15 @@ async def chat_stream(
 
     roles = await _get_user_profile(user)
 
-    # Convert file_ids to file info dicts
+    # Convert file_ids to file info dicts (using helper to avoid duplication)
     files = None
     if request.file_ids:
         web_adapter = get_web_adapter()
-        files = []
-        for file_id in request.file_ids:
-            stored_info = web_adapter.get_stored_file_info(file_id)
-            if stored_info:
-                # Include URL for persistence
-                url = f"/api/files/{file_id}/{stored_info.filename}" if stored_info.filename else f"/api/files/{file_id}/file"
-                files.append({
-                    "file_id": file_id,
-                    "filename": stored_info.filename,
-                    "mimetype": stored_info.content_type,
-                    "size": stored_info.size,
-                    "url": url,
-                })
+        file_infos = [
+            _build_file_info(web_adapter.get_stored_file_info(fid), fid)
+            for fid in request.file_ids
+        ]
+        files = [f for f in file_infos if f]
 
     async def event_generator():
         try:
@@ -238,19 +280,36 @@ async def delete_conversation(
 
 
 @router.get("/history")
-async def get_chat_history(user: AuthUser = Depends(require_permission("sales:chat:use"))):
+async def get_chat_history(
+    user: AuthUser = Depends(require_permission("sales:chat:use")),
+    limit: int | None = None,
+    offset: int = 0,
+    newest_first: bool = False,
+):
     """
     Load persisted chat history for the authenticated user.
 
     This endpoint loads chat messages from the database, which persist
     across server restarts. Use this on login to restore previous conversations.
 
+    Messages include attachment metadata with dimensions for placeholder sizing.
+    URLs are NOT included for fast response - use /attachments/refresh to get
+    signed URLs for visible images (lazy loading).
+
     Requires sales:chat:use permission.
 
+    Args:
+        limit: Maximum number of messages to return (None = all messages)
+        offset: Number of messages to skip (from start if newest_first=False, from end if newest_first=True)
+        newest_first: If True, return newest messages first (for infinite scroll)
+                      offset=0 returns last `limit` messages
+                      offset=50 returns messages before the last 50
+
     Returns:
-        messages: List of message objects with role, content, timestamp
+        messages: List of message objects with role, content, timestamp, enriched attachments
         session_id: The conversation session ID
-        message_count: Total number of messages
+        message_count: Total number of messages (before pagination)
+        has_more: Whether there are more messages to load
     """
     from db.database import db
 
@@ -263,20 +322,86 @@ async def get_chat_history(user: AuthUser = Depends(require_permission("sales:ch
                 "messages": [],
                 "session_id": None,
                 "message_count": 0,
+                "has_more": False,
                 "last_updated": None,
             }
 
-        messages = session.get("messages", [])
+        all_messages = session.get("messages", [])
+        # Filter out any None/null messages (defensive against corrupted data)
+        all_messages = [m for m in all_messages if m is not None]
+        total_count = len(all_messages)
 
-        # Refresh signed URLs for attachments (they expire after 24h)
-        messages = await _refresh_attachment_urls(messages)
+        # Apply pagination if limit is specified
+        if limit is not None:
+            if newest_first:
+                # For infinite scroll: offset from end, return in chronological order
+                # offset=0, limit=50 → last 50 messages (index [total-50:total])
+                # offset=50, limit=50 → previous 50 messages (index [total-100:total-50])
+                end_idx = total_count - offset
+                start_idx = max(0, end_idx - limit)
+                messages = all_messages[start_idx:end_idx]
+                has_more = start_idx > 0
+            else:
+                # Original behavior: offset from start
+                messages = all_messages[offset:offset + limit]
+                has_more = (offset + limit) < total_count
+        else:
+            messages = all_messages[offset:] if offset > 0 else all_messages
+            has_more = False
 
-        logger.info(f"[CHAT] Loaded {len(messages)} persisted messages for {user.email}")
+        # Collect all attachment file_ids for dimension enrichment (no URL generation)
+        # URLs are loaded lazily via /attachments/refresh for faster initial load
+        attachment_ids = [
+            att["file_id"]
+            for msg in messages
+            if msg is not None
+            for att in (msg.get("attachments") or msg.get("files") or [])
+            if att and att.get("file_id")
+        ]
+
+        # Only fetch dimensions from DB - skip URL generation for fast response
+        # Frontend will call /attachments/refresh to get URLs for visible images
+        dimension_cache = {}
+        if attachment_ids:
+            docs = db.get_documents_batch(attachment_ids)
+            for file_id, doc in docs.items():
+                if doc:
+                    dimension_cache[file_id] = {
+                        "width": doc.get("image_width"),
+                        "height": doc.get("image_height"),
+                    }
+
+        # Enrich messages with dimensions only (URLs loaded lazily by frontend)
+        enriched_messages = []
+        for msg in messages:
+            if msg is None:
+                continue
+            msg_copy = dict(msg)
+            attachments = msg_copy.get("attachments") or msg_copy.get("files") or []
+            enriched_attachments = []
+            for att in attachments:
+                if not att:
+                    continue
+                att_copy = dict(att)
+                file_id = att.get("file_id")
+                if file_id and file_id in dimension_cache:
+                    dim_data = dimension_cache[file_id]
+                    att_copy["width"] = dim_data.get("width")
+                    att_copy["height"] = dim_data.get("height")
+                enriched_attachments.append(att_copy)
+            # Use consistent key name
+            msg_copy["files"] = enriched_attachments
+            if "attachments" in msg_copy:
+                del msg_copy["attachments"]
+            enriched_messages.append(msg_copy)
+
+        logger.info(f"[CHAT] Loaded {len(enriched_messages)}/{total_count} messages ({len(attachment_ids)} attachments) for {user.email}")
 
         return {
-            "messages": messages,
+            "messages": enriched_messages,
             "session_id": session.get("session_id"),
-            "message_count": len(messages),
+            "message_count": total_count,
+            "has_more": has_more,
             "last_updated": session.get("updated_at"),
         }
     except Exception as e:
@@ -285,44 +410,207 @@ async def get_chat_history(user: AuthUser = Depends(require_permission("sales:ch
             "messages": [],
             "session_id": None,
             "message_count": 0,
-            "error": str(e)
+            "has_more": False,
+            "error": str(e),
         }
 
 
-async def _refresh_attachment_urls(messages: list) -> list:
+@router.post("/attachments/refresh")
+async def refresh_attachment_urls(
+    request: AttachmentRefreshRequest,
+    user: AuthUser = Depends(require_permission("sales:chat:use")),
+):
     """
-    Refresh signed URLs for attachments that may have expired.
+    Batch refresh signed URLs for chat attachments with thumbnail support.
 
-    Looks up file storage info from the database and generates fresh signed URLs.
+    This endpoint is called by the frontend when attachments become visible
+    in the viewport. It supports pre-fetching and thumbnail generation.
+
+    Features:
+    - Generates thumbnails on-demand (256x256 JPEG)
+    - Returns both thumbnail and full image URLs
+    - Caches thumbnails in Supabase storage
+    - Tracks image dimensions for aspect ratio
+
+    Pre-fetch Strategy:
+    - file_ids: Currently visible attachments (refresh NOW)
+    - prefetch_ids: Next page of attachments (load ahead for smooth scrolling)
+
+    Returns:
+        urls: Dict mapping file_id -> {thumbnail, full, width, height} (24h expiry)
     """
+    from datetime import datetime
     from db.database import db
     from integrations.storage import get_storage_client
+    from core.utils.thumbnail import generate_thumbnail
+
+    # Combine visible + prefetch, deduplicate
+    all_ids = list(set(request.file_ids + request.prefetch_ids))
+
+    if not all_ids:
+        return {"urls": {}}
 
     storage_client = get_storage_client()
     if not storage_client or storage_client.provider_name == "local":
-        return messages  # No refresh needed for local storage
+        return {"urls": {}}
 
-    for msg in messages:
-        attachments = msg.get("attachments") or msg.get("files") or []
-        for attachment in attachments:
-            file_id = attachment.get("file_id")
-            if not file_id:
-                continue
+    # Single batch DB lookup
+    docs = db.get_documents_batch(all_ids)
 
-            # Look up file storage info from database
+    # =========================================================================
+    # BATCH URL GENERATION - Much faster than individual calls
+    # Before: N files = N HTTP requests to Supabase (0.3s each = 22s for 73 files)
+    # After: N files = 2 HTTP requests (uploads + thumbnails = ~1s total)
+    # =========================================================================
+
+    # Collect storage keys for batch URL generation
+    uploads_keys: dict[str, str] = {}  # storage_key -> file_id
+    thumbnail_keys: dict[str, str] = {}  # thumbnail_key -> file_id
+    needs_thumbnail: list[str] = []  # file_ids needing thumbnail generation
+    file_metadata: dict[str, dict] = {}  # file_id -> metadata
+
+    for file_id in all_ids:
+        doc = docs.get(file_id)
+        if not doc or doc.get("storage_provider") != "supabase":
+            continue
+
+        bucket = doc.get("storage_bucket")
+        key = doc.get("storage_key")
+        if not bucket or not key:
+            continue
+
+        # Track for batch URL generation (most files are in "uploads" bucket)
+        if bucket == "uploads":
+            uploads_keys[key] = file_id
+
+        # Check if this is an image
+        file_ext = doc.get("file_extension", "").lower()
+        is_image = file_ext in ["jpg", "jpeg", "png", "gif", "webp", "bmp"]
+
+        file_metadata[file_id] = {
+            "bucket": bucket,
+            "key": key,
+            "is_image": is_image,
+            "width": doc.get("image_width"),
+            "height": doc.get("image_height"),
+        }
+
+        if is_image:
+            if doc.get("thumbnail_key"):
+                thumbnail_keys[doc["thumbnail_key"]] = file_id
+            else:
+                needs_thumbnail.append(file_id)
+
+    # Batch generate full image URLs (ONE API call for all uploads)
+    full_url_map: dict[str, str] = {}
+    if uploads_keys:
+        batch_urls = await storage_client.get_signed_urls_batch(
+            bucket="uploads",
+            keys=list(uploads_keys.keys()),
+            expires_in=86400
+        )
+        for key, url in batch_urls.items():
+            file_id = uploads_keys.get(key)
+            if file_id and url:
+                full_url_map[file_id] = url
+
+    # Batch generate thumbnail URLs (ONE API call for all thumbnails)
+    thumbnail_url_map: dict[str, str] = {}
+    if thumbnail_keys:
+        batch_thumb_urls = await storage_client.get_signed_urls_batch(
+            bucket="thumbnails",
+            keys=list(thumbnail_keys.keys()),
+            expires_in=86400
+        )
+        for key, url in batch_thumb_urls.items():
+            file_id = thumbnail_keys.get(key)
+            if file_id and url:
+                thumbnail_url_map[file_id] = url
+
+    logger.info(f"[CHAT] Batch URLs: {len(full_url_map)} full, {len(thumbnail_url_map)} thumbnails")
+
+    # =========================================================================
+    # THUMBNAIL GENERATION (only for images without existing thumbnails)
+    # This is rare after first load - most images already have thumbnails
+    # =========================================================================
+
+    async def generate_missing_thumbnail(file_id: str) -> tuple[str, str | None]:
+        """Generate thumbnail for image without one."""
+        doc = docs.get(file_id)
+        if not doc:
+            return (file_id, None)
+
+        try:
+            bucket = doc["storage_bucket"]
+            key = doc["storage_key"]
+
+            download_result = await storage_client.download(bucket=bucket, key=key)
+            original_bytes = download_result.data
+
+            from PIL import Image as PILImage
+            orig_width, orig_height = None, None
             try:
-                doc = db.get_document(file_id)
-                if doc and doc.get("storage_provider") == "supabase":
-                    # Generate fresh signed URL
-                    signed_url = await storage_client.get_signed_url(
-                        bucket=doc["storage_bucket"],
-                        key=doc["storage_key"],
-                        expires_in=86400,  # 24 hours
-                    )
-                    if signed_url:
-                        attachment["url"] = signed_url
-            except Exception as e:
-                logger.warning(f"[CHAT] Failed to refresh URL for file {file_id}: {e}")
-                continue
+                with PILImage.open(io.BytesIO(original_bytes)) as img:
+                    orig_width, orig_height = img.size
+            except Exception:
+                pass
 
-    return messages
+            thumb_bytes, thumb_width, thumb_height = await generate_thumbnail(original_bytes)
+            thumbnail_key = f"{user.id}/{file_id}/thumb_256.jpg"
+            await storage_client.upload(
+                bucket="thumbnails",
+                key=thumbnail_key,
+                data=thumb_bytes,
+                content_type="image/jpeg"
+            )
+
+            db.update_document(file_id, {
+                "thumbnail_key": thumbnail_key,
+                "thumbnail_generated_at": datetime.now(),
+                "image_width": orig_width or thumb_width,
+                "image_height": orig_height or thumb_height
+            })
+
+            file_metadata[file_id]["width"] = orig_width or thumb_width
+            file_metadata[file_id]["height"] = orig_height or thumb_height
+
+            thumbnail_url = await storage_client.get_signed_url(
+                bucket="thumbnails",
+                key=thumbnail_key,
+                expires_in=86400
+            )
+            return (file_id, thumbnail_url)
+
+        except Exception as e:
+            logger.warning(f"[CHAT] Thumbnail generation failed for {file_id}: {e}")
+            return (file_id, None)
+
+    if needs_thumbnail:
+        logger.info(f"[CHAT] Generating {len(needs_thumbnail)} missing thumbnails")
+        thumb_tasks = [generate_missing_thumbnail(fid) for fid in needs_thumbnail]
+        thumb_results = await asyncio.gather(*thumb_tasks)
+        for file_id, thumb_url in thumb_results:
+            if thumb_url:
+                thumbnail_url_map[file_id] = thumb_url
+
+    # Build response
+    urls = {}
+    for file_id in all_ids:
+        meta = file_metadata.get(file_id)
+        if not meta:
+            continue
+
+        full_url = full_url_map.get(file_id)
+        if not full_url:
+            continue
+
+        urls[file_id] = {
+            "full": full_url,
+            "thumbnail": thumbnail_url_map.get(file_id),
+            "width": meta.get("width"),
+            "height": meta.get("height"),
+        }
+
+    logger.info(f"[CHAT] Refreshed {len(urls)}/{len(all_ids)} attachment URLs for {user.email}")
+
+    return {"urls": urls}

@@ -89,7 +89,10 @@ def save_chat_messages(
     session_id: str | None = None,
 ) -> bool:
     """
-    Save chat messages for a user to the database.
+    Save chat messages for a user to the database (FULL REPLACEMENT).
+
+    WARNING: This replaces ALL messages. Use append_chat_messages() for adding
+    new messages to avoid race conditions in concurrent request scenarios.
 
     Messages are sorted to maintain logical conversation flow: each user message
     is followed by its assistant response(s), linked via parent_id. This ensures
@@ -110,6 +113,45 @@ def save_chat_messages(
         return db.save_chat_session(user_id, sorted_messages, session_id)
     except Exception as e:
         logger.error(f"[CHAT PERSIST] Failed to save messages for {user_id}: {e}")
+        return False
+
+
+def append_chat_messages(
+    user_id: str,
+    new_messages: list[dict[str, Any]],
+    session_id: str | None = None,
+) -> bool:
+    """
+    Atomically append new messages to a user's chat history.
+
+    This is the PREFERRED method for saving new messages as it:
+    - Prevents race conditions when concurrent requests save messages
+    - Uses PostgreSQL JSONB concatenation for atomic appends
+    - Falls back to optimistic locking if RPC is unavailable
+
+    Args:
+        user_id: User's unique ID
+        new_messages: New message(s) to append (not the full history)
+        session_id: Optional session ID
+
+    Returns:
+        True if appended successfully
+    """
+    if not new_messages:
+        logger.debug(f"[CHAT PERSIST] No messages to append for {user_id}")
+        return True
+
+    try:
+        db = _get_db()
+        logger.info(f"[CHAT PERSIST] Appending {len(new_messages)} messages for {user_id} (session={session_id})")
+        result = db.append_chat_messages(user_id, new_messages, session_id)
+        if result:
+            logger.info(f"[CHAT PERSIST] Successfully appended {len(new_messages)} messages for {user_id}")
+        else:
+            logger.error(f"[CHAT PERSIST] db.append_chat_messages returned False for {user_id}")
+        return result
+    except Exception as e:
+        logger.error(f"[CHAT PERSIST] Failed to append messages for {user_id}: {e}", exc_info=True)
         return False
 
 

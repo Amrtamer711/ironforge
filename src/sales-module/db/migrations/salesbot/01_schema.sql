@@ -266,12 +266,19 @@ CREATE TABLE IF NOT EXISTS public.documents (
     deleted_at TIMESTAMPTZ,
     file_hash TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    metadata_json JSONB
+    metadata_json JSONB,
+    -- Thumbnail support (added in migration 05)
+    thumbnail_key TEXT,
+    thumbnail_generated_at TIMESTAMPTZ,
+    image_width INTEGER,
+    image_height INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_file_id ON public.documents(file_id);
 CREATE INDEX IF NOT EXISTS idx_documents_user ON public.documents(user_id);
 CREATE INDEX IF NOT EXISTS idx_documents_type ON public.documents(document_type);
+CREATE INDEX IF NOT EXISTS idx_documents_thumbnail ON public.documents(thumbnail_key)
+WHERE thumbnail_key IS NOT NULL;
 
 -- =============================================================================
 -- MOCKUP FILES (Public - generated mockups, references Asset-Management locations)
