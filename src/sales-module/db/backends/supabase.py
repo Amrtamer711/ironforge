@@ -2013,11 +2013,11 @@ class SupabaseBackend(DatabaseBackend):
         try:
             client = self._get_client()
 
-            # First check if session exists
+            # First check if session exists (don't use .single() - it throws on 0 rows)
             logger.info(f"[SUPABASE] Checking for existing chat session for user: {user_id}")
-            existing = client.table("chat_sessions").select("session_id").eq("user_id", user_id).single().execute()
+            existing = client.table("chat_sessions").select("session_id").eq("user_id", user_id).execute()
 
-            if existing.data:
+            if existing.data and len(existing.data) > 0:
                 # Atomic append using PostgreSQL JSONB concatenation
                 # This is race-condition safe - concurrent appends both succeed
                 logger.info(f"[SUPABASE] Calling RPC append_chat_messages for user: {user_id}, {len(new_messages)} messages")
@@ -2075,12 +2075,13 @@ class SupabaseBackend(DatabaseBackend):
             try:
                 client = self._get_client()
 
-                # Read current state
-                existing = client.table("chat_sessions").select("*").eq("user_id", user_id).single().execute()
+                # Read current state (don't use .single() - it throws on 0 rows)
+                result = client.table("chat_sessions").select("*").eq("user_id", user_id).execute()
+                existing_data = result.data[0] if result.data and len(result.data) > 0 else None
 
-                if existing.data:
-                    current_messages = existing.data.get("messages", [])
-                    current_updated = existing.data.get("updated_at")
+                if existing_data:
+                    current_messages = existing_data.get("messages", [])
+                    current_updated = existing_data.get("updated_at")
 
                     # Append new messages
                     updated_messages = current_messages + new_messages
