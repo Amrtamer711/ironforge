@@ -429,9 +429,12 @@ async def stream_chat_message(
         yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
         yield "data: [DONE]\n\n"
     finally:
-        # Reset context variables
-        current_request_id.reset(request_token)
-        current_parent_message_id.reset(parent_token)
+        # Reset context variables (may fail if generator closed in different context)
+        try:
+            current_request_id.reset(request_token)
+            current_parent_message_id.reset(parent_token)
+        except ValueError:
+            pass  # Token was created in a different async context
 
         # Cancel LLM task if still running (defensive cleanup)
         if not llm_task.done():

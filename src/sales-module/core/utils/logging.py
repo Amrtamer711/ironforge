@@ -289,10 +289,9 @@ async def logging_middleware_helper(request, call_next):
         logger = get_logger("api.request")
         path = request.url.path
 
-        # Skip health check logging only at DEBUG level (they flood terminal)
-        # In production (INFO+), health checks are logged normally
-        is_debug = logging.getLogger().level <= logging.DEBUG
-        skip_logging = is_debug and path in _SKIP_LOG_PATHS_DEBUG
+        # Skip health check logging in development (they flood terminal)
+        is_dev = os.getenv("ENVIRONMENT", "").lower() != "production"
+        skip_logging = is_dev and path in _SKIP_LOG_PATHS_DEBUG
 
         if not skip_logging:
             # Log request
