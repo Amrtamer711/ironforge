@@ -421,20 +421,24 @@ class ToolRouter:
 
             elif result.get("is_single"):
                 logger.info(f"[RESULT] Single proposal - Location: {result.get('location')}")
-                await self._channel.upload_file(
+                logger.info(f"[RESULT] Uploading PPTX: {result['pptx_filename']} from {result['pptx_path']}")
+                pptx_result = await self._channel.upload_file(
                     channel_id=channel,
                     file_path=result["pptx_path"],
                     filename=result["pptx_filename"],
                     title=result["pptx_filename"],
                     comment=f"📊 **PowerPoint Proposal**\n📍 Location: {result['location']}"
                 )
-                await self._channel.upload_file(
+                logger.info(f"[RESULT] PPTX upload result: success={pptx_result.success}, error={pptx_result.error if not pptx_result.success else 'None'}")
+                logger.info(f"[RESULT] Uploading PDF: {result['pdf_filename']} from {result['pdf_path']}")
+                pdf_result = await self._channel.upload_file(
                     channel_id=channel,
                     file_path=result["pdf_path"],
                     filename=result["pdf_filename"],
                     title=result["pdf_filename"],
                     comment=f"📄 **PDF Proposal**\n📍 Location: {result['location']}"
                 )
+                logger.info(f"[RESULT] PDF upload result: success={pdf_result.success}, error={pdf_result.error if not pdf_result.success else 'None'}")
                 try:
                     os.unlink(result["pptx_path"])
                     os.unlink(result["pdf_path"])

@@ -878,13 +878,16 @@ class WebAdapter(ChannelAdapter):
             bo_id: Link to booking order
             proposal_id: Link to proposal
         """
+        logger.info(f"[WebAdapter] upload_file called: file_path={file_path}, filename={filename}")
         path = Path(file_path)
         if not path.exists():
+            logger.error(f"[WebAdapter] File not found: {file_path}")
             return FileUpload(success=False, error="File not found")
 
         file_id = str(uuid.uuid4())
         actual_filename = filename or path.name
         owner_id = user_id or channel_id
+        logger.info(f"[WebAdapter] Processing upload: file_id={file_id}, filename={actual_filename}, owner={owner_id}")
 
         # Determine content type
         import mimetypes
@@ -894,21 +897,25 @@ class WebAdapter(ChannelAdapter):
         # Calculate file hash for integrity/deduplication
         file_hash = None
         file_size = path.stat().st_size
+        logger.info(f"[WebAdapter] File size: {file_size} bytes, content_type={content_type}")
         try:
             from core.utils.files import calculate_sha256, get_file_extension
             file_hash = calculate_sha256(path)
             file_extension = get_file_extension(actual_filename)
+            logger.info(f"[WebAdapter] File hash calculated: {file_hash[:16] if file_hash else 'None'}...")
         except Exception as e:
             logger.warning(f"[WebAdapter] Failed to calculate file hash: {e}")
             file_extension = path.suffix.lower()
 
         # Try to use remote storage (Supabase)
         storage_client = self._get_storage_client()
+        logger.info(f"[WebAdapter] Storage client: {storage_client.provider_name if storage_client else 'None'}")
         if storage_client and storage_client.provider_name != "local":
             try:
                 # Generate storage key: {bucket}/{user_id}/{date}/{file_id}_{filename}
                 date_prefix = datetime.now().strftime("%Y/%m/%d")
                 storage_key = f"{owner_id}/{date_prefix}/{file_id}_{actual_filename}"
+                logger.info(f"[WebAdapter] Starting upload to {bucket}/{storage_key}")
 
                 # Upload to Supabase Storage
                 result = await storage_client.upload_from_path(
@@ -917,6 +924,7 @@ class WebAdapter(ChannelAdapter):
                     local_path=path,
                     content_type=content_type,
                 )
+                logger.info(f"[WebAdapter] Upload completed: success={result.success}, error={result.error if not result.success else 'None'}")
 
                 if result.success:
                     # Store metadata in memory cache
