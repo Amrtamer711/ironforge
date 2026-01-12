@@ -194,7 +194,7 @@ select {
   --nav-active-border: transparent;
   --nav-fg: rgba(0, 0, 0, 0.8);
   --nav-active-fg: rgba(0, 0, 0, 0.9);
-  --nav-shadow: 0 10px 22px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  --nav-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.02);
 }
 
 /* When any brand theme is active we slightly shift the global bg
@@ -380,6 +380,11 @@ body[data-brand-theme] .mmg-btn-primary:active {
 
 .mmg-nav-icon {
   transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.dark .mmg-nav-icon {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
 .dark {
@@ -391,7 +396,7 @@ body[data-brand-theme] .mmg-btn-primary:active {
   --nav-active-border: transparent;
   --nav-fg: rgba(255, 255, 255, 0.85);
   --nav-active-fg: rgba(255, 255, 255, 0.95);
-  --nav-shadow: 0 14px 26px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --nav-shadow: 0 2px 4px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 /* Sidebar nav buttons pick up accent when brand theme is active */
@@ -503,25 +508,25 @@ body[data-brand-theme] .mmg-nav-icon {
     rgb(var(--brand-card-bg)) 30%
   );
   color: rgb(var(--brand-accent));
-  box-shadow: inset 0 0 0 1px rgb(var(--brand-accent) / 0.2);
+  box-shadow: inset 0 0 0 1px rgb(var(--brand-accent) / 0.14);
 }
 
 body[data-brand-theme] .mmg-nav-btn-active .mmg-nav-icon {
   background: rgb(var(--brand-accent));
   color: rgb(var(--brand-on-primary));
-  box-shadow: 0 10px 20px rgb(var(--brand-accent) / 0.28);
+  box-shadow: 0 4px 8px rgb(var(--brand-accent) / 0.18);
 }
 
 .dark body[data-brand-theme] .mmg-nav-icon {
   background: rgb(var(--brand-accent) / 0.18);
   color: rgb(var(--brand-on-primary));
-  box-shadow: inset 0 0 0 1px rgb(var(--brand-accent) / 0.4);
+  box-shadow: inset 0 0 0 1px rgb(var(--brand-accent) / 0.28);
 }
 
 .dark body[data-brand-theme] .mmg-nav-btn-active .mmg-nav-icon {
   background: rgb(var(--brand-accent));
   color: rgb(var(--brand-on-primary));
-  box-shadow: 0 12px 22px rgb(var(--brand-accent) / 0.35);
+  box-shadow: 0 5px 9px rgb(var(--brand-accent) / 0.25);
 }
 
 .mmg-line-clamp-2 {
