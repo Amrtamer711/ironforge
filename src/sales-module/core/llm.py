@@ -858,6 +858,7 @@ async def _process_llm_streaming(
                             "timestamp": datetime.now().isoformat(),
                             "parent_id": parent_id,
                             "tool_call": tool_call.name,
+                            "is_tool_response": True,  # Hide from permanent chat display
                         })
             except Exception as e:
                 logger.debug(f"[LLM] Could not add tool summary to session: {e}")
@@ -1724,6 +1725,7 @@ async def main_llm_loop(
                                 "timestamp": datetime.now().isoformat(),
                                 "parent_id": parent_id,
                                 "tool_call": tool_call.name,
+                                "is_tool_response": True,
                             })
                 except Exception as e:
                     logger.debug(f"[LLM] Could not add tool summary to session: {e}")

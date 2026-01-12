@@ -217,20 +217,50 @@ class ProposalValidator:
                 )
                 continue
 
-            # Get template filename from mapping
-            mapping = config.get_location_mapping()
-            if matched_key not in mapping:
-                errors.append(f"Proposal {idx + 1}: No template file for location '{matched_key}'")
-                continue
+            # Get template filename - prefer location metadata (from workflow context), fall back to global cache
+            template_path = location_metadata.get("template_path") or location_metadata.get("pptx_rel_path")
+            if not template_path:
+                # Fall back to global mapping cache (legacy)
+                mapping = config.get_location_mapping()
+                template_path = mapping.get(matched_key)
+            if not template_path:
+                # Default template path pattern: {location_key}/{location_key}.pptx
+                template_path = f"{matched_key}/{matched_key}.pptx"
+                self.logger.info(f"[VALIDATOR] Using default template path for {matched_key}: {template_path}")
 
-            # Build validated proposal
+            # Extract SOV value (handle "16.6%" string, decimal 0.13, or percentage 16.6)
+            sov_raw = location_metadata.get("sov_percent") or location_metadata.get("sov") or 16.6
+            if isinstance(sov_raw, str):
+                sov_value = float(sov_raw.replace("%", "").strip())
+            else:
+                sov_value = float(sov_raw)
+
+            # Convert decimal format (0.13) to percentage format (13) if needed
+            # Database stores as decimal fraction, display expects percentage
+            if sov_value < 1:
+                sov_value = sov_value * 100
+
+            # Build validated proposal with full location metadata for combined slides
             validated_proposal = {
                 "location": matched_key,
                 "location_input": location,  # Keep original for logging
                 "durations": durations,
                 "spots": int(spots),
-                "filename": mapping[matched_key],
+                "filename": template_path,
                 "company_schema": company_schema,  # For O(1) template lookup
+                # Include full location metadata for combined slide generation
+                "location_metadata": {
+                    "display_name": location_metadata.get("display_name") or matched_key.replace("_", " ").title(),
+                    "display_type": (location_metadata.get("display_type") or "digital").lower(),
+                    "series": location_metadata.get("series") or "",
+                    "sov": sov_value,
+                    "spot_duration": int(location_metadata.get("spot_duration") or 16),
+                    "loop_duration": int(location_metadata.get("loop_duration") or 96),
+                    "number_of_faces": int(location_metadata.get("number_of_faces") or 1),
+                    "upload_fee": int(float(location_metadata.get("upload_fee") or 3000)),
+                    "height": location_metadata.get("height") or "",
+                    "width": location_metadata.get("width") or "",
+                },
             }
 
             # Handle start_dates/end_dates (arrays for separate) vs start_date/end_date (singles for combined)

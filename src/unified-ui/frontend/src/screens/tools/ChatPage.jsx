@@ -67,10 +67,11 @@ export function ChatPage() {
                   files: (msg.files || []).map(f => {
                     const urlData = result.urls[f.file_id];
                     if (urlData) {
+                      // Just use the full URL - no thumbnails
+                      const url = typeof urlData === 'string' ? urlData : (urlData.full || urlData.url);
                       return {
                         ...f,
-                        url: urlData.full,
-                        thumbnail_url: urlData.thumbnail,
+                        url: url,
                         width: urlData.width || f.width,
                         height: urlData.height || f.height,
                       };
@@ -106,6 +107,12 @@ export function ChatPage() {
   const canSend = useMemo(
     () => (value.trim().length > 0 || Boolean(pendingFile)) && !streaming,
     [value, pendingFile, streaming]
+  );
+
+  // Filter out tool response messages from display (they're still stored for LLM context)
+  const visibleMessages = useMemo(
+    () => messages.filter(m => !m.is_tool_response),
+    [messages]
   );
 
   const scrollToBottom = useCallback((immediate = false) => {
@@ -217,9 +224,10 @@ export function ChatPage() {
           }
 
           if (evt?.type === "delete") {
-            fullContent = "";
+            // Delete event removes a specific message (usually status message)
+            // Don't clear assistant message content - just clear its status
             setMessages(prev => prev.map(m =>
-              m.id === assistantMsgId ? { ...m, status: "Thinking", content: "" } : m
+              m.id === assistantMsgId ? { ...m, status: null } : m
             ));
             return;
           }
@@ -248,22 +256,44 @@ export function ChatPage() {
             return;
           }
 
-          if ((evt?.type === "files" || evt?.type === "file") && (evt.files || evt.file)) {
-            const newFiles = evt.files || [evt.file || evt];
+          if ((evt?.type === "files" || evt?.type === "file") && (evt.files || evt.file || evt.file_id)) {
+            // Handle different file event formats:
+            // - evt.files: array of files
+            // - evt.file: single file object (backend nests file info here with comment inside)
+            // - evt.file_id: file info at top level
+            const fileObj = evt.file || {};
+            const newFiles = evt.files || (evt.file ? [{
+              file_id: fileObj.file_id,
+              url: fileObj.url,
+              filename: fileObj.filename,
+              title: fileObj.title,
+            }] : [{
+              file_id: evt.file_id,
+              url: evt.url,
+              filename: evt.filename,
+              title: evt.title,
+            }]);
+            // Get comment from nested file object or top level
+            const fileComment = fileObj.comment || evt.comment || "";
+            if (fileComment) fullContent = fileComment;
             setMessages(prev => prev.map(m =>
-              m.id === assistantMsgId ? { ...m, files: [...(m.files || []), ...newFiles] } : m
+              m.id === assistantMsgId ? {
+                ...m,
+                content: fileComment || m.content,
+                files: [...(m.files || []), ...newFiles]
+              } : m
             ));
             return;
           }
         },
         onDone: () => {
-          if (!fullContent) {
-            setMessages(prev => prev.map(m =>
-              m.id === assistantMsgId && !m.content && !m.files?.length
-                ? { ...m, status: null, content: "I'm ready to help. What would you like to do?" }
-                : m.id === assistantMsgId ? { ...m, status: null } : m
-            ));
-          }
+          // Always clear status when streaming ends
+          // Show default message only if no content AND no files
+          setMessages(prev => prev.map(m =>
+            m.id === assistantMsgId && !m.content && !m.files?.length
+              ? { ...m, status: null, content: "I'm ready to help. What would you like to do?" }
+              : m.id === assistantMsgId ? { ...m, status: null } : m
+          ));
         },
       });
     } catch (e) {
@@ -288,8 +318,8 @@ export function ChatPage() {
           <Virtuoso
             ref={virtuosoRef}
             className="h-full scrollbar-thin"
-            data={messages}
-            initialTopMostItemIndex={messages.length - 1}
+            data={visibleMessages}
+            initialTopMostItemIndex={visibleMessages.length - 1}
             followOutput="smooth"
             overscan={200}
             increaseViewportBy={{ top: 200, bottom: 200 }}
@@ -382,11 +412,11 @@ const Attachment = React.memo(function Attachment({ file, isUser }) {
   const displayName = file.filename || "Attachment";
 
   // For local files (blob URLs), use preview_url
-  // For remote files, use thumbnail_url or url from API
+  // For remote files, use signed URL from API (full quality, no thumbnails)
   // IMPORTANT: Skip old-format URLs (/api/sales/files/...) since <img> can't send auth headers
   const isSignedUrl = (url) => url && !url.startsWith('/api/');
-  const imageUrl = file.preview_url || file.thumbnail_url || (isSignedUrl(file.url) ? file.url : null);
-  const fullUrl = (isSignedUrl(file.url) ? file.url : null) || file.preview_url;
+  const imageUrl = file.preview_url || (isSignedUrl(file.url) ? file.url : null);
+  const fullUrl = imageUrl;
 
   // Show image with placeholder (or loading state if URL not yet available)
   if (isImage) {
@@ -619,6 +649,7 @@ function normalizeMessage(msg) {
     content: msg.content || "",
     files: msg.files || msg.attachments || [],
     status: null,
+    is_tool_response: Boolean(msg.is_tool_response),
   };
 }
 
