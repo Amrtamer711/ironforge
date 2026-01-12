@@ -22,6 +22,11 @@ from core.mockups import handle_mockup_generation
 
 logger = config.logger
 
+# TODO: Re-enable PPTX uploads once we implement background uploads for large files.
+# PPTX files can be 50-100MB which causes Supabase upload timeouts.
+# For now, only send PDFs (much smaller) to avoid blocking users.
+ENABLE_PPTX_UPLOADS = False
+
 
 class ToolRouter:
     """
@@ -421,15 +426,20 @@ class ToolRouter:
 
             elif result.get("is_single"):
                 logger.info(f"[RESULT] Single proposal - Location: {result.get('location')}")
-                logger.info(f"[RESULT] Uploading PPTX: {result['pptx_filename']} from {result['pptx_path']}")
-                pptx_result = await self._channel.upload_file(
-                    channel_id=channel,
-                    file_path=result["pptx_path"],
-                    filename=result["pptx_filename"],
-                    title=result["pptx_filename"],
-                    comment=f"📊 **PowerPoint Proposal**\n📍 Location: {result['location']}"
-                )
-                logger.info(f"[RESULT] PPTX upload result: success={pptx_result.success}, error={pptx_result.error if not pptx_result.success else 'None'}")
+                # Upload PPTX only if enabled (disabled by default due to large file size timeouts)
+                if ENABLE_PPTX_UPLOADS:
+                    logger.info(f"[RESULT] Uploading PPTX: {result['pptx_filename']} from {result['pptx_path']}")
+                    pptx_result = await self._channel.upload_file(
+                        channel_id=channel,
+                        file_path=result["pptx_path"],
+                        filename=result["pptx_filename"],
+                        title=result["pptx_filename"],
+                        comment=f"📊 **PowerPoint Proposal**\n📍 Location: {result['location']}"
+                    )
+                    logger.info(f"[RESULT] PPTX upload result: success={pptx_result.success}, error={pptx_result.error if not pptx_result.success else 'None'}")
+                else:
+                    logger.info(f"[RESULT] Skipping PPTX upload (disabled) - {result['pptx_filename']}")
+                # Always upload PDF (smaller file size)
                 logger.info(f"[RESULT] Uploading PDF: {result['pdf_filename']} from {result['pdf_path']}")
                 pdf_result = await self._channel.upload_file(
                     channel_id=channel,
@@ -447,14 +457,21 @@ class ToolRouter:
 
             else:
                 logger.info(f"[RESULT] Multiple separate proposals - Count: {len(result.get('individual_files', []))}")
-                for f in result["individual_files"]:
-                    await self._channel.upload_file(
-                        channel_id=channel,
-                        file_path=f["path"],
-                        filename=f["filename"],
-                        title=f["filename"],
-                        comment=f"📊 **PowerPoint Proposal**\n📍 Location: {f['location']}"
-                    )
+                # Upload individual PPTXs only if enabled (disabled by default due to large file size timeouts)
+                if ENABLE_PPTX_UPLOADS:
+                    for f in result["individual_files"]:
+                        logger.info(f"[RESULT] Uploading PPTX: {f['filename']}")
+                        await self._channel.upload_file(
+                            channel_id=channel,
+                            file_path=f["path"],
+                            filename=f["filename"],
+                            title=f["filename"],
+                            comment=f"📊 **PowerPoint Proposal**\n📍 Location: {f['location']}"
+                        )
+                else:
+                    logger.info(f"[RESULT] Skipping {len(result.get('individual_files', []))} PPTX uploads (disabled)")
+                # Always upload merged PDF (smaller file size)
+                logger.info(f"[RESULT] Uploading merged PDF: {result['merged_pdf_filename']}")
                 await self._channel.upload_file(
                     channel_id=channel,
                     file_path=result["merged_pdf_path"],
