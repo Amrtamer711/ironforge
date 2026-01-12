@@ -22,6 +22,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
 from backend.middleware.auth import AuthUser, require_permission
 from backend.routers.rbac.models import CreateProfileRequest, UpdateProfileRequest
