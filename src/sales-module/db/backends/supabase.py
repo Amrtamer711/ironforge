@@ -125,6 +125,23 @@ class SupabaseBackend(DatabaseBackend):
             logger.debug(f"[CACHE] Get error: {e}")
             return None
 
+    async def _cache_get_batch(self, keys: list[str]) -> dict[str, Any]:
+        """Get multiple values from cache in a single async operation."""
+        cache = self._get_cache()
+        if not cache or not keys:
+            return {}
+        try:
+            import asyncio
+            tasks = [cache.get(key) for key in keys]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            return {
+                key: val for key, val in zip(keys, results)
+                if val is not None and not isinstance(val, Exception)
+            }
+        except Exception as e:
+            logger.debug(f"[CACHE] Batch get error: {e}")
+            return {}
+
     async def _cache_set(self, key: str, value: Any, ttl: int = 300) -> None:
         """Set value in cache."""
         cache = self._get_cache()
@@ -2259,14 +2276,17 @@ class SupabaseBackend(DatabaseBackend):
         result: dict[str, dict[str, Any]] = {}
         uncached_ids: list[str] = []
 
-        # Check cache first for each file_id
-        for file_id in file_ids:
-            cache_key = f"document:{file_id}"
-            cached = _run_async(self._cache_get(cache_key))
-            if cached is not None:
-                result[file_id] = cached
+        # Batch cache lookup - single async operation instead of N sequential
+        cache_keys = [f"document:{fid}" for fid in file_ids]
+        cached_docs = _run_async(self._cache_get_batch(cache_keys))
+
+        # Identify cached vs uncached
+        for fid in file_ids:
+            cache_key = f"document:{fid}"
+            if cache_key in cached_docs:
+                result[fid] = cached_docs[cache_key]
             else:
-                uncached_ids.append(file_id)
+                uncached_ids.append(fid)
 
         if not uncached_ids:
             logger.debug(f"[CACHE] Documents batch: all {len(file_ids)} from cache")

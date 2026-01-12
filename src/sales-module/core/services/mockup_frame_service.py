@@ -571,7 +571,8 @@ class MockupFrameService:
 
         try:
             # First, resolve storage keys for traditional networks
-            storage_info = await self.get_storage_info(location_key)
+            # Pass company_hint to prioritize lookup in known company
+            storage_info = await self.get_storage_info(location_key, company_hint=company_hint)
             company = company_hint
 
             if storage_info:
@@ -677,11 +678,12 @@ class MockupFrameService:
             True if at least one mockup frame exists
         """
         # First, try to get storage info to resolve traditional network paths
-        storage_info = await self.get_storage_info(location_key)
+        # Pass company_hint to prioritize lookup in known company
+        storage_info = await self.get_storage_info(location_key, company_hint=company_hint)
 
         if storage_info:
             storage_keys = storage_info.get("storage_keys", [])
-            company = storage_info.get("company")
+            company = storage_info.get("company") or company_hint
 
             # OPTIMIZED: Check all storage keys in parallel
             async def check_key(storage_key: str):
@@ -773,6 +775,7 @@ class MockupFrameService:
     async def get_storage_info(
         self,
         location_key: str,
+        company_hint: str | None = None,
     ) -> dict | None:
         """
         Get mockup storage info for a location.
@@ -784,6 +787,7 @@ class MockupFrameService:
 
         Args:
             location_key: Location/network key
+            company_hint: Optional company to try first (prioritized lookup)
 
         Returns:
             Dict with:
@@ -797,10 +801,16 @@ class MockupFrameService:
         """
         self.logger.info(f"[MOCKUP_FRAME_SERVICE] Getting storage info for {location_key}")
 
+        # Prioritize company_hint if provided for O(1) lookup instead of O(N) search
+        companies_to_search = self.companies
+        if company_hint and company_hint in self.companies:
+            # Put company_hint first so API checks it before searching others
+            companies_to_search = [company_hint] + [c for c in self.companies if c != company_hint]
+
         try:
             result = await asset_mgmt_client.get_mockup_storage_info(
                 network_key=location_key,
-                companies=self.companies,
+                companies=companies_to_search,
             )
 
             if result:
@@ -818,6 +828,7 @@ class MockupFrameService:
     async def get_mockup_storage_keys(
         self,
         location_key: str,
+        company_hint: str | None = None,
     ) -> list[str]:
         """
         Get the storage keys for mockup operations.
@@ -828,11 +839,12 @@ class MockupFrameService:
 
         Args:
             location_key: Location/network key
+            company_hint: Optional company to try first (prioritized lookup)
 
         Returns:
             List of storage keys for mockup operations
         """
-        info = await self.get_storage_info(location_key)
+        info = await self.get_storage_info(location_key, company_hint=company_hint)
         if info:
             return info.get("storage_keys", [])
         return []
