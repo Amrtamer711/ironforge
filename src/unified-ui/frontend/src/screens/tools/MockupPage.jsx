@@ -1799,13 +1799,7 @@ export function MockupPage() {
               Setup
             </Button>
           ) : null}
-          <Button
-            variant={mode === "history" ? "default" : "ghost"}
-            onClick={() => setMode("history")}
-            className="rounded-2xl"
-          >
-            History
-          </Button>
+          {/* History tab hidden until backend implementation is ready. */}
         </div>
 
         <div className="flex-1 min-h-0">
@@ -1946,9 +1940,7 @@ export function MockupPage() {
             </div>
           ) : null}
 
-          <div className={mode === "history" ? "h-full" : "hidden"} aria-hidden={mode !== "history"}>
-            <HistoryTabModule.HistoryPanel enabled={historyEnabled} />
-          </div>
+          {/* History tab hidden until backend implementation is ready. */}
         </div>
       </div>
     </div>

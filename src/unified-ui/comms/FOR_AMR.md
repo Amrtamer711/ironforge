@@ -10,6 +10,8 @@
 
 - [ ] Chat history displaying the First 500 messages only, not the latest messages.
 
+- [ ] Issue with the proposal series matching.
+
 ### Part 2: Eligibility Service ⏳ PENDING
 
 - [ ] Check if location is **eligible for booking** on given dates
