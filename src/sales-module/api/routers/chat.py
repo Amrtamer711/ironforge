@@ -73,16 +73,16 @@ class AttachmentRefreshRequest(BaseModel):
     @classmethod
     def validate_file_ids(cls, v: list[str]) -> list[str]:
         """Validate file_ids list."""
-        if len(v) > 100:
-            raise ValueError("Maximum 100 file_ids per request")
+        if len(v) > 500:
+            raise ValueError("Maximum 500 file_ids per request")
         return v
 
     @field_validator("prefetch_ids")
     @classmethod
     def validate_prefetch_ids(cls, v: list[str]) -> list[str]:
         """Validate prefetch_ids list."""
-        if len(v) > 50:
-            raise ValueError("Maximum 50 prefetch_ids per request")
+        if len(v) > 200:
+            raise ValueError("Maximum 200 prefetch_ids per request")
         return v
 
 
