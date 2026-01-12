@@ -338,8 +338,8 @@ async def stream_chat_message(
     llm_task = asyncio.create_task(run_llm())
 
     try:
-        # Send initial processing indicator
-        yield f"data: {json.dumps({'type': 'status', 'content': 'Processing...'})}\n\n"
+        # Send initial processing indicator with request_id (for resume capability)
+        yield f"data: {json.dumps({'type': 'status', 'content': 'Processing...', 'request_id': request_id})}\n\n"
 
         event_index = event_start_index
         poll_interval = 0.02  # 20ms polling (reduced from 100ms for faster response)

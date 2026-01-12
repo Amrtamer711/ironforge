@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../../components/ui/button";
 import * as mockupApi from "../../api/mockup";
+import { getServiceVisibility } from "../../api/admin";
 import { useAuth, hasPermission } from "../../state/auth";
 import { normalizeFrameConfig } from "../../lib/utils";
 import * as GenerateTabModule from "./mockup/GenerateTab";
@@ -86,7 +87,34 @@ export function MockupPage() {
   const { user } = useAuth();
   const canSetup = hasPermission(user, "sales:mockups:setup");
 
-  const [mode, setMode] = useState("generate");
+  // Fetch service visibility settings
+  const visibilityQuery = useQuery({
+    queryKey: ["service-visibility"],
+    queryFn: getServiceVisibility,
+    staleTime: 30000,
+  });
+
+  const showGenerate = visibilityQuery.data?.mockup_generate !== false;
+  const showSetup = visibilityQuery.data?.mockup_setup !== false;
+
+  // Determine initial mode based on visibility
+  const getInitialMode = () => {
+    if (showGenerate) return "generate";
+    if (showSetup && canSetup) return "setup";
+    return "history";
+  };
+
+  const [mode, setMode] = useState(getInitialMode);
+
+  // Switch mode if current mode becomes unavailable due to visibility changes
+  useEffect(() => {
+    if (mode === "generate" && !showGenerate) {
+      setMode(showSetup && canSetup ? "setup" : "history");
+    } else if (mode === "setup" && !showSetup) {
+      setMode(showGenerate ? "generate" : "history");
+    }
+  }, [showGenerate, showSetup, canSetup, mode]);
+
   const [locations, setLocations] = useState([]);
   const [venueType, setVenueType] = useState("all");
   const [assetType, setAssetType] = useState("");
@@ -1783,14 +1811,16 @@ export function MockupPage() {
     <div className="h-full min-h-0 flex flex-col">
       <div className="flex-1 min-h-0 flex flex-col gap-4">
         <div className="flex items-center gap-3">
-          <Button
-            variant={mode === "generate" ? "default" : "ghost"}
-            onClick={() => setMode("generate")}
-            className="rounded-2xl"
-          >
-            Generate
-          </Button>
-          {canSetup ? (
+          {showGenerate && (
+            <Button
+              variant={mode === "generate" ? "default" : "ghost"}
+              onClick={() => setMode("generate")}
+              className="rounded-2xl"
+            >
+              Generate
+            </Button>
+          )}
+          {showSetup && canSetup && (
             <Button
               variant={mode === "setup" ? "default" : "ghost"}
               onClick={() => setMode("setup")}
@@ -1798,7 +1828,7 @@ export function MockupPage() {
             >
               Setup
             </Button>
-          ) : null}
+          )}
           <Button
             variant={mode === "history" ? "default" : "ghost"}
             onClick={() => setMode("history")}

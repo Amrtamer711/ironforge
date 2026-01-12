@@ -415,6 +415,146 @@ async def get_chat_history(
         }
 
 
+@router.get("/resume/{request_id}")
+async def resume_stream(
+    request_id: str,
+    event_index: int = 0,
+    user: AuthUser = Depends(require_permission("sales:chat:use")),
+):
+    """
+    Resume streaming from a previous request after page refresh.
+
+    This endpoint allows the frontend to reconnect to an in-progress or
+    recently completed request and receive any events that occurred since
+    the last seen event.
+
+    Args:
+        request_id: The unique request ID from the original /stream call
+        event_index: The index of the last event processed (resume from here)
+
+    Returns:
+        If request completed: {"status": "completed", "events": [...]}
+        If request still running: SSE stream of remaining events
+        If request not found: {"status": "not_found"}
+        If request expired: {"status": "expired"}
+    """
+    from core.chat_api import get_web_adapter
+
+    logger.info(f"[CHAT] Resume request {request_id[:8]}... from index {event_index} for {user.email}")
+
+    web_adapter = get_web_adapter()
+    session = web_adapter.get_session(user.id)
+
+    if not session:
+        logger.info(f"[CHAT] No session found for {user.email}")
+        return {"status": "not_found", "message": "No active session"}
+
+    # Check if this request_id exists in the session
+    if request_id not in session.active_requests:
+        logger.info(f"[CHAT] Request {request_id[:8]}... not found in session for {user.email}")
+        return {"status": "not_found", "message": "Request not found or expired"}
+
+    is_active = session.active_requests.get(request_id, False)
+
+    # Collect events for this request starting from the given index
+    all_events = list(session.events)  # Convert deque to list for indexing
+    request_events = []
+    event_count = 0
+
+    for event in all_events:
+        # Only include events for this specific request
+        if event.get("request_id") == request_id:
+            if event_count >= event_index:
+                request_events.append(event)
+            event_count += 1
+
+    logger.info(f"[CHAT] Found {len(request_events)} events (from index {event_index}) for request {request_id[:8]}...")
+
+    if not is_active:
+        # Request completed - return all buffered events
+        logger.info(f"[CHAT] Request {request_id[:8]}... completed, returning {len(request_events)} events")
+        return {
+            "status": "completed",
+            "events": request_events,
+            "total_events": event_count,
+        }
+    else:
+        # Request still running - stream remaining events
+        logger.info(f"[CHAT] Request {request_id[:8]}... still active, streaming events")
+
+        async def resume_event_generator():
+            """Stream events for the resumed request."""
+            import json
+            local_event_index = event_index
+
+            # First, yield any events we already have
+            for event in request_events:
+                event_type = event.get("type")
+                yield _format_event_for_sse(event)
+
+            # Then continue polling for new events
+            poll_interval = 0.02  # 20ms
+
+            while True:
+                # Check if request is still active
+                if not session.active_requests.get(request_id, False):
+                    # Request completed while we were streaming
+                    break
+
+                # Check for new events
+                all_events_now = list(session.events)
+                new_events = []
+                current_count = 0
+
+                for event in all_events_now:
+                    if event.get("request_id") == request_id:
+                        if current_count >= local_event_index + len(request_events):
+                            new_events.append(event)
+                        current_count += 1
+
+                for event in new_events:
+                    yield _format_event_for_sse(event)
+                    local_event_index += 1
+
+                await asyncio.sleep(poll_interval)
+
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(
+            resume_event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+
+
+def _format_event_for_sse(event: dict) -> str:
+    """Format an event dict for SSE transmission."""
+    import json
+
+    event_type = event.get("type")
+
+    if event_type == "status":
+        return f"data: {json.dumps({'type': 'status', 'message_id': event.get('message_id'), 'parent_id': event.get('parent_id'), 'content': event.get('content')})}\n\n"
+    elif event_type == "message":
+        return f"data: {json.dumps({'type': 'content', 'content': event.get('content', ''), 'message_id': event.get('message_id'), 'parent_id': event.get('parent_id')})}\n\n"
+    elif event_type == "file":
+        return f"data: {json.dumps({'type': 'file', 'parent_id': event.get('parent_id'), 'file': {'file_id': event.get('file_id'), 'url': event.get('url'), 'filename': event.get('filename'), 'title': event.get('title'), 'comment': event.get('comment')}})}\n\n"
+    elif event_type == "delete":
+        return f"data: {json.dumps({'type': 'delete', 'message_id': event.get('message_id')})}\n\n"
+    elif event_type == "error":
+        return f"data: {json.dumps({'type': 'error', 'error': event.get('error')})}\n\n"
+    elif event_type == "stream_delta":
+        return f"data: {json.dumps({'type': 'chunk', 'content': event.get('delta', ''), 'message_id': event.get('message_id'), 'parent_id': event.get('parent_id')})}\n\n"
+    elif event_type == "stream_complete":
+        return f"data: {json.dumps({'type': 'stream_complete', 'message_id': event.get('message_id'), 'parent_id': event.get('parent_id'), 'content': event.get('content', '')})}\n\n"
+    else:
+        return f"data: {json.dumps(event)}\n\n"
+
+
 @router.post("/attachments/refresh")
 async def refresh_attachment_urls(
     request: AttachmentRefreshRequest,

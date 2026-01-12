@@ -650,7 +650,7 @@ def require_permission(*required_permissions: str, require_all: bool = False) ->
             if not rbac:
                 raise HTTPException(status_code=403, detail="No permissions assigned")
 
-            user_perms = rbac.get("permissions", [])
+            user_perms = rbac.permissions or []
 
             if require_all:
                 has_access = all(_check_perm_match(user_perms, p) for p in required_permissions)

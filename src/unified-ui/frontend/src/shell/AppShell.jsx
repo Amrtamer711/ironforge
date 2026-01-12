@@ -19,6 +19,17 @@ import {
 import { useAuth, canAccessAdmin, hasPermission } from "../state/auth";
 import { cn } from "../lib/utils";
 import { modulesApi } from "../api";
+import { getServiceVisibility } from "../api/admin";
+
+// Map tool keys to their visibility setting keys
+const TOOL_VISIBILITY_MAP = {
+  chat: "chat",
+  video_critique: "video_critique",
+  mockup: ["mockup_setup", "mockup_generate"], // Show if either is enabled
+  proposals: "proposals",
+  asset_management: "asset_management",
+  // admin and settings are not toggleable - always visible to authorized users
+};
 
 const TOOL_INFO = {
   chat: { to: "/app/chat", label: "AI Chat Assistant", icon: MessageSquare },
@@ -106,6 +117,24 @@ function buildNavItems(modulesData, user) {
   return items;
 }
 
+// Check if a tool should be visible based on visibility settings
+function isToolVisible(toolKey, visibility) {
+  if (!visibility) return true; // Default to visible if settings not loaded
+
+  const visibilityKey = TOOL_VISIBILITY_MAP[toolKey];
+
+  // Not in map means always visible (admin, settings)
+  if (!visibilityKey) return true;
+
+  // Array means show if ANY of the keys are true (mockup case)
+  if (Array.isArray(visibilityKey)) {
+    return visibilityKey.some((key) => visibility[key] !== false);
+  }
+
+  // Single key - check if not explicitly false
+  return visibility[visibilityKey] !== false;
+}
+
 export function AppShell() {
   const { user, logout } = useAuth();
   const loc = useLocation();
@@ -118,12 +147,26 @@ export function AppShell() {
     queryFn: modulesApi.getAccessibleModules,
   });
 
+  // Fetch service visibility settings
+  const visibilityQuery = useQuery({
+    queryKey: ["service-visibility"],
+    queryFn: getServiceVisibility,
+    staleTime: 30000, // Cache for 30 seconds
+  });
+
   const initials = useMemo(() => {
     const n = user?.name || "User";
     return n.split(" ").slice(0, 2).map(s => s[0]).join("").toUpperCase();
   }, [user]);
 
   const navItems = useMemo(() => buildNavItems(modulesQuery.data, user), [modulesQuery.data, user]);
+
+  // Get visibility state for each nav item
+  const getItemVisibility = (item) => {
+    const visibility = visibilityQuery.data;
+    const toolKey = Object.keys(TOOL_INFO).find((key) => TOOL_INFO[key].to === item.to);
+    return isToolVisible(toolKey, visibility);
+  };
 
   return (
     <div className="h-screen flex flex-col overflow-hidden">
@@ -247,22 +290,31 @@ export function AppShell() {
               {navItems.map((item) => {
                 const active = loc.pathname === item.to || loc.pathname.startsWith(`${item.to}/`);
                 const Icon = item.icon;
+                const isVisible = getItemVisibility(item);
                 return (
-                  <button
+                  <div
                     key={item.to}
-                    onClick={() => nav(item.to)}
                     className={cn(
-                      "mmg-nav-btn w-full flex items-center gap-3 rounded-2xl p-2 text-sm transition-colors mb-1.5 shadow-soft",
-                      active ? "mmg-nav-btn-active" : "",
-                      "text-base",
-                      collapsed && "lg:justify-center lg:gap-0"
+                      "mmg-nav-item",
+                      !isVisible && "mmg-nav-item-hidden"
                     )}
                   >
-                    <span className="mmg-nav-icon h-8 w-8 shrink-0 rounded-2xl bg-black/4 dark:bg-white/8 flex items-center justify-center shadow-soft">
-                      <Icon size={22} />
-                    </span>
-                    <span className={cn("min-w-0 truncate", collapsed && "hidden")}>{item.label}</span>
-                  </button>
+                    <button
+                      onClick={() => nav(item.to)}
+                      className={cn(
+                        "mmg-nav-btn w-full flex items-center gap-3 rounded-2xl p-2 text-sm transition-colors mb-1.5 shadow-soft",
+                        active ? "mmg-nav-btn-active" : "",
+                        "text-base",
+                        collapsed && "lg:justify-center lg:gap-0"
+                      )}
+                      tabIndex={isVisible ? 0 : -1}
+                    >
+                      <span className="mmg-nav-icon h-8 w-8 shrink-0 rounded-2xl bg-black/4 dark:bg-white/8 flex items-center justify-center shadow-soft">
+                        <Icon size={22} />
+                      </span>
+                      <span className={cn("min-w-0 truncate", collapsed && "hidden")}>{item.label}</span>
+                    </button>
+                  </div>
                 );
               })}
             </nav>
@@ -322,9 +374,16 @@ export function AppShell() {
             {navItems.map((item) => {
               const active = loc.pathname === item.to || loc.pathname.startsWith(`${item.to}/`);
               const Icon = item.icon;
-                return (
+              const isVisible = getItemVisibility(item);
+              return (
+                <div
+                  key={item.to}
+                  className={cn(
+                    "mmg-nav-item",
+                    !isVisible && "mmg-nav-item-hidden"
+                  )}
+                >
                   <button
-                    key={item.to}
                     onClick={() => {
                       nav(item.to);
                       setMobileOpen(false);
@@ -334,12 +393,14 @@ export function AppShell() {
                       active ? "mmg-nav-btn-active" : "",
                       "text-sm"
                     )}
+                    tabIndex={isVisible ? 0 : -1}
                   >
-                  <span className="mmg-nav-icon h-9 w-9 shrink-0 rounded-2xl bg-black/4 dark:bg-white/8 flex items-center justify-center shadow-soft">
-                    <Icon size={20} />
-                  </span>
-                  <span className="min-w-0 truncate">{item.label}</span>
-                </button>
+                    <span className="mmg-nav-icon h-9 w-9 shrink-0 rounded-2xl bg-black/4 dark:bg-white/8 flex items-center justify-center shadow-soft">
+                      <Icon size={20} />
+                    </span>
+                    <span className="min-w-0 truncate">{item.label}</span>
+                  </button>
+                </div>
               );
             })}
           </nav>

@@ -23,10 +23,13 @@ export function ChatPage() {
   const [loading, setLoading] = useState(true);
   const [streaming, setStreaming] = useState(false);
   const [conversationId, setConversationId] = useState(null);
+  const [resuming, setResuming] = useState(false);
 
   const fileRef = useRef(null);
   const abortRef = useRef(null);
   const virtuosoRef = useRef(null);
+  const currentRequestRef = useRef(null);  // Track current request for resume
+  const eventIndexRef = useRef(0);  // Track event index for resume
 
   // Load history on mount - messages load fast, URLs load lazily in background
   useEffect(() => {
@@ -102,6 +105,167 @@ export function ChatPage() {
       }
     }
     loadHistory();
+  }, []);
+
+  // Resume pending request on mount (after page refresh)
+  useEffect(() => {
+    const pendingRequestJson = sessionStorage.getItem("pendingChatRequest");
+    if (!pendingRequestJson) return;
+
+    try {
+      const pendingRequest = JSON.parse(pendingRequestJson);
+      const { requestId, eventIndex, userMessage, timestamp, assistantMsgId: storedAssistantId } = pendingRequest;
+
+      // Only resume if request is less than 5 minutes old (matches server TTL)
+      const REQUEST_TTL_MS = 5 * 60 * 1000;
+      if (Date.now() - timestamp > REQUEST_TTL_MS) {
+        console.log("[ChatPage] Pending request expired, clearing");
+        sessionStorage.removeItem("pendingChatRequest");
+        return;
+      }
+
+      console.log("[ChatPage] Found pending request, attempting resume:", requestId);
+      setResuming(true);
+
+      // Create placeholder messages for the resumed conversation
+      const userMsgId = crypto.randomUUID();
+      const assistantMsgId = storedAssistantId || crypto.randomUUID();
+
+      const userMsg = {
+        id: userMsgId,
+        role: "user",
+        content: userMessage,
+        files: [],
+        status: null,
+      };
+
+      const assistantMsg = {
+        id: assistantMsgId,
+        role: "assistant",
+        content: "",
+        files: [],
+        status: "Resuming",
+      };
+
+      // Add messages to state
+      setMessages(prev => [...prev, userMsg, assistantMsg]);
+      setStreaming(true);
+
+      // Attempt resume
+      let fullContent = "";
+      chatApi.resumeStream({
+        requestId,
+        eventIndex: eventIndex || 0,
+        onEvent: (evt) => {
+          eventIndexRef.current++;
+
+          if (evt?.conversation_id) {
+            setConversationId(prev => prev || evt.conversation_id);
+          }
+
+          if (evt?.error) {
+            setMessages(prev => prev.map(m =>
+              m.id === assistantMsgId ? { ...m, status: null, content: `Error: ${evt.error}` } : m
+            ));
+            return;
+          }
+
+          if (evt?.type === "status") {
+            setMessages(prev => prev.map(m =>
+              m.id === assistantMsgId ? { ...m, status: evt.content || "Processing" } : m
+            ));
+            return;
+          }
+
+          if (evt?.type === "delete") {
+            setMessages(prev => prev.map(m =>
+              m.id === assistantMsgId ? { ...m, status: null } : m
+            ));
+            return;
+          }
+
+          if (evt?.type === "tool_call") {
+            const toolName = evt.tool?.name || "processing";
+            setMessages(prev => prev.map(m =>
+              m.id === assistantMsgId ? { ...m, status: `Processing ${toolName}` } : m
+            ));
+            return;
+          }
+
+          if ((evt?.type === "chunk" || evt?.type === "content") && evt.content) {
+            fullContent = evt.type === "content" ? evt.content : fullContent + evt.content;
+            setMessages(prev => prev.map(m =>
+              m.id === assistantMsgId ? { ...m, status: null, content: fullContent } : m
+            ));
+            return;
+          }
+
+          if (evt?.content && !evt.type) {
+            fullContent += evt.content;
+            setMessages(prev => prev.map(m =>
+              m.id === assistantMsgId ? { ...m, status: null, content: fullContent } : m
+            ));
+            return;
+          }
+
+          if ((evt?.type === "files" || evt?.type === "file") && (evt.files || evt.file || evt.file_id)) {
+            const fileObj = evt.file || {};
+            const newFiles = evt.files || (evt.file ? [{
+              file_id: fileObj.file_id,
+              url: fileObj.url,
+              filename: fileObj.filename,
+              title: fileObj.title,
+            }] : [{
+              file_id: evt.file_id,
+              url: evt.url,
+              filename: evt.filename,
+              title: evt.title,
+            }]);
+            const fileComment = fileObj.comment || evt.comment || "";
+            if (fileComment) fullContent = fileComment;
+            setMessages(prev => prev.map(m =>
+              m.id === assistantMsgId ? {
+                ...m,
+                content: fileComment || m.content,
+                files: [...(m.files || []), ...newFiles]
+              } : m
+            ));
+            return;
+          }
+        },
+        onDone: () => {
+          console.log("[ChatPage] Resume completed successfully");
+          sessionStorage.removeItem("pendingChatRequest");
+          setMessages(prev => prev.map(m =>
+            m.id === assistantMsgId && !m.content && !m.files?.length
+              ? { ...m, status: null, content: "I'm ready to help. What would you like to do?" }
+              : m.id === assistantMsgId ? { ...m, status: null } : m
+          ));
+          setStreaming(false);
+          setResuming(false);
+        },
+        onError: (err) => {
+          console.error("[ChatPage] Resume failed:", err);
+          sessionStorage.removeItem("pendingChatRequest");
+          setMessages(prev => prev.map(m =>
+            m.id === assistantMsgId ? { ...m, status: null, content: "Failed to resume previous request. Please try again." } : m
+          ));
+          setStreaming(false);
+          setResuming(false);
+        },
+        onNotFound: () => {
+          console.log("[ChatPage] Request not found on server, clearing pending state");
+          sessionStorage.removeItem("pendingChatRequest");
+          // Remove the placeholder messages since there's nothing to resume
+          setMessages(prev => prev.filter(m => m.id !== userMsgId && m.id !== assistantMsgId));
+          setStreaming(false);
+          setResuming(false);
+        },
+      });
+    } catch (err) {
+      console.error("[ChatPage] Error parsing pending request:", err);
+      sessionStorage.removeItem("pendingChatRequest");
+    }
   }, []);
 
   const canSend = useMemo(
@@ -196,6 +360,10 @@ export function ChatPage() {
         ));
       }
 
+      // Reset event tracking for this request
+      currentRequestRef.current = null;
+      eventIndexRef.current = 0;
+
       // Stream response
       await chatApi.streamMessage({
         conversationId,
@@ -204,6 +372,32 @@ export function ChatPage() {
         signal: ctrl.signal,
         onEvent: (evt) => {
           if (ctrl.signal.aborted) return;
+
+          // Track event index for resume capability
+          eventIndexRef.current++;
+
+          // Capture request_id for resume capability
+          if (evt?.request_id && !currentRequestRef.current) {
+            currentRequestRef.current = evt.request_id;
+            // Store pending request in sessionStorage for page refresh recovery
+            sessionStorage.setItem("pendingChatRequest", JSON.stringify({
+              requestId: evt.request_id,
+              eventIndex: 0,
+              userMessage: outgoingMessage,
+              assistantMsgId,
+              timestamp: Date.now(),
+            }));
+          }
+
+          // Update event index in sessionStorage periodically
+          if (currentRequestRef.current && eventIndexRef.current % 5 === 0) {
+            const pending = sessionStorage.getItem("pendingChatRequest");
+            if (pending) {
+              const parsed = JSON.parse(pending);
+              parsed.eventIndex = eventIndexRef.current;
+              sessionStorage.setItem("pendingChatRequest", JSON.stringify(parsed));
+            }
+          }
 
           if (evt?.conversation_id) {
             setConversationId(prev => prev || evt.conversation_id);
@@ -287,6 +481,11 @@ export function ChatPage() {
           }
         },
         onDone: () => {
+          // Clear pending request from sessionStorage - stream completed successfully
+          sessionStorage.removeItem("pendingChatRequest");
+          currentRequestRef.current = null;
+          eventIndexRef.current = 0;
+
           // Always clear status when streaming ends
           // Show default message only if no content AND no files
           setMessages(prev => prev.map(m =>
@@ -297,6 +496,11 @@ export function ChatPage() {
         },
       });
     } catch (e) {
+      // Clear pending request on error
+      sessionStorage.removeItem("pendingChatRequest");
+      currentRequestRef.current = null;
+      eventIndexRef.current = 0;
+
       setMessages(prev => prev.map(m =>
         m.id === assistantMsgId ? { ...m, status: null, content: e?.message || "Failed to get response" } : m
       ));

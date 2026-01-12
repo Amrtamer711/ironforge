@@ -172,3 +172,15 @@ export async function updatePermissionSet(name, payload) {
 export async function deletePermissionSet(name) {
   return apiRequest(`/api/rbac/permission-sets/${encodeURIComponent(name)}`, { method: "DELETE" });
 }
+
+// Service visibility settings
+export async function getServiceVisibility() {
+  return apiRequest("/api/admin/service-visibility");
+}
+
+export async function updateServiceVisibility(settings) {
+  return apiRequest("/api/admin/service-visibility", {
+    method: "PUT",
+    body: JSON.stringify(settings),
+  });
+}
