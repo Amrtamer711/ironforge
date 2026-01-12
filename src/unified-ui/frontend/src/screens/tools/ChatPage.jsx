@@ -374,7 +374,7 @@ export function ChatPage() {
 const IMAGE_BUBBLE_WIDTH = 320;
 const IMAGE_BUBBLE_HEIGHT = 200;
 const FILE_BUBBLE_WIDTH = 320;
-const FILE_BUBBLE_HEIGHT = 120;
+const FILE_BUBBLE_HEIGHT = 100;
 
 // =============================================================================
 // Message Component
@@ -478,7 +478,7 @@ const Attachment = React.memo(function Attachment({ file, isUser }) {
 
   // Non-image file
   const isPdf = ext === "pdf";
-  const canOpen = ext !== "pptx";
+  const canOpen = ext === "pdf";
   const fileBubbleStyle = {
     width: FILE_BUBBLE_WIDTH,
     height: FILE_BUBBLE_HEIGHT,
@@ -489,21 +489,21 @@ const Attachment = React.memo(function Attachment({ file, isUser }) {
       className="rounded-xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3 flex flex-col"
       style={fileBubbleStyle}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-black/50 dark:text-white/60">
-            {isPdf ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 text-red-700 dark:text-red-300 px-2 py-0.5">
-                <FileText size={12} /> PDF
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5">
-                {ext ? ext.toUpperCase() : "FILE"}
-              </span>
-            )}
+      <div className="flex items-start gap-2 text-xs uppercase tracking-wide text-black/50 dark:text-white/60">
+        {isPdf ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 text-red-700 dark:text-red-300 px-2 py-0.5">
+            <FileText size={12} /> PDF
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5">
+            {ext ? ext.toUpperCase() : "FILE"}
+          </span>
+        )}
+        {!isUser ? (
+          <div className="text-xs font-semibold text-black/80 dark:text-white/85 leading-5 truncate">
+            {displayName}
           </div>
-          {!isUser && <div className="mt-1 text-xs font-semibold text-black/80 dark:text-white/85 truncate">{displayName}</div>}
-        </div>
+        ) : null}
       </div>
       {!isUser && fullUrl && (
         <div className="mt-auto pt-3 flex items-center gap-2">
