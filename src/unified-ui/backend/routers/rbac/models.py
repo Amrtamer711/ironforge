@@ -122,6 +122,13 @@ class UpdateRecordShareRequest(BaseModel):
 # USER MODELS
 # =============================================================================
 
+class CreateUserRequest(BaseModel):
+    email: str
+    name: str | None = None
+    profile_name: str | None = None
+    team_id: int | None = None
+
+
 class UpdateUserRequest(BaseModel):
     name: str | None = None
     avatar_url: str | None = None
@@ -132,3 +139,7 @@ class UpdateUserRequest(BaseModel):
 
 class AssignUserProfileRequest(BaseModel):
     profile_name: str
+
+
+class SetUserPermissionsRequest(BaseModel):
+    permissions: list[str]

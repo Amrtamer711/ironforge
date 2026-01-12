@@ -25,7 +25,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from backend.middleware.auth import AuthUser, require_auth, require_profile
+from backend.middleware.auth import AuthUser, require_auth, require_permission
 from backend.routers.rbac.models import (
     CreateShareRequest,
     CreateSharingRuleRequest,
@@ -47,7 +47,7 @@ router = APIRouter()
 @router.get("/sharing-rules")
 async def list_sharing_rules(
     object_type: str | None = None,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> list[dict[str, Any]]:
     """
     List sharing rules.
@@ -81,7 +81,7 @@ async def list_sharing_rules(
 @router.post("/sharing-rules", status_code=201)
 async def create_sharing_rule(
     request: CreateSharingRuleRequest,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Create sharing rule.
@@ -136,7 +136,7 @@ async def create_sharing_rule(
 async def update_sharing_rule(
     rule_id: int,
     request: UpdateSharingRuleRequest,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Update sharing rule.
@@ -193,7 +193,7 @@ async def update_sharing_rule(
 @router.delete("/sharing-rules/{rule_id}")
 async def delete_sharing_rule(
     rule_id: int,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Delete sharing rule.

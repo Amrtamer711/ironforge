@@ -17,8 +17,13 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from backend.middleware.auth import AuthUser, require_auth, require_profile
-from backend.routers.rbac.models import AssignUserProfileRequest, UpdateUserRequest
+from backend.middleware.auth import AuthUser, require_auth, require_permission
+from backend.routers.rbac.models import (
+    AssignUserProfileRequest,
+    CreateUserRequest,
+    SetUserPermissionsRequest,
+    UpdateUserRequest,
+)
 from backend.services.rbac_service import get_user_rbac_data, invalidate_rbac_cache
 from backend.services.supabase_client import get_supabase
 
@@ -73,7 +78,7 @@ async def list_users(
     profile: str | None = None,
     team: int | None = None,
     is_active: str | None = None,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     List all users with pagination and filters.
@@ -157,7 +162,7 @@ async def list_users(
 async def update_user(
     user_id: str,
     request: UpdateUserRequest,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Update user details.
@@ -232,7 +237,7 @@ async def update_user(
 @router.post("/users/{user_id}/deactivate")
 async def deactivate_user(
     user_id: str,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Deactivate user (soft delete).
@@ -332,7 +337,7 @@ async def deactivate_user(
 @router.post("/users/{user_id}/reactivate")
 async def reactivate_user(
     user_id: str,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Reactivate user.
@@ -374,7 +379,7 @@ async def reactivate_user(
 async def assign_user_profile(
     user_id: str,
     request: AssignUserProfileRequest,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Assign a profile to a user by profile name.
@@ -440,7 +445,7 @@ async def assign_user_profile(
 @router.get("/users/{user_id}/permissions")
 async def get_user_permissions(
     user_id: str,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Get all permissions for a user (from profile + permission sets).
@@ -538,7 +543,7 @@ async def get_audit_log(
     resource_type: str | None = None,
     from_date: str | None = None,
     to_date: str | None = None,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Get audit log with filters.
@@ -594,3 +599,335 @@ async def get_audit_log(
     except Exception as e:
         logger.error(f"[UI RBAC API] Error fetching audit log: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch audit log")
+
+
+# =============================================================================
+# 9. GET /user/:userId - Get single user
+# =============================================================================
+
+@router.get("/user/{user_id}")
+async def get_user(
+    user_id: str,
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+) -> dict[str, Any]:
+    """
+    Get a single user by ID with profile and team info.
+    """
+    logger.info(f"[UI RBAC API] Getting user: {user_id}")
+
+    supabase = get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        response = (
+            supabase.table("users")
+            .select("""
+                id, email, name, is_active, created_at, updated_at, last_login_at,
+                profile_id, profiles(id, name, display_name),
+                team_members(team_id, role, teams(id, name))
+            """)
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+
+        if not response.data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        return response.data
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[UI RBAC API] Error getting user: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get user")
+
+
+# =============================================================================
+# 10. POST /users - Create user (pre-create for SSO)
+# =============================================================================
+
+@router.post("/users")
+async def create_user(
+    request: CreateUserRequest,
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+) -> dict[str, Any]:
+    """
+    Pre-create a user for SSO approval flow.
+    Creates a pending user that will be activated on first SSO login.
+    """
+    import uuid
+    from datetime import datetime
+
+    logger.info(f"[UI RBAC API] Creating user: {request.email}")
+
+    supabase = get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    email = request.email.lower()
+
+    try:
+        # Check if user already exists
+        existing = (
+            supabase.table("users")
+            .select("id")
+            .eq("email", email)
+            .execute()
+        )
+
+        if existing.data and len(existing.data) > 0:
+            raise HTTPException(status_code=409, detail="User with this email already exists")
+
+        # Get profile ID
+        profile_to_use = request.profile_name or "sales_user"
+        profile_response = (
+            supabase.table("profiles")
+            .select("id")
+            .eq("name", profile_to_use)
+            .single()
+            .execute()
+        )
+
+        if not profile_response.data:
+            raise HTTPException(status_code=400, detail=f"Profile not found: {profile_to_use}")
+
+        # Generate pending ID
+        pending_id = f"pending-{uuid.uuid4()}"
+
+        # Create the pending user
+        supabase.table("users").insert({
+            "id": pending_id,
+            "email": email,
+            "name": request.name,
+            "profile_id": profile_response.data["id"],
+            "is_active": True,
+            "metadata_json": {
+                "created_by": user.id,
+                "created_by_email": user.email,
+                "pending_sso": True
+            }
+        }).execute()
+
+        new_user_response = (
+            supabase.table("users")
+            .select("*")
+            .eq("id", pending_id)
+            .single()
+            .execute()
+        )
+
+        if not new_user_response.data:
+            raise HTTPException(status_code=500, detail="Failed to create user")
+
+        # Add to team if specified
+        if request.team_id:
+            supabase.table("team_members").insert({
+                "team_id": request.team_id,
+                "user_id": pending_id,
+                "role": "member",
+                "joined_at": datetime.utcnow().isoformat()
+            }).execute()
+
+        # Audit log
+        try:
+            supabase.table("audit_log").insert({
+                "user_id": user.id,
+                "user_email": user.email,
+                "action": "user.create",
+                "action_category": "user_management",
+                "resource_type": "user",
+                "resource_id": pending_id,
+                "details": {"email": email, "profile_name": profile_to_use, "team_id": request.team_id},
+                "success": True
+            }).execute()
+        except Exception:
+            pass
+
+        logger.info(f"[UI RBAC API] User pre-created: {email} by {user.email}")
+
+        return {
+            "success": True,
+            "user": new_user_response.data,
+            "message": f"User {email} created. They can now sign in with Microsoft SSO."
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[UI RBAC API] Error creating user: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create user")
+
+
+# =============================================================================
+# 11. DELETE /users/:userId - Delete user (hard delete)
+# =============================================================================
+
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+) -> dict[str, Any]:
+    """
+    Permanently delete a user.
+    Note: For most cases, deactivate is preferred over delete.
+    """
+    logger.info(f"[UI RBAC API] Deleting user: {user_id}")
+
+    # Prevent self-deletion
+    if user_id == user.id:
+        raise HTTPException(status_code=403, detail="Cannot delete your own account")
+
+    supabase = get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        # Get user to verify exists
+        user_response = (
+            supabase.table("users")
+            .select("id, email")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+
+        if not user_response.data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        target_email = user_response.data.get("email")
+
+        # Delete team memberships first (FK constraint)
+        supabase.table("team_members").delete().eq("user_id", user_id).execute()
+
+        # Delete user permission sets (FK constraint)
+        supabase.table("user_permission_sets").delete().eq("user_id", user_id).execute()
+
+        # Delete record shares (FK constraint)
+        supabase.table("record_shares").delete().eq("shared_by_user_id", user_id).execute()
+        supabase.table("record_shares").delete().eq("shared_with_user_id", user_id).execute()
+
+        # Delete the user
+        supabase.table("users").delete().eq("id", user_id).execute()
+
+        # Clear RBAC cache
+        invalidate_rbac_cache(user_id)
+
+        # Audit log
+        try:
+            supabase.table("audit_log").insert({
+                "user_id": user.id,
+                "user_email": user.email,
+                "action": "user.delete",
+                "action_category": "user_management",
+                "resource_type": "user",
+                "resource_id": user_id,
+                "target_user_id": user_id,
+                "details": {"deleted_email": target_email},
+                "success": True
+            }).execute()
+        except Exception:
+            pass
+
+        logger.info(f"[UI RBAC API] User deleted: {target_email} by {user.email}")
+
+        return {"success": True, "deleted": user_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[UI RBAC API] Error deleting user: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete user")
+
+
+# =============================================================================
+# 12. PUT /users/:userId/permissions - Set user's direct permissions
+# =============================================================================
+
+@router.put("/users/{user_id}/permissions")
+async def set_user_permissions(
+    user_id: str,
+    request: SetUserPermissionsRequest,
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
+) -> dict[str, Any]:
+    """
+    Set direct permissions for a user (via a custom permission set).
+    This creates/updates a user-specific permission set.
+    """
+    logger.info(f"[UI RBAC API] Setting permissions for user: {user_id}")
+
+    supabase = get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        # Verify user exists
+        user_response = (
+            supabase.table("users")
+            .select("id, email")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+
+        if not user_response.data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Find or create a user-specific permission set
+        set_name = f"user_{user_id}_custom"
+        set_display_name = f"Custom permissions for {user_response.data['email']}"
+
+        existing_set = (
+            supabase.table("permission_sets")
+            .select("id")
+            .eq("name", set_name)
+            .execute()
+        )
+
+        if existing_set.data and len(existing_set.data) > 0:
+            set_id = existing_set.data[0]["id"]
+            # Clear existing permissions
+            supabase.table("permission_set_permissions").delete().eq("permission_set_id", set_id).execute()
+        else:
+            # Create new permission set
+            new_set = (
+                supabase.table("permission_sets")
+                .insert({
+                    "name": set_name,
+                    "display_name": set_display_name,
+                    "description": "Auto-generated custom permissions",
+                    "is_active": True
+                })
+                .execute()
+            )
+            set_id = new_set.data[0]["id"]
+
+            # Assign to user
+            supabase.table("user_permission_sets").insert({
+                "user_id": user_id,
+                "permission_set_id": set_id
+            }).execute()
+
+        # Add new permissions
+        if request.permissions:
+            for perm in request.permissions:
+                supabase.table("permission_set_permissions").insert({
+                    "permission_set_id": set_id,
+                    "permission": perm
+                }).execute()
+
+        # Clear RBAC cache
+        invalidate_rbac_cache(user_id)
+
+        return {
+            "success": True,
+            "user_id": user_id,
+            "permissions": request.permissions
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[UI RBAC API] Error setting user permissions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to set user permissions")

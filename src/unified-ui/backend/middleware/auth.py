@@ -560,6 +560,75 @@ def require_profile(*allowed_profiles: str) -> Callable:
 
 
 # =============================================================================
+# REQUIRE PERMISSION MIDDLEWARE
+# =============================================================================
+
+def require_permission(*required_permissions: str, require_all: bool = False) -> Callable:
+    """
+    Create a dependency that checks if user has required permission(s).
+
+    More granular than require_profile - checks actual permissions from RBAC.
+
+    Args:
+        required_permissions: Permission strings (e.g., "admin:users:read")
+        require_all: If True, user must have ALL permissions. Default: any one.
+
+    Usage:
+        @router.get("/users")
+        async def list_users(user: AuthUser = Depends(require_permission("admin:users:read"))):
+            ...
+
+        # Multiple (any one):
+        @router.post("/users")
+        async def create_user(user: AuthUser = Depends(require_permission("admin:users:create", "admin:users:manage"))):
+            ...
+    """
+    import re
+    from backend.services.rbac_service import get_user_rbac_data
+
+    def _check_perm_match(user_perms: list[str], required: str) -> bool:
+        """Check permission with wildcard support."""
+        if required in user_perms or "*:*:*" in user_perms:
+            return True
+        for perm in user_perms:
+            if "*" in perm:
+                pattern = perm.replace("*", ".*")
+                if re.match(f"^{pattern}$", required):
+                    return True
+        return False
+
+    async def check_permission(user: AuthUser = Depends(require_auth)) -> AuthUser:
+        if not user:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        try:
+            rbac = await get_user_rbac_data(user.id)
+            if not rbac:
+                raise HTTPException(status_code=403, detail="No permissions assigned")
+
+            user_perms = rbac.get("permissions", [])
+
+            if require_all:
+                has_access = all(_check_perm_match(user_perms, p) for p in required_permissions)
+            else:
+                has_access = any(_check_perm_match(user_perms, p) for p in required_permissions)
+
+            if not has_access:
+                logger.warning(f"[UI Auth] {user.email} denied (needs: {required_permissions})")
+                raise HTTPException(status_code=403, detail="Insufficient permissions")
+
+            return user
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"[UI Auth] Permission check error: {e}")
+            raise HTTPException(status_code=500, detail="Failed to check permissions")
+
+    return check_permission
+
+
+# =============================================================================
 # PROXY AUTH MIDDLEWARE - server.js:548-621
 # =============================================================================
 

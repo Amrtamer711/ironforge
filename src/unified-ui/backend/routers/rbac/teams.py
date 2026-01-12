@@ -20,7 +20,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from backend.middleware.auth import AuthUser, require_profile
+from backend.middleware.auth import AuthUser, require_permission
 from backend.routers.rbac.models import (
     AddTeamMemberRequest,
     CreateTeamRequest,
@@ -42,7 +42,7 @@ router = APIRouter()
 
 @router.get("/teams")
 async def list_teams(
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> list[dict[str, Any]]:
     """
     List all teams.
@@ -77,7 +77,7 @@ async def list_teams(
 @router.get("/teams/{team_id}")
 async def get_team(
     team_id: int,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Get a single team by ID with member count.
@@ -120,7 +120,7 @@ async def get_team(
 @router.post("/teams", status_code=201)
 async def create_team(
     request: CreateTeamRequest,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Create team.
@@ -168,7 +168,7 @@ async def create_team(
 async def update_team(
     team_id: int,
     request: UpdateTeamRequest,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Update team.
@@ -219,7 +219,7 @@ async def update_team(
 @router.delete("/teams/{team_id}")
 async def delete_team(
     team_id: int,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Delete team.
@@ -248,7 +248,7 @@ async def delete_team(
 @router.get("/teams/{team_id}/members")
 async def get_team_members(
     team_id: int,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> list[dict[str, Any]]:
     """
     Get team members.
@@ -282,7 +282,7 @@ async def get_team_members(
 async def add_team_member(
     team_id: int,
     request: AddTeamMemberRequest,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Add user to team.
@@ -334,7 +334,7 @@ async def update_team_member(
     team_id: int,
     member_user_id: str,
     request: UpdateTeamMemberRequest,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Update team member role.
@@ -381,7 +381,7 @@ async def update_team_member(
 async def remove_team_member(
     team_id: int,
     member_user_id: str,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Remove user from team.
@@ -415,7 +415,7 @@ async def remove_team_member(
 async def set_user_manager(
     user_id: str,
     request: SetManagerRequest,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("admin:rbac:manage")),
 ) -> dict[str, Any]:
     """
     Set user's manager.
