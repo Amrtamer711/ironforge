@@ -421,28 +421,20 @@ async def refresh_attachment_urls(
     user: AuthUser = Depends(require_permission("sales:chat:use")),
 ):
     """
-    Batch refresh signed URLs for chat attachments with thumbnail support.
+    Batch refresh signed URLs for chat attachments.
 
-    This endpoint is called by the frontend when attachments become visible
-    in the viewport. It supports pre-fetching and thumbnail generation.
-
-    Features:
-    - Generates thumbnails on-demand (256x256 JPEG)
-    - Returns both thumbnail and full image URLs
-    - Caches thumbnails in Supabase storage
-    - Tracks image dimensions for aspect ratio
+    This endpoint is called by the frontend when attachments become visible.
+    Returns full-quality signed URLs for all requested files.
 
     Pre-fetch Strategy:
     - file_ids: Currently visible attachments (refresh NOW)
     - prefetch_ids: Next page of attachments (load ahead for smooth scrolling)
 
     Returns:
-        urls: Dict mapping file_id -> {thumbnail, full, width, height} (24h expiry)
+        urls: Dict mapping file_id -> {full, width, height} (24h expiry)
     """
-    from datetime import datetime
     from db.database import db
     from integrations.storage import get_storage_client
-    from core.utils.thumbnail import generate_thumbnail
 
     # Combine visible + prefetch, deduplicate
     all_ids = list(set(request.file_ids + request.prefetch_ids))
@@ -457,16 +449,8 @@ async def refresh_attachment_urls(
     # Single batch DB lookup
     docs = db.get_documents_batch(all_ids)
 
-    # =========================================================================
-    # BATCH URL GENERATION - Much faster than individual calls
-    # Before: N files = N HTTP requests to Supabase (0.3s each = 22s for 73 files)
-    # After: N files = 2 HTTP requests (uploads + thumbnails = ~1s total)
-    # =========================================================================
-
     # Collect storage keys for batch URL generation
     uploads_keys: dict[str, str] = {}  # storage_key -> file_id
-    thumbnail_keys: dict[str, str] = {}  # thumbnail_key -> file_id
-    needs_thumbnail: list[str] = []  # file_ids needing thumbnail generation
     file_metadata: dict[str, dict] = {}  # file_id -> metadata
 
     for file_id in all_ids:
@@ -483,25 +467,14 @@ async def refresh_attachment_urls(
         if bucket == "uploads":
             uploads_keys[key] = file_id
 
-        # Check if this is an image
-        file_ext = doc.get("file_extension", "").lower()
-        is_image = file_ext in ["jpg", "jpeg", "png", "gif", "webp", "bmp"]
-
         file_metadata[file_id] = {
             "bucket": bucket,
             "key": key,
-            "is_image": is_image,
             "width": doc.get("image_width"),
             "height": doc.get("image_height"),
         }
 
-        if is_image:
-            if doc.get("thumbnail_key"):
-                thumbnail_keys[doc["thumbnail_key"]] = file_id
-            else:
-                needs_thumbnail.append(file_id)
-
-    # Batch generate full image URLs (ONE API call for all uploads)
+    # Batch generate full URLs (ONE API call for all uploads)
     full_url_map: dict[str, str] = {}
     if uploads_keys:
         batch_urls = await storage_client.get_signed_urls_batch(
@@ -514,84 +487,7 @@ async def refresh_attachment_urls(
             if file_id and url:
                 full_url_map[file_id] = url
 
-    # Batch generate thumbnail URLs (ONE API call for all thumbnails)
-    thumbnail_url_map: dict[str, str] = {}
-    if thumbnail_keys:
-        batch_thumb_urls = await storage_client.get_signed_urls_batch(
-            bucket="thumbnails",
-            keys=list(thumbnail_keys.keys()),
-            expires_in=86400
-        )
-        for key, url in batch_thumb_urls.items():
-            file_id = thumbnail_keys.get(key)
-            if file_id and url:
-                thumbnail_url_map[file_id] = url
-
-    logger.info(f"[CHAT] Batch URLs: {len(full_url_map)} full, {len(thumbnail_url_map)} thumbnails")
-
-    # =========================================================================
-    # THUMBNAIL GENERATION (only for images without existing thumbnails)
-    # This is rare after first load - most images already have thumbnails
-    # =========================================================================
-
-    async def generate_missing_thumbnail(file_id: str) -> tuple[str, str | None]:
-        """Generate thumbnail for image without one."""
-        doc = docs.get(file_id)
-        if not doc:
-            return (file_id, None)
-
-        try:
-            bucket = doc["storage_bucket"]
-            key = doc["storage_key"]
-
-            download_result = await storage_client.download(bucket=bucket, key=key)
-            original_bytes = download_result.data
-
-            from PIL import Image as PILImage
-            orig_width, orig_height = None, None
-            try:
-                with PILImage.open(io.BytesIO(original_bytes)) as img:
-                    orig_width, orig_height = img.size
-            except Exception:
-                pass
-
-            thumb_bytes, thumb_width, thumb_height = await generate_thumbnail(original_bytes)
-            thumbnail_key = f"{user.id}/{file_id}/thumb_256.jpg"
-            await storage_client.upload(
-                bucket="thumbnails",
-                key=thumbnail_key,
-                data=thumb_bytes,
-                content_type="image/jpeg"
-            )
-
-            db.update_document(file_id, {
-                "thumbnail_key": thumbnail_key,
-                "thumbnail_generated_at": datetime.now(),
-                "image_width": orig_width or thumb_width,
-                "image_height": orig_height or thumb_height
-            })
-
-            file_metadata[file_id]["width"] = orig_width or thumb_width
-            file_metadata[file_id]["height"] = orig_height or thumb_height
-
-            thumbnail_url = await storage_client.get_signed_url(
-                bucket="thumbnails",
-                key=thumbnail_key,
-                expires_in=86400
-            )
-            return (file_id, thumbnail_url)
-
-        except Exception as e:
-            logger.warning(f"[CHAT] Thumbnail generation failed for {file_id}: {e}")
-            return (file_id, None)
-
-    if needs_thumbnail:
-        logger.info(f"[CHAT] Generating {len(needs_thumbnail)} missing thumbnails")
-        thumb_tasks = [generate_missing_thumbnail(fid) for fid in needs_thumbnail]
-        thumb_results = await asyncio.gather(*thumb_tasks)
-        for file_id, thumb_url in thumb_results:
-            if thumb_url:
-                thumbnail_url_map[file_id] = thumb_url
+    logger.info(f"[CHAT] Batch URLs: {len(full_url_map)} full URLs generated")
 
     # Build response
     urls = {}
@@ -606,7 +502,6 @@ async def refresh_attachment_urls(
 
         urls[file_id] = {
             "full": full_url,
-            "thumbnail": thumbnail_url_map.get(file_id),
             "width": meta.get("width"),
             "height": meta.get("height"),
         }

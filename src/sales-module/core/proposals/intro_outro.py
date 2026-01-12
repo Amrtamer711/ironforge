@@ -95,8 +95,14 @@ class IntroOutroHandler:
             if not location_key:
                 continue
 
-            # OPTIMIZED: O(1) lookup instead of O(N) search
-            location_meta = self._get_location_fast(location_key)
+            # Prefer metadata from validated proposal (set by validator with fresh Asset Service data)
+            # Fall back to handler's index if proposal doesn't have metadata
+            proposal_meta = proposal.get("location_metadata", {})
+            index_meta = self._get_location_fast(location_key) or {}
+
+            # Merge: proposal metadata takes precedence
+            location_meta = {**index_meta, **proposal_meta} if proposal_meta else index_meta
+
             if not location_meta:
                 continue
 
@@ -123,12 +129,18 @@ class IntroOutroHandler:
         self.logger.info("[INTRO_OUTRO] No Landmark Series location found in proposals")
 
         if validated_proposals:
-            first_location_key = validated_proposals[0].get("location")
+            first_proposal = validated_proposals[0]
+            first_location_key = first_proposal.get("location")
             self.logger.info(f"[INTRO_OUTRO] Falling back to first location: '{first_location_key}'")
 
             if first_location_key:
-                # OPTIMIZED: O(1) lookup instead of O(N) search
-                location_meta = self._get_location_fast(first_location_key)
+                # Prefer metadata from validated proposal (set by validator with fresh Asset Service data)
+                proposal_meta = first_proposal.get("location_metadata", {})
+                index_meta = self._get_location_fast(first_location_key) or {}
+
+                # Merge: proposal metadata takes precedence
+                location_meta = {**index_meta, **proposal_meta} if proposal_meta else index_meta
+
                 if location_meta:
                     series = location_meta.get('series', '')
                     display_name = location_meta.get('display_name', first_location_key)

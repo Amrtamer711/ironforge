@@ -470,9 +470,11 @@ class ToolRouter:
             except Exception as e:
                 logger.debug(f"[RESULT] Failed to delete status message: {e}")
         else:
-            logger.error(f"[RESULT] Error: {result.get('error')}")
+            # Handle both 'error' (string) and 'errors' (list) formats
+            error_msg = result.get('error') or '; '.join(result.get('errors', ['Unknown error']))
+            logger.error(f"[RESULT] Error: {error_msg}")
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** {result['error']}")
+            await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** {error_msg}")
 
     # =========================================================================
     # TEMPLATE/LOCATION HANDLERS

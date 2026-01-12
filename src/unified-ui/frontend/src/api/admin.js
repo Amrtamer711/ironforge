@@ -134,6 +134,26 @@ export async function getCompanyHierarchy() {
   return apiRequest("/api/rbac/companies/hierarchy");
 }
 
+export async function createCompany(companyData) {
+  return apiRequest("/api/assets/companies", {
+    method: "POST",
+    body: JSON.stringify(companyData),
+  });
+}
+
+export async function updateCompany(companyCode, companyData) {
+  return apiRequest(`/api/assets/companies/${encodeURIComponent(companyCode)}`, {
+    method: "PUT",
+    body: JSON.stringify(companyData),
+  });
+}
+
+export async function deleteCompany(companyCode) {
+  return apiRequest(`/api/assets/companies/${encodeURIComponent(companyCode)}`, {
+    method: "DELETE",
+  });
+}
+
 export async function getPermissionSets() {
   return apiRequest("/api/rbac/permission-sets");
 }
