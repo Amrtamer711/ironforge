@@ -365,6 +365,35 @@ class StorageProvider(ABC):
         """
         pass
 
+    async def get_signed_urls_batch(
+        self,
+        bucket: str,
+        keys: list[str],
+        expires_in: int = 3600,
+    ) -> dict[str, str]:
+        """
+        Get signed URLs for multiple files in a single operation.
+
+        This is more efficient than calling get_signed_url repeatedly
+        as providers can optimize this into a single API call.
+
+        Args:
+            bucket: Bucket/container name
+            keys: List of file keys/paths
+            expires_in: URL expiration time in seconds
+
+        Returns:
+            Dictionary mapping key -> signed_url (only successful URLs included)
+        """
+        # Default implementation: fall back to individual calls
+        # Providers like Supabase override this with batch API
+        result = {}
+        for key in keys:
+            url = await self.get_signed_url(bucket, key, expires_in)
+            if url:
+                result[key] = url
+        return result
+
     # =========================================================================
     # BUCKET OPERATIONS
     # =========================================================================

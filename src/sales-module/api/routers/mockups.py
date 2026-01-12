@@ -780,6 +780,7 @@ async def get_mockup_photo(
     photo_filename: str,  # Query param - required
     time_of_day: str = "all",
     side: str = "all",
+    venue_type: str = "outdoor",  # Query param - environment type (indoor/outdoor)
     company: str | None = None,  # Query param - company hint for O(1) lookup (from templates response)
     background_tasks: BackgroundTasks = None,
     user: AuthUser = Depends(require_permission("sales:mockups:read")),
@@ -791,6 +792,7 @@ async def get_mockup_photo(
         location_key: Path param - supports slashes for traditional networks
                       (e.g., "dubai_mall/digital_screens/mall_screen_a")
         photo_filename: Query param - the photo file to retrieve
+        venue_type: Query param - environment type (indoor/outdoor), defaults to outdoor
         company: Query param - optional company hint for O(1) lookup (avoids searching all companies)
 
     Requires sales:mockups:read permission.
@@ -800,7 +802,7 @@ async def get_mockup_photo(
     location_key = "/".join(sanitize_path_component(seg) for seg in location_key.split("/"))
     photo_filename = sanitize_path_component(photo_filename)
 
-    logger.info(f"[PHOTO GET] Request for photo: {location_key}/{photo_filename} (time_of_day={time_of_day}, side={side}, company={company})")
+    logger.info(f"[PHOTO GET] Request for photo: {location_key}/{photo_filename} (venue_type={venue_type}, time_of_day={time_of_day}, side={side}, company={company})")
 
     # Use MockupFrameService to fetch from Asset-Management
     # Pass company hint to avoid searching all companies sequentially
@@ -828,7 +830,7 @@ async def get_mockup_photo(
         if photo_filename in photo_lookup:
             tod, sid = photo_lookup[photo_filename]
             # Pass company hint to download_photo for O(1) storage lookup
-            photo_path = await service.download_photo(location_key, tod, sid, photo_filename, company_hint=effective_company)
+            photo_path = await service.download_photo(location_key, tod, sid, photo_filename, environment=venue_type, company_hint=effective_company)
             if photo_path and photo_path.exists():
                 file_size = os.path.getsize(photo_path)
                 logger.info(f"[PHOTO GET] ✓ FOUND: {photo_path} ({file_size} bytes)")
@@ -841,7 +843,7 @@ async def get_mockup_photo(
     else:
         # Direct lookup with specific time_of_day and side
         # Pass company hint for O(1) storage lookup
-        photo_path = await service.download_photo(location_key, time_of_day, side, photo_filename, company_hint=company)
+        photo_path = await service.download_photo(location_key, time_of_day, side, photo_filename, environment=venue_type, company_hint=company)
         if photo_path and photo_path.exists():
             file_size = os.path.getsize(photo_path)
             logger.info(f"[PHOTO GET] ✓ FOUND: {photo_path} ({file_size} bytes)")
