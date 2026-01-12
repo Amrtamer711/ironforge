@@ -9,18 +9,18 @@ export function ProposalsPage() {
   return (
     <div className="h-full min-h-0 flex flex-col">
       <div className="flex-1 min-h-0 flex flex-col gap-4">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 py-1">
           <Button
             variant={tab === "generate" ? "default" : "ghost"}
             onClick={() => setTab("generate")}
-            className="rounded-2xl"
+            className={`rounded-2xl mmg-tab-btn ${tab === "generate" ? "mmg-tab-btn-active" : ""}`}
           >
             Generate
           </Button>
           <Button
             variant={tab === "history" ? "default" : "ghost"}
             onClick={() => setTab("history")}
-            className="rounded-2xl"
+            className={`rounded-2xl mmg-tab-btn ${tab === "history" ? "mmg-tab-btn-active" : ""}`}
           >
             History
           </Button>

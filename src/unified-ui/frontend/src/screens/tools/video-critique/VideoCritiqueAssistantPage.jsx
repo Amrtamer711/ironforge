@@ -9,17 +9,17 @@ export function VideoCritiqueAssistantPage() {
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-4">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 py-1">
         <Button
           variant={tab === "chat" ? "default" : "ghost"}
-          className="rounded-2xl"
+          className={`rounded-2xl mmg-tab-btn ${tab === "chat" ? "mmg-tab-btn-active" : ""}`}
           onClick={() => setTab("chat")}
         >
           Chat
         </Button>
         <Button
           variant={tab === "dashboard" ? "default" : "ghost"}
-          className="rounded-2xl"
+          className={`rounded-2xl mmg-tab-btn ${tab === "dashboard" ? "mmg-tab-btn-active" : ""}`}
           onClick={() => setTab("dashboard")}
         >
           Dashboard

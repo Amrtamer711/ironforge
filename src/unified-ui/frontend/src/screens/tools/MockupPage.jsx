@@ -1810,12 +1810,12 @@ export function MockupPage() {
   return (
     <div className="h-full min-h-0 flex flex-col">
       <div className="flex-1 min-h-0 flex flex-col gap-4">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 py-1">
           {showGenerate && (
             <Button
               variant={mode === "generate" ? "default" : "ghost"}
               onClick={() => setMode("generate")}
-              className="rounded-2xl"
+              className={`rounded-2xl mmg-tab-btn ${mode === "generate" ? "mmg-tab-btn-active" : ""}`}
             >
               Generate
             </Button>
@@ -1824,7 +1824,7 @@ export function MockupPage() {
             <Button
               variant={mode === "setup" ? "default" : "ghost"}
               onClick={() => setMode("setup")}
-              className="rounded-2xl"
+              className={`rounded-2xl mmg-tab-btn ${mode === "setup" ? "mmg-tab-btn-active" : ""}`}
             >
               Setup
             </Button>

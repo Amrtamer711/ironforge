@@ -371,23 +371,47 @@ export function AdminPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4">
-      <div className="flex items-center gap-2 overflow-x-auto">
-        <Button variant={tab === "users" ? "default" : "ghost"} onClick={() => setTab("users")} className="rounded-2xl shrink-0">
+      <div className="flex items-center gap-2 overflow-x-auto py-1">
+        <Button
+          variant={tab === "users" ? "default" : "ghost"}
+          onClick={() => setTab("users")}
+          className={`rounded-2xl shrink-0 mmg-tab-btn ${tab === "users" ? "mmg-tab-btn-active" : ""}`}
+        >
           Users
         </Button>
-        <Button variant={tab === "companies" ? "default" : "ghost"} onClick={() => setTab("companies")} className="rounded-2xl shrink-0">
+        <Button
+          variant={tab === "companies" ? "default" : "ghost"}
+          onClick={() => setTab("companies")}
+          className={`rounded-2xl shrink-0 mmg-tab-btn ${tab === "companies" ? "mmg-tab-btn-active" : ""}`}
+        >
           Companies
         </Button>
-        <Button variant={tab === "profiles" ? "default" : "ghost"} onClick={() => setTab("profiles")} className="rounded-2xl shrink-0">
+        <Button
+          variant={tab === "profiles" ? "default" : "ghost"}
+          onClick={() => setTab("profiles")}
+          className={`rounded-2xl shrink-0 mmg-tab-btn ${tab === "profiles" ? "mmg-tab-btn-active" : ""}`}
+        >
           Profiles
         </Button>
-        <Button variant={tab === "permission-sets" ? "default" : "ghost"} onClick={() => setTab("permission-sets")} className="rounded-2xl shrink-0">
+        <Button
+          variant={tab === "permission-sets" ? "default" : "ghost"}
+          onClick={() => setTab("permission-sets")}
+          className={`rounded-2xl shrink-0 mmg-tab-btn ${tab === "permission-sets" ? "mmg-tab-btn-active" : ""}`}
+        >
           Permission Sets
         </Button>
-        <Button variant={tab === "permissions" ? "default" : "ghost"} onClick={() => setTab("permissions")} className="rounded-2xl shrink-0">
+        <Button
+          variant={tab === "permissions" ? "default" : "ghost"}
+          onClick={() => setTab("permissions")}
+          className={`rounded-2xl shrink-0 mmg-tab-btn ${tab === "permissions" ? "mmg-tab-btn-active" : ""}`}
+        >
           Permissions
         </Button>
-        <Button variant={tab === "services" ? "default" : "ghost"} onClick={() => setTab("services")} className="rounded-2xl shrink-0">
+        <Button
+          variant={tab === "services" ? "default" : "ghost"}
+          onClick={() => setTab("services")}
+          className={`rounded-2xl shrink-0 mmg-tab-btn ${tab === "services" ? "mmg-tab-btn-active" : ""}`}
+        >
           Services
         </Button>
       </div>

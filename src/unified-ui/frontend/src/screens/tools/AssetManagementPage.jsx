@@ -85,13 +85,13 @@ export function AssetManagementPage() {
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col gap-4">
-      <div className="flex items-center gap-2 overflow-x-auto">
+      <div className="flex items-center gap-2 overflow-x-auto py-1">
         {TABS.map((tabItem) => (
           <Button
             key={tabItem.key}
             variant={tab === tabItem.key ? "default" : "ghost"}
             onClick={() => setTab(tabItem.key)}
-            className="rounded-2xl shrink-0"
+            className={`rounded-2xl shrink-0 mmg-tab-btn ${tab === tabItem.key ? "mmg-tab-btn-active" : ""}`}
             disabled={tabItem.disabled}
             title={tabItem.disabled ? "Coming soon" : undefined}
           >

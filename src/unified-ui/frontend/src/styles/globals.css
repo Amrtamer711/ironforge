@@ -194,7 +194,7 @@ select {
   --nav-active-border: transparent;
   --nav-fg: rgba(0, 0, 0, 0.8);
   --nav-active-fg: rgba(0, 0, 0, 0.9);
-  --nav-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0, 0, 0, 0.02);
+  --nav-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
 }
 
 /* When any brand theme is active we slightly shift the global bg
@@ -378,13 +378,47 @@ body[data-brand-theme] .mmg-btn-primary:active {
   color: var(--nav-active-fg, var(--nav-fg));
 }
 
+/* Tab buttons mirror sidebar styling */
+.mmg-tab-btn {
+  background: var(--nav-bg);
+  color: var(--nav-fg);
+  box-shadow: var(--nav-shadow), inset 0 0 0 1px var(--nav-border);
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.mmg-tab-btn:hover {
+  background: var(--nav-hover-bg);
+  box-shadow: var(--nav-shadow), inset 0 0 0 1px var(--nav-hover-border);
+  color: var(--nav-fg);
+}
+
+.mmg-tab-btn-active {
+  background: var(--nav-active-bg);
+  box-shadow: var(--nav-shadow), inset 0 0 0 1px var(--nav-active-border);
+  color: var(--nav-active-fg, var(--nav-fg));
+}
+
+.mmg-tab-btn-active:hover {
+  background: var(--nav-active-bg);
+  box-shadow: var(--nav-shadow), inset 0 0 0 1px var(--nav-active-border);
+  color: var(--nav-active-fg, var(--nav-fg));
+}
+
+body:not([data-brand-theme]) .mmg-tab-btn-active:hover {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.dark body:not([data-brand-theme]) .mmg-tab-btn-active:hover {
+  color: rgba(0, 0, 0, 0.9);
+}
+
 .mmg-nav-icon {
   transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .dark .mmg-nav-icon {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.55);
 }
 
 .dark {
@@ -396,7 +430,7 @@ body[data-brand-theme] .mmg-btn-primary:active {
   --nav-active-border: transparent;
   --nav-fg: rgba(255, 255, 255, 0.85);
   --nav-active-fg: rgba(255, 255, 255, 0.95);
-  --nav-shadow: 0 2px 4px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --nav-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
 }
 
 /* Sidebar nav buttons pick up accent when brand theme is active */
@@ -416,6 +450,22 @@ body[data-brand-theme] {
   --nav-active-bg: rgb(var(--brand-accent) / 0.52);
   --nav-active-border: rgb(var(--brand-accent) / 0.78);
   --nav-fg: #fff;
+}
+
+body:not([data-brand-theme]) {
+  --nav-border: rgba(0, 0, 0, 0.14);
+  --nav-hover-bg: rgba(0, 0, 0, 0.05);
+  --nav-hover-border: rgba(0, 0, 0, 0.2);
+  --nav-active-bg: rgba(0, 0, 0, 0.07);
+  --nav-active-border: rgba(0, 0, 0, 0.26);
+}
+
+.dark body:not([data-brand-theme]) {
+  --nav-border: rgba(255, 255, 255, 0.16);
+  --nav-hover-bg: rgba(255, 255, 255, 0.08);
+  --nav-hover-border: rgba(255, 255, 255, 0.26);
+  --nav-active-bg: rgba(255, 255, 255, 0.12);
+  --nav-active-border: rgba(255, 255, 255, 0.36);
 }
 
 body[data-brand-theme="brand"] {
@@ -450,7 +500,18 @@ body[data-brand-theme] .mmg-nav-btn {
   color: var(--nav-fg) !important;
 }
 
+body[data-brand-theme] .mmg-tab-btn {
+  background: var(--nav-bg) !important;
+  color: var(--nav-fg) !important;
+}
+
 body[data-brand-theme] .mmg-nav-btn:hover {
+  background: var(--nav-hover-bg) !important;
+  color: var(--nav-fg) !important;
+  box-shadow: inset 0 0 0 1px var(--nav-hover-border) !important;
+}
+
+body[data-brand-theme] .mmg-tab-btn:hover {
   background: var(--nav-hover-bg) !important;
   color: var(--nav-fg) !important;
   box-shadow: inset 0 0 0 1px var(--nav-hover-border) !important;
@@ -459,6 +520,12 @@ body[data-brand-theme] .mmg-nav-btn:hover {
 body[data-brand-theme] .mmg-nav-btn-active {
   background: var(--nav-active-bg) !important;
   box-shadow: inset 0 0 0 1px var(--nav-active-border) !important;
+}
+
+body[data-brand-theme] .mmg-tab-btn-active {
+  background: var(--nav-active-bg) !important;
+  box-shadow: inset 0 0 0 1px var(--nav-active-border) !important;
+  color: var(--nav-active-fg, var(--nav-fg)) !important;
 }
 
 /* Ensure primary buttons stay readable when brand theme is on */
@@ -508,25 +575,25 @@ body[data-brand-theme] .mmg-nav-icon {
     rgb(var(--brand-card-bg)) 30%
   );
   color: rgb(var(--brand-accent));
-  box-shadow: inset 0 0 0 1px rgb(var(--brand-accent) / 0.14);
+  box-shadow: inset 0 0 0 1px rgb(var(--brand-accent) / 0.18);
 }
 
 body[data-brand-theme] .mmg-nav-btn-active .mmg-nav-icon {
   background: rgb(var(--brand-accent));
   color: rgb(var(--brand-on-primary));
-  box-shadow: 0 4px 8px rgb(var(--brand-accent) / 0.18);
+  box-shadow: 0 2px 3px rgb(var(--brand-accent) / 0.28);
 }
 
 .dark body[data-brand-theme] .mmg-nav-icon {
   background: rgb(var(--brand-accent) / 0.18);
   color: rgb(var(--brand-on-primary));
-  box-shadow: inset 0 0 0 1px rgb(var(--brand-accent) / 0.28);
+  box-shadow: inset 0 0 0 1px rgb(var(--brand-accent) / 0.32);
 }
 
 .dark body[data-brand-theme] .mmg-nav-btn-active .mmg-nav-icon {
   background: rgb(var(--brand-accent));
   color: rgb(var(--brand-on-primary));
-  box-shadow: 0 5px 9px rgb(var(--brand-accent) / 0.25);
+  box-shadow: 0 2px 3px rgb(var(--brand-accent) / 0.32);
 }
 
 .mmg-line-clamp-2 {
