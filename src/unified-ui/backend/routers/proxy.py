@@ -46,6 +46,43 @@ logger = logging.getLogger("unified-ui")
 
 router = APIRouter(tags=["proxy"])
 
+# =============================================================================
+# SHARED HTTP CLIENT - Connection Pooling
+# =============================================================================
+# Using a shared httpx.AsyncClient provides connection pooling, which:
+# 1. Reuses connections instead of creating new ones per request
+# 2. Prevents connection exhaustion on high traffic or page refreshes
+# 3. Reduces latency by avoiding TCP/TLS handshakes for each request
+
+_proxy_client: httpx.AsyncClient | None = None
+
+
+def _get_proxy_client() -> httpx.AsyncClient:
+    """
+    Get or create the shared proxy HTTP client.
+
+    The client is created lazily on first use and reused for all proxy requests.
+    Configuration:
+    - 300s total timeout (for long-running proposal generation)
+    - 10s connect timeout (fail fast if backend unreachable)
+    - 100 max connections, 20 keepalive (prevents pool exhaustion)
+    """
+    global _proxy_client
+    if _proxy_client is None:
+        _proxy_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(300.0, connect=10.0),
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+        )
+    return _proxy_client
+
+
+async def close_proxy_client():
+    """Close the shared proxy client (call on shutdown)."""
+    global _proxy_client
+    if _proxy_client is not None:
+        await _proxy_client.aclose()
+        _proxy_client = None
+
 
 def _build_trusted_headers(user: TrustedUser, proxy_secret: str | None) -> dict[str, str]:
     """
@@ -204,41 +241,44 @@ async def _proxy_regular(
 ) -> Response:
     """
     Proxy a regular (non-streaming) request.
+
+    Uses shared connection pool for better performance and to prevent
+    connection exhaustion on page refreshes.
     """
-    async with httpx.AsyncClient(timeout=300.0) as client:
-        response = await client.request(
-            method=method,
-            url=url,
-            headers=headers,
-            content=body,
-        )
+    client = _get_proxy_client()
+    response = await client.request(
+        method=method,
+        url=url,
+        headers=headers,
+        content=body,
+    )
 
-        logger.info(f"[PROXY] Response: {response.status_code}")
+    logger.info(f"[PROXY] Response: {response.status_code}")
 
-        # Forward response headers, filtering out hop-by-hop headers
-        # Also skip content-encoding since httpx auto-decompresses
-        response_headers = {}
-        skip_headers = {
-            "transfer-encoding",
-            "content-encoding",  # httpx already decompresses, don't confuse browser
-            "content-length",    # length changed after decompression
-            "connection",
-            "keep-alive",
-            "proxy-authenticate",
-            "proxy-authorization",
-            "te",
-            "trailers",
-            "upgrade",
-        }
-        for key, value in response.headers.items():
-            if key.lower() not in skip_headers:
-                response_headers[key] = value
+    # Forward response headers, filtering out hop-by-hop headers
+    # Also skip content-encoding since httpx auto-decompresses
+    response_headers = {}
+    skip_headers = {
+        "transfer-encoding",
+        "content-encoding",  # httpx already decompresses, don't confuse browser
+        "content-length",    # length changed after decompression
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailers",
+        "upgrade",
+    }
+    for key, value in response.headers.items():
+        if key.lower() not in skip_headers:
+            response_headers[key] = value
 
-        return Response(
-            content=response.content,
-            status_code=response.status_code,
-            headers=response_headers,
-        )
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        headers=response_headers,
+    )
 
 
 async def _proxy_streaming(
@@ -247,10 +287,16 @@ async def _proxy_streaming(
     headers: dict[str, str],
     body: bytes,
 ) -> StreamingResponse:
-    """Proxy a streaming (SSE) request."""
+    """
+    Proxy a streaming (SSE) request.
+
+    Uses shared connection pool for better performance. The stream context
+    is managed separately from the client lifecycle.
+    """
 
     async def stream_generator():
-        async with httpx.AsyncClient(timeout=300.0) as client, client.stream(
+        client = _get_proxy_client()
+        async with client.stream(
             method=method,
             url=url,
             headers=headers,

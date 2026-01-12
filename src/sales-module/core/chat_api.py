@@ -414,6 +414,16 @@ async def stream_chat_message(
 
         yield "data: [DONE]\n\n"
 
+    except GeneratorExit:
+        # Client disconnected (page refresh, navigation, abort)
+        logger.info(f"[WebChat] Client disconnected for user={user_id}, cancelling LLM task")
+        if not llm_task.done():
+            llm_task.cancel()
+            try:
+                await llm_task
+            except asyncio.CancelledError:
+                logger.debug(f"[WebChat] LLM task cancelled for user={user_id}")
+        raise  # Re-raise to properly close the generator
     except Exception as e:
         logger.error(f"[WebChat] Streaming error: {e}", exc_info=True)
         yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
@@ -422,6 +432,16 @@ async def stream_chat_message(
         # Reset context variables
         current_request_id.reset(request_token)
         current_parent_message_id.reset(parent_token)
+
+        # Cancel LLM task if still running (defensive cleanup)
+        if not llm_task.done():
+            logger.warning(f"[WebChat] LLM task still running in finally, cancelling for user={user_id}")
+            llm_task.cancel()
+            try:
+                await llm_task
+            except asyncio.CancelledError:
+                pass
+
         # Mark request complete if not already
         if not request_complete:
             web_adapter.complete_request(user_id, request_id)

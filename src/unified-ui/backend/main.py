@@ -110,6 +110,10 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    from backend.routers.proxy import close_proxy_client
+    await close_proxy_client()
+    logger.info("[UI] Closed proxy HTTP client")
+
     await close_cache()
     logger.info("[UI] Shutting down...")
 

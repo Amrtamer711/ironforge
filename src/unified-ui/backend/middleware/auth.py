@@ -32,6 +32,7 @@ the local_auth service for fully offline development. This allows:
 - SQLite-based user/RBAC lookup
 """
 
+import asyncio
 import logging
 import os
 from collections.abc import Callable
@@ -58,6 +59,42 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "local")
 IS_DEV = ENVIRONMENT in ("local", "development", "test")
 
 logger = logging.getLogger("unified-ui")
+
+# Auth timeout configuration (seconds)
+SUPABASE_AUTH_TIMEOUT = float(os.getenv("SUPABASE_AUTH_TIMEOUT", "5.0"))
+
+
+async def _get_user_with_timeout(supabase, token: str, timeout: float = None):
+    """
+    Get Supabase user with timeout to prevent indefinite hangs.
+
+    The Supabase SDK's get_user() is synchronous and can block indefinitely
+    if the Supabase service is slow or unavailable. This wrapper runs it
+    in a thread with a timeout.
+
+    Args:
+        supabase: Supabase client instance
+        token: JWT token to validate
+        timeout: Timeout in seconds (defaults to SUPABASE_AUTH_TIMEOUT)
+
+    Returns:
+        Supabase user object or None
+
+    Raises:
+        asyncio.TimeoutError: If the request times out
+    """
+    if timeout is None:
+        timeout = SUPABASE_AUTH_TIMEOUT
+
+    try:
+        response = await asyncio.wait_for(
+            asyncio.to_thread(supabase.auth.get_user, token),
+            timeout=timeout
+        )
+        return response.user
+    except asyncio.TimeoutError:
+        logger.warning(f"[UI Auth] Supabase auth timeout after {timeout}s")
+        raise
 
 
 # =============================================================================
@@ -389,8 +426,7 @@ async def get_current_user(request: Request) -> AuthUser | None:
         return None
 
     try:
-        response = supabase.auth.get_user(token)
-        user = response.user
+        user = await _get_user_with_timeout(supabase, token)
 
         if not user:
             return None
@@ -402,6 +438,9 @@ async def get_current_user(request: Request) -> AuthUser | None:
             user_metadata=user.user_metadata,
         )
 
+    except asyncio.TimeoutError:
+        logger.warning("[UI Auth] Auth service timeout - returning None")
+        return None
     except Exception as e:
         logger.debug(f"[UI Auth] Token validation failed: {e}")
         return None
@@ -458,8 +497,7 @@ async def require_auth(request: Request) -> AuthUser:
 
     try:
         # server.js:754-759
-        response = supabase.auth.get_user(token)
-        user = response.user
+        user = await _get_user_with_timeout(supabase, token)
 
         if not user:
             raise HTTPException(
@@ -475,6 +513,12 @@ async def require_auth(request: Request) -> AuthUser:
             user_metadata=user.user_metadata,
         )
 
+    except asyncio.TimeoutError:
+        logger.warning("[UI Auth] Auth service timeout")
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "Auth service temporarily unavailable", "retryable": True},
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -782,8 +826,7 @@ async def get_trusted_user(request: Request) -> TrustedUser:
 
     try:
         # server.js:561-567
-        response = supabase.auth.get_user(token)
-        user = response.user
+        user = await _get_user_with_timeout(supabase, token)
 
         if not user:
             logger.warning("[PROXY AUTH] Invalid token: no user")
@@ -853,6 +896,12 @@ async def get_trusted_user(request: Request) -> TrustedUser:
             companies=final_companies,
         )
 
+    except asyncio.TimeoutError:
+        logger.warning("[PROXY AUTH] Auth service timeout")
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "Auth service temporarily unavailable", "retryable": True},
+        )
     except HTTPException:
         raise
     except Exception as e:
