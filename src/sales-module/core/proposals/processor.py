@@ -8,6 +8,7 @@ import asyncio
 import os
 import shutil
 import tempfile
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -15,6 +16,9 @@ from pptx import Presentation
 from pypdf import PdfReader
 
 import config
+
+# Logger shorthand for timing logs
+logger = config.logger
 from core.services.template_service import TemplateService
 from db.database import db
 from generators.pdf import convert_pptx_to_pdf, merge_pdfs, remove_slides_and_convert_to_pdf
@@ -124,12 +128,12 @@ class ProposalProcessor:
         Returns:
             Tuple of (intro_pdf_path, outro_pdf_path)
         """
+        intro_outro_start = time.time()
         series = intro_outro_info.get('series', '')
         location_key = intro_outro_info.get('key', '')
         display_name = intro_outro_info.get('metadata', {}).get('display_name', location_key)
 
-        self.logger.info("[PROCESSOR] Creating intro/outro slides")
-        self.logger.info(f"[PROCESSOR] Selected location: '{display_name}' (key: {location_key})")
+        self.logger.info(f"[TIMING] Intro/outro creation START - {display_name}")
         self.logger.info(f"[PROCESSOR] Series: '{series}'")
 
         # Determine which pre-made PDF to use
@@ -165,15 +169,18 @@ class ProposalProcessor:
                     # Cached files were deleted, remove from cache
                     del self._extracted_slides_cache[pdf_name]
 
+            t0 = time.time()
             pdf_temp_path = await self.template_service.download_intro_outro_to_temp(
                 pdf_name, company_hint=company_hint
             )
+            self.logger.info(f"[TIMING] Intro/outro PDF download: {(time.time() - t0)*1000:.0f}ms")
             if pdf_temp_path:
-                self.logger.info(f"[PROCESSOR] PRE-MADE PDF FOUND: {pdf_name}")
+                t0 = time.time()
                 intro_pdf = self._extract_pages_from_pdf(pdf_temp_path, [0])
                 reader = PdfReader(pdf_temp_path)
                 last_page = len(reader.pages) - 1
                 outro_pdf = self._extract_pages_from_pdf(pdf_temp_path, [last_page])
+                self.logger.info(f"[TIMING] Intro/outro extraction: {(time.time() - t0)*1000:.0f}ms")
                 # Clean up the temp PDF (but keep extracted pages)
                 try:
                     os.unlink(pdf_temp_path)
@@ -181,6 +188,7 @@ class ProposalProcessor:
                     pass
                 # Cache the extracted slides
                 self._extracted_slides_cache[pdf_name] = (intro_pdf, outro_pdf)
+                self.logger.info(f"[TIMING] Intro/outro creation DONE: {(time.time() - intro_outro_start)*1000:.0f}ms")
                 return intro_pdf, outro_pdf
             else:
                 self.logger.info(f"[PROCESSOR] PRE-MADE PDF NOT FOUND: {pdf_name}")
@@ -503,25 +511,26 @@ class ProposalProcessor:
             ...     currency="AED"
             ... )
         """
-        self.logger.info("[PROCESSOR] Starting process_combined")
-        self.logger.info(f"[PROCESSOR] Proposals: {len(proposals_data)}")
-        self.logger.info(f"[PROCESSOR] Combined rate: {combined_net_rate}")
-        self.logger.info(f"[PROCESSOR] Client: {client_name}, Submitted by: {submitted_by}")
-        self.logger.info(f"[PROCESSOR] Payment terms: {payment_terms}")
-        self.logger.info(f"[PROCESSOR] Currency: {currency or 'AED'}")
+        process_start = time.time()
+        self.logger.info("[TIMING] ========== COMBINED PROPOSAL START ==========")
+        self.logger.info(f"[TIMING] Proposals: {len(proposals_data)}, Client: {client_name}")
 
         # Validate proposals (async)
+        t0 = time.time()
         validated_proposals, errors = await self.validator.validate_combined_package(
             proposals_data,
             combined_net_rate
         )
+        self.logger.info(f"[TIMING] Validation: {(time.time() - t0)*1000:.0f}ms")
         if errors:
             return {"success": False, "errors": errors}
 
         loop = asyncio.get_event_loop()
 
         # Get intro/outro info
+        t0 = time.time()
         intro_outro_info = self.intro_outro_handler.get_intro_outro_location(validated_proposals)
+        self.logger.info(f"[TIMING] Intro/outro info: {(time.time() - t0)*1000:.0f}ms")
 
         # Deduplicate deck slides (same location can have multiple durations)
         seen_locations = set()
@@ -532,21 +541,25 @@ class ProposalProcessor:
             if location_key not in seen_locations:
                 seen_locations.add(location_key)
                 unique_proposals_for_deck.append(proposal)
-                self.logger.info(f"[PROCESSOR] Including deck for '{location_key}' (first occurrence)")
-            else:
-                self.logger.info(f"[PROCESSOR] Skipping duplicate deck for '{location_key}'")
+
+        self.logger.info(f"[TIMING] Unique locations: {len(unique_proposals_for_deck)} (from {len(validated_proposals)} proposals)")
 
         # Process each unique location (in parallel)
         total_proposals = len(unique_proposals_for_deck)
 
         async def process_combined_single(idx: int, proposal: dict) -> dict:
             """Process a single proposal for combined package."""
-            # Download template from storage
             location_key = proposal.get("location", "").lower().strip()
+            single_start = time.time()
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - START")
+
+            # Download template from storage
+            t0 = time.time()
             company_hint = proposal.get("company_schema")  # O(1) lookup from validator
             template_path = await self.template_service.download_to_temp(
                 location_key, company_hint=company_hint
             )
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - Template download: {(time.time() - t0)*1000:.0f}ms")
             if not template_path:
                 raise FileNotFoundError(f"Template not found for {location_key}")
 
@@ -554,6 +567,7 @@ class ProposalProcessor:
 
             # Last location gets the combined financial slide
             if idx == total_proposals - 1:
+                t0 = time.time()
                 pptx_path, total_combined_result = await loop.run_in_executor(
                     None,
                     self.renderer.create_combined_proposal_with_template,
@@ -564,6 +578,7 @@ class ProposalProcessor:
                     payment_terms,
                     currency,
                 )
+                self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PPTX render (combined): {(time.time() - t0)*1000:.0f}ms")
                 # Clean up downloaded template
                 try:
                     os.unlink(template_path)
@@ -571,6 +586,7 @@ class ProposalProcessor:
                     pass
             else:
                 pptx_path = str(template_path)
+                self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - Using template as PPTX (no render)")
                 # Note: template_path will be cleaned up after PDF conversion
 
             # Determine which slides to remove
@@ -589,7 +605,9 @@ class ProposalProcessor:
                 else:
                     remove_first = True
 
+            t0 = time.time()
             pdf_path = await remove_slides_and_convert_to_pdf(pptx_path, remove_first, remove_last)
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PDF conversion: {(time.time() - t0)*1000:.0f}ms")
 
             # Clean up temp PPTX/template
             try:
@@ -597,11 +615,15 @@ class ProposalProcessor:
             except OSError as e:
                 self.logger.warning(f"[PROCESSOR] Failed to cleanup temp file: {e}")
 
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - TOTAL: {(time.time() - single_start)*1000:.0f}ms")
             return {"pdf_path": pdf_path, "total_combined": total_combined_result, "idx": idx}
 
         # Process all in parallel
+        self.logger.info(f"[TIMING] Starting parallel processing of {total_proposals} locations...")
+        t0 = time.time()
         tasks = [process_combined_single(idx, p) for idx, p in enumerate(unique_proposals_for_deck)]
         results = await asyncio.gather(*tasks, return_exceptions=True)
+        self.logger.info(f"[TIMING] Parallel processing complete: {(time.time() - t0)*1000:.0f}ms")
 
         # Check for errors
         for idx, result in enumerate(results):
@@ -617,12 +639,16 @@ class ProposalProcessor:
 
         # Add intro/outro slides
         if intro_outro_info:
+            t0 = time.time()
             intro_pdf, outro_pdf = await self._create_intro_outro_slides(intro_outro_info)
+            self.logger.info(f"[TIMING] Intro/outro slides: {(time.time() - t0)*1000:.0f}ms")
             pdf_files.insert(0, intro_pdf)
             pdf_files.append(outro_pdf)
 
         # Merge PDFs
+        t0 = time.time()
         merged_pdf = await loop.run_in_executor(None, merge_pdfs, pdf_files)
+        self.logger.info(f"[TIMING] PDF merge ({len(pdf_files)} files): {(time.time() - t0)*1000:.0f}ms")
 
         # Clean up temp PDFs
         for pdf_file in pdf_files:
@@ -656,6 +682,11 @@ class ProposalProcessor:
 
         timestamp_code = self._generate_timestamp_code()
         client_prefix = client_name.replace(" ", "_") if client_name else "Client"
+
+        total_time = (time.time() - process_start) * 1000
+        self.logger.info(f"[TIMING] ========== COMBINED PROPOSAL COMPLETE ==========")
+        self.logger.info(f"[TIMING] Total time: {total_time:.0f}ms ({total_time/1000:.1f}s)")
+        self.logger.info(f"[TIMING] Locations: {locations_str}")
 
         return {
             "success": True,

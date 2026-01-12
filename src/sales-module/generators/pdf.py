@@ -4,6 +4,7 @@ import platform
 import shutil
 import subprocess
 import tempfile
+import time
 
 from pptx import Presentation
 from pypdf import PdfReader, PdfWriter
@@ -191,14 +192,14 @@ async def remove_slides_and_convert_to_pdf(pptx_path: str, remove_first: bool = 
     import tempfile as _tf
 
     logger = config.logger
-    logger.info(f"[REMOVE_SLIDES] Processing '{pptx_path}'")
-    logger.info(f"[REMOVE_SLIDES] Remove first: {remove_first}, Remove last: {remove_last}")
+    start_time = time.time()
 
     async with _CONVERT_SEMAPHORE:
+        # Slide removal
+        t0 = time.time()
         temp_pptx = _tf.NamedTemporaryFile(delete=False, suffix=".pptx")
         temp_pptx.close()
         _sh.copy2(pptx_path, temp_pptx.name)
-        logger.info(f"[REMOVE_SLIDES] Created temp file: '{temp_pptx.name}'")
 
         pres = Presentation(temp_pptx.name)
         xml_slides = pres.slides._sldIdLst
@@ -214,9 +215,18 @@ async def remove_slides_and_convert_to_pdf(pptx_path: str, remove_first: bool = 
                 xml_slides.remove(slide_id)
 
         pres.save(temp_pptx.name)
+        slide_removal_time = (time.time() - t0) * 1000
+
+        # PDF conversion
+        t0 = time.time()
         pdf_path = convert_pptx_to_pdf(temp_pptx.name)
+        conversion_time = (time.time() - t0) * 1000
+
         try:
             os.unlink(temp_pptx.name)
         except OSError as cleanup_err:
             logger.debug(f"[REMOVE_SLIDES] Failed to cleanup temp file {temp_pptx.name}: {cleanup_err}")
+
+        total_time = (time.time() - start_time) * 1000
+        logger.info(f"[TIMING] remove_slides_and_convert: slide_removal={slide_removal_time:.0f}ms, conversion={conversion_time:.0f}ms, total={total_time:.0f}ms")
         return pdf_path
