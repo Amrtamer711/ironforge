@@ -411,8 +411,9 @@ export function ChatPage() {
           }
 
           if (evt?.type === "status") {
+            const statusText = normalizeBackendStatus(evt.content || "Processing");
             setMessages(prev => prev.map(m =>
-              m.id === assistantMsgId ? { ...m, status: evt.content || "Processing" } : m
+              m.id === assistantMsgId ? { ...m, status: statusText } : m
             ));
             return;
           }
@@ -437,7 +438,9 @@ export function ChatPage() {
           if ((evt?.type === "chunk" || evt?.type === "content") && evt.content) {
             fullContent = evt.type === "content" ? evt.content : fullContent + evt.content;
             setMessages(prev => prev.map(m =>
-              m.id === assistantMsgId ? { ...m, status: null, content: fullContent } : m
+              m.id === assistantMsgId
+                ? { ...m, status: null, content: normalizeBackendText(fullContent) }
+                : m
             ));
             return;
           }
@@ -445,7 +448,9 @@ export function ChatPage() {
           if (evt?.content && !evt.type) {
             fullContent += evt.content;
             setMessages(prev => prev.map(m =>
-              m.id === assistantMsgId ? { ...m, status: null, content: fullContent } : m
+              m.id === assistantMsgId
+                ? { ...m, status: null, content: normalizeBackendText(fullContent) }
+                : m
             ));
             return;
           }
@@ -570,6 +575,11 @@ export function ChatPage() {
   );
 }
 
+const IMAGE_BUBBLE_WIDTH = 320;
+const IMAGE_BUBBLE_HEIGHT = 200;
+const FILE_BUBBLE_WIDTH = 320;
+const FILE_BUBBLE_HEIGHT = 100;
+
 // =============================================================================
 // Message Component
 // =============================================================================
@@ -578,6 +588,21 @@ const Message = React.memo(function Message({ msg }) {
   const isUser = msg.role === "user";
   const formatted = useMemo(() => formatContent(msg.content || ""), [msg.content]);
   const isStatus = Boolean(msg.status);
+  const attachments = msg.files || [];
+  const hasImageAttachment = attachments.some((file) => {
+    const ext = getFileExtension(file?.filename || file?.url || "");
+    return ["jpg", "jpeg", "png", "gif", "webp", "bmp"].includes(ext);
+  });
+  const hasFileAttachment = attachments.some((file) => {
+    const ext = getFileExtension(file?.filename || file?.url || "");
+    return ext && !["jpg", "jpeg", "png", "gif", "webp", "bmp"].includes(ext);
+  });
+  const contentMaxWidth = hasImageAttachment ? IMAGE_BUBBLE_WIDTH : hasFileAttachment ? FILE_BUBBLE_WIDTH : null;
+  const contentStyle = useMemo(() => {
+    const base = { overflowWrap: "anywhere", wordBreak: "break-word" };
+    if (!contentMaxWidth) return base;
+    return { ...base, maxWidth: contentMaxWidth };
+  }, [contentMaxWidth]);
 
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
@@ -591,7 +616,7 @@ const Message = React.memo(function Message({ msg }) {
         {isStatus ? (
           <StatusLine text={msg.status} />
         ) : (
-          <div dangerouslySetInnerHTML={{ __html: formatted }} />
+          <div dangerouslySetInnerHTML={{ __html: formatted }} style={contentStyle} />
         )}
 
         {msg.files?.length > 0 && (
@@ -624,14 +649,19 @@ const Attachment = React.memo(function Attachment({ file, isUser }) {
 
   // Show image with placeholder (or loading state if URL not yet available)
   if (isImage) {
+    const imageBubbleStyle = {
+      width: IMAGE_BUBBLE_WIDTH,
+      maxWidth: "100%",
+    };
     return (
-      <div className="rounded-xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 p-2">
+      <div
+        className="rounded-xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 p-2"
+        style={imageBubbleStyle}
+      >
         <ImageWithPlaceholder
           src={imageUrl}
           fullUrl={fullUrl}
           alt={displayName}
-          width={file.width}
-          height={file.height}
           isUser={isUser}
         />
         {!isUser && fullUrl && isSignedUrl(fullUrl) && (
@@ -652,36 +682,47 @@ const Attachment = React.memo(function Attachment({ file, isUser }) {
 
   // Non-image file
   const isPdf = ext === "pdf";
+  const canOpen = ext === "pdf";
+  const fileBubbleStyle = {
+    width: FILE_BUBBLE_WIDTH,
+    height: FILE_BUBBLE_HEIGHT,
+    maxWidth: "100%",
+  };
   return (
-    <div className="rounded-xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-black/50 dark:text-white/60">
-            {isPdf ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 text-red-700 dark:text-red-300 px-2 py-0.5">
-                <FileText size={12} /> PDF
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5">
-                {ext ? ext.toUpperCase() : "FILE"}
-              </span>
-            )}
+    <div
+      className="rounded-xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-white/5 p-3 flex flex-col"
+      style={fileBubbleStyle}
+    >
+      <div className="flex items-start gap-2 text-xs uppercase tracking-wide text-black/50 dark:text-white/60">
+        {isPdf ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 text-red-700 dark:text-red-300 px-2 py-0.5">
+            <FileText size={12} /> PDF
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-full bg-black/5 dark:bg-white/10 px-2 py-0.5">
+            {ext ? ext.toUpperCase() : "FILE"}
+          </span>
+        )}
+        {!isUser ? (
+          <div className="text-xs font-semibold text-black/80 dark:text-white/85 leading-5 truncate">
+            {displayName}
           </div>
-          {!isUser && <div className="mt-1 text-xs font-semibold text-black/80 dark:text-white/85 truncate">{displayName}</div>}
-        </div>
-        {!isUser && fullUrl && (
-          <div className="flex items-center gap-2">
+        ) : null}
+      </div>
+      {!isUser && fullUrl && (
+        <div className="mt-auto pt-3 flex items-center gap-2">
+          {canOpen ? (
             <Button asChild size="sm" variant="ghost" className="rounded-xl">
               <a href={fullUrl} target="_blank" rel="noopener noreferrer">
                 <ExternalLink size={14} className="mr-1" /> Open
               </a>
             </Button>
-            <Button size="sm" variant="secondary" className="rounded-xl" onClick={() => downloadFile(fullUrl, displayName)}>
-              <Download size={14} className="mr-1" /> Download
-            </Button>
-          </div>
-        )}
-      </div>
+          ) : null}
+          <Button size="sm" variant="secondary" className="rounded-xl" onClick={() => downloadFile(fullUrl, displayName)}>
+            <Download size={14} className="mr-1" /> Download
+          </Button>
+        </div>
+      )}
     </div>
   );
 });
@@ -691,12 +732,7 @@ const Attachment = React.memo(function Attachment({ file, isUser }) {
 // Uses global cache to prevent flash when Virtuoso remounts items during scroll
 // =============================================================================
 
-const MAX_WIDTH = 400;
-const MAX_HEIGHT = 400;
-const DEFAULT_WIDTH = 300;
-const DEFAULT_HEIGHT = 200;
-
-const ImageWithPlaceholder = React.memo(function ImageWithPlaceholder({ src, fullUrl, alt, width, height, isUser }) {
+const ImageWithPlaceholder = React.memo(function ImageWithPlaceholder({ src, fullUrl, alt, isUser }) {
   // Check global cache FIRST - if image was loaded before, skip placeholder entirely
   // This prevents the flash when Virtuoso remounts items during scrolling
   const alreadyCached = src && loadedImagesCache.has(src);
@@ -725,42 +761,14 @@ const ImageWithPlaceholder = React.memo(function ImageWithPlaceholder({ src, ful
     setError(true);
   }, []);
 
-  // Calculate container size from stored dimensions
-  // Using min/max constraints ensures the container never changes size during load
-  const containerStyle = useMemo(() => {
-    let w, h;
-    if (width && height && width > 0 && height > 0) {
-      const aspect = width / height;
-      if (aspect >= 1) {
-        w = Math.min(width, MAX_WIDTH);
-        h = Math.round(w / aspect);
-      } else {
-        h = Math.min(height, MAX_HEIGHT);
-        w = Math.round(h * aspect);
-      }
-    } else {
-      w = DEFAULT_WIDTH;
-      h = DEFAULT_HEIGHT;
-    }
-    // Set both width/height AND min/max to lock the container size
-    return {
-      width: w,
-      height: h,
-      minWidth: w,
-      minHeight: h,
-      maxWidth: w,
-      maxHeight: h,
-    };
-  }, [width, height]);
-
-  // Show loading placeholder while URL is being fetched
-  if (!src) {
-    return (
-      <div className="flex items-center justify-center bg-black/5 dark:bg-white/5 rounded-lg animate-pulse" style={containerStyle}>
-        <ImageIcon className="text-black/20 dark:text-white/20" size={24} />
-      </div>
-    );
-  }
+  const containerStyle = useMemo(
+    () => ({
+      width: IMAGE_BUBBLE_WIDTH,
+      height: IMAGE_BUBBLE_HEIGHT,
+      maxWidth: "100%",
+    }),
+    []
+  );
 
   if (error) {
     return (
@@ -774,16 +782,23 @@ const ImageWithPlaceholder = React.memo(function ImageWithPlaceholder({ src, ful
   // contain: 'layout' isolates this element from triggering parent reflows
   const imgElement = (
     <div
-      className="overflow-hidden rounded-lg bg-black/5 dark:bg-white/5"
-      style={{ ...containerStyle, contain: 'layout' }}
+      className="relative overflow-hidden rounded-lg bg-black/5 dark:bg-white/5"
+      style={{ ...containerStyle, contain: "layout" }}
     >
-      <img
-        src={src}
-        alt={alt}
-        className={`w-full h-full object-contain transition-opacity duration-150 ${loaded ? 'opacity-100' : 'opacity-0'}`}
-        onLoad={handleLoad}
-        onError={handleError}
-      />
+      {src ? (
+        <img
+          src={src}
+          alt={alt}
+          className={`w-full h-full object-contain transition-opacity duration-150 ${loaded ? "opacity-100" : "opacity-0"}`}
+          onLoad={handleLoad}
+          onError={handleError}
+        />
+      ) : null}
+      {!loaded ? (
+        <div className="absolute inset-0 flex items-center justify-center text-xs text-black/50 dark:text-white/60">
+          <LoadingEllipsis text="Loading" className="text-xs text-black/50 dark:text-white/60" />
+        </div>
+      ) : null}
     </div>
   );
 
@@ -829,7 +844,7 @@ function TextArea({ value, onChange, placeholder, onEnter }) {
 }
 
 function StatusLine({ text }) {
-  const displayText = (text || "Thinking").replace(/\s*\.{3,}$/, "");
+  const displayText = normalizeBackendStatus(text || "Thinking");
   return (
     <span className="inline-flex items-center gap-2 opacity-80">
       <span>{displayText}</span>
@@ -846,11 +861,22 @@ function StatusLine({ text }) {
 // Utilities
 // =============================================================================
 
+function normalizeBackendText(text) {
+  if (!text) return "";
+  return String(text).replace(/_+Building Proposal\.{3,}_+/gi, "Building Proposal")
+    .replace(/_?Building Proposal\.{3,}_?/gi, "Building Proposal");
+}
+
+function normalizeBackendStatus(text) {
+  if (!text) return "Thinking";
+  return normalizeBackendText(text).replace(/\s*\.{3,}$/, "").trim();
+}
+
 function normalizeMessage(msg) {
   return {
     id: msg.id || msg.message_id || crypto.randomUUID(),
     role: msg.role || "assistant",
-    content: msg.content || "",
+    content: normalizeBackendText(msg.content || ""),
     files: msg.files || msg.attachments || [],
     status: null,
     is_tool_response: Boolean(msg.is_tool_response),
@@ -906,6 +932,7 @@ function escapeHtml(text) {
 
 function formatContent(content) {
   if (!content) return "";
+  content = normalizeBackendText(content);
 
   // Extract code blocks
   const codeBlocks = [];
@@ -928,6 +955,11 @@ function formatContent(content) {
   let listType = null;
 
   for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (/^_?Building Proposal\.{3,}_?$/i.test(trimmedLine)) {
+      result.push("Building Proposal<br>");
+      continue;
+    }
     // Code block placeholder
     const codeMatch = line.match(/^__CODE_BLOCK_(\d+)__$/);
     if (codeMatch) {

@@ -85,6 +85,18 @@ h1, h2, h3, h4, h5, h6 {
 
 * { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+* {
+  scrollbar-color: rgba(0, 0, 0, 0.35) transparent;
+}
+
+.dark * {
+  scrollbar-color: rgba(255, 255, 255, 0.4) transparent;
+}
+
 .mmg-ellipsis {
   display: inline-flex;
   align-items: center;
