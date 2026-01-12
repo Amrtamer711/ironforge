@@ -24,6 +24,7 @@ Usage:
 
 import json
 import logging
+import os
 import sys
 import uuid
 from contextvars import ContextVar
