@@ -169,11 +169,13 @@ export function AppShell() {
     return isToolVisible(toolKey, visibility);
   };
 
-  // Show loading screen until BOTH auth is ready AND service visibility settings are loaded
+  // Show loading screen until auth is ready AND visibility is either loaded, errored, or timed out
   // This prevents:
   // 1. Hidden services from flashing visible on page load
   // 2. API calls (like chat history) from firing before auth token is available
-  const isInitializing = !authReady || (visibilityQuery.isLoading && !visibilityQuery.data);
+  // But we don't block forever if visibility fails - we'll default to showing all services
+  const visibilityReady = !visibilityQuery.isLoading || visibilityQuery.data || visibilityQuery.isError;
+  const isInitializing = !authReady || !visibilityReady;
   if (isInitializing) {
     return (
       <div className="min-h-screen grid place-items-center px-4">
