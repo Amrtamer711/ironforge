@@ -33,6 +33,7 @@ export function ChatPage() {
   const virtuosoRef = useRef(null);
   const currentRequestRef = useRef(null);  // Track current request for resume
   const eventIndexRef = useRef(0);  // Track event index for resume
+  const didInitialScrollRef = useRef(false);
 
   useEffect(() => {
     if (!getAuthToken()) return;
@@ -65,11 +66,8 @@ export function ChatPage() {
           setLoading(false);
           console.log("[ChatPage] Loading complete - hiding spinner, showing messages");
 
-          // Scroll to bottom after Virtuoso has rendered
-          // Use setTimeout to ensure Virtuoso has measured and rendered items
-          setTimeout(() => {
-            virtuosoRef.current?.scrollToIndex({ index: "LAST", behavior: "auto" });
-          }, 50);
+          // Scroll to bottom after Virtuoso has rendered and measured items
+          scheduleInitialScroll();
 
           // Load image URLs in background (don't block UI)
           const fileIds = normalizedMessages
@@ -99,6 +97,7 @@ export function ChatPage() {
                     return f;
                   })
                 })));
+                scheduleInitialScroll();
               }
             }).catch(err => {
               console.warn("[ChatPage] Failed to load attachment URLs:", err);
@@ -108,17 +107,13 @@ export function ChatPage() {
           console.log("[ChatPage] No history - showing greeting");
           setMessages([createGreeting()]);
           setLoading(false);
-          setTimeout(() => {
-            virtuosoRef.current?.scrollToIndex({ index: "LAST", behavior: "auto" });
-          }, 50);
+          scheduleInitialScroll();
         }
       } catch (err) {
         console.error("[ChatPage] Failed to load history:", err);
         setMessages([createGreeting()]);
         setLoading(false);
-        setTimeout(() => {
-          virtuosoRef.current?.scrollToIndex({ index: "LAST", behavior: "auto" });
-        }, 50);
+        scheduleInitialScroll();
       }
     }
     loadHistory();
@@ -298,11 +293,19 @@ export function ChatPage() {
 
   const scrollToBottom = useCallback((immediate = false) => {
     if (immediate) {
-      virtuosoRef.current?.scrollToIndex({ index: "LAST", behavior: "auto" });
+      virtuosoRef.current?.scrollToIndex({ index: "LAST", behavior: "auto", align: "end" });
     } else {
       virtuosoRef.current?.scrollToIndex({ index: "LAST", behavior: "smooth", align: "end" });
     }
   }, []);
+
+  const scheduleInitialScroll = useCallback(() => {
+    if (didInitialScrollRef.current) return;
+    didInitialScrollRef.current = true;
+    scrollToBottom(true);
+    requestAnimationFrame(() => scrollToBottom(true));
+    setTimeout(() => scrollToBottom(true), 120);
+  }, [scrollToBottom]);
 
   // Stable render function for Virtuoso - prevents re-creation on every render
   // contain: 'layout' isolates layout calculations to prevent reflow propagation

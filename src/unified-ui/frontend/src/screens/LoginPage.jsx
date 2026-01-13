@@ -49,12 +49,12 @@ export function LoginPage() {
             <img
               src="/MMG_Logo_Blk.png"
               alt="MMG"
-              className="h-32 sm:h-36 lg:h-40 w-auto ml-4 dark:hidden"
+              className="h-24 sm:h-36 lg:h-40 w-auto ml-4 dark:hidden"
             />
             <img
               src="/MMG_Logo.png"
               alt="MMG"
-              className="hidden h-32 sm:h-36 lg:h-40 w-auto ml-4 dark:block"
+              className="hidden h-24 sm:h-36 lg:h-40 w-auto ml-4 dark:block"
             />
             <div className="text-2xl sm:text-3xl lg:text-4xl font-semibold tracking-[0.32em] sm:tracking-[0.35em] text-[#ca9e2c]">
               NOVA AI
@@ -72,9 +72,9 @@ export function LoginPage() {
         </div>
 
         <div className="w-full max-w-md justify-self-center lg:pl-12">
-          <div className="space-y-3">
+          <div className="space-y-3 flex flex-col items-center sm:items-stretch">
             {error ? (
-              <div className="text-sm text-red-700 rounded-2xl px-4 py-2 bg-black/5 dark:bg-white/10">
+              <div className="text-sm text-red-700 rounded-2xl px-4 py-2 bg-black/5 dark:bg-white/10 w-full max-w-xs sm:max-w-none">
                 {error}
               </div>
             ) : null}
@@ -82,7 +82,7 @@ export function LoginPage() {
             <Button
               variant="secondary"
               size="lg"
-              className="w-full justify-center gap-2"
+              className="w-full max-w-xs sm:max-w-none justify-center gap-2"
               onClick={onMicrosoft}
               disabled={msLoading}
             >

@@ -1694,7 +1694,7 @@ export function MockupPage() {
           greenscreenFrameRef.current = true;
           syncCurrentPoints();
           setFrameSettingsOpen(true);
-          setSetupHint("Green screen detected. Adjust points or click Add Frame to save.");
+          setSetupHint("Click and drag to draw a box. Use +/Fit to zoom; Shift+drag or middle mouse pans; pinch to zoom.");
           drawPreview();
         } else {
           setSetupHint("No green screen detected. Adjust tolerance or draw frame manually.");
