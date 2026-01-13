@@ -15,11 +15,12 @@ This deploys the `sales-module` FastAPI service (named `proposal-bot`) into the 
    - Run your normal Terraform apply for `src/infrastructure/aws`
 
 2. Apply the Argo CD Application:
-   - `kubectl apply -k src/platform/ArgoCD/applications`
+   - Demo: `kubectl apply -k src/platform/ArgoCD/applications`
+   - Staging: `kubectl apply -k src/platform/ArgoCD/applications-staging`
+   - Production: `kubectl apply -k src/platform/ArgoCD/applications-production`
 
 3. Build/push + roll out a real image tag:
-   - Push a commit to `demo` touching `src/sales-module`
-   - CI builds/pushes `018881300778.dkr.ecr.eu-north-1.amazonaws.com/proposal-bot:<CI_COMMIT_SHORT_SHA>`
-   - CI opens an MR to bump `src/platform/deploy/kustomize/sales-module/overlays/dev/kustomization.yaml` `newTag`
+   - Demo: push to `demo` → MR bumps `src/platform/deploy/kustomize/sales-module/overlays/dev/kustomization.yaml`
+   - Staging: push to `staging` → MR bumps `src/platform/deploy/kustomize/sales-module/overlays/staging/kustomization.yaml`
+   - Production: push to `main` → MR bumps `src/platform/deploy/kustomize/sales-module/overlays/production/kustomization.yaml`
    - Merge the MR and Argo CD auto-syncs
-

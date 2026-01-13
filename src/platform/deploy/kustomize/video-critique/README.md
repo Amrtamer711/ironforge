@@ -11,11 +11,13 @@ Deploys the `video-critique` FastAPI service into the cluster (namespace `backen
 
 1. Ensure the ECR repo exists (Terraform): add `video-critique` to `ecr_repository_names` in `src/infrastructure/aws/main.tf` and apply.
 2. Apply the Argo CD Applications:
-   - `kubectl apply -k src/platform/ArgoCD/applications`
+   - Demo: `kubectl apply -k src/platform/ArgoCD/applications`
+   - Staging: `kubectl apply -k src/platform/ArgoCD/applications-staging`
+   - Production: `kubectl apply -k src/platform/ArgoCD/applications-production`
 3. Build + roll out:
-   - Push a commit to `demo` touching `src/video-critique`
-   - CI pushes `.../video-critique:<CI_COMMIT_SHORT_SHA>` and opens an MR to bump:
-     - `src/platform/deploy/kustomize/video-critique/overlays/dev/kustomization.yaml`
+   - Demo: push to `demo` → MR bumps `src/platform/deploy/kustomize/video-critique/overlays/dev/kustomization.yaml`
+   - Staging: push to `staging` → MR bumps `src/platform/deploy/kustomize/video-critique/overlays/staging/kustomization.yaml`
+   - Production: push to `main` → MR bumps `src/platform/deploy/kustomize/video-critique/overlays/production/kustomization.yaml`
    - Merge the MR → Argo CD auto-syncs.
 
 ## Runtime env (Kubernetes)
@@ -30,4 +32,3 @@ Recommended flow (keeps secrets out of Git):
 ```bash
 make platform-videocritique-env
 ```
-

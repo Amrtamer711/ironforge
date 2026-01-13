@@ -19,10 +19,11 @@ Other services (including `unified-ui` via `/api/security/*`) call this service 
 
 1. Ensure the ECR repo exists (Terraform): `security-service` was added to `ecr_repository_names` in `src/infrastructure/aws/main.tf`.
 2. Apply the Argo CD Applications:
-   - `kubectl apply -k src/platform/ArgoCD/applications`
+   - Demo: `kubectl apply -k src/platform/ArgoCD/applications`
+   - Staging: `kubectl apply -k src/platform/ArgoCD/applications-staging`
+   - Production: `kubectl apply -k src/platform/ArgoCD/applications-production`
 3. Build + roll out:
-   - Push a commit to `demo` touching `src/security-service`
-   - CI pushes `.../security-service:<CI_COMMIT_SHORT_SHA>` and opens an MR to bump:
-     - `src/platform/deploy/kustomize/security-service/overlays/dev/kustomization.yaml`
+   - Demo: push to `demo` → MR bumps `src/platform/deploy/kustomize/security-service/overlays/dev/kustomization.yaml`
+   - Staging: push to `staging` → MR bumps `src/platform/deploy/kustomize/security-service/overlays/staging/kustomization.yaml`
+   - Production: push to `main` → MR bumps `src/platform/deploy/kustomize/security-service/overlays/production/kustomization.yaml`
    - Merge the MR → Argo CD auto-syncs.
-

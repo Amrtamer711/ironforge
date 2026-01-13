@@ -33,12 +33,27 @@ make infra-init AWS_PROFILE=your-profile
 make infra-apply AWS_PROFILE=your-profile
 ```
 
+Staging and production clusters live in separate Terraform stacks:
+
+```bash
+export TF_VAR_db_password='...'
+make infra-staging-apply AWS_PROFILE=your-profile
+make infra-production-apply AWS_PROFILE=your-profile
+```
+
 3) Configure kubeconfig (region is `eu-north-1` by default in Terraform):
 
 ```bash
 aws eks update-kubeconfig \
   --region eu-north-1 \
   --name "$(terraform -chdir=src/infrastructure/aws output -raw eks_cluster_name)"
+```
+
+For staging/production:
+
+```bash
+aws eks update-kubeconfig --region eu-north-1 --name "$(terraform -chdir=src/infrastructure/aws/clusters/staging output -raw eks_cluster_name)"
+aws eks update-kubeconfig --region eu-north-1 --name "$(terraform -chdir=src/infrastructure/aws/clusters/production output -raw eks_cluster_name)"
 ```
 
 ## Install
@@ -53,6 +68,13 @@ Argo CD needs `Application` resources to know what to deploy (Unified UI, sales 
 
 ```bash
 make platform-argocd-apps
+```
+
+For staging/production (per-cluster Argo CD, branch-tracking):
+
+```bash
+make platform-argocd-apps-staging
+make platform-argocd-apps-production
 ```
 
 ## Access

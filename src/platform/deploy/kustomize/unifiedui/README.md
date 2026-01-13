@@ -2,9 +2,11 @@
 
 This directory contains the Kubernetes manifests for deploying `unified-ui` into the cluster using Kustomize.
 
-In the demo setup, these manifests are applied by Argo CD via the `Application` at:
+These manifests are applied by Argo CD via environment-specific `Application` resources:
 
-- `src/platform/ArgoCD/applications/unifiedui-dev.yaml`
+- Demo: `src/platform/ArgoCD/applications/unifiedui-dev.yaml`
+- Staging: `src/platform/ArgoCD/applications-staging/unifiedui-staging.yaml`
+- Production: `src/platform/ArgoCD/applications-production/unifiedui-production.yaml`
 
 ## In-cluster API traffic model
 
@@ -36,19 +38,21 @@ make platform-unifiedui-url PLATFORM_APEX=mmg-nova.com
 
 The deployed image tag is controlled in Git:
 
-- `src/platform/deploy/kustomize/unifiedui/overlays/dev/kustomization.yaml` → `images[].newTag`
+- Demo: `src/platform/deploy/kustomize/unifiedui/overlays/dev/kustomization.yaml` → `images[].newTag`
+- Staging: `src/platform/deploy/kustomize/unifiedui/overlays/staging/kustomization.yaml` → `images[].newTag`
+- Production: `src/platform/deploy/kustomize/unifiedui/overlays/production/kustomization.yaml` → `images[].newTag`
 
 Recommended: let CI open a GitOps merge request that bumps `newTag` automatically, then merge it to deploy.
 
 - Create a GitLab CI variable `GITLAB_BOT_TOKEN` with permission to push branches and create merge requests.
-- Push a change to `src/unified-ui/**` on the `demo` branch.
-- Merge the generated MR titled `Deploy unifiedui-dev: <sha>`.
+- Push a change to `src/unified-ui/**` on `demo`, `staging`, or `main`.
+- Merge the generated MR to deploy to the corresponding environment.
 
 ## Supabase / runtime env (Kubernetes)
 
 Unified UI expects Supabase environment variables at runtime (see `src/unified-ui/.env.example` for the canonical list).
 
-For Kubernetes, runtime env vars are loaded from a Secret named `unified-ui-env` (see `envFrom` in `src/platform/deploy/kustomize/unifiedui/overlays/dev/kustomization.yaml`).
+For Kubernetes, runtime env vars are loaded from a Secret named `unified-ui-env` (see `envFrom` in the overlay `kustomization.yaml`).
 
 1) Create `src/unified-ui/.env` from the example and fill values from Render (this file is gitignored):
 

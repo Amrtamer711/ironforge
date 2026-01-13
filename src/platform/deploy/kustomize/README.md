@@ -7,10 +7,14 @@ Terraform provisions infrastructure (VPC/EKS/Fargate/IAM). Kubernetes app config
 Kustomize manifests live at:
 - `src/platform/deploy/kustomize/unifiedui/base`
 - `src/platform/deploy/kustomize/unifiedui/overlays/dev`
+- `src/platform/deploy/kustomize/unifiedui/overlays/staging`
+- `src/platform/deploy/kustomize/unifiedui/overlays/production`
 
 ArgoCD Application example:
 - `src/platform/ArgoCD/applications/unifiedui-dev.yaml`
 - `src/platform/ArgoCD/applications/aws-load-balancer-controller.yaml`
+- `src/platform/ArgoCD/applications-staging/unifiedui-staging.yaml`
+- `src/platform/ArgoCD/applications-production/unifiedui-production.yaml`
 
 Bootstrap ArgoCD itself:
 - `src/platform/ArgoCD/bootstrap/README.md`
