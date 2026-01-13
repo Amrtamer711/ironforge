@@ -450,7 +450,9 @@ class ToolRouter:
                 )
                 logger.info(f"[RESULT] PDF upload result: success={pdf_result.success}, error={pdf_result.error if not pdf_result.success else 'None'}")
                 try:
-                    os.unlink(result["pptx_path"])
+                    # PDF-first flow may not have PPTX files
+                    if result.get("pptx_path"):
+                        os.unlink(result["pptx_path"])
                     os.unlink(result["pdf_path"])
                 except OSError as cleanup_err:
                     logger.debug(f"[RESULT] Failed to cleanup single proposal files: {cleanup_err}")
@@ -481,7 +483,9 @@ class ToolRouter:
                 )
                 try:
                     for f in result["individual_files"]:
-                        os.unlink(f["path"])
+                        # PDF-first flow may not have individual PPTX files
+                        if f.get("path"):
+                            os.unlink(f["path"])
                     os.unlink(result["merged_pdf_path"])
                 except OSError as cleanup_err:
                     logger.debug(f"[RESULT] Failed to cleanup merged proposal files: {cleanup_err}")
