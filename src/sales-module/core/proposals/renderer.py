@@ -8,8 +8,14 @@ import tempfile
 from typing import Any
 
 from pptx import Presentation
+from pptx.util import Inches
 
 from generators.pptx import create_combined_financial_proposal_slide, create_financial_proposal_slide
+
+# Standard widescreen slide dimensions (16:9)
+# These match the dimensions used in most Backlite templates
+STANDARD_SLIDE_WIDTH = Inches(13.333)
+STANDARD_SLIDE_HEIGHT = Inches(7.5)
 
 
 class ProposalRenderer:
@@ -148,6 +154,107 @@ class ProposalRenderer:
         new_slide_element = slides_list[-1]
         xml_slides.remove(new_slide_element)
         xml_slides.insert(insert_position, new_slide_element)
+
+        # Save to temporary file
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pptx")
+        pres.save(tmp.name)
+
+        return tmp.name, total_combined
+
+    def create_standalone_financial_slide(
+        self,
+        financial_data: dict,
+        currency: str = None,
+        slide_width: int = None,
+        slide_height: int = None,
+    ) -> tuple[str, list[str], list[str]]:
+        """
+        Create a standalone financial slide PPTX (no template needed).
+
+        This creates a tiny PPTX with just the financial slide, which can be
+        quickly converted to PDF and merged with location PDF templates.
+
+        Args:
+            financial_data: Financial data dict with location, dates, rates, etc.
+            currency: Optional currency code (e.g., 'USD', 'EUR')
+            slide_width: Optional custom width (defaults to standard 16:9)
+            slide_height: Optional custom height (defaults to standard 16:9)
+
+        Returns:
+            Tuple of (pptx_path, vat_amounts, total_amounts)
+        """
+        # Create blank presentation with standard dimensions
+        pres = Presentation()
+        pres.slide_width = slide_width or STANDARD_SLIDE_WIDTH
+        pres.slide_height = slide_height or STANDARD_SLIDE_HEIGHT
+
+        # Add blank slide
+        blank_layout = pres.slide_layouts[6]  # Blank layout
+        financial_slide = pres.slides.add_slide(blank_layout)
+
+        # Create financial slide content
+        vat_amounts, total_amounts = create_financial_proposal_slide(
+            financial_slide,
+            financial_data,
+            pres.slide_width,
+            pres.slide_height,
+            currency
+        )
+
+        # Save to temporary file
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pptx")
+        pres.save(tmp.name)
+
+        return tmp.name, vat_amounts, total_amounts
+
+    def create_standalone_combined_financial_slide(
+        self,
+        proposals_data: list,
+        combined_net_rate: str,
+        client_name: str,
+        payment_terms: str = "100% upfront",
+        currency: str = None,
+        slide_width: int = None,
+        slide_height: int = None,
+    ) -> tuple[str, str]:
+        """
+        Create a standalone combined financial slide PPTX (no template needed).
+
+        This creates a tiny PPTX with just the combined financial slide, which can be
+        quickly converted to PDF and merged with location PDF templates.
+
+        Args:
+            proposals_data: List of proposal dicts
+            combined_net_rate: Combined net rate for package
+            client_name: Client name
+            payment_terms: Payment terms text
+            currency: Optional currency code
+            slide_width: Optional custom width (defaults to standard 16:9)
+            slide_height: Optional custom height (defaults to standard 16:9)
+
+        Returns:
+            Tuple of (pptx_path, total_combined)
+        """
+        # Create blank presentation with standard dimensions
+        pres = Presentation()
+        pres.slide_width = slide_width or STANDARD_SLIDE_WIDTH
+        pres.slide_height = slide_height or STANDARD_SLIDE_HEIGHT
+
+        # Add blank slide
+        blank_layout = pres.slide_layouts[6]  # Blank layout
+        financial_slide = pres.slides.add_slide(blank_layout)
+
+        # Create combined financial slide content
+        total_combined = create_combined_financial_proposal_slide(
+            financial_slide,
+            proposals_data,
+            combined_net_rate,
+            pres.slide_width,
+            pres.slide_height,
+            client_name,
+            payment_terms,
+            currency,
+        )
 
         # Save to temporary file
         tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pptx")
