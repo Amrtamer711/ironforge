@@ -1,0 +1,45 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - hpa.yaml
+
+images:
+  - name: security-service
+    newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/security-service
+    # Deployed image tag is Git-driven (pure GitOps).
+    # This is updated by CI via Merge Request (main branch).
+    newTag: 3cf49100
+
+patches:
+  - target:
+      kind: Deployment
+      name: security-service
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: security-service
+        annotations:
+          argocd.argoproj.io/sync-options: Replace=true
+  - target:
+      kind: Deployment
+      name: security-service
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - secretRef:
+              name: security-service-env
+              optional: true
+      - op: replace
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: PORT
+            value: "8002"
+          - name: ENVIRONMENT
+            value: production
+          - name: SERVICE_NAME
+            value: security-service
+

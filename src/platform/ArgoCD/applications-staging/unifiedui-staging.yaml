@@ -1,0 +1,37 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: unifiedui-staging
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://gitlab.com/mmg-global/ironforge.git
+    targetRevision: staging
+    path: src/platform/deploy/kustomize/unifiedui/overlays/staging
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: unifiedui
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: unified-ui
+      jsonPointers:
+        - /spec/replicas
+    # TLS is applied by ALB annotations which are environment/account specific (ACM ARN).
+    - group: networking.k8s.io
+      kind: Ingress
+      name: unified-ui
+      namespace: unifiedui
+      jsonPointers:
+        - /metadata/annotations/alb.ingress.kubernetes.io~1certificate-arn
+        - /metadata/annotations/alb.ingress.kubernetes.io~1listen-ports
+        - /metadata/annotations/alb.ingress.kubernetes.io~1ssl-redirect
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - RespectIgnoreDifferences=true
+
