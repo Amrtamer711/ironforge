@@ -23,6 +23,23 @@ router = APIRouter(
 )
 
 
+def _get_storage_client():
+    """Get Supabase storage client."""
+    try:
+        from supabase import create_client
+        from supabase.lib.client_options import ClientOptions
+
+        options = ClientOptions(
+            postgrest_client_timeout=30,
+            storage_client_timeout=60,
+        )
+        supabase = create_client(config.SUPABASE_URL, config.SUPABASE_SERVICE_KEY, options=options)
+        return supabase.storage
+    except Exception as e:
+        logger.error(f"[MOCKUP_FRAMES] Failed to create storage client: {e}")
+        raise HTTPException(status_code=500, detail="Storage service unavailable")
+
+
 class MockupFrameInfo(BaseModel):
     """Mockup frame info."""
     location_key: str
@@ -283,28 +300,19 @@ async def save_mockup_frame(
         # Upload photo to Supabase storage
         storage_url = None
         try:
-            from db.database import _backend
-            if hasattr(_backend, '_get_client'):
-                client = _backend._get_client()
-                storage_key = _build_mockup_storage_key(
-                    company, location_key, environment, time_of_day, side, final_filename
-                )
-                content_type = photo.content_type or "image/jpeg"
+            storage = _get_storage_client()
+            bucket = storage.from_("mockups")
+            storage_key = _build_mockup_storage_key(
+                company, location_key, environment, time_of_day, side, final_filename
+            )
+            content_type = photo.content_type or "image/jpeg"
 
-                # Upload to mockups bucket
-                result = client.storage.from_("mockups").upload(
-                    storage_key,
-                    photo_data,
-                    {"content-type": content_type},
-                )
-                if result:
-                    # Get public URL
-                    url_result = client.storage.from_("mockups").get_public_url(storage_key)
-                    storage_url = url_result
-                    logger.info(f"[MOCKUP_FRAMES] Photo uploaded to storage: {storage_key}")
+            result = bucket.upload(storage_key, photo_data, {"content-type": content_type})
+            if result:
+                storage_url = bucket.get_public_url(storage_key)
+                logger.info(f"[MOCKUP_FRAMES] Photo uploaded to storage: {storage_key}")
         except Exception as storage_err:
             logger.warning(f"[MOCKUP_FRAMES] Storage upload failed (non-critical): {storage_err}")
-            # Don't fail the save if storage fails - photo is optional backup
 
         logger.info(f"[MOCKUP_FRAMES] ✓ Saved frame: {company}/{location_key}/{final_filename}")
 
@@ -415,24 +423,17 @@ async def update_mockup_frame(
         if photo:
             try:
                 photo_data = await photo.read()
-                from db.database import _backend
-                if hasattr(_backend, '_get_client'):
-                    client = _backend._get_client()
-                    storage_key = _build_mockup_storage_key(
-                        company, location_key, environment, time_of_day, side, photo_filename
-                    )
-                    content_type = photo.content_type or "image/jpeg"
+                storage = _get_storage_client()
+                bucket = storage.from_("mockups")
+                storage_key = _build_mockup_storage_key(
+                    company, location_key, environment, time_of_day, side, photo_filename
+                )
+                content_type = photo.content_type or "image/jpeg"
 
-                    # Upload to mockups bucket (upsert mode to replace existing)
-                    result = client.storage.from_("mockups").upload(
-                        storage_key,
-                        photo_data,
-                        {"content-type": content_type, "upsert": "true"},
-                    )
-                    if result:
-                        url_result = client.storage.from_("mockups").get_public_url(storage_key)
-                        storage_url = url_result
-                        logger.info(f"[MOCKUP_FRAMES] Photo replaced in storage: {storage_key}")
+                result = bucket.upload(storage_key, photo_data, {"content-type": content_type, "upsert": "true"})
+                if result:
+                    storage_url = bucket.get_public_url(storage_key)
+                    logger.info(f"[MOCKUP_FRAMES] Photo replaced in storage: {storage_key}")
             except Exception as storage_err:
                 logger.warning(f"[MOCKUP_FRAMES] Storage upload failed (non-critical): {storage_err}")
 
@@ -494,6 +495,7 @@ async def delete_mockup_frame(
     )
 
     try:
+        # Delete from database
         success = db.delete_mockup_frame(
             location_key=location_key,
             company=company,
@@ -503,13 +505,25 @@ async def delete_mockup_frame(
             side=side,
         )
 
-        if success:
-            return {
-                "success": True,
-                "message": f"Deleted frame {photo_filename} for {location_key}",
-            }
-        else:
-            raise HTTPException(status_code=500, detail="Failed to delete frame")
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete frame from database")
+
+        # Delete from Supabase storage
+        try:
+            storage = _get_storage_client()
+            bucket = storage.from_("mockups")
+            storage_key = _build_mockup_storage_key(
+                company, location_key, environment, time_of_day, side, photo_filename
+            )
+            bucket.remove([storage_key])
+            logger.info(f"[MOCKUP_FRAMES] ✓ Deleted from storage: {storage_key}")
+        except Exception as storage_err:
+            logger.warning(f"[MOCKUP_FRAMES] Storage delete failed (non-critical): {storage_err}")
+
+        return {
+            "success": True,
+            "message": f"Deleted frame {photo_filename} for {location_key}",
+        }
 
     except HTTPException:
         raise
