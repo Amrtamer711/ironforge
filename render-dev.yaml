@@ -1,60 +1,45 @@
 # =============================================================================
-# Render Blueprint - CRM (Ironforge)
+# Render Blueprint - CRM (Ironforge) - DEVELOPMENT
 # =============================================================================
-# Deploy all CRM services with a single Blueprint deployment.
-#
-# PRODUCTION (main branch):
-#   - ENVIRONMENT=production
-#   - Uses *_PROD_SUPABASE_* keys
-#   - Deployed to https://mmg-nova.com
-#
-# DEVELOPMENT (dev branch):
-#   - ENVIRONMENT=development
-#   - Uses *_DEV_SUPABASE_* keys
-#   - Deployed to crm-*-dev.onrender.com
+# Development environment services running on dev branch.
+# Uses *_DEV_SUPABASE_* keys for development Supabase projects.
 #
 # To deploy:
 # 1. Go to https://dashboard.render.com
 # 2. Click "New" → "Blueprint"
 # 3. Select the ironforge repo
-# 4. Select the branch (main for prod, dev for development)
-# 5. Render will read this file and create all services
+# 4. Select the "dev" branch
+# 5. Name the environment "CRM-Dev" or similar
+# 6. Render will read this file and create all services
 # =============================================================================
 
 services:
   # ===========================================================================
-  # Unified UI - Main Frontend + API Gateway
+  # Unified UI (Dev) - Main Frontend + API Gateway
   # ===========================================================================
   - type: web
-    name: crm-unified-ui
+    name: crm-unified-ui-dev
     runtime: docker
     region: singapore
     plan: starter
-    branch: main
+    branch: dev
     rootDir: ""
     dockerfilePath: ./src/unified-ui/Dockerfile
     dockerContext: .
     healthCheckPath: /health
     autoDeploy: true
     disk:
-      name: unified-ui-data
+      name: unified-ui-data-dev
       mountPath: /app/data
       sizeGB: 1
     envVars:
       - key: ENVIRONMENT
-        value: production
+        value: development
       - key: PORT
         value: "3005"
       - key: SALES_BOT_URL
         sync: false
-      # Production Supabase (UI project)
-      - key: UI_PROD_SUPABASE_URL
-        sync: false
-      - key: UI_PROD_SUPABASE_ANON_KEY
-        sync: false
-      - key: UI_PROD_SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      # Development Supabase (kept for local dev)
+      # Development Supabase (UI project)
       - key: UI_DEV_SUPABASE_URL
         sync: false
       - key: UI_DEV_SUPABASE_ANON_KEY
@@ -69,14 +54,14 @@ services:
         sync: false
 
   # ===========================================================================
-  # Security Service - Auth, API Keys, RBAC
+  # Security Service (Dev) - Auth, API Keys, RBAC
   # ===========================================================================
   - type: web
-    name: crm-security-service
+    name: crm-security-service-dev
     runtime: docker
     region: singapore
     plan: starter
-    branch: main
+    branch: dev
     rootDir: src/security-service
     dockerfilePath: ./Dockerfile
     dockerContext: .
@@ -84,27 +69,20 @@ services:
     autoDeploy: true
     envVars:
       - key: ENVIRONMENT
-        value: production
+        value: development
       - key: PORT
         value: "8002"
-      # Production Supabase (Security project)
-      - key: SECURITY_PROD_SUPABASE_URL
-        sync: false
-      - key: SECURITY_PROD_SUPABASE_ANON_KEY
-        sync: false
-      - key: SECURITY_PROD_SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      # Production Supabase (UI project - for user lookups)
-      - key: UI_PROD_SUPABASE_URL
-        sync: false
-      - key: UI_PROD_SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      # Development keys (kept for local dev)
+      # Development Supabase (Security project)
       - key: SECURITY_DEV_SUPABASE_URL
         sync: false
       - key: SECURITY_DEV_SUPABASE_ANON_KEY
         sync: false
       - key: SECURITY_DEV_SUPABASE_SERVICE_KEY
+        sync: false
+      # Development Supabase (UI project - for user lookups)
+      - key: UI_DEV_SUPABASE_URL
+        sync: false
+      - key: UI_DEV_SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: INTER_SERVICE_SECRET
         sync: false
@@ -112,14 +90,14 @@ services:
         sync: false
 
   # ===========================================================================
-  # Asset Management - Location & Media Assets
+  # Asset Management (Dev) - Location & Media Assets
   # ===========================================================================
   - type: web
-    name: crm-asset-management
+    name: crm-asset-management-dev
     runtime: docker
     region: singapore
-    plan: pro
-    branch: main
+    plan: starter
+    branch: dev
     rootDir: src/asset-management
     dockerfilePath: ./Dockerfile
     dockerContext: .
@@ -127,17 +105,10 @@ services:
     autoDeploy: true
     envVars:
       - key: ENVIRONMENT
-        value: production
+        value: development
       - key: PORT
         value: "8001"
-      # Production Supabase (Asset Management project)
-      - key: ASSETMGMT_PROD_SUPABASE_URL
-        sync: false
-      - key: ASSETMGMT_PROD_SUPABASE_ANON_KEY
-        sync: false
-      - key: ASSETMGMT_PROD_SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      # Development keys (kept for local dev)
+      # Development Supabase (Asset Management project)
       - key: ASSETMGMT_DEV_SUPABASE_URL
         sync: false
       - key: ASSETMGMT_DEV_SUPABASE_ANON_KEY
@@ -152,36 +123,29 @@ services:
         sync: false
 
   # ===========================================================================
-  # Sales Module - Proposals & Contracts
+  # Sales Module (Dev) - Proposals & Contracts
   # ===========================================================================
   - type: web
-    name: crm-sales-module
+    name: crm-sales-module-dev
     runtime: docker
     region: singapore
-    plan: pro_plus
-    branch: main
+    plan: starter
+    branch: dev
     rootDir: src/sales-module
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /health
     autoDeploy: true
     disk:
-      name: sales-module-data
+      name: sales-module-data-dev
       mountPath: /data
-      sizeGB: 5
+      sizeGB: 1
     envVars:
       - key: ENVIRONMENT
-        value: production
+        value: development
       - key: PORT
         value: "8000"
-      # Production Supabase (Salesbot project)
-      - key: SALESBOT_PROD_SUPABASE_URL
-        sync: false
-      - key: SALESBOT_PROD_SUPABASE_ANON_KEY
-        sync: false
-      - key: SALESBOT_PROD_SUPABASE_SERVICE_ROLE_KEY
-        sync: false
-      # Development keys (kept for local dev)
+      # Development Supabase (Salesbot project)
       - key: SALESBOT_DEV_SUPABASE_URL
         sync: false
       - key: SALESBOT_DEV_SUPABASE_ANON_KEY
@@ -202,14 +166,14 @@ services:
         sync: false
 
   # ===========================================================================
-  # Video Critique - Video Review Workflow
+  # Video Critique (Dev) - Video Review Workflow
   # ===========================================================================
   - type: web
-    name: crm-video-critique
+    name: crm-video-critique-dev
     runtime: docker
     region: singapore
     plan: starter
-    branch: main
+    branch: dev
     rootDir: src/video-critique
     dockerfilePath: ./Dockerfile
     dockerContext: .
@@ -217,11 +181,11 @@ services:
     autoDeploy: true
     envVars:
       - key: ENVIRONMENT
-        value: production
+        value: development
       - key: PORT
         value: "8003"
       - key: IS_PRODUCTION
-        value: "true"
+        value: "false"
       - key: DROPBOX_ACCESS_TOKEN
         sync: false
       - key: TRELLO_API_KEY
