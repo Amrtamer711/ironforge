@@ -11,7 +11,7 @@ images:
     newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/asset_library
     # Deployed image tag is Git-driven (pure GitOps).
     # This is updated by CI via Merge Request (see `gitops_mr_assetmgmt_dev`).
-    newTag: d1662e45
+    newTag: 3cf49100
 
 patches:
   - target:
