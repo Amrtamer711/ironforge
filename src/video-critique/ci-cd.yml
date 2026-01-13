@@ -1,0 +1,18 @@
+build_video_critique:
+  extends: .build_push_ecr_template
+  variables:
+    SERVICE_NAME: "video-critique"
+    SERVICE_DIR: "src/video-critique"
+    ECR_REPO: "video-critique"
+    DOCKERFILE_PATH: "src/video-critique/Dockerfile"
+    BUILD_CONTEXT: "src/video-critique"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "demo" || $CI_COMMIT_BRANCH == "staging" || $CI_COMMIT_BRANCH == "main"'
+      changes:
+        - src/video-critique/**/*
+        - src/shared/**/*
+      when: on_success
+
+    - if: '$CI_COMMIT_BRANCH == "demo" || $CI_COMMIT_BRANCH == "staging" || $CI_COMMIT_BRANCH == "main"'
+      when: manual
+      allow_failure: true

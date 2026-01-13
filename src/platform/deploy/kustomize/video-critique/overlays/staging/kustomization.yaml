@@ -1,0 +1,51 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - hpa.yaml
+
+images:
+  - name: video-critique
+    newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/video-critique
+    # Deployed image tag is Git-driven (pure GitOps).
+    # This is updated by CI via Merge Request (staging branch).
+    newTag: 3cf49100
+
+patches:
+  - target:
+      kind: Deployment
+      name: video-critique
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: video-critique
+        annotations:
+          argocd.argoproj.io/sync-options: Replace=true
+  - target:
+      kind: Deployment
+      name: video-critique
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - secretRef:
+              name: video-critique-env
+              optional: true
+      - op: replace
+        path: /spec/template/spec/containers/0/env
+        value:
+          - name: PORT
+            value: "8003"
+          - name: ENVIRONMENT
+            value: staging
+          - name: SERVICE_NAME
+            value: video-critique
+          - name: ASSET_MGMT_URL
+            value: http://asset-management.backends.svc.cluster.local:8001
+          - name: SECURITY_SERVICE_URL
+            value: http://security-service.backends.svc.cluster.local:8002
+          - name: UNIFIED_UI_URL
+            value: http://unified-ui.unifiedui.svc.cluster.local
+

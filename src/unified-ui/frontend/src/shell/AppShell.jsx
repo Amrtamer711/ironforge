@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { LayoutGrid, MessageSquare, PanelsTopLeft, Shield, Menu, LogOut, Settings, Video, Package } from "lucide-react";
 
 import { Logo } from "../components/Logo";
+import { LoadingEllipsis } from "../components/ui/loading-ellipsis";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { Button } from "../components/ui/button";
 import { NotificationsBell } from "../components/ui/notifications-bell";
@@ -175,10 +176,9 @@ export function AppShell() {
   const isInitializing = !authReady || (visibilityQuery.isLoading && !visibilityQuery.data);
   if (isInitializing) {
     return (
-      <div className="h-screen flex items-center justify-center bg-white dark:bg-neutral-950">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-black/10 border-t-black/50 dark:border-white/10 dark:border-t-white/50" />
-          <span className="text-sm text-black/50 dark:text-white/50">Loading...</span>
+      <div className="min-h-screen grid place-items-center px-4">
+        <div className="rounded-2xl bg-white/55 dark:bg-white/5 backdrop-blur-md shadow-soft ring-1 ring-black/5 dark:ring-white/10 px-5 py-4 text-sm">
+          <LoadingEllipsis text="Loading" />
         </div>
       </div>
     );

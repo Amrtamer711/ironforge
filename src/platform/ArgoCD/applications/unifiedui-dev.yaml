@@ -3,12 +3,6 @@ kind: Application
 metadata:
   name: unifiedui-dev
   namespace: argocd
-  annotations:
-    # Automatically roll out the newest ECR image by digest.
-    # Requires argocd-image-updater running in-cluster with ECR read permissions.
-    argocd-image-updater.argoproj.io/image-list: unifiedui=018881300778.dkr.ecr.eu-north-1.amazonaws.com/unifiedui:demo
-    argocd-image-updater.argoproj.io/unifiedui.update-strategy: digest
-    argocd-image-updater.argoproj.io/write-back-method: argocd
 spec:
   project: default
   source:
@@ -18,9 +12,25 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: unifiedui
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: unified-ui
+      jsonPointers:
+        - /spec/replicas
+    # TLS is applied by ALB annotations which are environment/account specific (ACM ARN).
+    - group: networking.k8s.io
+      kind: Ingress
+      name: unified-ui
+      namespace: unifiedui
+      jsonPointers:
+        - /metadata/annotations/alb.ingress.kubernetes.io~1certificate-arn
+        - /metadata/annotations/alb.ingress.kubernetes.io~1listen-ports
+        - /metadata/annotations/alb.ingress.kubernetes.io~1ssl-redirect
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - RespectIgnoreDifferences=true

@@ -16,7 +16,18 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 .PHONY: help install dev run stop clean test lint format docker-up docker-down \
 	infra-bootstrap infra-init infra-plan infra-apply infra-output \
+	infra-staging-init infra-staging-plan infra-staging-apply infra-staging-output \
+	infra-production-init infra-production-plan infra-production-apply infra-production-output \
 	platform-argocd-bootstrap platform-argocd-tls-step1 platform-argocd-tls-step2 platform-argocd-url \
+	platform-argocd-apps \
+	platform-argocd-apps-staging platform-argocd-apps-production \
+	platform-argocd-repo-creds \
+	platform-unifiedui-apply platform-unifiedui-url \
+	platform-unifiedui-set-tag \
+	platform-unifiedui-env \
+	platform-assetmgmt-env \
+	platform-videocritique-env \
+	platform-apex-step1 platform-apex-step2 \
 	tf-bootstrap tf-init tf-plan tf-apply tf-output \
 	argocd-bootstrap argocd-tls-tf-init argocd-tls-step1 argocd-tls-step2 argocd-url
 
@@ -42,10 +53,14 @@ AWS_PROFILE ?=
 AWS_REGION ?= eu-north-1
 
 TF_AWS_DIR ?= $(ROOT_DIR)/src/infrastructure/aws
-TF_AWS_BOOTSTRAP_DIR ?= $(TF_AWS_DIR)/bootstrap
+TF_AWS_BOOTSTRAP_DIR ?= $(TF_AWS_DIR)/modules/stacks/bootstrap
+TF_AWS_PLATFORM_APEX_DIR ?= $(TF_AWS_DIR)/modules/stacks/platform_apex
+TF_AWS_CLUSTER_STAGING_DIR ?= $(TF_AWS_DIR)/clusters/staging
+TF_AWS_CLUSTER_PRODUCTION_DIR ?= $(TF_AWS_DIR)/clusters/production
 
 # Helper to pass AWS env vars only when set
 TF_AWS_ENV := $(if $(AWS_PROFILE),AWS_PROFILE=$(AWS_PROFILE),) AWS_REGION=$(AWS_REGION)
+TF_AUTO_APPROVE ?= -auto-approve
 
 # Default ports (can be overridden: make dev SALES_PORT=9000)
 SALES_PORT ?= 8000
@@ -178,11 +193,11 @@ run-video: ## Run only video-critique
 # =============================================================================
 
 infra-bootstrap: ## Create Terraform remote state (S3 + DynamoDB) in AWS
-	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_BOOTSTRAP_DIR) init
-	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_BOOTSTRAP_DIR) apply
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_BOOTSTRAP_DIR) init -input=false
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_BOOTSTRAP_DIR) apply $(TF_AUTO_APPROVE) -input=false
 
 infra-init: ## Terraform init for AWS infrastructure
-	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) init -reconfigure
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) init -reconfigure -input=false
 
 infra-plan: infra-init ## Terraform plan for AWS infrastructure
 	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) plan
@@ -193,12 +208,40 @@ infra-apply: infra-init ## Terraform apply for AWS infrastructure
 infra-output: infra-init ## Terraform outputs for AWS infrastructure
 	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) output
 
+infra-staging-init: ## Terraform init for AWS staging cluster
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_CLUSTER_STAGING_DIR) init -reconfigure -input=false
+
+infra-staging-plan: infra-staging-init ## Terraform plan for AWS staging cluster
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_CLUSTER_STAGING_DIR) plan
+
+infra-staging-apply: infra-staging-init ## Terraform apply for AWS staging cluster
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_CLUSTER_STAGING_DIR) apply
+
+infra-staging-output: infra-staging-init ## Terraform outputs for AWS staging cluster
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_CLUSTER_STAGING_DIR) output
+
+infra-production-init: ## Terraform init for AWS production cluster
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_CLUSTER_PRODUCTION_DIR) init -reconfigure -input=false
+
+infra-production-plan: infra-production-init ## Terraform plan for AWS production cluster
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_CLUSTER_PRODUCTION_DIR) plan
+
+infra-production-apply: infra-production-init ## Terraform apply for AWS production cluster
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_CLUSTER_PRODUCTION_DIR) apply
+
+infra-production-output: infra-production-init ## Terraform outputs for AWS production cluster
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_CLUSTER_PRODUCTION_DIR) output
+
 # =============================================================================
 # PLATFORM - ARGO CD (EKS)
 # =============================================================================
 
 ARGOCD_BOOTSTRAP_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/bootstrap
 ARGOCD_TLS_OVERLAY_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/bootstrap-tls
+ARGOCD_REPO_CREDS_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/repo-credentials
+ARGOCD_APPLICATIONS_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/applications
+ARGOCD_APPLICATIONS_STAGING_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/applications-staging
+ARGOCD_APPLICATIONS_PRODUCTION_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/applications-production
 
 # DNS/TLS variables (override with VAR=value)
 # Example:
@@ -208,6 +251,15 @@ ARGOCD_HOSTNAME ?= argocdmmg.global
 
 platform-argocd-bootstrap: ## Install/refresh Argo CD bootstrap (no TLS)
 	@kubectl apply -k $(ARGOCD_BOOTSTRAP_DIR)
+
+platform-argocd-apps: ## Install/refresh all Argo CD Applications (platform workloads)
+	@kubectl apply -k $(ARGOCD_APPLICATIONS_DIR)
+
+platform-argocd-apps-staging: ## Install/refresh Argo CD Applications for staging (tracks `staging` branch)
+	@kubectl apply -k $(ARGOCD_APPLICATIONS_STAGING_DIR)
+
+platform-argocd-apps-production: ## Install/refresh Argo CD Applications for production (tracks `main` branch)
+	@kubectl apply -k $(ARGOCD_APPLICATIONS_PRODUCTION_DIR)
 
 platform-argocd-tls-step1: infra-init ## Step 1: create Route53 zone + ACM (prints nameservers; you must set them in GoDaddy)
 	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) apply \
@@ -237,7 +289,160 @@ platform-argocd-tls-step2: infra-init ## Step 2: finish ACM validation, write lo
 	  echo "$(GREEN)Applied TLS overlay. Open: https://$(ARGOCD_HOSTNAME)$(NC)"
 
 platform-argocd-url: ## Print the Argo CD URL (custom hostname)
-	@echo "https://$(ARGOCD_HOSTNAME)"
+	@if [ -n "$(PLATFORM_APEX)" ]; then \
+	  echo "https://$(PLATFORM_ARGOCD_HOSTNAME)"; \
+	elif [ -n "$(ARGOCD_HOSTNAME)" ]; then \
+	  echo "https://$(ARGOCD_HOSTNAME)"; \
+	else \
+	  echo "$(RED)Missing PLATFORM_APEX or ARGOCD_HOSTNAME$(NC)"; \
+	  exit 1; \
+	fi
+
+platform-argocd-repo-creds: ## Configure Argo CD repo credentials (required for syncing private repos)
+	@test -f $(ARGOCD_REPO_CREDS_DIR)/gitlab-repo.env || (echo "$(RED)Missing $(ARGOCD_REPO_CREDS_DIR)/gitlab-repo.env (copy from gitlab-repo.env.example)$(NC)" && exit 1)
+	@kubectl apply -k $(ARGOCD_REPO_CREDS_DIR)
+
+# =============================================================================
+# PLATFORM - UNIFIED UI (EKS)
+# =============================================================================
+
+UNIFIEDUI_APP_MANIFEST ?= $(ROOT_DIR)/src/platform/ArgoCD/applications/unifiedui-dev.yaml
+UNIFIEDUI_NAMESPACE ?= unifiedui
+UNIFIEDUI_INGRESS_NAME ?= unified-ui
+UNIFIEDUI_KUSTOMIZE_DEV ?= $(ROOT_DIR)/src/platform/deploy/kustomize/unifiedui/overlays/dev/kustomization.yaml
+UNIFIEDUI_ENV_FILE ?= $(ROOT_DIR)/src/unified-ui/.env
+
+platform-unifiedui-apply: ## Install/refresh the Unified UI Argo CD Application
+	@kubectl apply -f $(UNIFIEDUI_APP_MANIFEST)
+
+platform-unifiedui-env: ## Create/update Unified UI runtime secret from `src/unified-ui/.env` (not committed)
+	@test -f $(UNIFIEDUI_ENV_FILE) || (echo "$(RED)Missing $(UNIFIEDUI_ENV_FILE) (copy values from Render env)$(NC)" && exit 1)
+	@TMP_FILE=$$(mktemp); \
+	  awk -F= '/^[A-Za-z_.-][A-Za-z0-9_.-]*=.*/{print}' "$(UNIFIEDUI_ENV_FILE)" > "$$TMP_FILE"; \
+	  kubectl -n $(UNIFIEDUI_NAMESPACE) create secret generic unified-ui-env \
+	    --from-env-file="$$TMP_FILE" \
+	    --dry-run=client -o yaml | kubectl apply -f -; \
+	  rm -f "$$TMP_FILE"
+
+platform-unifiedui-set-tag: ## Set the Unified UI dev image tag in Git (TAG=...) for Argo CD to roll out
+	@test -n "$(TAG)" || (echo "$(RED)Missing TAG (example: make platform-unifiedui-set-tag TAG=63e20315)$(NC)" && exit 1)
+	@$(PYTHON) - <<'PY'\nimport pathlib, re, sys\npath = pathlib.Path(\"$(UNIFIEDUI_KUSTOMIZE_DEV)\")\ndata = path.read_text()\nnew = re.sub(r\"^(\\s*newTag:)\\s*.*$\", r\"\\\\1 $(TAG)\", data, flags=re.M)\nif new == data:\n  raise SystemExit(f\"Could not find 'newTag:' in {path}\")\npath.write_text(new)\nprint(f\"Updated {path} to newTag: $(TAG)\")\nPY
+
+platform-unifiedui-url: ## Print the Unified UI URL (requires PLATFORM_APEX)
+	@test -n "$(PLATFORM_APEX)" || (echo "$(RED)Missing PLATFORM_APEX (e.g. PLATFORM_APEX=mmg-nova.com)$(NC)" && exit 1)
+	@echo "https://$(PLATFORM_SERVICEPLATFORM_HOSTNAME)"
+
+# =============================================================================
+# PLATFORM - ASSET MANAGEMENT (EKS)
+# =============================================================================
+
+ASSETMGMT_NAMESPACE ?= backends
+ASSETMGMT_ENV_FILE ?= $(ROOT_DIR)/src/asset-management/.env
+ASSETMGMT_DEPLOYMENT ?= asset-management
+
+platform-assetmgmt-env: ## Create/update asset-management runtime secret from `src/asset-management/.env` (not committed) and restart pods
+	@test -f $(ASSETMGMT_ENV_FILE) || (echo "$(RED)Missing $(ASSETMGMT_ENV_FILE) (copy values from your env source)$(NC)" && exit 1)
+	@TMP_FILE=$$(mktemp); \
+	  awk -F= '/^[A-Za-z_.-][A-Za-z0-9_.-]*=.*/{print}' "$(ASSETMGMT_ENV_FILE)" > "$$TMP_FILE"; \
+	  kubectl -n $(ASSETMGMT_NAMESPACE) create secret generic asset-management-env \
+	    --from-env-file="$$TMP_FILE" \
+	    --dry-run=client -o yaml | kubectl apply -f -; \
+	  rm -f "$$TMP_FILE"; \
+	  kubectl -n $(ASSETMGMT_NAMESPACE) rollout restart deploy/$(ASSETMGMT_DEPLOYMENT)
+
+# =============================================================================
+# PLATFORM - VIDEO CRITIQUE (EKS)
+# =============================================================================
+
+VIDEOCRITIQUE_NAMESPACE ?= backends
+VIDEOCRITIQUE_ENV_FILE ?= $(ROOT_DIR)/src/video-critique/.env
+VIDEOCRITIQUE_DEPLOYMENT ?= video-critique
+
+platform-videocritique-env: ## Create/update video-critique runtime secret from `src/video-critique/.env` (not committed) and restart pods
+	@test -f $(VIDEOCRITIQUE_ENV_FILE) || (echo "$(RED)Missing $(VIDEOCRITIQUE_ENV_FILE) (copy values from your env source)$(NC)" && exit 1)
+	@TMP_FILE=$$(mktemp); \
+	  awk -F= '/^[A-Za-z_.-][A-Za-z0-9_.-]*=.*/{print}' "$(VIDEOCRITIQUE_ENV_FILE)" > "$$TMP_FILE"; \
+	  kubectl -n $(VIDEOCRITIQUE_NAMESPACE) create secret generic video-critique-env \
+	    --from-env-file="$$TMP_FILE" \
+	    --dry-run=client -o yaml | kubectl apply -f -; \
+	  rm -f "$$TMP_FILE"; \
+	  if kubectl -n $(VIDEOCRITIQUE_NAMESPACE) get deploy/$(VIDEOCRITIQUE_DEPLOYMENT) >/dev/null 2>&1; then \
+	    kubectl -n $(VIDEOCRITIQUE_NAMESPACE) rollout restart deploy/$(VIDEOCRITIQUE_DEPLOYMENT); \
+	  else \
+	    echo "$(YELLOW)Deployment $(VIDEOCRITIQUE_DEPLOYMENT) not found yet. Apply Argo CD apps first (make platform-argocd-apps) and wait for sync, then rerun: make platform-videocritique-env$(NC)"; \
+	  fi
+
+# =============================================================================
+# PLATFORM - DEDICATED APEX DOMAIN (EKS)
+# =============================================================================
+
+# Dedicated platform apex managed entirely in Route53.
+# This is the lowest-friction setup: one hosted zone, one ACM cert, and two hostnames:
+#   - Argo CD:         argocd.$(PLATFORM_APEX)
+#   - Unified UI:      serviceplatform.$(PLATFORM_APEX)
+PLATFORM_APEX ?=
+PLATFORM_ARGOCD_HOSTNAME ?= argocd.$(PLATFORM_APEX)
+PLATFORM_SERVICEPLATFORM_HOSTNAME ?= serviceplatform.$(PLATFORM_APEX)
+PLATFORM_APEX_CREATE_ZONE ?= true
+PLATFORM_APEX_HOSTED_ZONE_ID ?=
+
+# Optional: set explicitly if you don't want Make to query Terraform state for the cluster name.
+EKS_CLUSTER_NAME ?=
+
+platform-apex-step1: ## Step 1: create hosted zone + request ACM cert (prints Route53 name servers; set them at registrar)
+	@test -n "$(PLATFORM_APEX)" || (echo "$(RED)Missing PLATFORM_APEX (e.g. PLATFORM_APEX=mmg-nova.com)$(NC)" && exit 1)
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) init -migrate-state -force-copy -input=false
+	@# If switching from a previously Terraform-created zone to an existing zone, drop the old zone from state to avoid prevent_destroy errors.
+	@if [ "$(PLATFORM_APEX_CREATE_ZONE)" = "false" ] || [ -n "$(PLATFORM_APEX_HOSTED_ZONE_ID)" ]; then \
+	  $(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) state list 2>/dev/null | grep -Fxq 'aws_route53_zone.platform_apex[0]' && \
+	    $(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) state rm 'aws_route53_zone.platform_apex[0]' >/dev/null || true; \
+	fi
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) apply $(TF_AUTO_APPROVE) -input=false \
+	  -var platform_apex=$(PLATFORM_APEX) \
+	  -var argocd_hostname=$(PLATFORM_ARGOCD_HOSTNAME) \
+	  -var serviceplatform_hostname=$(PLATFORM_SERVICEPLATFORM_HOSTNAME) \
+	  -var create_hosted_zone=$(PLATFORM_APEX_CREATE_ZONE) \
+	  -var hosted_zone_id=$(PLATFORM_APEX_HOSTED_ZONE_ID) \
+	  -var wait_for_acm_validation=false
+	@echo ""
+	@echo "$(YELLOW)Set these nameservers at your registrar for $(PLATFORM_APEX), then run: make platform-apex-step2$(NC)"
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) output -json name_servers
+
+platform-apex-step2: ## Step 2: wait for ACM validation, create Route53 alias records, then enable TLS on Argo CD + Unified UI ingresses
+	@test -n "$(PLATFORM_APEX)" || (echo "$(RED)Missing PLATFORM_APEX (e.g. PLATFORM_APEX=mmg-nova.com)$(NC)" && exit 1)
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) init -migrate-state -force-copy -input=false
+	@# If switching from a previously Terraform-created zone to an existing zone, drop the old zone from state to avoid prevent_destroy errors.
+	@if [ "$(PLATFORM_APEX_CREATE_ZONE)" = "false" ] || [ -n "$(PLATFORM_APEX_HOSTED_ZONE_ID)" ]; then \
+	  $(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) state list 2>/dev/null | grep -Fxq 'aws_route53_zone.platform_apex[0]' && \
+	    $(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) state rm 'aws_route53_zone.platform_apex[0]' >/dev/null || true; \
+	fi
+	@CLUSTER_NAME="$(EKS_CLUSTER_NAME)"; \
+	if [ -z "$$CLUSTER_NAME" ]; then \
+	  CLUSTER_NAME=$$($(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) output -raw eks_cluster_name 2>/dev/null || true); \
+	fi; \
+	if [ -z "$$CLUSTER_NAME" ]; then \
+	  echo "$(RED)Missing EKS cluster name. Set EKS_CLUSTER_NAME=... or ensure terraform state has eks_cluster_name output.$(NC)"; \
+	  exit 1; \
+	fi; \
+		$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) apply $(TF_AUTO_APPROVE) -input=false \
+	  -var platform_apex=$(PLATFORM_APEX) \
+	  -var argocd_hostname=$(PLATFORM_ARGOCD_HOSTNAME) \
+	  -var serviceplatform_hostname=$(PLATFORM_SERVICEPLATFORM_HOSTNAME) \
+	  -var create_hosted_zone=$(PLATFORM_APEX_CREATE_ZONE) \
+	  -var hosted_zone_id=$(PLATFORM_APEX_HOSTED_ZONE_ID) \
+	  -var wait_for_acm_validation=true \
+	  -var cluster_name=$$CLUSTER_NAME; \
+	CERT_ARN=$$($(TF_AWS_ENV) terraform -chdir=$(TF_AWS_PLATFORM_APEX_DIR) output -raw acm_certificate_arn); \
+	  echo "ARGOCD_HOSTNAME=$(PLATFORM_ARGOCD_HOSTNAME)" > $(ARGOCD_TLS_OVERLAY_DIR)/argocd-tls.env; \
+	  echo "ARGOCD_ACM_CERT_ARN=$$CERT_ARN" >> $(ARGOCD_TLS_OVERLAY_DIR)/argocd-tls.env; \
+	  kubectl apply -k $(ARGOCD_TLS_OVERLAY_DIR); \
+	  kubectl -n $(UNIFIEDUI_NAMESPACE) annotate ingress $(UNIFIEDUI_INGRESS_NAME) \
+	    alb.ingress.kubernetes.io/certificate-arn=$$CERT_ARN \
+	    'alb.ingress.kubernetes.io/listen-ports=[{"HTTPS":443},{"HTTP":80}]' \
+	    'alb.ingress.kubernetes.io/ssl-redirect=443' \
+	    --overwrite; \
+	  echo "$(GREEN)Open Argo CD: https://$(PLATFORM_ARGOCD_HOSTNAME)$(NC)"; \
+	  echo "$(GREEN)Open Unified UI: https://$(PLATFORM_SERVICEPLATFORM_HOSTNAME)$(NC)"
 
 # Backwards-compatible aliases
 tf-bootstrap: infra-bootstrap ## Alias for infra-bootstrap
