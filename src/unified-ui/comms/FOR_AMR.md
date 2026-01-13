@@ -80,3 +80,13 @@ Chief Revenue Officer
 
 6. Save the mockups generated with details in the Generate Page and to be available as links in a history endpoint just like proposal history.
 7. Generate and Setup shows different list of Locations.
+
+
+- Cache Situation - mockup template create/update/delete does not reflect immediately in template list;
+Issue: mockup template create/update/delete does not reflect immediately in template list; inconsistent eventual updates.
+Repro (create): create indoor template for Galleria Extension Indoor and outdoor/day/gold for Galleria Extension Outdoor; save succeeds but templates API returns empty for those params right after save.
+Repro (create): DNA04 outdoor/day/gold not present → create and save → immediate re‑fetch with same params still returns empty; later (after navigating elsewhere) DNA04 template appears, but Galleria templates still missing even after waiting.
+Logs: save calls return success; subsequent templates calls return empty array; no errors in logs.
+Delete behavior: deletions are delayed/inconsistent; dna02_01.jpg remains after delete; later delete attempt removes dna02_04.jpg instead; still no errors in logs.
+
+Multiple file upload to Mockup generate Generate 

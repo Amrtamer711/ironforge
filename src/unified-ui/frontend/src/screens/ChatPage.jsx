@@ -17,12 +17,14 @@ import { getAuthToken } from "../lib/token";
 // scroll, then remounts them, the component checks this cache first. If the
 // image URL is already cached, we skip the placeholder entirely - no flash.
 const loadedImagesCache = new Set();
+const MAX_CHAT_UPLOADS = 6;
 
 export function ChatPage() {
   const queryClient = useQueryClient();
   const [messages, setMessages] = useState([]);
   const [value, setValue] = useState("");
-  const [pendingFile, setPendingFile] = useState(null);
+  const [pendingFiles, setPendingFiles] = useState([]);
+  const [uploadError, setUploadError] = useState("");
   const [loading, setLoading] = useState(true);
   const [streaming, setStreaming] = useState(false);
   const [conversationId, setConversationId] = useState(null);
@@ -281,8 +283,8 @@ export function ChatPage() {
   }, []);
 
   const canSend = useMemo(
-    () => (value.trim().length > 0 || Boolean(pendingFile)) && !streaming,
-    [value, pendingFile, streaming]
+    () => (value.trim().length > 0 || pendingFiles.length > 0) && !streaming,
+    [value, pendingFiles.length, streaming]
   );
 
   // Filter out tool response messages from display (they're still stored for LLM context)
@@ -319,17 +321,22 @@ export function ChatPage() {
     if (!canSend) return;
 
     const userText = value.trim();
-    const outgoingMessage = userText || (pendingFile ? `Please process this file: ${pendingFile.name}` : "");
+    const filesToUpload = pendingFiles;
+    const previewFiles = filesToUpload.map((file) => ({
+      filename: file.name,
+      preview_url: URL.createObjectURL(file),
+    }));
+    const outgoingMessage = userText
+      || (filesToUpload.length === 1
+        ? `Please process this file: ${filesToUpload[0].name}`
+        : `Please process these files: ${filesToUpload.map((file) => file.name).join(", ")}`);
 
     const userMsgId = crypto.randomUUID();
     const userMsg = {
       id: userMsgId,
       role: "user",
       content: userText,
-      files: pendingFile ? [{
-        filename: pendingFile.name,
-        preview_url: URL.createObjectURL(pendingFile),
-      }] : [],
+      files: previewFiles,
       status: null,
     };
 
@@ -344,8 +351,8 @@ export function ChatPage() {
 
     setMessages(m => [...m, userMsg, assistantMsg]);
     setValue("");
-    const fileToUpload = pendingFile;
-    setPendingFile(null);
+    setPendingFiles([]);
+    setUploadError("");
     // Immediate scroll to show user message, then smooth follow during streaming
     requestAnimationFrame(() => scrollToBottom(true));
 
@@ -359,23 +366,23 @@ export function ChatPage() {
       let fullContent = "";
 
       // Upload file if present
-      if (fileToUpload) {
-        const uploaded = await filesApi.uploadFile(fileToUpload);
-        if (!uploaded?.file_id) throw new Error("Upload failed");
-        fileIds = [uploaded.file_id];
+      if (filesToUpload.length > 0) {
+        const uploads = await Promise.all(filesToUpload.map((file) => filesApi.uploadFile(file)));
+        if (uploads.some((uploaded) => !uploaded?.file_id)) throw new Error("Upload failed");
+        fileIds = uploads.map((uploaded) => uploaded.file_id);
 
         // Update user message with uploaded file info
         setMessages(prev => prev.map(m =>
           m.id === userMsgId ? {
             ...m,
-            files: [{
+            files: uploads.map((uploaded, index) => ({
               file_id: uploaded.file_id,
-              filename: fileToUpload.name,
+              filename: filesToUpload[index]?.name || uploaded.filename || "Attachment",
               url: uploaded.url,
               width: uploaded.image_width,
               height: uploaded.image_height,
-              preview_url: m.files?.[0]?.preview_url,
-            }]
+              preview_url: previewFiles[index]?.preview_url,
+            }))
           } : m
         ));
       }
@@ -560,10 +567,29 @@ export function ChatPage() {
       </Card>
 
       <Card className="p-3">
-        {pendingFile && (
-          <div className="mb-2 flex items-center justify-between rounded-2xl bg-black/5 dark:bg-white/10 px-3 py-2 text-sm">
-            <div className="truncate">{pendingFile.name}</div>
-            <button className="opacity-70 hover:opacity-100" onClick={() => setPendingFile(null)}>✕</button>
+        {uploadError ? (
+          <div className="mb-2 text-xs text-red-600 dark:text-red-300">{uploadError}</div>
+        ) : null}
+
+        {pendingFiles.length > 0 && (
+          <div className="mb-2 space-y-1">
+            {pendingFiles.map((file, index) => (
+              <div
+                key={`${file.name}-${file.size}-${index}`}
+                className="flex items-center justify-between rounded-2xl bg-black/5 dark:bg-white/10 px-3 py-2 text-sm"
+              >
+                <div className="truncate">{file.name}</div>
+                <button
+                  className="opacity-70 hover:opacity-100"
+                  onClick={() => {
+                    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
+                    setUploadError("");
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
           </div>
         )}
 
@@ -572,7 +598,26 @@ export function ChatPage() {
             ref={fileRef}
             type="file"
             className="hidden"
-            onChange={(e) => setPendingFile(e.target.files?.[0] || null)}
+            multiple
+            onChange={(e) => {
+              const nextFiles = Array.from(e.target.files || []);
+              if (!nextFiles.length) return;
+              setPendingFiles((prev) => {
+                const available = Math.max(0, MAX_CHAT_UPLOADS - prev.length);
+                if (available <= 0) {
+                  setUploadError(`You can upload up to ${MAX_CHAT_UPLOADS} files.`);
+                  return prev;
+                }
+                const accepted = nextFiles.slice(0, available);
+                if (nextFiles.length > available) {
+                  setUploadError(`You can upload up to ${MAX_CHAT_UPLOADS} files.`);
+                } else {
+                  setUploadError("");
+                }
+                return [...prev, ...accepted];
+              });
+              e.target.value = "";
+            }}
             accept="image/*,.pdf,.xlsx,.xls,.csv,.docx,.doc"
           />
 
