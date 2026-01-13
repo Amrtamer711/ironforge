@@ -118,36 +118,48 @@ async def list_templates(company: str) -> list[dict[str, Any]]:
 
 
 @router.get("/templates/{company}/{location_key}", response_model=FileResponse)
-async def get_template(company: str, location_key: str) -> dict[str, Any]:
+async def get_template(
+    company: str,
+    location_key: str,
+    format: str = Query(default="pptx", regex="^(pptx|pdf)$"),
+) -> dict[str, Any]:
     """
     Download template file as base64.
 
     Args:
         company: Company schema
         location_key: Location identifier
+        format: File format - "pptx" (default) or "pdf"
 
     Returns:
         Base64-encoded file data
     """
-    logger.info(f"[STORAGE] Getting template for {company}/{location_key}")
+    logger.info(f"[STORAGE] Getting template for {company}/{location_key} (format={format})")
 
     try:
         storage = _get_storage_client()
         bucket = storage.from_("templates")
 
-        # Look for template file: {company}/{location_key}/{location_key}.pptx
-        storage_key = f"{company}/{location_key}/{location_key}.pptx"
+        # Look for template file: {company}/{location_key}/{location_key}.{format}
+        storage_key = f"{company}/{location_key}/{location_key}.{format}"
 
         # Run blocking Supabase download in thread pool for concurrent execution
         data = await asyncio.to_thread(bucket.download, storage_key)
         if not data:
-            raise HTTPException(status_code=404, detail="Template not found")
+            raise HTTPException(status_code=404, detail=f"Template not found ({format})")
 
-        return {
-            "data": base64.b64encode(data).decode("utf-8"),
-            "content_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            "filename": f"{location_key}.pptx",
-        }
+        if format == "pdf":
+            return {
+                "data": base64.b64encode(data).decode("utf-8"),
+                "content_type": "application/pdf",
+                "filename": f"{location_key}.pdf",
+            }
+        else:
+            return {
+                "data": base64.b64encode(data).decode("utf-8"),
+                "content_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "filename": f"{location_key}.pptx",
+            }
 
     except HTTPException:
         raise

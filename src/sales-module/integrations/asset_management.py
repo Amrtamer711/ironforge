@@ -430,6 +430,7 @@ class AssetManagementClient:
         self,
         company: str,
         location_key: str,
+        format: str = "pptx",
     ) -> bytes | None:
         """
         Download template file from Asset-Management storage.
@@ -437,6 +438,7 @@ class AssetManagementClient:
         Args:
             company: Company schema (e.g., "backlite_dubai")
             location_key: Location identifier (e.g., "dubai_mall")
+            format: File format - "pptx" (default) or "pdf"
 
         Returns:
             Template file bytes or None if not found
@@ -445,13 +447,14 @@ class AssetManagementClient:
             response = await self._request(
                 "GET",
                 f"/api/storage/templates/{company}/{location_key}",
+                params={"format": format},
             )
             if response and "data" in response:
                 import base64
                 return base64.b64decode(response["data"])
             return None
         except Exception as e:
-            logger.error(f"[ASSET CLIENT] Failed to get template {location_key}: {e}")
+            logger.error(f"[ASSET CLIENT] Failed to get template {location_key} ({format}): {e}")
             return None
 
     async def get_template_url(

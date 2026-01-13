@@ -548,25 +548,35 @@ class ProposalProcessor:
         total_proposals = len(unique_proposals_for_deck)
 
         async def process_combined_single(idx: int, proposal: dict) -> dict:
-            """Process a single proposal for combined package."""
+            """
+            Process a single proposal for combined package.
+
+            PDF-First Strategy (for non-financial slides):
+            1. Try to download PDF template (fast, ~1-3s)
+            2. If found: Extract middle pages directly (no PPTX conversion needed)
+            3. If not found: Fall back to PPTX flow with warning
+
+            Financial Slide (last location only):
+            - Always uses PPTX flow since we need to render the financial slide
+            """
             location_key = proposal.get("location", "").lower().strip()
             single_start = time.time()
             self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - START")
 
-            # Download template from storage
-            t0 = time.time()
             company_hint = proposal.get("company_schema")  # O(1) lookup from validator
-            template_path = await self.template_service.download_to_temp(
-                location_key, company_hint=company_hint
-            )
-            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - Template download: {(time.time() - t0)*1000:.0f}ms")
-            if not template_path:
-                raise FileNotFoundError(f"Template not found for {location_key}")
-
             total_combined_result = None
+            is_financial_slide = (idx == total_proposals - 1)
 
-            # Last location gets the combined financial slide
-            if idx == total_proposals - 1:
+            # Financial slide location: Must use PPTX flow to render the slide
+            if is_financial_slide:
+                t0 = time.time()
+                template_path = await self.template_service.download_to_temp(
+                    location_key, company_hint=company_hint, format="pptx"
+                )
+                self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PPTX download (financial): {(time.time() - t0)*1000:.0f}ms")
+                if not template_path:
+                    raise FileNotFoundError(f"Template not found for {location_key}")
+
                 t0 = time.time()
                 pptx_path, total_combined_result = await loop.run_in_executor(
                     None,
@@ -579,41 +589,109 @@ class ProposalProcessor:
                     currency,
                 )
                 self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PPTX render (combined): {(time.time() - t0)*1000:.0f}ms")
+
                 # Clean up downloaded template
                 try:
                     os.unlink(template_path)
                 except OSError:
                     pass
-            else:
-                pptx_path = str(template_path)
-                self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - Using template as PPTX (no render)")
-                # Note: template_path will be cleaned up after PDF conversion
 
-            # Determine which slides to remove
-            if intro_outro_info:
-                remove_first = True
-                remove_last = True
-            else:
-                # Legacy behavior
-                remove_first = False
-                remove_last = False
-                if idx == 0:
-                    remove_last = True
-                elif idx < total_proposals - 1:
+                # Determine which slides to remove
+                if intro_outro_info:
                     remove_first = True
                     remove_last = True
                 else:
                     remove_first = True
+                    remove_last = False
 
-            t0 = time.time()
-            pdf_path = await remove_slides_and_convert_to_pdf(pptx_path, remove_first, remove_last)
-            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PDF conversion: {(time.time() - t0)*1000:.0f}ms")
+                t0 = time.time()
+                pdf_path = await remove_slides_and_convert_to_pdf(pptx_path, remove_first, remove_last)
+                self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PDF conversion: {(time.time() - t0)*1000:.0f}ms")
 
-            # Clean up temp PPTX/template
-            try:
-                os.unlink(pptx_path)
-            except OSError as e:
-                self.logger.warning(f"[PROCESSOR] Failed to cleanup temp file: {e}")
+                # Clean up temp PPTX
+                try:
+                    os.unlink(pptx_path)
+                except OSError as e:
+                    self.logger.warning(f"[PROCESSOR] Failed to cleanup temp file: {e}")
+
+            else:
+                # Non-financial slide: Try PDF-first approach
+                t0 = time.time()
+                pdf_template_path = await self.template_service.download_to_temp(
+                    location_key, company_hint=company_hint, format="pdf"
+                )
+
+                if pdf_template_path:
+                    # PDF-first path: Fast! Just extract middle pages
+                    self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PDF download: {(time.time() - t0)*1000:.0f}ms (PDF-FIRST)")
+
+                    t0 = time.time()
+                    # Read PDF and extract middle pages (skip first and last for intro/outro)
+                    reader = PdfReader(pdf_template_path)
+                    total_pages = len(reader.pages)
+
+                    if intro_outro_info:
+                        # Skip first and last pages (intro/outro will be added separately)
+                        pages_to_keep = list(range(1, total_pages - 1)) if total_pages > 2 else []
+                    else:
+                        # Legacy behavior
+                        if idx == 0:
+                            pages_to_keep = list(range(0, total_pages - 1))  # Keep all but last
+                        else:
+                            pages_to_keep = list(range(1, total_pages - 1))  # Skip first and last
+
+                    if pages_to_keep:
+                        pdf_path = self._extract_pages_from_pdf(pdf_template_path, pages_to_keep)
+                    else:
+                        # Edge case: if no middle pages, use entire PDF
+                        pdf_path = pdf_template_path
+                        pdf_template_path = None  # Don't delete it since we're using it
+
+                    self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PDF page extraction: {(time.time() - t0)*1000:.0f}ms")
+
+                    # Clean up downloaded PDF template
+                    if pdf_template_path:
+                        try:
+                            os.unlink(pdf_template_path)
+                        except OSError:
+                            pass
+                else:
+                    # Fallback: PPTX flow with warning
+                    self.logger.warning(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PDF not found, falling back to PPTX")
+
+                    t0 = time.time()
+                    template_path = await self.template_service.download_to_temp(
+                        location_key, company_hint=company_hint, format="pptx"
+                    )
+                    self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PPTX download (fallback): {(time.time() - t0)*1000:.0f}ms")
+
+                    if not template_path:
+                        raise FileNotFoundError(f"Template not found for {location_key}")
+
+                    pptx_path = str(template_path)
+
+                    # Determine which slides to remove
+                    if intro_outro_info:
+                        remove_first = True
+                        remove_last = True
+                    else:
+                        remove_first = False
+                        remove_last = False
+                        if idx == 0:
+                            remove_last = True
+                        else:
+                            remove_first = True
+                            remove_last = True
+
+                    t0 = time.time()
+                    pdf_path = await remove_slides_and_convert_to_pdf(pptx_path, remove_first, remove_last)
+                    self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PDF conversion (fallback): {(time.time() - t0)*1000:.0f}ms")
+
+                    # Clean up temp PPTX/template
+                    try:
+                        os.unlink(pptx_path)
+                    except OSError as e:
+                        self.logger.warning(f"[PROCESSOR] Failed to cleanup temp file: {e}")
 
             self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - TOTAL: {(time.time() - single_start)*1000:.0f}ms")
             return {"pdf_path": pdf_path, "total_combined": total_combined_result, "idx": idx}
