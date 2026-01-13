@@ -49,8 +49,8 @@ ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONPATH=/app
 
-# Create a startup script
-RUN echo '#!/bin/bash\n\
+# Create a startup script (use /bin/sh; bash is not guaranteed to exist in slim images)
+RUN echo '#!/bin/sh\n\
 export PYTHONPATH=/app\n\
 if [ -d "/data/Sofia-Pro Font" ]; then\n\
     echo "Installing custom fonts..."\n\

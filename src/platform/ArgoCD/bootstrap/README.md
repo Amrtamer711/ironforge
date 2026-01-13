@@ -33,6 +33,14 @@ make infra-init AWS_PROFILE=your-profile
 make infra-apply AWS_PROFILE=your-profile
 ```
 
+Staging and production clusters live in separate Terraform stacks:
+
+```bash
+export TF_VAR_db_password='...'
+make infra-staging-apply AWS_PROFILE=your-profile
+make infra-production-apply AWS_PROFILE=your-profile
+```
+
 3) Configure kubeconfig (region is `eu-north-1` by default in Terraform):
 
 ```bash
@@ -41,10 +49,32 @@ aws eks update-kubeconfig \
   --name "$(terraform -chdir=src/infrastructure/aws output -raw eks_cluster_name)"
 ```
 
+For staging/production:
+
+```bash
+aws eks update-kubeconfig --region eu-north-1 --name "$(terraform -chdir=src/infrastructure/aws/clusters/staging output -raw eks_cluster_name)"
+aws eks update-kubeconfig --region eu-north-1 --name "$(terraform -chdir=src/infrastructure/aws/clusters/production output -raw eks_cluster_name)"
+```
+
 ## Install
 
 ```bash
 make platform-argocd-bootstrap
+```
+
+## Install platform applications
+
+Argo CD needs `Application` resources to know what to deploy (Unified UI, sales module, security service, asset management, etc).
+
+```bash
+make platform-argocd-apps
+```
+
+For staging/production (per-cluster Argo CD, branch-tracking):
+
+```bash
+make platform-argocd-apps-staging
+make platform-argocd-apps-production
 ```
 
 ## Access
@@ -68,6 +98,26 @@ make platform-argocd-url
 To avoid “Connection not secure”, terminate TLS at the ALB using an ACM certificate and a real hostname.
 
 This repo supports two common setups:
+
+- Recommended (lowest friction): dedicate an apex domain for the platform and manage it fully in Route53:
+  1) Create the hosted zone (or use an existing one via `PLATFORM_APEX_HOSTED_ZONE_ID=...`) and request a single ACM cert:
+
+     ```bash
+     make platform-apex-step1 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
+     ```
+
+  2) In your registrar, update the domain’s nameservers to the Route53 values from the command output (skip if Route53 is your registrar).
+  3) Finish ACM validation + create Route53 alias records + apply TLS to both Argo CD and Unified UI:
+
+     ```bash
+     make platform-apex-step2 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
+     ```
+
+  Troubleshooting (duplicate hosted zones): if Route53 shows multiple hosted zones named `mmg-nova.com`, prefer operating by zone id to avoid ambiguity:
+  - Keep the zone that your registrar is using (compare `dig NS mmg-nova.com +short` with each zone’s `NameServers`).
+  - If you want to switch to a manually-created/registration-created hosted zone, pass its id and disable zone creation:
+    - `PLATFORM_APEX_CREATE_ZONE=false PLATFORM_APEX_HOSTED_ZONE_ID=Z...`
+  - If Terraform previously created a zone, `make platform-apex-step1/step2` will automatically drop it from Terraform state when `PLATFORM_APEX_HOSTED_ZONE_ID` is set (so Terraform won’t try to destroy it). You can then delete the unused hosted zone in Route53.
 
 - GoDaddy registrar + Route53 DNS delegation (works for apex hostname, e.g. `argocdmmg.global`):
   1) Create the hosted zone + request ACM cert (prints the nameservers you must set in GoDaddy):
@@ -97,3 +147,31 @@ Get the initial admin password:
 ```bash
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
 ```
+
+## Unified UI (same pattern)
+
+Unified UI is deployed by Argo CD from `src/platform/deploy/kustomize/unifiedui`.
+
+To expose it with a custom hostname + TLS, use the same dedicated platform apex flow:
+
+```bash
+make platform-apex-step1 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
+make platform-apex-step2 AWS_PROFILE=your-profile PLATFORM_APEX=mmg-nova.com
+make platform-unifiedui-url PLATFORM_APEX=mmg-nova.com
+```
+
+## Unified UI image updates (pure GitOps)
+
+CI pushes images with a unique tag (commit SHA). The deployed tag lives in Git:
+
+- `src/platform/deploy/kustomize/unifiedui/overlays/dev/kustomization.yaml` → `images[].newTag`
+
+To roll out a new image:
+
+1) Build/push a new image tag (usually by pushing a commit to the `demo` branch).
+2) Prefer: let CI open a GitOps merge request (MR) that bumps `newTag` automatically (recommended).
+   - Create a GitLab CI variable `GITLAB_BOT_TOKEN` (bot PAT/project access token) with permission to push branches and create merge requests.
+   - The pipeline will create an MR titled `Deploy unifiedui-dev: <sha>` targeting the `demo` branch.
+   - Merge the MR to deploy.
+   - Fallback: update `newTag` manually, commit, and push.
+3) Argo CD syncs and Kubernetes rolls the Deployment.

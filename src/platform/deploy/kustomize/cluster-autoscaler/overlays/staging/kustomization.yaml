@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+patches:
+  - target:
+      kind: ServiceAccount
+      name: cluster-autoscaler
+    patch: |-
+      - op: replace
+        path: /metadata/annotations/eks.amazonaws.com~1role-arn
+        value: arn:aws:iam::018881300778:role/mmg-staging-cluster-autoscaler
+  - target:
+      kind: Deployment
+      name: cluster-autoscaler
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/command
+        value:
+          - ./cluster-autoscaler
+          - --cloud-provider=aws
+          - --namespace=kube-system
+          - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/mmg-staging-cluster-1-t588
+          - --balance-similar-node-groups
+          - --expander=least-waste
+          - --skip-nodes-with-local-storage=false
+          - --skip-nodes-with-system-pods=false
+          - --stderrthreshold=info
+          - --v=2
+

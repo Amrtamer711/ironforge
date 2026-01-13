@@ -1,0 +1,19 @@
+build_asset_management:
+  extends: .build_push_ecr_template
+  variables:
+    SERVICE_NAME: "asset-management"
+    SERVICE_DIR: "src/asset-management"
+    # ECR repo is shared with the legacy "asset_library" naming.
+    ECR_REPO: "asset_library"
+    DOCKERFILE_PATH: "src/asset-management/Dockerfile"
+    BUILD_CONTEXT: "src/asset-management"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "demo" || $CI_COMMIT_BRANCH == "staging" || $CI_COMMIT_BRANCH == "main"'
+      changes:
+        - src/asset-management/**/*
+        - src/shared/**/*
+      when: on_success
+
+    - if: '$CI_COMMIT_BRANCH == "demo" || $CI_COMMIT_BRANCH == "staging" || $CI_COMMIT_BRANCH == "main"'
+      when: manual
+      allow_failure: true

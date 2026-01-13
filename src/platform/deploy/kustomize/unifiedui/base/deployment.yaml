@@ -5,7 +5,7 @@ metadata:
   labels:
     app.kubernetes.io/name: unified-ui
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: unified-ui
@@ -37,9 +37,8 @@ spec:
             periodSeconds: 20
           resources:
             requests:
-              cpu: 250m
+              cpu: 200m
               memory: 512Mi
             limits:
-              cpu: 500m
+              cpu: "1"
               memory: 1Gi
-

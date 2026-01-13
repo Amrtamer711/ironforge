@@ -75,6 +75,8 @@ resource "aws_iam_openid_connect_provider" "this" {
 }
 
 resource "aws_eks_fargate_profile" "coredns" {
+  count = var.enable_system_fargate_profiles ? 1 : 0
+
   cluster_name           = aws_eks_cluster.this.name
   fargate_profile_name   = "${var.cluster_name}-coredns"
   pod_execution_role_arn = aws_iam_role.fargate_pod_execution.arn
@@ -91,6 +93,8 @@ resource "aws_eks_fargate_profile" "coredns" {
 }
 
 resource "aws_eks_fargate_profile" "alb_controller" {
+  count = var.enable_system_fargate_profiles ? 1 : 0
+
   cluster_name           = aws_eks_cluster.this.name
   fargate_profile_name   = "${var.cluster_name}-alb-controller"
   pod_execution_role_arn = aws_iam_role.fargate_pod_execution.arn
@@ -154,4 +158,3 @@ resource "aws_eks_fargate_profile" "workloads" {
 
   tags = var.tags
 }
-

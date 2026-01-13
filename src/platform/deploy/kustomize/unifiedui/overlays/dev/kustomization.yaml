@@ -3,11 +3,14 @@ kind: Kustomization
 
 resources:
   - ../../base
+  - hpa.yaml
 
 images:
   - name: unifiedui
     newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/unifiedui
-    newTag: demo
+    # Deployed image tag is Git-driven (pure GitOps).
+    # Update this value (commit + push), then Argo CD will roll out the new image.
+    newTag: 3cf49100
 
 patches:
   - target:
@@ -17,7 +20,7 @@ patches:
       - op: add
         path: /spec/rules/-
         value:
-          host: serviceplatform.mmg.global
+          host: serviceplatform.mmg-nova.com
           http:
             paths:
               - path: /
@@ -32,6 +35,11 @@ patches:
       name: unified-ui
     patch: |-
       - op: add
+        path: /spec/template/spec/containers/0/envFrom
+        value:
+          - secretRef:
+              name: unified-ui-env
+      - op: add
         path: /spec/template/spec/containers/0/env/-
         value:
           name: ENVIRONMENT
@@ -39,5 +47,10 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/env/-
         value:
-          name: SALES_BOT_URL
-          value: http://proposal-bot.sales.svc.cluster.local:8000
+          name: SALES_MODULE_URL
+          value: http://proposal-bot.backends.svc.cluster.local:8000
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: SECURITY_SERVICE_URL
+          value: http://security-service.backends.svc.cluster.local:8002
