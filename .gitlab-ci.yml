@@ -27,13 +27,45 @@ variables:
     - apk add --no-cache aws-cli jq
     - aws --version
 
+    # Debug (safe): print a few OIDC token claims so it's easier to match the IAM trust policy.
+    # Do NOT print the raw token.
+    - |
+      echo "GitLab OIDC token claims (sanitized):"
+      python3 - <<'PY' || true
+      import base64
+      import json
+      import os
+      token = os.environ.get("AWS_ID_TOKEN", "")
+      parts = token.split(".")
+      if len(parts) < 2:
+          print("  (missing AWS_ID_TOKEN)")
+          raise SystemExit(0)
+      payload = parts[1]
+      payload += "=" * (-len(payload) % 4)
+      try:
+          claims = json.loads(base64.urlsafe_b64decode(payload.encode("utf-8")))
+      except Exception as e:
+          print(f"  (unable to decode claims: {e})")
+          raise SystemExit(0)
+      for key in ("iss", "aud", "sub"):
+          if key in claims:
+              print(f"  {key}: {claims[key]}")
+      PY
+
     # Assume AWS role using GitLab OIDC token
     - |
-      CREDS=$(aws sts assume-role-with-web-identity \
+      set -euo pipefail
+
+      if ! CREDS=$(aws sts assume-role-with-web-identity \
         --role-arn "$AWS_ROLE_ARN" \
         --role-session-name "gitlab-${CI_PROJECT_PATH_SLUG}-${CI_PIPELINE_ID}" \
         --web-identity-token "$AWS_ID_TOKEN" \
-        --duration-seconds 3600)
+        --duration-seconds 3600); then
+        echo "ERROR: sts:AssumeRoleWithWebIdentity failed."
+        echo "Check the IAM role trust policy for $AWS_ROLE_ARN allows this pipeline."
+        echo "Common fix: allow gitlab.com:sub for ref '${CI_COMMIT_BRANCH}' (in addition to 'demo')."
+        exit 1
+      fi
 
       export AWS_ACCESS_KEY_ID=$(echo "$CREDS" | jq -r '.Credentials.AccessKeyId')
       export AWS_SECRET_ACCESS_KEY=$(echo "$CREDS" | jq -r '.Credentials.SecretAccessKey')
