@@ -22,8 +22,9 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
-from backend.middleware.auth import AuthUser, require_profile
+from backend.middleware.auth import AuthUser, require_permission
 from backend.routers.rbac.models import CreateProfileRequest, UpdateProfileRequest
 from backend.services.rbac_service import invalidate_rbac_cache
 from backend.services.supabase_client import get_supabase
@@ -40,7 +41,7 @@ router = APIRouter()
 @router.get("/user/{user_id}")
 async def get_user_rbac_info(
     user_id: str,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Get user's profile and permissions.
@@ -135,7 +136,7 @@ async def get_user_rbac_info(
 async def check_permission(
     user_id: str = Query(...),
     permission: str = Query(...),
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Check if user has a specific permission.
@@ -201,7 +202,7 @@ async def check_permission(
 
 @router.get("/profiles")
 async def list_profiles(
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> list[dict[str, Any]]:
     """
     List all profiles.
@@ -257,7 +258,7 @@ async def list_profiles(
 @router.get("/profiles/{profile_id}")
 async def get_profile(
     profile_id: int,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Get single profile by ID.
@@ -311,7 +312,7 @@ async def get_profile(
 @router.post("/profiles", status_code=201)
 async def create_profile(
     request: CreateProfileRequest,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Create profile.
@@ -405,7 +406,7 @@ async def create_profile(
 async def update_profile(
     profile_id: int,
     request: UpdateProfileRequest,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Update profile.
@@ -527,7 +528,7 @@ async def update_profile(
 @router.delete("/profiles/{profile_id}")
 async def delete_profile(
     profile_id: int,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Delete profile.
@@ -619,7 +620,7 @@ async def delete_profile(
 
 @router.get("/permissions")
 async def list_permissions(
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> list[dict[str, Any]]:
     """
     List all permissions.
@@ -653,7 +654,7 @@ async def list_permissions(
 
 @router.get("/permissions/grouped")
 async def list_permissions_grouped(
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, list[dict[str, Any]]]:
     """
     Get permissions grouped by resource.
@@ -687,3 +688,137 @@ async def list_permissions_grouped(
     except Exception as e:
         logger.error(f"[UI RBAC API] Error listing permissions: {e}")
         raise HTTPException(status_code=500, detail="Failed to list permissions")
+
+
+# =============================================================================
+# 10. POST /permissions - Create a new permission
+# =============================================================================
+
+class CreatePermissionRequest(BaseModel):
+    """Request model for creating a permission."""
+    name: str  # Full permission name e.g. "sales:proposals:read"
+    description: str | None = None
+
+
+@router.post("/permissions")
+async def create_permission(
+    request: CreatePermissionRequest,
+    user: AuthUser = Depends(require_permission("core:system:admin")),
+) -> dict[str, Any]:
+    """
+    Create a new permission in the database.
+
+    The permission name should follow the format: module:resource:action
+    e.g. "sales:proposals:read" or "admin:users:manage"
+    """
+    logger.info(f"[UI RBAC API] Creating permission: {request.name}")
+
+    supabase = get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        # Parse the permission name into module:resource:action
+        parts = request.name.split(":")
+        if len(parts) != 3:
+            raise HTTPException(
+                status_code=400,
+                detail="Permission name must be in format 'module:resource:action'"
+            )
+
+        module, resource, action = parts
+
+        # Check if permission already exists
+        existing = (
+            supabase.table("permissions")
+            .select("id")
+            .eq("name", request.name)
+            .execute()
+        )
+
+        if existing.data and len(existing.data) > 0:
+            raise HTTPException(status_code=409, detail="Permission already exists")
+
+        # Create the permission
+        result = (
+            supabase.table("permissions")
+            .insert({
+                "name": request.name,
+                "description": request.description,
+                "module": module,
+                "resource": resource,
+                "action": action,
+            })
+            .execute()
+        )
+
+        logger.info(f"[UI RBAC API] Permission created: {request.name}")
+
+        return {
+            "success": True,
+            "permission": result.data[0] if result.data else None
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[UI RBAC API] Error creating permission: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create permission")
+
+
+# =============================================================================
+# 11. DELETE /permissions/{permission_name} - Delete a permission
+# =============================================================================
+
+@router.delete("/permissions/{permission_name:path}")
+async def delete_permission(
+    permission_name: str,
+    user: AuthUser = Depends(require_permission("core:system:admin")),
+) -> dict[str, Any]:
+    """
+    Delete a permission from the database.
+
+    Note: This will also remove the permission from any permission sets
+    and profiles that reference it.
+    """
+    logger.info(f"[UI RBAC API] Deleting permission: {permission_name}")
+
+    supabase = get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        # Check if permission exists
+        existing = (
+            supabase.table("permissions")
+            .select("id, name")
+            .eq("name", permission_name)
+            .execute()
+        )
+
+        if not existing.data or len(existing.data) == 0:
+            raise HTTPException(status_code=404, detail="Permission not found")
+
+        permission_id = existing.data[0]["id"]
+
+        # Delete from profile_permissions first (FK constraint)
+        supabase.table("profile_permissions").delete().eq("permission_id", permission_id).execute()
+
+        # Delete from permission_set_permissions (FK constraint)
+        supabase.table("permission_set_permissions").delete().eq("permission_id", permission_id).execute()
+
+        # Delete the permission itself
+        supabase.table("permissions").delete().eq("id", permission_id).execute()
+
+        logger.info(f"[UI RBAC API] Permission deleted: {permission_name}")
+
+        return {
+            "success": True,
+            "deleted": permission_name
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[UI RBAC API] Error deleting permission: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete permission")

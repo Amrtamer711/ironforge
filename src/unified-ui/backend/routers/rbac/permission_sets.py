@@ -19,7 +19,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from backend.middleware.auth import AuthUser, require_profile
+from backend.middleware.auth import AuthUser, require_permission
 from backend.routers.rbac.models import (
     AssignPermissionSetRequest,
     CreatePermissionSetRequest,
@@ -39,7 +39,7 @@ router = APIRouter()
 
 @router.get("/permission-sets")
 async def list_permission_sets(
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> list[dict[str, Any]]:
     """
     List all permission sets.
@@ -83,7 +83,7 @@ async def list_permission_sets(
 @router.get("/permission-sets/{set_id}")
 async def get_permission_set(
     set_id: int,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Get a single permission set by ID.
@@ -127,7 +127,7 @@ async def get_permission_set(
 @router.post("/permission-sets", status_code=201)
 async def create_permission_set(
     request: CreatePermissionSetRequest,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Create permission set.
@@ -185,7 +185,7 @@ async def create_permission_set(
 async def update_permission_set(
     set_id: int,
     request: UpdatePermissionSetRequest,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Update permission set.
@@ -248,7 +248,7 @@ async def update_permission_set(
 @router.delete("/permission-sets/{set_id}")
 async def delete_permission_set(
     set_id: int,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Delete permission set.
@@ -338,7 +338,7 @@ async def delete_permission_set(
 async def assign_permission_set(
     user_id: str,
     request: AssignPermissionSetRequest,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Assign permission set to user.
@@ -386,7 +386,7 @@ async def assign_permission_set(
 async def revoke_permission_set(
     user_id: str,
     set_id: int,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> dict[str, Any]:
     """
     Revoke permission set from user.
@@ -419,7 +419,7 @@ async def revoke_permission_set(
 @router.get("/users/{user_id}/permission-sets")
 async def get_user_permission_sets(
     user_id: str,
-    user: AuthUser = Depends(require_profile("system_admin")),
+    user: AuthUser = Depends(require_permission("core:system:admin")),
 ) -> list[dict[str, Any]]:
     """
     Get user's permission sets.

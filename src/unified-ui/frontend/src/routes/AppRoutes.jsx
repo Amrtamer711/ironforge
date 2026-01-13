@@ -4,16 +4,16 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { LoginPage } from "../screens/LoginPage";
 import { AuthCallback } from "../screens/AuthCallback";
 import { AppShell } from "../shell/AppShell";
-import { ChatPage } from "../screens/tools/ChatPage";
-import { MockupPage } from "../screens/tools/MockupPage";
-import { ProposalsPage } from "../screens/tools/ProposalsPage";
-import { AdminPage } from "../screens/tools/AdminPage";
-import { NotificationsPage } from "../screens/tools/NotificationsPage";
-import { VideoCritiqueAssistantPage } from "../screens/tools/video-critique/VideoCritiqueAssistantPage";
-import { AssetManagementPage } from "../screens/tools/AssetManagementPage";
-// import { CostDashboardPage } from "../screens/tools/CostDashboardPage";
+import { ChatPage } from "../screens/ChatPage";
+import { MockupPage } from "../screens/MockupPage";
+import { ProposalsPage } from "../screens/ProposalsPage";
+import { AdminPage } from "../screens/AdminPage";
+import { NotificationsPage } from "../screens/NotificationsPage";
+import { VideoCritiqueAssistantPage } from "../screens/VideoCritiqueAssistantPage";
+import { AssetManagementPage } from "../screens/AssetManagementPage";
+// import { CostDashboardPage } from "../screens/CostDashboardPage";
 import { ProtectedRoute } from "./ProtectedRoute";
-import { SettingsPage } from "../screens/tools/SettingsPage";
+import { SettingsPage } from "../screens/SettingsPage";
 export function AppRoutes() {
   return (
     <Routes>

@@ -814,6 +814,10 @@ class ServiceManager:
                 # Only set SALES_BOT_URL if running both services together
                 extra_env["SALES_BOT_URL"] = f"http://localhost:{self.args.sales_port}"
 
+            # Pass dev-all-services flag to frontend services
+            if self.args.dev_all_services:
+                extra_env["DEV_ALL_SERVICES_VISIBLE"] = "true"
+
             # Prepare log file for background mode
             log_file = None
             if self.args.background and self.args.log_dir:
@@ -1213,6 +1217,11 @@ Environment Variables:
         "--no-logs-panel",
         action="store_true",
         help="Disable the browser-based logs panel",
+    )
+    parser.add_argument(
+        "--dev-all-services",
+        action="store_true",
+        help="Force all services visible in sidebar (ignores visibility toggles)",
     )
 
     return parser.parse_args()

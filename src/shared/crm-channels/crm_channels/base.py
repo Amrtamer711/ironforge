@@ -214,6 +214,7 @@ class ChannelAdapter(ABC):
         format: MessageFormat = MessageFormat.MARKDOWN,
         ephemeral: bool = False,
         user_id: str | None = None,  # For ephemeral messages
+        is_tool_response: bool = False,  # Hide from permanent chat display
     ) -> Message:
         """
         Send a message to a channel.
@@ -227,6 +228,7 @@ class ChannelAdapter(ABC):
             format: Message format type
             ephemeral: If True, only visible to specified user
             user_id: Required for ephemeral messages
+            is_tool_response: If True, hide from permanent chat (LLM context only)
 
         Returns:
             Message object with platform-specific ID

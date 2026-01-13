@@ -338,8 +338,8 @@ async def stream_chat_message(
     llm_task = asyncio.create_task(run_llm())
 
     try:
-        # Send initial processing indicator
-        yield f"data: {json.dumps({'type': 'status', 'content': 'Processing...'})}\n\n"
+        # Send initial processing indicator with request_id (for resume capability)
+        yield f"data: {json.dumps({'type': 'status', 'content': 'Processing...', 'request_id': request_id})}\n\n"
 
         event_index = event_start_index
         poll_interval = 0.02  # 20ms polling (reduced from 100ms for faster response)
@@ -414,14 +414,37 @@ async def stream_chat_message(
 
         yield "data: [DONE]\n\n"
 
+    except GeneratorExit:
+        # Client disconnected (page refresh, navigation, abort)
+        logger.info(f"[WebChat] Client disconnected for user={user_id}, cancelling LLM task")
+        if not llm_task.done():
+            llm_task.cancel()
+            try:
+                await llm_task
+            except asyncio.CancelledError:
+                logger.debug(f"[WebChat] LLM task cancelled for user={user_id}")
+        raise  # Re-raise to properly close the generator
     except Exception as e:
         logger.error(f"[WebChat] Streaming error: {e}", exc_info=True)
         yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
         yield "data: [DONE]\n\n"
     finally:
-        # Reset context variables
-        current_request_id.reset(request_token)
-        current_parent_message_id.reset(parent_token)
+        # Reset context variables (may fail if generator closed in different context)
+        try:
+            current_request_id.reset(request_token)
+            current_parent_message_id.reset(parent_token)
+        except ValueError:
+            pass  # Token was created in a different async context
+
+        # Cancel LLM task if still running (defensive cleanup)
+        if not llm_task.done():
+            logger.warning(f"[WebChat] LLM task still running in finally, cancelling for user={user_id}")
+            llm_task.cancel()
+            try:
+                await llm_task
+            except asyncio.CancelledError:
+                pass
+
         # Mark request complete if not already
         if not request_complete:
             web_adapter.complete_request(user_id, request_id)

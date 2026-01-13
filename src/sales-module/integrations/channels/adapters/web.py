@@ -12,6 +12,7 @@ File Storage:
 - Signed URLs are used for secure access
 """
 
+import asyncio
 import contextvars
 import logging
 import re
@@ -76,6 +77,10 @@ class WebSession:
 
     Supports parallel requests: multiple requests can be processed simultaneously,
     each with its own event stream identified by request_id.
+
+    Thread Safety:
+    - Uses asyncio.Lock for concurrent access protection
+    - The lock should be acquired when modifying events or active_requests
     """
     user_id: str
     user_name: str
@@ -98,6 +103,9 @@ class WebSession:
 
     # Track active requests by request_id (supports parallel processing)
     active_requests: dict[str, bool] = field(default_factory=dict)
+
+    # Lock for thread-safe session modifications (prevents race conditions on refresh)
+    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
     # Legacy field for backwards compatibility (deprecated, use active_requests)
     processing_complete: bool = False
@@ -381,18 +389,50 @@ class WebAdapter(ChannelAdapter):
     # ========================================================================
 
     def start_request(self, user_id: str, request_id: str) -> None:
-        """Mark a request as active for a user session."""
+        """Mark a request as active for a user session (sync version)."""
         session = self.get_session(user_id)
         if session:
             session.active_requests[request_id] = True
             logger.debug(f"[WebAdapter] Started request {request_id[:8]}... for {user_id}")
 
+    async def start_request_async(self, user_id: str, request_id: str) -> None:
+        """Mark a request as active for a user session (thread-safe async version)."""
+        session = self.get_session(user_id)
+        if session:
+            async with session._lock:
+                session.active_requests[request_id] = True
+                session.last_activity = datetime.now()
+            logger.debug(f"[WebAdapter] Started request {request_id[:8]}... for {user_id}")
+
     def complete_request(self, user_id: str, request_id: str) -> None:
-        """Mark a request as complete and clean up its events."""
+        """Mark a request as complete and clean up its events (sync version)."""
         session = self.get_session(user_id)
         if session:
             session.active_requests[request_id] = False
             logger.debug(f"[WebAdapter] Completed request {request_id[:8]}... for {user_id}")
+
+    async def complete_request_async(self, user_id: str, request_id: str) -> None:
+        """Mark a request as complete (thread-safe async version)."""
+        session = self.get_session(user_id)
+        if session:
+            async with session._lock:
+                session.active_requests[request_id] = False
+            logger.debug(f"[WebAdapter] Completed request {request_id[:8]}... for {user_id}")
+
+    async def add_event_async(self, user_id: str, event: dict[str, Any]) -> bool:
+        """
+        Add an event to the session's event queue (thread-safe async version).
+
+        Use this for critical events that must not be lost during race conditions.
+        Returns True if event was added, False if session not found.
+        """
+        session = self.get_session(user_id)
+        if not session:
+            return False
+
+        async with session._lock:
+            session.events.append(event)
+        return True
 
     def is_request_active(self, user_id: str, request_id: str) -> bool:
         """Check if a specific request is still active."""
@@ -461,6 +501,54 @@ class WebAdapter(ChannelAdapter):
 
         return removed
 
+    async def cleanup_old_events_async(self, user_id: str, max_age_seconds: int = 300) -> int:
+        """
+        Clean up old events (thread-safe async version).
+
+        Uses session lock to prevent race conditions during cleanup.
+        """
+        session = self.get_session(user_id)
+        if not session:
+            return 0
+
+        async with session._lock:
+            now = datetime.now()
+            initial_count = len(session.events)
+
+            events_to_keep = []
+            for event in session.events:
+                req_id = event.get("request_id")
+                timestamp_str = event.get("timestamp", "")
+
+                if req_id and session.active_requests.get(req_id, False):
+                    events_to_keep.append(event)
+                    continue
+
+                try:
+                    event_time = datetime.fromisoformat(timestamp_str)
+                    age = (now - event_time).total_seconds()
+                    if age < max_age_seconds:
+                        events_to_keep.append(event)
+                except (ValueError, TypeError):
+                    events_to_keep.append(event)
+
+            session.events.clear()
+            session.events.extend(events_to_keep)
+            removed = initial_count - len(events_to_keep)
+
+            # Clean up old completed requests
+            completed_requests = [
+                req_id for req_id, active in session.active_requests.items()
+                if not active
+            ]
+            for req_id in completed_requests[:max(0, len(completed_requests) - 10)]:
+                del session.active_requests[req_id]
+
+        if removed > 0:
+            logger.debug(f"[WebAdapter] Cleaned up {removed} old events for {user_id}")
+
+        return removed
+
     def get_conversation_history(self, user_id: str) -> list[dict[str, Any]]:
         """Get conversation history for a user."""
         session = self.get_session(user_id)
@@ -511,6 +599,7 @@ class WebAdapter(ChannelAdapter):
         format: MessageFormat = MessageFormat.MARKDOWN,
         ephemeral: bool = False,
         user_id: str | None = None,
+        is_tool_response: bool = False,
     ) -> Message:
         """
         Send a message to the web session.
@@ -532,6 +621,7 @@ class WebAdapter(ChannelAdapter):
             "content": content,
             "timestamp": timestamp,
             "parent_id": parent_id,  # Link to the user message that triggered this response
+            "is_tool_response": is_tool_response,  # Hide from permanent chat display
             "buttons": [
                 {
                     "action_id": b.action_id,
@@ -566,6 +656,7 @@ class WebAdapter(ChannelAdapter):
                 "content": content,
                 "attachments": message_data.get("attachments", []),
                 "timestamp": timestamp,
+                "is_tool_response": is_tool_response,  # Frontend filters these from permanent display
             })
 
         logger.debug(f"[WebAdapter] Sent message to {target_user}: {content[:50]}...")
@@ -787,13 +878,16 @@ class WebAdapter(ChannelAdapter):
             bo_id: Link to booking order
             proposal_id: Link to proposal
         """
+        logger.info(f"[WebAdapter] upload_file called: file_path={file_path}, filename={filename}")
         path = Path(file_path)
         if not path.exists():
+            logger.error(f"[WebAdapter] File not found: {file_path}")
             return FileUpload(success=False, error="File not found")
 
         file_id = str(uuid.uuid4())
         actual_filename = filename or path.name
         owner_id = user_id or channel_id
+        logger.info(f"[WebAdapter] Processing upload: file_id={file_id}, filename={actual_filename}, owner={owner_id}")
 
         # Determine content type
         import mimetypes
@@ -803,21 +897,25 @@ class WebAdapter(ChannelAdapter):
         # Calculate file hash for integrity/deduplication
         file_hash = None
         file_size = path.stat().st_size
+        logger.info(f"[WebAdapter] File size: {file_size} bytes, content_type={content_type}")
         try:
             from core.utils.files import calculate_sha256, get_file_extension
             file_hash = calculate_sha256(path)
             file_extension = get_file_extension(actual_filename)
+            logger.info(f"[WebAdapter] File hash calculated: {file_hash[:16] if file_hash else 'None'}...")
         except Exception as e:
             logger.warning(f"[WebAdapter] Failed to calculate file hash: {e}")
             file_extension = path.suffix.lower()
 
         # Try to use remote storage (Supabase)
         storage_client = self._get_storage_client()
+        logger.info(f"[WebAdapter] Storage client: {storage_client.provider_name if storage_client else 'None'}")
         if storage_client and storage_client.provider_name != "local":
             try:
                 # Generate storage key: {bucket}/{user_id}/{date}/{file_id}_{filename}
                 date_prefix = datetime.now().strftime("%Y/%m/%d")
                 storage_key = f"{owner_id}/{date_prefix}/{file_id}_{actual_filename}"
+                logger.info(f"[WebAdapter] Starting upload to {bucket}/{storage_key}")
 
                 # Upload to Supabase Storage
                 result = await storage_client.upload_from_path(
@@ -826,6 +924,7 @@ class WebAdapter(ChannelAdapter):
                     local_path=path,
                     content_type=content_type,
                 )
+                logger.info(f"[WebAdapter] Upload completed: success={result.success}, error={result.error if not result.success else 'None'}")
 
                 if result.success:
                     # Store metadata in memory cache

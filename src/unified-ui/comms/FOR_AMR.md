@@ -5,20 +5,12 @@
 ## DEV TO-DO: Unified Asset Management
 
 # - [ ] Make the changes to mockup and proposal generation LLM chats with new location structure.
+
 # - [ ] Lazy Load Chat Messages so that the user is not stuck with loading conversations after login (Clarify if reducing the no of chats loaded will have positive impact).
+
 - [ ] Chat history displaying the First 500 messages only, not the latest messages.
 
-
-
-### Part 1: Unified Architecture ✅ DONE
-
-- [X] Merge `standalone_assets` into `networks` with `standalone` flag
-- [X] Add `environment` field to `network_assets` (indoor/outdoor)
-- [X] Add `area`, `country` fields to locations
-- [X] Create unified `locations` VIEW (no `asset_source`)
-- [X] Add `get_mockup_storage_info()` for mockup path resolution
-- [X] Internal API endpoint `/api/internal/mockup-storage-info/{network_key}`
-- [X] Migration scripts (`03_unify_standalone.sql`, `04_add_country_column.sql`)
+- [ ] Issue with the proposal series matching.
 
 ### Part 2: Eligibility Service ⏳ PENDING
 
@@ -43,10 +35,10 @@
 ## Authentication
 
 1. Authentication issue where 401 causes logout within a specific time. maybe token expiry?
+
 # 2. Change the Auth redirect to new mmg-nova.com in supabase
 
-
-## Profiles 
+## Profiles
 
 Sales Executive - Account director
 	associated with one company. only view their own mockups and proposals
@@ -55,13 +47,10 @@ Head of Sales
 Chief Revenue Officer
 	across all companies. everything must be visible for all users.
 
-
 ## General
 
 1. Font issue when the font is not available in the local system.
-2. Examine the document cached log(could be the reason why the chat history loading is taking too long)
-3. Inefficient search for mockup photo in mockup generate ( we already know the configuration we need to look for but we are still looking in all companies)
-4. Ensure most functionality and llm functionality are equivalent
+2. Ensure most functionality and llm functionality are equivalent
 
 ### Questions / Confirmations
 
@@ -73,7 +62,9 @@ Chief Revenue Officer
 2. **User - multiple Profile sets** - Assign/list multiple profiles per user
 3. **User - multiple Permission sets** - Assign multiple permission sets per user
 4. **Profile to Permission-Set relation** - Link profiles to permission sets
+
 # 5. **Hide unused tabs** - Hide teams, sharing rules etc. that are not in use
+
 # 6. **Add Location UI** - List out the locations for admins
 
 ### Mockups
@@ -82,62 +73,10 @@ Chief Revenue Officer
 2. **Mockup history** - Show history with date + generated image
 3. **Mockup frame edit endpoint** - Endpoint to get frame details/config for editing existing templates
    - **Answer**: Yes, use `GET /api/mockup-frames/{company}/{location_key}/frame?time_of_day=day&finish=gold` to get frame data
+
 # 4. 502 bad gateway while generating the test preview on render deployment. Not in local.
+
 # 5. company_schema : "unknown" in api/locations endpoint
+
 6. Save the mockups generated with details in the Generate Page and to be available as links in a history endpoint just like proposal history.
 7. Generate and Setup shows different list of Locations.
-
-
----
-
-## Completed
-
-### Separate Proposals - Multiple Dates + Payment Terms
-
-**Issue**: Separate proposals were not showing different `start_dates` and `payment_terms` was defaulting to "100% upfront"
-
-**Fix**: Now supports `start_dates` array parallel with `durations` and `net_rates`. Each option gets its own column in the financial slide.
-
-**Example Request**:
-
-```json
-{
-    "proposals": [{
-        "location": "oryx",
-        "start_dates": ["01/01/2026", "01/02/2026", "01/03/2026"],
-        "durations": ["2 Weeks", "2 Weeks", "3 Weeks"],
-        "net_rates": ["AED 12,000", "AED 13,000", "AED 32,000"]
-    }],
-    "client_name": "Etisalat",
-    "proposal_type": "separate",
-    "payment_terms": "70% upfront, 30% after"
-}
-```
-
-**Status**: Fixed in commit `5ed9e78`
-
-##Authentication Issue
-
-2026-01-07 05:48:20,276 - unified-ui - ERROR - [PROXY AUTH] Error: invalid JWT: unable to parse or verify signature, token has invalid claims: token is expired
-2026-01-07 05:48:20,277 - unified-ui - INFO - [UI] GET /api/sales/mockup/locations -> 401 (51ms)
-INFO:     10.16.95.189:48094 - "GET /api/sales/mockup/locations HTTP/1.1" 401 Unauthorized
-[GET]
-crm-unified-ui.onrender.com/api/base/auth/me clientIP="94.200.129.142" requestID="9d89dc72-b0d9-4d56" responseTimeMS=547 responseBytes=539 userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
-[GET]
-crm-unified-ui.onrender.com/api/base/auth/me clientIP="94.200.129.142" requestID="86d712eb-7574-4ae7" responseTimeMS=596 responseBytes=539 userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
-2026-01-07 05:48:21,180 - unified-ui - INFO - [RBAC CACHE] Invalidated cache for user acb4874e-d5cc-4cad-acdf-40aa82d09ee5
-2026-01-07 05:48:21,222 - unified-ui - INFO - [UI] User profile fetched: a.tamer@mmg.global -> system_admin with 1 permissions
-2026-01-07 05:48:21,222 - unified-ui - INFO - [UI] GET /api/base/auth/me -> 200 (593ms)
-INFO:     10.16.95.189:48094 - "GET /api/base/auth/me HTTP/1.1" 200 OK
-2026-01-07 05:48:21,839 - unified-ui - INFO - [RBAC CACHE] Invalidated cache for user acb4874e-d5cc-4cad-acdf-40aa82d09ee5
-2026-01-07 05:48:21,887 - unified-ui - INFO - [UI] User profile fetched: a.tamer@mmg.global -> system_admin with 1 permissions
-2026-01-07 05:48:21,887 - unified-ui - INFO - [UI] GET /api/base/auth/me -> 200 (545ms)
-INFO:     10.16.28.5:49346 - "GET /api/base/auth/me HTTP/1.1" 200 OK
-[GET]
-crm-unified-ui.onrender.com/logo.svg clientIP="94.200.129.142" requestID="c4fd97ab-900a-43bb" responseTimeMS=3 responseBytes=858 userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
-[GET]
-crm-unified-ui.onrender.com/favicon.ico clientIP="94.200.129.142" requestID="c23fe076-477f-4222" responseTimeMS=3 responseBytes=858 userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
-[GET]
-crm-unified-ui.onrender.com/api/base/auth/me clientIP="94.200.129.142" requestID="e78aa9b4-9f8a-47e1" responseTimeMS=40 responseBytes=459 userAgent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
-2026-01-07 05:48:22,128 - unified-ui - ERROR - [UI Auth] Error: Session from session_id claim in JWT does not exist
-

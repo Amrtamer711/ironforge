@@ -555,9 +555,13 @@ def _discover_templates() -> tuple[dict[str, str], list[str]]:
 
             # Build description
             display_type = loc.get("display_type", "Digital")
-            sov = loc.get("sov_percent") or 16.6
+            sov_raw = loc.get("sov_percent") or 16.6
+            # Convert decimal format (0.13) to percentage format (13) if needed
+            sov = float(sov_raw) if isinstance(sov_raw, (int, float)) else float(str(sov_raw).replace("%", "").strip())
+            if sov < 1:
+                sov = sov * 100
             spot = loc.get("spot_duration") or 16
-            description = f"{display_name} - {display_type} Display - 1 Spot - {spot} Seconds - {sov}% SOV"
+            description = f"{display_name} - {display_type} Display - 1 Spot - {spot} Seconds - {sov:.1f}% SOV"
             LOCATION_DETAILS[key] = description
 
             # Upload fee (may come as float string like "3000.0")
@@ -569,7 +573,7 @@ def _discover_templates() -> tuple[dict[str, str], list[str]]:
             LOCATION_METADATA[key] = {
                 "display_name": display_name,
                 "upload_fee": upload_fee_int if upload_fee else None,
-                "sov": f"{sov}%",
+                "sov": f"{sov:.1f}%",
                 "series": loc.get("series", ""),
                 "height": loc.get("height", ""),
                 "width": loc.get("width", ""),

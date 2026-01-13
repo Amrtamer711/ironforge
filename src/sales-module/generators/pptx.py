@@ -226,15 +226,20 @@ def _format_fee_in_currency(fee_value: float, currency: str = None) -> str:
     return config.format_currency_value(converted, currency)
 
 
-def build_location_text(location_key: str, spots: int) -> str:
+def build_location_text(location_key: str, spots: int, metadata: dict | None = None) -> str:
     """Build location description: Series: Location - Size (W x H) - Faces - Spots - Duration - SOV - Loop
     Format: Series: Location - Size (Width x Height) - Number of faces - Number of spots - Spot Duration x spots - SOV x spots - Loop duration
+
+    Args:
+        location_key: The location key
+        spots: Number of spots
+        metadata: Optional metadata dict from proposal (takes precedence over global config)
     """
     logger = config.logger
     logger.info(f"[BUILD_LOC_TEXT] Building text for location '{location_key}' with {spots} spots")
 
-    # Get metadata from config (loaded from metadata.txt files)
-    meta = config.LOCATION_METADATA.get(location_key.lower(), {})
+    # Use provided metadata first, fall back to global config
+    meta = metadata if metadata else config.LOCATION_METADATA.get(location_key.lower(), {})
     logger.info(f"[BUILD_LOC_TEXT] Metadata for '{location_key}': {meta}")
 
     # Extract values from metadata
@@ -246,7 +251,16 @@ def build_location_text(location_key: str, spots: int) -> str:
     display_type = meta.get("display_type", "Digital").lower()
     spot_duration = meta.get("spot_duration", 16)
     loop_duration = meta.get("loop_duration", 96)
-    base_sov = float(meta.get("sov", "16.6").replace("%", ""))
+    # Handle SOV as either numeric or string "16.6%"
+    sov_raw = meta.get("sov", 16.6)
+    if isinstance(sov_raw, str):
+        base_sov = float(sov_raw.replace("%", "").strip())
+    else:
+        base_sov = float(sov_raw)
+
+    # Convert decimal format (0.13) to percentage format (13) if needed
+    if base_sov < 1:
+        base_sov = base_sov * 100
 
     # Build description parts
     parts = []
@@ -735,9 +749,12 @@ def create_combined_financial_proposal_slide(
         loc_name = proposal["location"]
         spots = int(proposal.get("spots", 1))
         production_fee_str = proposal.get("production_fee")
+        # Get location metadata from proposal (set by validator) or fall back to global config
+        location_meta = proposal.get("location_metadata") or config.LOCATION_METADATA.get(loc_name.lower(), {})
         logger.info(f"[CREATE_COMBINED] Processing location {idx + 1}: '{loc_name}' with {spots} spots")
 
-        location_text = build_location_text(loc_name, spots)
+        # Pass metadata to build_location_text for accurate description
+        location_text = build_location_text(loc_name, spots, metadata=location_meta)
         locations.append(location_text)
 
         # Format start/end date range
@@ -748,8 +765,7 @@ def create_combined_financial_proposal_slide(
 
         durations.append(proposal["durations"][0] if proposal["durations"] else "2 Weeks")
 
-        # Check if location is static
-        location_meta = config.LOCATION_METADATA.get(loc_name.lower(), {})
+        # Check if location is static using proposal metadata
         is_static = location_meta.get('display_type', '').lower() == 'static'
 
         if is_static:
@@ -760,13 +776,14 @@ def create_combined_financial_proposal_slide(
                 upload_fees.append(_format_fee_in_currency(fee_numeric, currency))
                 total_fees += fee_numeric
             else:
-                # Fallback to stored fee
-                fee = config.UPLOAD_FEES_MAPPING.get(loc_name.lower(), 3000)
+                # Use fee from proposal metadata or fall back to global config
+                fee = location_meta.get("upload_fee") or config.UPLOAD_FEES_MAPPING.get(loc_name.lower(), 3000)
                 upload_fees.append(_format_fee_in_currency(fee, currency))
                 total_fees += fee
         else:
             has_digital = True
-            upload_fee = config.UPLOAD_FEES_MAPPING.get(loc_name.lower(), 3000)
+            # Use fee from proposal metadata or fall back to global config
+            upload_fee = location_meta.get("upload_fee") or config.UPLOAD_FEES_MAPPING.get(loc_name.lower(), 3000)
             upload_fees.append(_format_fee_in_currency(upload_fee, currency))
             total_fees += upload_fee
 

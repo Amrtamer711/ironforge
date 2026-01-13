@@ -73,16 +73,16 @@ class AttachmentRefreshRequest(BaseModel):
     @classmethod
     def validate_file_ids(cls, v: list[str]) -> list[str]:
         """Validate file_ids list."""
-        if len(v) > 100:
-            raise ValueError("Maximum 100 file_ids per request")
+        if len(v) > 500:
+            raise ValueError("Maximum 500 file_ids per request")
         return v
 
     @field_validator("prefetch_ids")
     @classmethod
     def validate_prefetch_ids(cls, v: list[str]) -> list[str]:
         """Validate prefetch_ids list."""
-        if len(v) > 50:
-            raise ValueError("Maximum 50 prefetch_ids per request")
+        if len(v) > 200:
+            raise ValueError("Maximum 200 prefetch_ids per request")
         return v
 
 
@@ -415,34 +415,166 @@ async def get_chat_history(
         }
 
 
+@router.get("/resume/{request_id}")
+async def resume_stream(
+    request_id: str,
+    event_index: int = 0,
+    user: AuthUser = Depends(require_permission("sales:chat:use")),
+):
+    """
+    Resume streaming from a previous request after page refresh.
+
+    This endpoint allows the frontend to reconnect to an in-progress or
+    recently completed request and receive any events that occurred since
+    the last seen event.
+
+    Args:
+        request_id: The unique request ID from the original /stream call
+        event_index: The index of the last event processed (resume from here)
+
+    Returns:
+        If request completed: {"status": "completed", "events": [...]}
+        If request still running: SSE stream of remaining events
+        If request not found: {"status": "not_found"}
+        If request expired: {"status": "expired"}
+    """
+    from core.chat_api import get_web_adapter
+
+    logger.info(f"[CHAT] Resume request {request_id[:8]}... from index {event_index} for {user.email}")
+
+    web_adapter = get_web_adapter()
+    session = web_adapter.get_session(user.id)
+
+    if not session:
+        logger.info(f"[CHAT] No session found for {user.email}")
+        return {"status": "not_found", "message": "No active session"}
+
+    # Check if this request_id exists in the session
+    if request_id not in session.active_requests:
+        logger.info(f"[CHAT] Request {request_id[:8]}... not found in session for {user.email}")
+        return {"status": "not_found", "message": "Request not found or expired"}
+
+    is_active = session.active_requests.get(request_id, False)
+
+    # Collect events for this request starting from the given index
+    all_events = list(session.events)  # Convert deque to list for indexing
+    request_events = []
+    event_count = 0
+
+    for event in all_events:
+        # Only include events for this specific request
+        if event.get("request_id") == request_id:
+            if event_count >= event_index:
+                request_events.append(event)
+            event_count += 1
+
+    logger.info(f"[CHAT] Found {len(request_events)} events (from index {event_index}) for request {request_id[:8]}...")
+
+    if not is_active:
+        # Request completed - return all buffered events
+        logger.info(f"[CHAT] Request {request_id[:8]}... completed, returning {len(request_events)} events")
+        return {
+            "status": "completed",
+            "events": request_events,
+            "total_events": event_count,
+        }
+    else:
+        # Request still running - stream remaining events
+        logger.info(f"[CHAT] Request {request_id[:8]}... still active, streaming events")
+
+        async def resume_event_generator():
+            """Stream events for the resumed request."""
+            import json
+            local_event_index = event_index
+
+            # First, yield any events we already have
+            for event in request_events:
+                event_type = event.get("type")
+                yield _format_event_for_sse(event)
+
+            # Then continue polling for new events
+            poll_interval = 0.02  # 20ms
+
+            while True:
+                # Check if request is still active
+                if not session.active_requests.get(request_id, False):
+                    # Request completed while we were streaming
+                    break
+
+                # Check for new events
+                all_events_now = list(session.events)
+                new_events = []
+                current_count = 0
+
+                for event in all_events_now:
+                    if event.get("request_id") == request_id:
+                        if current_count >= local_event_index + len(request_events):
+                            new_events.append(event)
+                        current_count += 1
+
+                for event in new_events:
+                    yield _format_event_for_sse(event)
+                    local_event_index += 1
+
+                await asyncio.sleep(poll_interval)
+
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(
+            resume_event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+
+
+def _format_event_for_sse(event: dict) -> str:
+    """Format an event dict for SSE transmission."""
+    import json
+
+    event_type = event.get("type")
+
+    if event_type == "status":
+        return f"data: {json.dumps({'type': 'status', 'message_id': event.get('message_id'), 'parent_id': event.get('parent_id'), 'content': event.get('content')})}\n\n"
+    elif event_type == "message":
+        return f"data: {json.dumps({'type': 'content', 'content': event.get('content', ''), 'message_id': event.get('message_id'), 'parent_id': event.get('parent_id')})}\n\n"
+    elif event_type == "file":
+        return f"data: {json.dumps({'type': 'file', 'parent_id': event.get('parent_id'), 'file': {'file_id': event.get('file_id'), 'url': event.get('url'), 'filename': event.get('filename'), 'title': event.get('title'), 'comment': event.get('comment')}})}\n\n"
+    elif event_type == "delete":
+        return f"data: {json.dumps({'type': 'delete', 'message_id': event.get('message_id')})}\n\n"
+    elif event_type == "error":
+        return f"data: {json.dumps({'type': 'error', 'error': event.get('error')})}\n\n"
+    elif event_type == "stream_delta":
+        return f"data: {json.dumps({'type': 'chunk', 'content': event.get('delta', ''), 'message_id': event.get('message_id'), 'parent_id': event.get('parent_id')})}\n\n"
+    elif event_type == "stream_complete":
+        return f"data: {json.dumps({'type': 'stream_complete', 'message_id': event.get('message_id'), 'parent_id': event.get('parent_id'), 'content': event.get('content', '')})}\n\n"
+    else:
+        return f"data: {json.dumps(event)}\n\n"
+
+
 @router.post("/attachments/refresh")
 async def refresh_attachment_urls(
     request: AttachmentRefreshRequest,
     user: AuthUser = Depends(require_permission("sales:chat:use")),
 ):
     """
-    Batch refresh signed URLs for chat attachments with thumbnail support.
+    Batch refresh signed URLs for chat attachments.
 
-    This endpoint is called by the frontend when attachments become visible
-    in the viewport. It supports pre-fetching and thumbnail generation.
-
-    Features:
-    - Generates thumbnails on-demand (256x256 JPEG)
-    - Returns both thumbnail and full image URLs
-    - Caches thumbnails in Supabase storage
-    - Tracks image dimensions for aspect ratio
+    This endpoint is called by the frontend when attachments become visible.
+    Returns full-quality signed URLs for all requested files.
 
     Pre-fetch Strategy:
     - file_ids: Currently visible attachments (refresh NOW)
     - prefetch_ids: Next page of attachments (load ahead for smooth scrolling)
 
     Returns:
-        urls: Dict mapping file_id -> {thumbnail, full, width, height} (24h expiry)
+        urls: Dict mapping file_id -> {full, width, height} (24h expiry)
     """
-    from datetime import datetime
     from db.database import db
     from integrations.storage import get_storage_client
-    from core.utils.thumbnail import generate_thumbnail
 
     # Combine visible + prefetch, deduplicate
     all_ids = list(set(request.file_ids + request.prefetch_ids))
@@ -457,16 +589,8 @@ async def refresh_attachment_urls(
     # Single batch DB lookup
     docs = db.get_documents_batch(all_ids)
 
-    # =========================================================================
-    # BATCH URL GENERATION - Much faster than individual calls
-    # Before: N files = N HTTP requests to Supabase (0.3s each = 22s for 73 files)
-    # After: N files = 2 HTTP requests (uploads + thumbnails = ~1s total)
-    # =========================================================================
-
     # Collect storage keys for batch URL generation
     uploads_keys: dict[str, str] = {}  # storage_key -> file_id
-    thumbnail_keys: dict[str, str] = {}  # thumbnail_key -> file_id
-    needs_thumbnail: list[str] = []  # file_ids needing thumbnail generation
     file_metadata: dict[str, dict] = {}  # file_id -> metadata
 
     for file_id in all_ids:
@@ -483,25 +607,14 @@ async def refresh_attachment_urls(
         if bucket == "uploads":
             uploads_keys[key] = file_id
 
-        # Check if this is an image
-        file_ext = doc.get("file_extension", "").lower()
-        is_image = file_ext in ["jpg", "jpeg", "png", "gif", "webp", "bmp"]
-
         file_metadata[file_id] = {
             "bucket": bucket,
             "key": key,
-            "is_image": is_image,
             "width": doc.get("image_width"),
             "height": doc.get("image_height"),
         }
 
-        if is_image:
-            if doc.get("thumbnail_key"):
-                thumbnail_keys[doc["thumbnail_key"]] = file_id
-            else:
-                needs_thumbnail.append(file_id)
-
-    # Batch generate full image URLs (ONE API call for all uploads)
+    # Batch generate full URLs (ONE API call for all uploads)
     full_url_map: dict[str, str] = {}
     if uploads_keys:
         batch_urls = await storage_client.get_signed_urls_batch(
@@ -514,84 +627,7 @@ async def refresh_attachment_urls(
             if file_id and url:
                 full_url_map[file_id] = url
 
-    # Batch generate thumbnail URLs (ONE API call for all thumbnails)
-    thumbnail_url_map: dict[str, str] = {}
-    if thumbnail_keys:
-        batch_thumb_urls = await storage_client.get_signed_urls_batch(
-            bucket="thumbnails",
-            keys=list(thumbnail_keys.keys()),
-            expires_in=86400
-        )
-        for key, url in batch_thumb_urls.items():
-            file_id = thumbnail_keys.get(key)
-            if file_id and url:
-                thumbnail_url_map[file_id] = url
-
-    logger.info(f"[CHAT] Batch URLs: {len(full_url_map)} full, {len(thumbnail_url_map)} thumbnails")
-
-    # =========================================================================
-    # THUMBNAIL GENERATION (only for images without existing thumbnails)
-    # This is rare after first load - most images already have thumbnails
-    # =========================================================================
-
-    async def generate_missing_thumbnail(file_id: str) -> tuple[str, str | None]:
-        """Generate thumbnail for image without one."""
-        doc = docs.get(file_id)
-        if not doc:
-            return (file_id, None)
-
-        try:
-            bucket = doc["storage_bucket"]
-            key = doc["storage_key"]
-
-            download_result = await storage_client.download(bucket=bucket, key=key)
-            original_bytes = download_result.data
-
-            from PIL import Image as PILImage
-            orig_width, orig_height = None, None
-            try:
-                with PILImage.open(io.BytesIO(original_bytes)) as img:
-                    orig_width, orig_height = img.size
-            except Exception:
-                pass
-
-            thumb_bytes, thumb_width, thumb_height = await generate_thumbnail(original_bytes)
-            thumbnail_key = f"{user.id}/{file_id}/thumb_256.jpg"
-            await storage_client.upload(
-                bucket="thumbnails",
-                key=thumbnail_key,
-                data=thumb_bytes,
-                content_type="image/jpeg"
-            )
-
-            db.update_document(file_id, {
-                "thumbnail_key": thumbnail_key,
-                "thumbnail_generated_at": datetime.now(),
-                "image_width": orig_width or thumb_width,
-                "image_height": orig_height or thumb_height
-            })
-
-            file_metadata[file_id]["width"] = orig_width or thumb_width
-            file_metadata[file_id]["height"] = orig_height or thumb_height
-
-            thumbnail_url = await storage_client.get_signed_url(
-                bucket="thumbnails",
-                key=thumbnail_key,
-                expires_in=86400
-            )
-            return (file_id, thumbnail_url)
-
-        except Exception as e:
-            logger.warning(f"[CHAT] Thumbnail generation failed for {file_id}: {e}")
-            return (file_id, None)
-
-    if needs_thumbnail:
-        logger.info(f"[CHAT] Generating {len(needs_thumbnail)} missing thumbnails")
-        thumb_tasks = [generate_missing_thumbnail(fid) for fid in needs_thumbnail]
-        thumb_results = await asyncio.gather(*thumb_tasks)
-        for file_id, thumb_url in thumb_results:
-            if thumb_url:
-                thumbnail_url_map[file_id] = thumb_url
+    logger.info(f"[CHAT] Batch URLs: {len(full_url_map)} full URLs generated")
 
     # Build response
     urls = {}
@@ -606,7 +642,6 @@ async def refresh_attachment_urls(
 
         urls[file_id] = {
             "full": full_url,
-            "thumbnail": thumbnail_url_map.get(file_id),
             "width": meta.get("width"),
             "height": meta.get("height"),
         }

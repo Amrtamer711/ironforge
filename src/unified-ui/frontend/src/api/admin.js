@@ -21,15 +21,15 @@ export async function getUserPermissions(userId) {
 }
 
 export async function createUser(userData) {
-  return apiRequest("/api/admin/users", { method: "POST", body: JSON.stringify(userData) });
+  return apiRequest("/api/rbac/users", { method: "POST", body: JSON.stringify(userData) });
 }
 
 export async function updateUser(userId, userData) {
-  return apiRequest(`/api/admin/users/${userId}`, { method: "PATCH", body: JSON.stringify(userData) });
+  return apiRequest(`/api/rbac/users/${userId}`, { method: "PUT", body: JSON.stringify(userData) });
 }
 
 export async function deleteUser(userId) {
-  return apiRequest(`/api/admin/users/${userId}`, { method: "DELETE" });
+  return apiRequest(`/api/rbac/users/${userId}`, { method: "DELETE" });
 }
 
 export async function deactivateUser(userId) {
@@ -60,11 +60,11 @@ export async function deleteProfile(profileId) {
 }
 
 export async function getTeams() {
-  return apiRequest("/api/admin/teams");
+  return apiRequest("/api/rbac/teams");
 }
 
 export async function setUserPermissions(userId, permissions) {
-  return apiRequest(`/api/admin/users/${userId}/permissions`, {
+  return apiRequest(`/api/rbac/users/${userId}/permissions`, {
     method: "PUT",
     body: JSON.stringify({ permissions }),
   });
@@ -76,14 +76,14 @@ export async function getPermissions() {
 }
 
 export async function addPermission(value, description) {
-  return apiRequest("/api/dev/permissions/add", {
+  return apiRequest("/api/rbac/permissions", {
     method: "POST",
     body: JSON.stringify({ name: value, description }),
   });
 }
 
 export async function deletePermission(value) {
-  return apiRequest(`/api/dev/permissions/${encodeURIComponent(value)}`, {
+  return apiRequest(`/api/rbac/permissions/${encodeURIComponent(value)}`, {
     method: "DELETE",
   });
 }
@@ -126,22 +126,32 @@ export async function createApiKey(payload) {
 }
 
 export async function getCompanies() {
-  return apiRequest("/api/dev/companies");
+  const data = await apiRequest("/api/rbac/companies");
+  return data.companies || data;
 }
 
-export async function createCompany(payload) {
-  return apiRequest("/api/dev/companies/add", { method: "POST", body: JSON.stringify(payload) });
+export async function getCompanyHierarchy() {
+  return apiRequest("/api/rbac/companies/hierarchy");
 }
 
-export async function updateCompany(code, payload) {
-  return apiRequest(`/api/admin/company/${encodeURIComponent(code)}`, {
-    method: "PUT",
-    body: JSON.stringify(payload),
+export async function createCompany(companyData) {
+  return apiRequest("/api/assets/companies", {
+    method: "POST",
+    body: JSON.stringify(companyData),
   });
 }
 
-export async function deleteCompany(code) {
-  return apiRequest(`/api/dev/companies/${encodeURIComponent(code)}`, { method: "DELETE" });
+export async function updateCompany(companyCode, companyData) {
+  return apiRequest(`/api/assets/companies/${encodeURIComponent(companyCode)}`, {
+    method: "PUT",
+    body: JSON.stringify(companyData),
+  });
+}
+
+export async function deleteCompany(companyCode) {
+  return apiRequest(`/api/assets/companies/${encodeURIComponent(companyCode)}`, {
+    method: "DELETE",
+  });
 }
 
 export async function getPermissionSets() {
@@ -161,4 +171,16 @@ export async function updatePermissionSet(name, payload) {
 
 export async function deletePermissionSet(name) {
   return apiRequest(`/api/rbac/permission-sets/${encodeURIComponent(name)}`, { method: "DELETE" });
+}
+
+// Service visibility settings
+export async function getServiceVisibility() {
+  return apiRequest("/api/admin/service-visibility");
+}
+
+export async function updateServiceVisibility(settings) {
+  return apiRequest("/api/admin/service-visibility", {
+    method: "PUT",
+    body: JSON.stringify(settings),
+  });
 }

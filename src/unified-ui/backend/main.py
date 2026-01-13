@@ -110,6 +110,10 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    from backend.routers.proxy import close_proxy_client
+    await close_proxy_client()
+    logger.info("[UI] Closed proxy HTTP client")
+
     await close_cache()
     logger.info("[UI] Shutting down...")
 
@@ -370,17 +374,29 @@ async def serve_frontend(full_path: str):
     if full_path.startswith("api/"):
         raise HTTPException(status_code=404, detail="Not found")
 
-    # Prepare cache headers for development (no caching for HTML/JS/CSS)
-    def get_dev_headers(file_path: str) -> dict:
-        """Get cache-control headers for development mode."""
-        if settings.is_production:
-            return {}
-        # Disable caching for HTML, JS, CSS in development
-        if file_path.endswith((".html", ".js", ".css", ".json")):
+    # Prepare cache headers
+    def get_cache_headers(file_path: str) -> dict:
+        """Get cache-control headers for static files."""
+        # HTML files: always revalidate (ensures users get fresh index.html)
+        if file_path.endswith(".html"):
+            return {
+                "Cache-Control": "no-cache, must-revalidate",
+            }
+        # JS/CSS with hashes: cache for 1 year (immutable - hash changes on update)
+        if file_path.endswith((".js", ".css")):
+            if settings.is_production:
+                return {
+                    "Cache-Control": "public, max-age=31536000, immutable",
+                }
             return {
                 "Cache-Control": "no-cache, no-store, must-revalidate",
                 "Pragma": "no-cache",
                 "Expires": "0",
+            }
+        # JSON/other: revalidate
+        if file_path.endswith(".json"):
+            return {
+                "Cache-Control": "no-cache, must-revalidate",
             }
         return {}
 
@@ -389,13 +405,13 @@ async def serve_frontend(full_path: str):
         static_file = FRONTEND_PATH / full_path
         if static_file.exists() and static_file.is_file():
             logger.info(f"[UI] Serving static file: {static_file}")
-            return FileResponse(static_file, headers=get_dev_headers(full_path))
+            return FileResponse(static_file, headers=get_cache_headers(full_path))
 
         # Serve index.html for SPA routing
         index_path = FRONTEND_PATH / "index.html"
         if index_path.exists():
             logger.info(f"[UI] Falling back to index.html for: /{full_path}")
-            return FileResponse(index_path, headers=get_dev_headers("index.html"))
+            return FileResponse(index_path, headers=get_cache_headers("index.html"))
 
     raise HTTPException(status_code=404, detail="Frontend not found")
 

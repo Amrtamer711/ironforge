@@ -5,7 +5,7 @@ Admin router for unified-ui.
 - User management endpoints (lines 1540-1887)
 - Profile/team lookup endpoints (lines 1889-1921)
 
-8 endpoints total:
+10 endpoints total:
 1. GET /api/admin/users - Get all users
 2. GET /api/admin/users/pending - Get pending users awaiting approval
 3. POST /api/admin/users/create - Pre-create a user for SSO
@@ -14,6 +14,8 @@ Admin router for unified-ui.
 6. PATCH /api/admin/users/{userId} - Update user's profile/role
 7. GET /api/admin/profiles - Get available profiles
 8. GET /api/admin/teams - Get available teams
+9. GET /api/admin/service-visibility - Get service visibility settings (public)
+10. PUT /api/admin/service-visibility - Update service visibility (admin only)
 """
 
 import contextlib
@@ -25,7 +27,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 
-from backend.middleware.auth import AuthUser, require_profile
+from backend.middleware.auth import AuthUser, require_auth, require_profile
 from backend.services.rbac_service import invalidate_rbac_cache
 from backend.services.supabase_client import get_supabase
 
@@ -53,6 +55,29 @@ class UpdateUserRequest(BaseModel):
     profile_name: str | None = None
     name: str | None = None
     team_id: int | None = None
+
+
+class ServiceVisibilityRequest(BaseModel):
+    """Request model for updating service visibility settings."""
+    chat: bool = True
+    video_critique: bool = True
+    mockup_setup: bool = True
+    mockup_generate: bool = True
+    proposals: bool = True
+    asset_management: bool = True
+
+
+# Default service visibility (all enabled)
+DEFAULT_SERVICE_VISIBILITY = {
+    "chat": True,
+    "video_critique": True,
+    "mockup_setup": True,
+    "mockup_generate": True,
+    "proposals": True,
+    "asset_management": True,
+}
+
+SERVICE_VISIBILITY_KEY = "service_visibility"
 
 
 # =============================================================================
@@ -534,3 +559,113 @@ async def get_teams(
     except Exception as e:
         logger.error(f"[UI Admin] Error fetching teams: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch teams")
+
+
+# =============================================================================
+# SERVICE VISIBILITY ENDPOINTS
+# =============================================================================
+
+@router.get("/service-visibility")
+async def get_service_visibility(
+    user: AuthUser = Depends(require_auth),
+) -> dict[str, Any]:
+    """
+    Get service visibility settings.
+
+    This endpoint is public (any authenticated user) so the frontend can
+    determine which services to show in the sidebar.
+
+    Returns defaults if no settings are stored.
+
+    When DEV_ALL_SERVICES_VISIBLE env var is set, returns all services as visible
+    (dev mode bypass for testing).
+    """
+    import os
+
+    # Dev mode bypass - when running with --dev-all-services flag
+    if os.environ.get("DEV_ALL_SERVICES_VISIBLE") == "true":
+        logger.debug("[UI Admin] Dev mode: forcing all services visible")
+        return {**DEFAULT_SERVICE_VISIBILITY, "_dev_mode": True}
+
+    supabase = get_supabase()
+    if not supabase:
+        # Return defaults if Supabase not configured
+        return DEFAULT_SERVICE_VISIBILITY
+
+    try:
+        response = (
+            supabase.table("system_settings")
+            .select("value")
+            .eq("key", SERVICE_VISIBILITY_KEY)
+            .limit(1)
+            .execute()
+        )
+
+        if response.data and len(response.data) > 0 and response.data[0].get("value"):
+            # Merge with defaults to handle any new services added later
+            stored = response.data[0]["value"]
+            merged = {**DEFAULT_SERVICE_VISIBILITY, **stored}
+            return merged
+
+        return DEFAULT_SERVICE_VISIBILITY
+
+    except Exception as e:
+        logger.error(f"[UI Admin] Error fetching service visibility: {e}")
+        # Return defaults on error
+        return DEFAULT_SERVICE_VISIBILITY
+
+
+@router.put("/service-visibility")
+async def update_service_visibility(
+    request: ServiceVisibilityRequest,
+    user: AuthUser = Depends(require_profile("system_admin")),
+) -> dict[str, Any]:
+    """
+    Update service visibility settings.
+
+    Admin-only endpoint to toggle which services are visible in the sidebar.
+    Settings persist in the system_settings table.
+    """
+    supabase = get_supabase()
+    if not supabase:
+        raise HTTPException(status_code=500, detail="Supabase not configured")
+
+    try:
+        visibility = {
+            "chat": request.chat,
+            "video_critique": request.video_critique,
+            "mockup_setup": request.mockup_setup,
+            "mockup_generate": request.mockup_generate,
+            "proposals": request.proposals,
+            "asset_management": request.asset_management,
+        }
+
+        # Upsert to system_settings table
+        supabase.table("system_settings").upsert({
+            "key": SERVICE_VISIBILITY_KEY,
+            "value": visibility,
+            "description": "Service visibility settings for sidebar",
+            "updated_at": datetime.utcnow().isoformat(),
+            "updated_by": user.email,
+        }, on_conflict="key").execute()
+
+        # Audit log
+        with contextlib.suppress(Exception):
+            supabase.table("audit_log").insert({
+                "user_id": user.id,
+                "user_email": user.email,
+                "action": "admin.service_visibility_updated",
+                "action_category": "admin",
+                "resource_type": "system_settings",
+                "resource_id": SERVICE_VISIBILITY_KEY,
+                "details": visibility,
+                "success": True
+            }).execute()
+
+        logger.info(f"[UI Admin] Service visibility updated by {user.email}: {visibility}")
+
+        return {"success": True, "visibility": visibility}
+
+    except Exception as e:
+        logger.error(f"[UI Admin] Error updating service visibility: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update service visibility")

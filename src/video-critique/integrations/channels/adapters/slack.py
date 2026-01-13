@@ -78,6 +78,7 @@ class SlackAdapter(ChannelAdapter):
         format: MessageFormat = MessageFormat.MARKDOWN,
         ephemeral: bool = False,
         user_id: str | None = None,
+        is_tool_response: bool = False,  # Not used for Slack, but kept for interface compatibility
     ) -> Message:
         """Send a message to a Slack channel."""
         formatted_text = self.format_text(content, format)
