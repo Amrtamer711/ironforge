@@ -7,14 +7,14 @@ build_sales_module:
     DOCKERFILE_PATH: "src/sales-module/Dockerfile"
     BUILD_CONTEXT: "src/sales-module"
   rules:
-    # Only run on demo branch and only if this service (or shared libs it vendors) changed
-    - if: '$CI_COMMIT_BRANCH == "demo"'
+    # Only run on demo/staging/main branches and only if this service (or shared libs it vendors) changed
+    - if: '$CI_COMMIT_BRANCH == "demo" || $CI_COMMIT_BRANCH == "staging" || $CI_COMMIT_BRANCH == "main"'
       changes:
         - src/sales-module/**/*
         - src/shared/**/*
       when: on_success
 
     # Optional manual run
-    - if: '$CI_COMMIT_BRANCH == "demo"'
+    - if: '$CI_COMMIT_BRANCH == "demo" || $CI_COMMIT_BRANCH == "staging" || $CI_COMMIT_BRANCH == "main"'
       when: manual
       allow_failure: true

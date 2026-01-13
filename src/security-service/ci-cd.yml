@@ -7,13 +7,12 @@ build_security_service:
     DOCKERFILE_PATH: "src/security-service/Dockerfile"
     BUILD_CONTEXT: "src/security-service"
   rules:
-    - if: '$CI_COMMIT_BRANCH == "demo"'
+    - if: '$CI_COMMIT_BRANCH == "demo" || $CI_COMMIT_BRANCH == "staging" || $CI_COMMIT_BRANCH == "main"'
       changes:
         - src/security-service/**/*
         - src/shared/**/*
       when: on_success
 
-    - if: '$CI_COMMIT_BRANCH == "demo"'
+    - if: '$CI_COMMIT_BRANCH == "demo" || $CI_COMMIT_BRANCH == "staging" || $CI_COMMIT_BRANCH == "main"'
       when: manual
       allow_failure: true
-

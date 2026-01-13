@@ -5,13 +5,13 @@ build_unifiedui:
     SERVICE_DIR: "src/unified-ui"
     ECR_REPO: "unifiedui"
   rules:
-    # Only run on demo branch and only if this service changed
-    - if: '$CI_COMMIT_BRANCH == "demo"'
+    # Only run on demo/staging/main branches and only if this service changed
+    - if: '$CI_COMMIT_BRANCH == "demo" || $CI_COMMIT_BRANCH == "staging" || $CI_COMMIT_BRANCH == "main"'
       changes:
         - src/unified-ui/**/*
       when: on_success
 
-    # Optional: allow manual run on demo
-    - if: '$CI_COMMIT_BRANCH == "demo"'
+    # Optional: allow manual run
+    - if: '$CI_COMMIT_BRANCH == "demo" || $CI_COMMIT_BRANCH == "staging" || $CI_COMMIT_BRANCH == "main"'
       when: manual
       allow_failure: true

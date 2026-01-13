@@ -8,12 +8,12 @@ build_asset_management:
     DOCKERFILE_PATH: "src/asset-management/Dockerfile"
     BUILD_CONTEXT: "src/asset-management"
   rules:
-    - if: '$CI_COMMIT_BRANCH == "demo"'
+    - if: '$CI_COMMIT_BRANCH == "demo" || $CI_COMMIT_BRANCH == "staging" || $CI_COMMIT_BRANCH == "main"'
       changes:
         - src/asset-management/**/*
         - src/shared/**/*
       when: on_success
 
-    - if: '$CI_COMMIT_BRANCH == "demo"'
+    - if: '$CI_COMMIT_BRANCH == "demo" || $CI_COMMIT_BRANCH == "staging" || $CI_COMMIT_BRANCH == "main"'
       when: manual
       allow_failure: true
