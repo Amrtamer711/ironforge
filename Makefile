@@ -16,8 +16,11 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 .PHONY: help install dev run stop clean test lint format docker-up docker-down \
 	infra-bootstrap infra-init infra-plan infra-apply infra-output \
+	infra-staging-init infra-staging-plan infra-staging-apply infra-staging-output \
+	infra-production-init infra-production-plan infra-production-apply infra-production-output \
 	platform-argocd-bootstrap platform-argocd-tls-step1 platform-argocd-tls-step2 platform-argocd-url \
 	platform-argocd-apps \
+	platform-argocd-apps-staging platform-argocd-apps-production \
 	platform-argocd-repo-creds \
 	platform-unifiedui-apply platform-unifiedui-url \
 	platform-unifiedui-set-tag \
@@ -52,6 +55,8 @@ AWS_REGION ?= eu-north-1
 TF_AWS_DIR ?= $(ROOT_DIR)/src/infrastructure/aws
 TF_AWS_BOOTSTRAP_DIR ?= $(TF_AWS_DIR)/modules/stacks/bootstrap
 TF_AWS_PLATFORM_APEX_DIR ?= $(TF_AWS_DIR)/modules/stacks/platform_apex
+TF_AWS_CLUSTER_STAGING_DIR ?= $(TF_AWS_DIR)/clusters/staging
+TF_AWS_CLUSTER_PRODUCTION_DIR ?= $(TF_AWS_DIR)/clusters/production
 
 # Helper to pass AWS env vars only when set
 TF_AWS_ENV := $(if $(AWS_PROFILE),AWS_PROFILE=$(AWS_PROFILE),) AWS_REGION=$(AWS_REGION)
@@ -203,6 +208,30 @@ infra-apply: infra-init ## Terraform apply for AWS infrastructure
 infra-output: infra-init ## Terraform outputs for AWS infrastructure
 	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) output
 
+infra-staging-init: ## Terraform init for AWS staging cluster
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_CLUSTER_STAGING_DIR) init -reconfigure -input=false
+
+infra-staging-plan: infra-staging-init ## Terraform plan for AWS staging cluster
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_CLUSTER_STAGING_DIR) plan
+
+infra-staging-apply: infra-staging-init ## Terraform apply for AWS staging cluster
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_CLUSTER_STAGING_DIR) apply
+
+infra-staging-output: infra-staging-init ## Terraform outputs for AWS staging cluster
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_CLUSTER_STAGING_DIR) output
+
+infra-production-init: ## Terraform init for AWS production cluster
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_CLUSTER_PRODUCTION_DIR) init -reconfigure -input=false
+
+infra-production-plan: infra-production-init ## Terraform plan for AWS production cluster
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_CLUSTER_PRODUCTION_DIR) plan
+
+infra-production-apply: infra-production-init ## Terraform apply for AWS production cluster
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_CLUSTER_PRODUCTION_DIR) apply
+
+infra-production-output: infra-production-init ## Terraform outputs for AWS production cluster
+	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_CLUSTER_PRODUCTION_DIR) output
+
 # =============================================================================
 # PLATFORM - ARGO CD (EKS)
 # =============================================================================
@@ -211,6 +240,8 @@ ARGOCD_BOOTSTRAP_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/bootstrap
 ARGOCD_TLS_OVERLAY_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/bootstrap-tls
 ARGOCD_REPO_CREDS_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/repo-credentials
 ARGOCD_APPLICATIONS_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/applications
+ARGOCD_APPLICATIONS_STAGING_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/applications-staging
+ARGOCD_APPLICATIONS_PRODUCTION_DIR ?= $(ROOT_DIR)/src/platform/ArgoCD/applications-production
 
 # DNS/TLS variables (override with VAR=value)
 # Example:
@@ -223,6 +254,12 @@ platform-argocd-bootstrap: ## Install/refresh Argo CD bootstrap (no TLS)
 
 platform-argocd-apps: ## Install/refresh all Argo CD Applications (platform workloads)
 	@kubectl apply -k $(ARGOCD_APPLICATIONS_DIR)
+
+platform-argocd-apps-staging: ## Install/refresh Argo CD Applications for staging (tracks `staging` branch)
+	@kubectl apply -k $(ARGOCD_APPLICATIONS_STAGING_DIR)
+
+platform-argocd-apps-production: ## Install/refresh Argo CD Applications for production (tracks `main` branch)
+	@kubectl apply -k $(ARGOCD_APPLICATIONS_PRODUCTION_DIR)
 
 platform-argocd-tls-step1: infra-init ## Step 1: create Route53 zone + ACM (prints nameservers; you must set them in GoDaddy)
 	@$(TF_AWS_ENV) terraform -chdir=$(TF_AWS_DIR) apply \
