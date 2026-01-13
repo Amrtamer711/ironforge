@@ -10,7 +10,7 @@ images:
     newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/unifiedui
     # Deployed image tag is Git-driven (pure GitOps).
     # Update this value (commit + push), then Argo CD will roll out the new image.
-    newTag: d1662e45
+    newTag: 3cf49100
 
 patches:
   - target:
