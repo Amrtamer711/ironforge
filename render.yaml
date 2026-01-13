@@ -32,7 +32,7 @@ services:
       sizeGB: 1
     envVars:
       - key: ENVIRONMENT
-        value: production
+        value: development
       - key: PORT
         value: "3005"
       - key: SALES_BOT_URL
@@ -66,7 +66,7 @@ services:
     autoDeploy: true
     envVars:
       - key: ENVIRONMENT
-        value: production
+        value: development
       - key: PORT
         value: "8002"
       - key: SECURITY_DEV_SUPABASE_URL
@@ -96,15 +96,17 @@ services:
     autoDeploy: true
     envVars:
       - key: ENVIRONMENT
-        value: production
+        value: development
       - key: PORT
         value: "8001"
-      - key: ASSETS_DEV_SUPABASE_URL
+      - key: ASSETMGMT_DEV_SUPABASE_URL
         sync: false
-      - key: ASSETS_DEV_SUPABASE_ANON_KEY
+      - key: ASSETMGMT_DEV_SUPABASE_ANON_KEY
         sync: false
-      - key: ASSETS_DEV_SUPABASE_SERVICE_KEY
+      - key: ASSETMGMT_DEV_SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      - key: DB_BACKEND
+        value: supabase
       - key: INTER_SERVICE_SECRET
         sync: false
       - key: REDIS_URL
@@ -130,15 +132,19 @@ services:
       sizeGB: 5
     envVars:
       - key: ENVIRONMENT
-        value: production
+        value: development
       - key: PORT
         value: "8000"
-      - key: SALES_DEV_SUPABASE_URL
+      - key: SALESBOT_DEV_SUPABASE_URL
         sync: false
-      - key: SALES_DEV_SUPABASE_ANON_KEY
+      - key: SALESBOT_DEV_SUPABASE_ANON_KEY
         sync: false
-      - key: SALES_DEV_SUPABASE_SERVICE_KEY
+      - key: SALESBOT_DEV_SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      - key: DB_BACKEND
+        value: supabase
+      - key: AUTH_PROVIDER
+        value: supabase
       - key: INTER_SERVICE_SECRET
         sync: false
       - key: REDIS_URL
@@ -164,7 +170,7 @@ services:
     autoDeploy: true
     envVars:
       - key: ENVIRONMENT
-        value: production
+        value: development
       - key: PORT
         value: "8003"
       - key: IS_PRODUCTION
