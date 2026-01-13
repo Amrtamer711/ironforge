@@ -261,6 +261,8 @@ class ProposalProcessor:
         """
         Process separate proposals (one PDF per location or merged).
 
+        Uses PDF-first strategy with PPTX fallback for faster processing.
+
         Args:
             proposals_data: List of proposal dicts
             submitted_by: User who submitted
@@ -283,37 +285,28 @@ class ProposalProcessor:
             ...     currency="AED"
             ... )
         """
-        self.logger.info("[PROCESSOR] Starting process_separate")
-        self.logger.info(f"[PROCESSOR] Proposals: {len(proposals_data)}")
-        self.logger.info(f"[PROCESSOR] Client: {client_name}, Submitted by: {submitted_by}")
-        self.logger.info(f"[PROCESSOR] Payment terms: {payment_terms}")
-        self.logger.info(f"[PROCESSOR] Currency: {currency or 'AED'}")
+        process_start = time.time()
+        self.logger.info("[TIMING] ========== SEPARATE PROPOSAL START ==========")
+        self.logger.info(f"[TIMING] Proposals: {len(proposals_data)}, Client: {client_name}")
 
         # Validate proposals (async)
+        t0 = time.time()
         validated_proposals, errors = await self.validator.validate_proposals(proposals_data)
+        self.logger.info(f"[TIMING] Validation: {(time.time() - t0)*1000:.0f}ms")
         if errors:
             return {"success": False, "errors": errors}
 
         is_single = len(validated_proposals) == 1
         loop = asyncio.get_event_loop()
+        total_proposals = len(validated_proposals)
 
         # Get intro/outro info for multiple proposals
         intro_outro_info = None
         if len(validated_proposals) > 1:
             intro_outro_info = self.intro_outro_handler.get_intro_outro_location(validated_proposals)
 
-        # Process each proposal
-        async def process_single(idx: int, proposal: dict) -> dict:
-            # Download template from storage
-            location_key = proposal.get("location", "").lower().strip()
-            company_hint = proposal.get("company_schema")  # O(1) lookup from validator
-            template_path = await self.template_service.download_to_temp(
-                location_key, company_hint=company_hint
-            )
-            if not template_path:
-                raise FileNotFoundError(f"Template not found for {location_key}")
-
-            # Build financial data
+        # Build financial data helper
+        def build_financial_data(proposal: dict) -> dict:
             financial_data = {
                 "location": proposal["location"],
                 "durations": proposal["durations"],
@@ -322,20 +315,94 @@ class ProposalProcessor:
                 "client_name": client_name,
                 "payment_terms": payment_terms,
             }
-
-            # Handle start_dates (array) vs start_date (single)
             if "start_dates" in proposal and proposal["start_dates"]:
                 financial_data["start_dates"] = proposal["start_dates"]
             else:
                 financial_data["start_date"] = proposal.get("start_date", "1st December 2025")
-
-            # Add optional fields
             if "end_date" in proposal:
                 financial_data["end_date"] = proposal["end_date"]
             if "production_fee" in proposal:
                 financial_data["production_fee"] = proposal["production_fee"]
+            return financial_data
+
+        # PDF-first strategy for processing proposals
+        async def process_separate_pdf_first(idx: int, proposal: dict) -> dict | None:
+            """PDF-First: Download PDF template, create standalone financial slide."""
+            location_key = proposal.get("location", "").lower().strip()
+            company_hint = proposal.get("company_schema")
+            single_start = time.time()
+
+            # Try to download PDF template
+            t0 = time.time()
+            pdf_template_path = await self.template_service.download_to_temp(
+                location_key, company_hint=company_hint, format="pdf"
+            )
+
+            if not pdf_template_path:
+                self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PDF not available, will use fallback")
+                return None  # Signal to use fallback
+
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PDF download: {(time.time() - t0)*1000:.0f}ms (PDF-FIRST)")
+
+            # Build financial data and create standalone financial slide
+            financial_data = build_financial_data(proposal)
+            t0 = time.time()
+            financial_pptx_path, vat_amounts, total_amounts = await loop.run_in_executor(
+                None,
+                self.renderer.create_standalone_financial_slide,
+                financial_data,
+                currency,
+                None,  # slide_width (use default)
+                None,  # slide_height (use default)
+            )
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - Financial slide created: {(time.time() - t0)*1000:.0f}ms")
+
+            # Convert financial slide to PDF
+            t0 = time.time()
+            financial_pdf = await loop.run_in_executor(None, convert_pptx_to_pdf, financial_pptx_path)
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - Financial PDF conversion: {(time.time() - t0)*1000:.0f}ms")
+
+            # Clean up financial PPTX
+            try:
+                os.unlink(financial_pptx_path)
+            except OSError:
+                pass
+
+            result = {
+                "location": proposal["location"].title(),
+                "filename": f"{proposal['location'].title()}_Proposal.pptx",
+                "totals": total_amounts,
+                "idx": idx,
+                "pdf_template_path": pdf_template_path,
+                "financial_pdf": financial_pdf,
+                "is_pdf_first": True,
+            }
+
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - TOTAL: {(time.time() - single_start)*1000:.0f}ms (PDF-FIRST)")
+            return result
+
+        async def process_separate_pptx_fallback(idx: int, proposal: dict) -> dict:
+            """PPTX Fallback: Original flow using PPTX templates."""
+            location_key = proposal.get("location", "").lower().strip()
+            company_hint = proposal.get("company_schema")
+            single_start = time.time()
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - START (PPTX FALLBACK)")
+
+            # Download PPTX template
+            t0 = time.time()
+            template_path = await self.template_service.download_to_temp(
+                location_key, company_hint=company_hint, format="pptx"
+            )
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PPTX download: {(time.time() - t0)*1000:.0f}ms")
+
+            if not template_path:
+                raise FileNotFoundError(f"Template not found for {location_key}")
+
+            # Build financial data
+            financial_data = build_financial_data(proposal)
 
             # Render PPTX with financial slide
+            t0 = time.time()
             pptx_path, vat_amounts, total_amounts = await loop.run_in_executor(
                 None,
                 self.renderer.create_proposal_with_template,
@@ -343,6 +410,7 @@ class ProposalProcessor:
                 financial_data,
                 currency
             )
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PPTX rendering: {(time.time() - t0)*1000:.0f}ms")
 
             # Clean up downloaded template
             try:
@@ -355,41 +423,26 @@ class ProposalProcessor:
                 "location": proposal["location"].title(),
                 "filename": f"{proposal['location'].title()}_Proposal.pptx",
                 "totals": total_amounts,
-                "idx": idx
+                "idx": idx,
+                "is_pdf_first": False,
             }
 
-            # Convert to PDF
-            if is_single:
-                pdf_path = await loop.run_in_executor(None, convert_pptx_to_pdf, pptx_path)
-                timestamp_code = self._generate_timestamp_code()
-                client_prefix = client_name.replace(" ", "_") if client_name else "Client"
-                result["pdf_path"] = pdf_path
-                result["pdf_filename"] = f"{client_prefix}_{timestamp_code}.pdf"
-            else:
-                # Determine which slides to remove
-                if intro_outro_info:
-                    remove_first = True
-                    remove_last = True
-                else:
-                    # Legacy behavior
-                    remove_first = False
-                    remove_last = False
-                    if idx == 0:
-                        remove_last = True
-                    elif idx < len(validated_proposals) - 1:
-                        remove_first = True
-                        remove_last = True
-                    else:
-                        remove_first = True
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - TOTAL: {(time.time() - single_start)*1000:.0f}ms (PPTX FALLBACK)")
+            return result
 
-                pdf_path = await remove_slides_and_convert_to_pdf(pptx_path, remove_first, remove_last)
-                result["pdf_file"] = pdf_path
-
+        async def process_proposal(idx: int, proposal: dict) -> dict:
+            """Process a proposal: try PDF-first, fall back to PPTX if needed."""
+            result = await process_separate_pdf_first(idx, proposal)
+            if result is None:
+                result = await process_separate_pptx_fallback(idx, proposal)
             return result
 
         # Process all in parallel
-        tasks = [process_single(idx, p) for idx, p in enumerate(validated_proposals)]
+        self.logger.info(f"[TIMING] Starting parallel processing of {total_proposals} proposals...")
+        t0 = time.time()
+        tasks = [process_proposal(idx, p) for idx, p in enumerate(validated_proposals)]
         results = await asyncio.gather(*tasks, return_exceptions=True)
+        self.logger.info(f"[TIMING] Parallel processing complete: {(time.time() - t0)*1000:.0f}ms")
 
         # Check for errors
         for idx, result in enumerate(results):
@@ -403,24 +456,72 @@ class ProposalProcessor:
         if is_single:
             result = sorted_results[0]
             total_str = result["totals"][0] if result["totals"] else "AED 0"
+            timestamp_code = self._generate_timestamp_code()
+            client_prefix = client_name.replace(" ", "_") if client_name else "Client"
 
-            db.log_proposal(
-                submitted_by=submitted_by,
-                client_name=client_name,
-                package_type="separate",
-                locations=result["location"],
-                total_amount=total_str,
-            )
+            if result.get("is_pdf_first"):
+                # PDF-first flow: merge template PDF with financial slide PDF
+                t0 = time.time()
+                pdf_path = await loop.run_in_executor(
+                    None, merge_pdfs, [result["pdf_template_path"], result["financial_pdf"]]
+                )
+                self.logger.info(f"[TIMING] Single proposal PDF merge: {(time.time() - t0)*1000:.0f}ms")
 
-            return {
-                "success": True,
-                "is_single": True,
-                "pptx_path": result["path"],
-                "pdf_path": result["pdf_path"],
-                "location": result["location"],
-                "pptx_filename": result["filename"],
-                "pdf_filename": result["pdf_filename"],
-            }
+                # Clean up temp files
+                try:
+                    os.unlink(result["pdf_template_path"])
+                    os.unlink(result["financial_pdf"])
+                except OSError:
+                    pass
+
+                db.log_proposal(
+                    submitted_by=submitted_by,
+                    client_name=client_name,
+                    package_type="separate",
+                    locations=result["location"],
+                    total_amount=total_str,
+                )
+
+                total_time = (time.time() - process_start) * 1000
+                self.logger.info(f"[TIMING] ========== SEPARATE PROPOSAL COMPLETE ==========")
+                self.logger.info(f"[TIMING] Total time: {total_time:.0f}ms ({total_time/1000:.1f}s)")
+
+                return {
+                    "success": True,
+                    "is_single": True,
+                    "pptx_path": None,  # No PPTX in PDF-first flow
+                    "pdf_path": pdf_path,
+                    "location": result["location"],
+                    "pptx_filename": None,
+                    "pdf_filename": f"{client_prefix}_{timestamp_code}.pdf",
+                }
+            else:
+                # PPTX fallback flow: convert PPTX to PDF
+                t0 = time.time()
+                pdf_path = await loop.run_in_executor(None, convert_pptx_to_pdf, result["path"])
+                self.logger.info(f"[TIMING] Single proposal PDF conversion: {(time.time() - t0)*1000:.0f}ms")
+
+                db.log_proposal(
+                    submitted_by=submitted_by,
+                    client_name=client_name,
+                    package_type="separate",
+                    locations=result["location"],
+                    total_amount=total_str,
+                )
+
+                total_time = (time.time() - process_start) * 1000
+                self.logger.info(f"[TIMING] ========== SEPARATE PROPOSAL COMPLETE ==========")
+                self.logger.info(f"[TIMING] Total time: {total_time:.0f}ms ({total_time/1000:.1f}s)")
+
+                return {
+                    "success": True,
+                    "is_single": True,
+                    "pptx_path": result["path"],
+                    "pdf_path": pdf_path,
+                    "location": result["location"],
+                    "pptx_filename": result["filename"],
+                    "pdf_filename": f"{client_prefix}_{timestamp_code}.pdf",
+                }
 
         # Handle multiple proposals
         individual_files = []
@@ -428,23 +529,94 @@ class ProposalProcessor:
         locations = []
 
         for result in sorted_results:
-            individual_files.append({
-                "path": result["path"],
-                "location": result["location"],
-                "filename": result["filename"],
-                "totals": result["totals"],
-            })
-            pdf_files.append(result["pdf_file"])
+            if result.get("is_pdf_first"):
+                # PDF-first flow: extract middle pages, merge with financial slide
+                t0 = time.time()
+                reader = PdfReader(result["pdf_template_path"])
+                total_pages = len(reader.pages)
+
+                # Determine which pages to keep (skip first/last for intro/outro)
+                if intro_outro_info:
+                    pages_to_keep = list(range(1, total_pages - 1)) if total_pages > 2 else list(range(total_pages))
+                else:
+                    idx = result["idx"]
+                    if idx == 0:
+                        pages_to_keep = list(range(0, total_pages - 1))
+                    elif idx < total_proposals - 1:
+                        pages_to_keep = list(range(1, total_pages - 1))
+                    else:
+                        pages_to_keep = list(range(1, total_pages))
+
+                if pages_to_keep:
+                    template_content_pdf = self._extract_pages_from_pdf(result["pdf_template_path"], pages_to_keep)
+                else:
+                    template_content_pdf = result["pdf_template_path"]
+
+                # Merge template content with financial slide
+                location_pdf = await loop.run_in_executor(
+                    None, merge_pdfs, [template_content_pdf, result["financial_pdf"]]
+                )
+                self.logger.info(f"[TIMING] Location PDF merge ({result['location']}): {(time.time() - t0)*1000:.0f}ms")
+
+                # Clean up temp files
+                try:
+                    if template_content_pdf != result["pdf_template_path"]:
+                        os.unlink(template_content_pdf)
+                    os.unlink(result["pdf_template_path"])
+                    os.unlink(result["financial_pdf"])
+                except OSError:
+                    pass
+
+                individual_files.append({
+                    "path": None,  # No PPTX in PDF-first flow
+                    "location": result["location"],
+                    "filename": result["filename"],
+                    "totals": result["totals"],
+                })
+                pdf_files.append(location_pdf)
+            else:
+                # PPTX fallback flow: remove slides and convert
+                t0 = time.time()
+                if intro_outro_info:
+                    remove_first = True
+                    remove_last = True
+                else:
+                    idx = result["idx"]
+                    remove_first = False
+                    remove_last = False
+                    if idx == 0:
+                        remove_last = True
+                    elif idx < total_proposals - 1:
+                        remove_first = True
+                        remove_last = True
+                    else:
+                        remove_first = True
+
+                pdf_path = await remove_slides_and_convert_to_pdf(result["path"], remove_first, remove_last)
+                self.logger.info(f"[TIMING] Location PDF conversion ({result['location']}): {(time.time() - t0)*1000:.0f}ms")
+
+                individual_files.append({
+                    "path": result["path"],
+                    "location": result["location"],
+                    "filename": result["filename"],
+                    "totals": result["totals"],
+                })
+                pdf_files.append(pdf_path)
+
             locations.append(result["location"])
 
         # Add intro/outro slides
         if intro_outro_info:
+            t0 = time.time()
             intro_pdf, outro_pdf = await self._create_intro_outro_slides(intro_outro_info)
+            self.logger.info(f"[TIMING] Intro/outro slides: {(time.time() - t0)*1000:.0f}ms")
             pdf_files.insert(0, intro_pdf)
             pdf_files.append(outro_pdf)
 
         # Merge PDFs
+        t0 = time.time()
         merged_pdf = await loop.run_in_executor(None, merge_pdfs, pdf_files)
+        self.logger.info(f"[TIMING] Final PDF merge ({len(pdf_files)} files): {(time.time() - t0)*1000:.0f}ms")
 
         # Clean up temp PDFs
         for pdf_file in pdf_files:
@@ -467,6 +639,11 @@ class ProposalProcessor:
 
         timestamp_code = self._generate_timestamp_code()
         client_prefix = client_name.replace(" ", "_") if client_name else "Client"
+
+        total_time = (time.time() - process_start) * 1000
+        self.logger.info(f"[TIMING] ========== SEPARATE PROPOSAL COMPLETE ==========")
+        self.logger.info(f"[TIMING] Total time: {total_time:.0f}ms ({total_time/1000:.1f}s)")
+        self.logger.info(f"[TIMING] Locations: {', '.join(locations)}")
 
         return {
             "success": True,
@@ -547,54 +724,85 @@ class ProposalProcessor:
         # Process each unique location (in parallel)
         total_proposals = len(unique_proposals_for_deck)
 
-        async def process_combined_single(idx: int, proposal: dict) -> dict:
-            """Process a single proposal for combined package."""
+        async def process_combined_single_pdf_first(idx: int, proposal: dict) -> dict:
+            """
+            PDF-First Strategy: Download PDF templates, build standalone financial slide.
+
+            This is the fast path (~1-3s per location vs 10-30s for PPTX).
+            Returns None if PDF not available (triggers fallback).
+            """
             location_key = proposal.get("location", "").lower().strip()
+            company_hint = proposal.get("company_schema")
             single_start = time.time()
-            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - START")
 
-            # Download template from storage
+            # Try to download PDF template
             t0 = time.time()
-            company_hint = proposal.get("company_schema")  # O(1) lookup from validator
-            template_path = await self.template_service.download_to_temp(
-                location_key, company_hint=company_hint
+            pdf_template_path = await self.template_service.download_to_temp(
+                location_key, company_hint=company_hint, format="pdf"
             )
-            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - Template download: {(time.time() - t0)*1000:.0f}ms")
-            if not template_path:
-                raise FileNotFoundError(f"Template not found for {location_key}")
 
-            total_combined_result = None
+            if not pdf_template_path:
+                self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PDF not available, will use fallback")
+                return None  # Signal to use fallback
 
-            # Last location gets the combined financial slide
-            if idx == total_proposals - 1:
-                t0 = time.time()
-                pptx_path, total_combined_result = await loop.run_in_executor(
-                    None,
-                    self.renderer.create_combined_proposal_with_template,
-                    str(template_path),
-                    validated_proposals,  # Use ALL proposals (with duplicates for investment sheet)
-                    combined_net_rate,
-                    client_name,
-                    payment_terms,
-                    currency,
-                )
-                self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PPTX render (combined): {(time.time() - t0)*1000:.0f}ms")
-                # Clean up downloaded template
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PDF download: {(time.time() - t0)*1000:.0f}ms (PDF-FIRST)")
+
+            # Extract middle pages (skip first and last for intro/outro)
+            t0 = time.time()
+            reader = PdfReader(pdf_template_path)
+            total_pages = len(reader.pages)
+
+            if intro_outro_info:
+                pages_to_keep = list(range(1, total_pages - 1)) if total_pages > 2 else list(range(total_pages))
+            else:
+                if idx == 0:
+                    pages_to_keep = list(range(0, total_pages - 1))
+                elif idx < total_proposals - 1:
+                    pages_to_keep = list(range(1, total_pages - 1))
+                else:
+                    pages_to_keep = list(range(1, total_pages))
+
+            if pages_to_keep:
+                pdf_path = self._extract_pages_from_pdf(pdf_template_path, pages_to_keep)
                 try:
-                    os.unlink(template_path)
+                    os.unlink(pdf_template_path)
                 except OSError:
                     pass
             else:
-                pptx_path = str(template_path)
-                self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - Using template as PPTX (no render)")
-                # Note: template_path will be cleaned up after PDF conversion
+                pdf_path = pdf_template_path
+
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PDF extraction: {(time.time() - t0)*1000:.0f}ms")
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - TOTAL: {(time.time() - single_start)*1000:.0f}ms (PDF-FIRST)")
+
+            return {"pdf_path": pdf_path, "idx": idx}
+
+        async def process_combined_single_pptx_fallback(idx: int, proposal: dict) -> dict:
+            """
+            PPTX Fallback: Original flow using PPTX templates.
+
+            Used when PDF template is not available.
+            """
+            location_key = proposal.get("location", "").lower().strip()
+            company_hint = proposal.get("company_schema")
+            single_start = time.time()
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - START (PPTX FALLBACK)")
+
+            t0 = time.time()
+            template_path = await self.template_service.download_to_temp(
+                location_key, company_hint=company_hint, format="pptx"
+            )
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PPTX download: {(time.time() - t0)*1000:.0f}ms")
+
+            if not template_path:
+                raise FileNotFoundError(f"Template not found for {location_key}")
+
+            pptx_path = str(template_path)
 
             # Determine which slides to remove
             if intro_outro_info:
                 remove_first = True
                 remove_last = True
             else:
-                # Legacy behavior
                 remove_first = False
                 remove_last = False
                 if idx == 0:
@@ -609,19 +817,25 @@ class ProposalProcessor:
             pdf_path = await remove_slides_and_convert_to_pdf(pptx_path, remove_first, remove_last)
             self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PDF conversion: {(time.time() - t0)*1000:.0f}ms")
 
-            # Clean up temp PPTX/template
             try:
                 os.unlink(pptx_path)
-            except OSError as e:
-                self.logger.warning(f"[PROCESSOR] Failed to cleanup temp file: {e}")
+            except OSError:
+                pass
 
-            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - TOTAL: {(time.time() - single_start)*1000:.0f}ms")
-            return {"pdf_path": pdf_path, "total_combined": total_combined_result, "idx": idx}
+            self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - TOTAL: {(time.time() - single_start)*1000:.0f}ms (PPTX FALLBACK)")
+            return {"pdf_path": pdf_path, "idx": idx}
 
-        # Process all in parallel
+        async def process_location(idx: int, proposal: dict) -> dict:
+            """Process a location: try PDF-first, fall back to PPTX if needed."""
+            result = await process_combined_single_pdf_first(idx, proposal)
+            if result is None:
+                result = await process_combined_single_pptx_fallback(idx, proposal)
+            return result
+
+        # Process all locations in parallel (PDF-first with PPTX fallback)
         self.logger.info(f"[TIMING] Starting parallel processing of {total_proposals} locations...")
         t0 = time.time()
-        tasks = [process_combined_single(idx, p) for idx, p in enumerate(unique_proposals_for_deck)]
+        tasks = [process_location(idx, p) for idx, p in enumerate(unique_proposals_for_deck)]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         self.logger.info(f"[TIMING] Parallel processing complete: {(time.time() - t0)*1000:.0f}ms")
 
@@ -634,8 +848,34 @@ class ProposalProcessor:
         sorted_results = sorted(results, key=lambda x: x["idx"])
         pdf_files = [r["pdf_path"] for r in sorted_results]
 
-        # Get total_combined from the last proposal's result
-        total_combined = sorted_results[-1]["total_combined"] if sorted_results else None
+        # Create standalone combined financial slide
+        t0 = time.time()
+        financial_pptx_path, total_combined = await loop.run_in_executor(
+            None,
+            self.renderer.create_standalone_combined_financial_slide,
+            validated_proposals,
+            combined_net_rate,
+            client_name,
+            payment_terms,
+            currency,
+            None,  # slide_width (use default)
+            None,  # slide_height (use default)
+        )
+        self.logger.info(f"[TIMING] Standalone financial slide created: {(time.time() - t0)*1000:.0f}ms")
+
+        # Convert financial slide to PDF
+        t0 = time.time()
+        financial_pdf_path = await loop.run_in_executor(None, convert_pptx_to_pdf, financial_pptx_path)
+        self.logger.info(f"[TIMING] Financial slide PDF conversion: {(time.time() - t0)*1000:.0f}ms")
+
+        # Clean up financial PPTX
+        try:
+            os.unlink(financial_pptx_path)
+        except OSError:
+            pass
+
+        # Add financial slide PDF to the list (before outro)
+        pdf_files.append(financial_pdf_path)
 
         # Add intro/outro slides
         if intro_outro_info:

@@ -566,16 +566,16 @@ async def get_teams(
 # =============================================================================
 
 @router.get("/service-visibility")
-async def get_service_visibility(
-    user: AuthUser = Depends(require_auth),
-) -> dict[str, Any]:
+async def get_service_visibility() -> dict[str, Any]:
     """
     Get service visibility settings.
 
-    This endpoint is public (any authenticated user) so the frontend can
-    determine which services to show in the sidebar.
+    This endpoint is PUBLIC (no auth required) so the frontend can
+    determine which services to show in the sidebar even when auth
+    is slow or timing out. This prevents the page from being stuck
+    on "Loading" when Supabase is having issues.
 
-    Returns defaults if no settings are stored.
+    Returns defaults if no settings are stored or on any error.
 
     When DEV_ALL_SERVICES_VISIBLE env var is set, returns all services as visible
     (dev mode bypass for testing).

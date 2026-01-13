@@ -204,6 +204,7 @@ class TemplateService:
         self,
         location_key: str,
         company_hint: str | None = None,
+        format: str = "pptx",
     ) -> tuple[bytes | None, str | None]:
         """
         Download template file contents from Asset-Management.
@@ -214,18 +215,19 @@ class TemplateService:
         Args:
             location_key: Location identifier
             company_hint: Optional company to try first (from WorkflowContext)
+            format: File format - "pptx" (default) or "pdf"
 
         Returns:
             Tuple of (file_bytes, company_that_had_it) or (None, None) if not found
         """
-        self.logger.info(f"[TEMPLATE_SERVICE] Downloading template: {location_key}")
+        self.logger.info(f"[TEMPLATE_SERVICE] Downloading template: {location_key} (format={format})")
 
         # Try company_hint first if provided (O(1) lookup from WorkflowContext)
         if company_hint and company_hint in self.companies:
             try:
-                data = await asset_mgmt_client.get_template(company_hint, location_key)
+                data = await asset_mgmt_client.get_template(company_hint, location_key, format=format)
                 if data:
-                    self.logger.info(f"[TEMPLATE_SERVICE] Downloaded template from {company_hint}: {location_key} (direct hit)")
+                    self.logger.info(f"[TEMPLATE_SERVICE] Downloaded template from {company_hint}: {location_key} (direct hit, format={format})")
                     return data, company_hint
             except Exception as e:
                 self.logger.debug(f"[TEMPLATE_SERVICE] Template not in hinted company {company_hint}: {e}")
@@ -235,15 +237,15 @@ class TemplateService:
             if company == company_hint:
                 continue  # Already tried this one
             try:
-                data = await asset_mgmt_client.get_template(company, location_key)
+                data = await asset_mgmt_client.get_template(company, location_key, format=format)
                 if data:
-                    self.logger.info(f"[TEMPLATE_SERVICE] Downloaded template from {company}: {location_key}")
+                    self.logger.info(f"[TEMPLATE_SERVICE] Downloaded template from {company}: {location_key} (format={format})")
                     return data, company
             except Exception as e:
                 self.logger.debug(f"[TEMPLATE_SERVICE] Template not in {company}: {e}")
                 continue
 
-        self.logger.warning(f"[TEMPLATE_SERVICE] Template not found in any company: {location_key}")
+        self.logger.warning(f"[TEMPLATE_SERVICE] Template not found in any company: {location_key} (format={format})")
         return None, None
 
     async def download_to_temp(
@@ -251,6 +253,7 @@ class TemplateService:
         location_key: str,
         suffix: str = ".pptx",
         company_hint: str | None = None,
+        format: str = "pptx",
     ) -> str | None:
         """
         Download template to a temporary file.
@@ -262,35 +265,40 @@ class TemplateService:
             location_key: Location identifier
             suffix: File extension for temp file
             company_hint: Optional company to try first (from WorkflowContext)
+            format: File format - "pptx" (default) or "pdf"
 
         Returns:
             Path to temp file or None if download failed
         """
         normalized_key = location_key.lower().strip()
+        cache_key = f"{normalized_key}_{format}"  # Separate cache entries for different formats
 
         # Check request-scoped cache first
-        if normalized_key in self._downloaded_templates:
-            cached_path = self._downloaded_templates[normalized_key]
+        if cache_key in self._downloaded_templates:
+            cached_path = self._downloaded_templates[cache_key]
             # Verify file still exists (might have been deleted by parallel task)
             if os.path.exists(cached_path):
-                self.logger.info(f"[TEMPLATE_SERVICE] Cache hit for template: {location_key} -> {cached_path}")
+                self.logger.info(f"[TEMPLATE_SERVICE] Cache hit for template: {location_key} ({format}) -> {cached_path}")
                 return cached_path
             else:
                 # File was deleted, remove from cache and re-download
-                self.logger.debug(f"[TEMPLATE_SERVICE] Cached file deleted, re-downloading: {location_key}")
-                del self._downloaded_templates[normalized_key]
+                self.logger.debug(f"[TEMPLATE_SERVICE] Cached file deleted, re-downloading: {location_key} ({format})")
+                del self._downloaded_templates[cache_key]
 
-        data, _ = await self.download(location_key, company_hint=company_hint)
+        data, _ = await self.download(location_key, company_hint=company_hint, format=format)
         if not data:
             return None
 
+        # Use appropriate suffix based on format
+        actual_suffix = f".{format}" if format in ("pptx", "pdf") else suffix
+
         # Create temp file
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=actual_suffix)
         temp_file.write(data)
         temp_file.close()
 
         # Cache the path for subsequent requests within this instance
-        self._downloaded_templates[normalized_key] = temp_file.name
+        self._downloaded_templates[cache_key] = temp_file.name
 
         self.logger.info(f"[TEMPLATE_SERVICE] Template saved to: {temp_file.name}")
         return temp_file.name

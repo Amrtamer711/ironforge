@@ -198,9 +198,18 @@ async def log_requests(request: Request, call_next):
     # Skip health check logging in non-production
     skip_paths = {"/health", "/health/ready", "/health/auth"}
 
+    # Quiet static assets (PWA icons, images, fonts) - log at DEBUG to avoid flood
+    quiet_extensions = (".png", ".ico", ".svg", ".jpg", ".jpeg", ".gif", ".webp", ".woff", ".woff2", ".ttf")
+    is_quiet_asset = request.url.path.endswith(quiet_extensions)
+
     response = await call_next(request)
 
-    if settings.is_production or request.url.path not in skip_paths:
+    if request.url.path in skip_paths:
+        pass  # Skip entirely
+    elif is_quiet_asset:
+        duration = (time.time() - start) * 1000
+        logger.debug(f"[UI] {request.method} {request.url.path} -> {response.status_code} ({duration:.0f}ms)")
+    else:
         duration = (time.time() - start) * 1000
         logger.info(f"[UI] {request.method} {request.url.path} -> {response.status_code} ({duration:.0f}ms)")
 
@@ -368,7 +377,14 @@ async def serve_frontend(full_path: str):
 
     This enables client-side routing and handles Supabase auth redirects.
     """
-    logger.info(f"[UI] SPA catch-all hit: /{full_path}")
+    # Quiet assets: log at DEBUG to avoid log flood from PWA/static polling
+    quiet_extensions = (".png", ".ico", ".svg", ".jpg", ".jpeg", ".gif", ".webp", ".woff", ".woff2", ".ttf")
+    is_quiet = full_path.endswith(quiet_extensions)
+
+    if is_quiet:
+        logger.debug(f"[UI] Static asset: /{full_path}")
+    else:
+        logger.info(f"[UI] SPA catch-all hit: /{full_path}")
 
     # Don't catch API routes
     if full_path.startswith("api/"):
@@ -393,6 +409,11 @@ async def serve_frontend(full_path: str):
                 "Pragma": "no-cache",
                 "Expires": "0",
             }
+        # Images/icons: cache for 1 day (reduces polling overhead)
+        if file_path.endswith(quiet_extensions):
+            return {
+                "Cache-Control": "public, max-age=86400",
+            }
         # JSON/other: revalidate
         if file_path.endswith(".json"):
             return {
@@ -404,7 +425,8 @@ async def serve_frontend(full_path: str):
     if FRONTEND_PATH.exists():
         static_file = FRONTEND_PATH / full_path
         if static_file.exists() and static_file.is_file():
-            logger.info(f"[UI] Serving static file: {static_file}")
+            if not is_quiet:
+                logger.info(f"[UI] Serving static file: {static_file}")
             return FileResponse(static_file, headers=get_cache_headers(full_path))
 
         # Serve index.html for SPA routing
