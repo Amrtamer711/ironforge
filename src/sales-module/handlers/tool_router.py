@@ -51,18 +51,29 @@ class ToolRouter:
         """
         self._channel = channel_adapter or config.get_channel_adapter()
 
-    async def _send_tool_message(self, channel_id: str, content: str, **kwargs) -> Any:
+    async def _send_tool_message(
+        self,
+        channel_id: str,
+        content: str,
+        permanent: bool = False,
+        **kwargs
+    ) -> Any:
         """
-        Send a message from a tool response (hidden from permanent chat display).
+        Send a message from a tool response.
 
-        All tool-triggered messages are marked with is_tool_response=True so the
-        frontend can filter them out of the permanent chat display while still
-        keeping them in LLM context.
+        Args:
+            channel_id: Channel to send to
+            content: Message content
+            permanent: If True, message is shown in permanent chat (default: False).
+                       Use permanent=True for informational responses like listings,
+                       confirmations, and results the user might want to reference.
+                       Use permanent=False (default) for transient status/error messages.
+            **kwargs: Additional args passed to send_message
         """
         return await self._channel.send_message(
             channel_id=channel_id,
             content=content,
-            is_tool_response=True,
+            is_tool_response=not permanent,  # permanent=True means show in chat
             **kwargs
         )
 
@@ -512,7 +523,7 @@ class ToolRouter:
 
         config.refresh_templates()
         await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-        await self._send_tool_message(channel_id=channel, content="✅ Templates refreshed successfully.")
+        await self._send_tool_message(channel_id=channel, content="✅ Templates refreshed successfully.", permanent=True)
 
     async def _handle_add_location(self, args: dict, ctx: dict) -> None:
         """Handle add_location tool call."""
@@ -674,7 +685,7 @@ class ToolRouter:
         summary_text += "\n📎 **Please upload the PDF template file now.** (Will be converted to PowerPoint at maximum quality)\n\n⏱️ _You have 10 minutes to upload the file._"
 
         await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-        await self._send_tool_message(channel_id=channel, content=summary_text)
+        await self._send_tool_message(channel_id=channel, content=summary_text, permanent=True)
 
     async def _handle_list_locations(self, args: dict, ctx: dict) -> None:
         """Handle list_locations tool call."""
@@ -693,7 +704,7 @@ class ToolRouter:
         await self._channel.delete_message(channel_id=channel, message_id=status_ts)
 
         if not locations:
-            await self._send_tool_message(channel_id=channel, content="📍 No locations available for your companies.")
+            await self._send_tool_message(channel_id=channel, content="📍 No locations available for your companies.", permanent=True)
         else:
             # Group by company
             by_company: dict[str, list[str]] = {}
@@ -712,7 +723,7 @@ class ToolRouter:
                     listing_parts.append(f"• {name}")
 
             listing = "\n".join(listing_parts)
-            await self._send_tool_message(channel_id=channel, content=f"📍 **Available locations:**{listing}")
+            await self._send_tool_message(channel_id=channel, content=f"📍 **Available locations:**{listing}", permanent=True)
 
     async def _handle_delete_location(self, args: dict, ctx: dict) -> None:
         """Handle delete_location tool call."""
@@ -771,7 +782,7 @@ class ToolRouter:
         )
 
         await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-        await self._send_tool_message(channel_id=channel, content=confirmation_text)
+        await self._send_tool_message(channel_id=channel, content=confirmation_text, permanent=True)
 
     # =========================================================================
     # EXPORT HANDLERS
@@ -1025,7 +1036,8 @@ class ToolRouter:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
             await self._send_tool_message(
                 channel_id=channel,
-                content=f"✅ **Revision workflow started for BO {bo_number}**\n\nThe booking order has been sent to the Sales Coordinator for edits."
+                content=f"✅ **Revision workflow started for BO {bo_number}**\n\nThe booking order has been sent to the Sales Coordinator for edits.",
+                permanent=True
             )
 
         except Exception as e:
@@ -1091,7 +1103,7 @@ class ToolRouter:
                 message += "_No proposals generated yet._"
 
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content=message)
+            await self._send_tool_message(channel_id=channel, content=message, permanent=True)
 
         except Exception as e:
             logger.error(f"[STATS] Error: {e}", exc_info=True)
