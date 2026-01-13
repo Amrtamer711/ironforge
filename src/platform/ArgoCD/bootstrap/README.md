@@ -139,7 +139,10 @@ This repo supports two common setups:
 If you prefer local-only access, use port-forward instead:
 
 ```bash
+# Argo CD Service exposes port 80 (and also 8080); both work:
 kubectl -n argocd port-forward svc/argocd-server 8080:80
+# or:
+kubectl -n argocd port-forward svc/argocd-server 8080
 ```
 
 Get the initial admin password:
