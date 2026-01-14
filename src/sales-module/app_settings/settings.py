@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     # ENVIRONMENT
     # =========================================================================
 
-    environment: Literal["local", "development", "production"] = Field(
+    environment: Literal["local", "development", "staging", "production"] = Field(
         default="local",
         description="Application environment: local (SQLite), development (DEV Supabase), production (PROD Supabase)",
     )

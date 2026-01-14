@@ -31,4 +31,3 @@ patches:
             value: "8001"
           - name: ENVIRONMENT
             value: staging
-
