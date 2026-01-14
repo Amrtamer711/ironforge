@@ -65,8 +65,8 @@ class HealthCheckFilter(logging.Filter):
 
     def filter(self, record: logging.LogRecord) -> bool:
         message = record.getMessage()
-        # Skip health check logs in development
-        if not get_settings().is_production and "/health" in message:
+        # Skip health check logs in all environments
+        if "/health" in message:
             return False
         return True
 

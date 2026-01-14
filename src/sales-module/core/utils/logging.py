@@ -290,9 +290,8 @@ async def logging_middleware_helper(request, call_next):
         logger = get_logger("api.request")
         path = request.url.path
 
-        # Skip health check logging in development (they flood terminal)
-        is_dev = os.getenv("ENVIRONMENT", "").lower() != "production"
-        skip_logging = is_dev and path in _SKIP_LOG_PATHS_DEBUG
+        # Skip health check logging in all environments (they flood logs)
+        skip_logging = path in _SKIP_LOG_PATHS_DEBUG
 
         if not skip_logging:
             # Log request
