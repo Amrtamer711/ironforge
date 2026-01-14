@@ -933,7 +933,7 @@ async def generate_mockup_api(
     side: str = Form("all"),
     environment: str = Form("outdoor"),
     ai_prompt: str | None = Form(None),
-    creative: UploadFile | None = File(None),
+    creative: list[UploadFile] | None = File(None),
     specific_photo: str | None = Form(None),
     storage_key: str | None = Form(None),
     frame_config: str | None = Form(None),
@@ -976,7 +976,7 @@ async def generate_mockup_api(
 
     from generators import mockup as mockup_generator
 
-    creative_path = None
+    creative_paths: list[Path] = []
     photo_used = None
     creative_type = None
     template_selected = specific_photo is not None
@@ -1018,17 +1018,25 @@ async def generate_mockup_api(
 
             if not creative_path:
                 raise HTTPException(status_code=500, detail="Failed to generate AI creative")
+            creative_paths = [creative_path]
 
         elif creative:
             # UPLOAD MODE: Use uploaded creative
             creative_type = "uploaded"
-            logger.info(f"[MOCKUP API] Using uploaded creative: {creative.filename}")
+            uploads = creative if isinstance(creative, list) else [creative]
+            uploads = [upload for upload in uploads if upload]
+            logger.info(f"[MOCKUP API] Using {len(uploads)} uploaded creative(s)")
 
-            creative_data = await creative.read()
-            creative_temp = tempfile.NamedTemporaryFile(delete=False, suffix=Path(creative.filename).suffix)
-            creative_temp.write(creative_data)
-            creative_temp.close()
-            creative_path = Path(creative_temp.name)
+            for upload in uploads:
+                creative_data = await upload.read()
+                suffix = Path(upload.filename or "").suffix or ".jpg"
+                creative_temp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+                creative_temp.write(creative_data)
+                creative_temp.close()
+                creative_paths.append(Path(creative_temp.name))
+
+            if not creative_paths:
+                raise HTTPException(status_code=400, detail="No creative files received")
 
         else:
             raise HTTPException(status_code=400, detail="Either ai_prompt or creative file must be provided")
@@ -1116,7 +1124,7 @@ async def generate_mockup_api(
                 try:
                     result_path, photo_used = await mockup_generator.generate_mockup_async(
                         type_storage_key,
-                        [creative_path],
+                        creative_paths,
                         time_of_day=time_of_day,
                         side=side,
                         environment=environment,
@@ -1172,8 +1180,9 @@ async def generate_mockup_api(
                     })
 
             # Cleanup creative file
-            if creative_path and creative_path.exists():
-                creative_path.unlink()
+            for creative_path in creative_paths:
+                if creative_path and creative_path.exists():
+                    creative_path.unlink()
 
             if not generated_mockups:
                 raise HTTPException(
@@ -1205,7 +1214,7 @@ async def generate_mockup_api(
         # Generate mockup (pass as list) with time_of_day, side, specific_photo, and config override
         result_path, photo_used = await mockup_generator.generate_mockup_async(
             effective_storage_key,
-            [creative_path],
+            creative_paths,
             time_of_day=time_of_day,
             side=side,
             environment=environment,
@@ -1249,9 +1258,10 @@ async def generate_mockup_api(
         def cleanup_files():
             """Delete temp files after response is sent"""
             try:
-                if creative_path and creative_path.exists():
-                    creative_path.unlink()
-                    logger.debug(f"[CLEANUP] Deleted temp creative: {creative_path}")
+                for creative_path in creative_paths:
+                    if creative_path and creative_path.exists():
+                        creative_path.unlink()
+                        logger.debug(f"[CLEANUP] Deleted temp creative: {creative_path}")
             except Exception as e:
                 logger.debug(f"[CLEANUP] Error deleting creative: {e}")
 
@@ -1276,9 +1286,10 @@ async def generate_mockup_api(
     except HTTPException as http_exc:
         # Cleanup temp files on HTTP exceptions (validation errors, etc.)
         try:
-            if 'creative_path' in locals() and creative_path and creative_path.exists():
-                creative_path.unlink()
-                logger.debug(f"[CLEANUP] Deleted temp creative after error: {creative_path}")
+            for creative_path in creative_paths:
+                if creative_path and creative_path.exists():
+                    creative_path.unlink()
+                    logger.debug(f"[CLEANUP] Deleted temp creative after error: {creative_path}")
         except Exception as cleanup_error:
             logger.debug(f"[CLEANUP] Error deleting creative after error: {cleanup_error}")
 
@@ -1296,9 +1307,10 @@ async def generate_mockup_api(
 
         # Cleanup temp files on unexpected errors
         try:
-            if 'creative_path' in locals() and creative_path and creative_path.exists():
-                creative_path.unlink()
-                logger.debug(f"[CLEANUP] Deleted temp creative after error: {creative_path}")
+            for creative_path in creative_paths:
+                if creative_path and creative_path.exists():
+                    creative_path.unlink()
+                    logger.debug(f"[CLEANUP] Deleted temp creative after error: {creative_path}")
         except Exception as cleanup_error:
             logger.debug(f"[CLEANUP] Error deleting creative after error: {cleanup_error}")
 

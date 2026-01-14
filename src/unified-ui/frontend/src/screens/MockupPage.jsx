@@ -148,7 +148,6 @@ export function MockupPage() {
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [editingTemplateLoading, setEditingTemplateLoading] = useState(false);
   const [setupDragActive, setSetupDragActive] = useState(false);
-  const [creativeDragActive, setCreativeDragActive] = useState(false);
   const [setupHint, setSetupHint] = useState(
     "Select one or more locations, upload a billboard photo, then click four corners to define the frame."
   );
@@ -1788,25 +1787,6 @@ export function MockupPage() {
     }
   }
 
-  function handleCreativeDragOver(event) {
-    event.preventDefault();
-    setCreativeDragActive(true);
-  }
-
-  function handleCreativeDragLeave(event) {
-    event.preventDefault();
-    setCreativeDragActive(false);
-  }
-
-  function handleCreativeDrop(event) {
-    event.preventDefault();
-    setCreativeDragActive(false);
-    const file = event.dataTransfer?.files?.[0];
-    if (file) {
-      setCreativeFile(file);
-    }
-  }
-
   return (
     <div className="h-full min-h-0 flex flex-col">
       <div className="flex-1 min-h-0 flex flex-col gap-4">
@@ -1857,10 +1837,6 @@ export function MockupPage() {
               templateThumbs={templateThumbs}
               getTemplateKey={getTemplateKey}
               defaultFrameConfig={DEFAULT_FRAME_CONFIG}
-              creativeDragActive={creativeDragActive}
-              handleCreativeDragOver={handleCreativeDragOver}
-              handleCreativeDragLeave={handleCreativeDragLeave}
-              handleCreativeDrop={handleCreativeDrop}
               useNativeSelects={USE_NATIVE_SELECTS}
             />
           </div>

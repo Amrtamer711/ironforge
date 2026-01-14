@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Download, ExternalLink } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -27,7 +27,8 @@ function useGenerateActions({
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [genFrameConfig, setGenFrameConfig] = useState(defaultFrameConfig);
   const [aiPrompt, setAiPrompt] = useState("");
-  const [creativeFile, setCreativeFile] = useState(null);
+  const [creativeFiles, setCreativeFiles] = useState([]);
+  const [creativeDragActive, setCreativeDragActive] = useState(false);
   const [lastResults, setLastResults] = useState([]);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState("");
@@ -60,7 +61,19 @@ function useGenerateActions({
       .join(", ");
   }, [locationNameMap, locations]);
 
-  const canGenerate = locations.length && (creativeFile || aiPrompt.trim()) && !generating;
+  const templateFrameCount = selectedTemplate?.frame_count || 0;
+  const multiCreativeCount = creativeFiles.length > 1;
+  const requiresTemplate = multiCreativeCount && !selectedTemplate;
+  const creativeCountMismatch =
+    multiCreativeCount && templateFrameCount && creativeFiles.length !== templateFrameCount;
+  const multiCreativeError = requiresTemplate
+    ? "Select a template to map multiple creatives to frames."
+    : creativeCountMismatch
+      ? `Upload exactly ${templateFrameCount} creatives to match the template frames.`
+      : "";
+
+  const canGenerate =
+    locations.length && (creativeFiles.length || aiPrompt.trim()) && !generating && !multiCreativeError;
 
   useEffect(() => {
     if (!templateKey) {
@@ -117,8 +130,8 @@ function useGenerateActions({
 
       if (aiPrompt.trim()) {
         formData.append("ai_prompt", aiPrompt.trim());
-      } else if (creativeFile) {
-        formData.append("creative", creativeFile);
+      } else if (creativeFiles.length) {
+        creativeFiles.forEach((entry) => formData.append("creative", entry.file));
       }
 
       const response = await mockupApi.generateMockup(formData);
@@ -129,12 +142,7 @@ function useGenerateActions({
         images,
       };
       setLastResults((prev) => {
-        const next = [run, ...prev];
-        if (next.length > 3) {
-          const removed = next.pop();
-          revokeResultUrls([removed]);
-        }
-        return next;
+        return [run, ...prev];
       });
     } catch (error) {
       setGenerateError(error?.message || "Unable to generate mockup.");
@@ -148,8 +156,12 @@ function useGenerateActions({
     setTemplateKey,
     aiPrompt,
     setAiPrompt,
-    creativeFile,
-    setCreativeFile,
+    creativeFiles,
+    setCreativeFiles,
+    creativeDragActive,
+    setCreativeDragActive,
+    multiCreativeError,
+    selectedTemplate,
     lastResults,
     generating,
     generateError,
@@ -186,12 +198,12 @@ export function GenerateTab({
   templatesQuery,
   templateThumbs,
   getTemplateKey,
-  creativeFile,
-  setCreativeFile,
+  setCreativeFiles,
+  creativeFiles,
   creativeDragActive,
-  handleCreativeDragOver,
-  handleCreativeDragLeave,
-  handleCreativeDrop,
+  setCreativeDragActive,
+  multiCreativeError,
+  selectedTemplate,
   aiPrompt,
   setAiPrompt,
   generateError,
@@ -212,16 +224,87 @@ export function GenerateTab({
     [locationOptions]
   );
 
+  const frameCountHint = selectedTemplate?.frame_count;
+  const sessionImages = useMemo(
+    () =>
+      lastResults.flatMap((entry) =>
+        (entry.images || []).map((image, idx) => ({
+          entryId: entry.id,
+          location: entry.location,
+          image,
+          index: idx,
+        }))
+      ),
+    [lastResults]
+  );
+
+  function handleCreativeFiles(files) {
+    const list = Array.from(files || []).filter(Boolean);
+    if (!list.length) return;
+    setCreativeFiles((prev) => {
+      const next = [...prev];
+      list.forEach((file) => {
+        const exists = next.some(
+          (existing) =>
+            existing.file.name === file.name &&
+            existing.file.size === file.size &&
+            existing.file.lastModified === file.lastModified
+        );
+        if (!exists) {
+          next.push({
+            id: crypto.randomUUID(),
+            file,
+          });
+        }
+      });
+      return next;
+    });
+    setAiPrompt("");
+  }
+
+  function handleCreativeDragOver(event) {
+    event.preventDefault();
+    setCreativeDragActive(true);
+  }
+
+  function handleCreativeDragLeave(event) {
+    event.preventDefault();
+    setCreativeDragActive(false);
+  }
+
+  function handleCreativeDrop(event) {
+    event.preventDefault();
+    setCreativeDragActive(false);
+    handleCreativeFiles(event.dataTransfer?.files);
+  }
+
+  function removeCreativeFile(id) {
+    setCreativeFiles((prev) => prev.filter((entry) => entry.id !== id));
+  }
+
+  function clearCreativeFiles() {
+    setCreativeFiles([]);
+  }
+
+  function handleAiPromptChange(value) {
+    setAiPrompt(value);
+    if (value.trim()) {
+      setCreativeFiles([]);
+    }
+  }
+
   function resetForm() {
     setLocations([]);
     setVenueType("all");
     setTimeOfDay("all");
     setSide("all");
     setTemplateKey("");
-    setCreativeFile(null);
+    setCreativeFiles([]);
     setAiPrompt("");
     setGenerateError("");
   }
+
+  const creativeInputRef = useRef(null);
 
   return (
     <Card className="h-full flex flex-col">
@@ -364,17 +447,42 @@ export function GenerateTab({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <FormField label="Upload Creative/Ad Image">
-            {creativeFile ? (
+            {creativeFiles.length ? (
               <div
                 className={`flex items-center justify-between rounded-xl bg-black/5 dark:bg-white/10 px-3 py-2 text-sm min-h-[120px] ${creativeDragActive ? "ring-2 ring-black/20 dark:ring-white/30" : ""}`}
                 onDragOver={handleCreativeDragOver}
                 onDragLeave={handleCreativeDragLeave}
                 onDrop={handleCreativeDrop}
               >
-                <div className="truncate">{creativeFile.name}</div>
-                <button className="opacity-70 hover:opacity-100" onClick={() => setCreativeFile(null)}>
-                  x
-                </button>
+                <div className="w-full space-y-2">
+                  {creativeFiles.map((entry) => (
+                    <div key={entry.id} className="flex items-center justify-between gap-2">
+                      <div className="truncate">{entry.file.name}</div>
+                      <button
+                        type="button"
+                        className="opacity-70 hover:opacity-100"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          removeCreativeFile(entry.id);
+                        }}
+                      >
+                        x
+                      </button>
+                    </div>
+                  ))}
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-black/50 dark:text-white/60">
+                    <span>{creativeFiles.length} file{creativeFiles.length > 1 ? "s" : ""} selected</span>
+                    <div className="flex items-center gap-3">
+                      <button type="button" className="underline" onClick={() => creativeInputRef.current?.click()}>
+                        Add more
+                      </button>
+                      <button type="button" className="underline" onClick={clearCreativeFiles}>
+                        Clear all
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
             ) : (
               <label
@@ -386,20 +494,45 @@ export function GenerateTab({
                 <input
                   type="file"
                   className="hidden"
+                  multiple
                   accept="image/jpeg,image/png,image/webp,image/gif"
-                  onChange={(e) => setCreativeFile(e.target.files?.[0] || null)}
+                  onChange={(e) => {
+                    handleCreativeFiles(e.target.files);
+                    e.target.value = "";
+                  }}
                 />
                 <div className="font-semibold mb-1">Click to upload/ Drag and Drop an Image</div>
-                <div className="text-xs text-black/55 dark:text-white/60">JPG, PNG, WEBP, GIF up to 10MB</div>
+                <div className="text-xs text-black/55 dark:text-white/60">
+                  JPG, PNG, WEBP, GIF up to 10MB each
+                </div>
               </label>
             )}
+            <input
+              ref={creativeInputRef}
+              type="file"
+              multiple
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="hidden"
+              onChange={(e) => {
+                handleCreativeFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <div className="mt-2 text-xs text-black/55 dark:text-white/60">
+              {frameCountHint
+                ? `Upload 1 image to reuse across ${frameCountHint} frames, or upload exactly ${frameCountHint} images (one per frame).`
+                : "Upload 1 image to reuse across frames, or select a template to upload multiple images."}
+            </div>
+            {multiCreativeError ? (
+              <div className="mt-2 text-xs text-red-600 dark:text-red-300">{multiCreativeError}</div>
+            ) : null}
           </FormField>
 
           <FormField label="Or use AI prompt">
             <textarea
               className="w-full rounded-xl bg-white/60 dark:bg-white/5 ring-1 ring-black/5 dark:ring-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-black/10 dark:focus:ring-white/15 min-h-[120px]"
               value={aiPrompt}
-              onChange={(e) => setAiPrompt(e.target.value)}
+              onChange={(e) => handleAiPromptChange(e.target.value)}
               placeholder="Describe what you want to generate..."
             />
           </FormField>
@@ -430,71 +563,69 @@ export function GenerateTab({
           {lastResults.length ? (
             <div className="space-y-4">
               <div className="text-sm font-semibold text-black/80 dark:text-white/85">
-                Last 3 Generated Mockups
+                Mockups generated this session
               </div>
-              {lastResults.map((entry) => (
-                <div key={entry.id} className="space-y-3">
-                  {entry.location ? (
-                    <div className="text-xs text-black/55 dark:text-white/60">
-                      {entry.location}
-                    </div>
-                  ) : null}
-                  {entry.images?.length ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
-                      {entry.images.map((image, idx) => (
-                        <div
-                          key={`${entry.id}-img-${idx}`}
-                          className="rounded-xl border border-black/5 dark:border-white/10 bg-white/60 dark:bg-white/5 p-3 text-sm transition flex flex-col"
-                        >
-                          <a
-                            href={image.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="overflow-hidden rounded-lg border border-black/5 dark:border-white/10 bg-black/5"
-                          >
-                            <img
-                              src={image.url}
-                              alt={image.label || "Generated mockup"}
-                              className="w-full h-40 object-cover"
-                              loading="lazy"
-                            />
-                          </a>
-                          <div className="mt-2 flex items-center gap-2">
-                            <Button asChild size="sm" variant="ghost" className="rounded-xl">
-                              <a href={image.url} target="_blank" rel="noopener noreferrer">
-                                <ExternalLink size={14} className="mr-1" />
-                                Open
-                              </a>
-                            </Button>
-                            <Button size="sm" variant="secondary" className="rounded-xl">
-                              <span
-                                role="link"
-                                tabIndex={0}
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  downloadFile(image.url, image.filename);
-                                }}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter" || event.key === " ") {
-                                    event.preventDefault();
-                                    downloadFile(image.url, image.filename);
-                                  }
-                                }}
-                                className="inline-flex items-center"
-                              >
-                                <Download size={14} className="mr-1" />
-                                Download
-                              </span>
-                            </Button>
+              {sessionImages.length ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
+                  {sessionImages.map((entry) => (
+                    <div
+                      key={`${entry.entryId}-img-${entry.index}`}
+                      className="rounded-xl border border-black/5 dark:border-white/10 bg-white/60 dark:bg-white/5 p-3 text-sm transition flex flex-col"
+                    >
+                      <a
+                        href={entry.image.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="overflow-hidden rounded-lg border border-black/5 dark:border-white/10 bg-black/5"
+                      >
+                        <img
+                          src={entry.image.url}
+                          alt={entry.image.label || "Generated mockup"}
+                          className="w-full h-40 object-cover"
+                          loading="lazy"
+                        />
+                      </a>
+                      <div className="mt-2 space-y-2">
+                        {entry.location ? (
+                          <div className="text-xs text-black/55 dark:text-white/60 truncate">
+                            {entry.location}
                           </div>
+                        ) : null}
+                        <div className="flex items-center gap-2">
+                          <Button asChild size="sm" variant="ghost" className="rounded-xl">
+                            <a href={entry.image.url} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink size={14} className="mr-1" />
+                              Open
+                            </a>
+                          </Button>
+                          <Button size="sm" variant="secondary" className="rounded-xl">
+                            <span
+                              role="link"
+                              tabIndex={0}
+                              onClick={(event) => {
+                                event.preventDefault();
+                                downloadFile(entry.image.url, entry.image.filename);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" || event.key === " ") {
+                                  event.preventDefault();
+                                  downloadFile(entry.image.url, entry.image.filename);
+                                }
+                              }}
+                              className="inline-flex items-center"
+                            >
+                              <Download size={14} className="mr-1" />
+                              Download
+                            </span>
+                          </Button>
                         </div>
-                      ))}
+                      </div>
                     </div>
-                  ) : (
-                    <div className="text-xs text-black/55 dark:text-white/60">No images returned yet.</div>
-                  )}
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <div className="text-xs text-black/55 dark:text-white/60">No images returned yet.</div>
+              )}
             </div>
           ) : null}
         </div>
