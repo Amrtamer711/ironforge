@@ -9,6 +9,7 @@ build_unifiedui:
     - if: '$CI_COMMIT_BRANCH == "demo" || $CI_COMMIT_BRANCH == "staging" || $CI_COMMIT_BRANCH == "main"'
       changes:
         - src/unified-ui/**/*
+        - src/shared/**/*
       when: on_success
 
     # Optional: allow manual run

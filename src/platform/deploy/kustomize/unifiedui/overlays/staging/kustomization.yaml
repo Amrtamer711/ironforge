@@ -9,7 +9,7 @@ images:
   - name: unifiedui
     newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/unifiedui
     # Deployed image tag is Git-driven (pure GitOps).
-    newTag: 3cf49100
+    newTag: d68186ee
 
 patches:
   - target:

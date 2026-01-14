@@ -1,0 +1,49 @@
+# =============================================================================
+# Video Critique Service - AWS/EKS Docker Dependencies
+# =============================================================================
+# Used by the AWS/EKS Docker build (src/video-critique/Dockerfile).
+# This keeps Render deployments stable by leaving requirements.render.txt unchanged.
+#
+# Install: pip install -r requirements.aws.txt
+
+# Core dependencies
+slack-sdk==3.36.0
+fastapi==0.116.1
+uvicorn[standard]==0.30.6
+python-multipart==0.0.20
+
+# Data processing
+pandas>=2.1.0,<2.3.0
+openpyxl==3.1.5
+numpy>=2.0.0,<3.0.0
+
+# Dropbox
+dropbox==12.0.2
+
+# Utils
+python-dotenv==1.0.1
+aiofiles==24.1.0
+pydantic>=2.10.0
+pydantic-settings>=2.1.0
+Pillow==11.3.0
+requests==2.32.3
+pytz==2024.1
+aiohttp==3.12.15
+hijri-converter==2.3.2.post1
+httpx==0.27.2
+
+# Supabase (for database)
+supabase>=2.11.0
+
+# Redis (for distributed caching)
+redis>=5.0.0
+
+# JWT (for token handling)
+python-jose[cryptography]>=3.3.0
+
+# CRM SDKs (vendored into the Docker image at /app/shared/*)
+crm-security[fastapi] @ file:///app/shared/crm-security
+crm-llm[openai] @ file:///app/shared/crm-llm
+crm-channels @ file:///app/shared/crm-channels
+crm-cache[redis] @ file:///app/shared/crm-cache
+

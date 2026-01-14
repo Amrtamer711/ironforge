@@ -5,7 +5,7 @@ build_security_service:
     SERVICE_DIR: "src/security-service"
     ECR_REPO: "security-service"
     DOCKERFILE_PATH: "src/security-service/Dockerfile"
-    BUILD_CONTEXT: "src/security-service"
+    BUILD_CONTEXT: "."
   rules:
     - if: '$CI_COMMIT_BRANCH == "demo" || $CI_COMMIT_BRANCH == "staging" || $CI_COMMIT_BRANCH == "main"'
       changes:
