@@ -59,6 +59,17 @@ interface ProjectConfig {
   syncAllSchemas: boolean; // If true, discover and sync ALL schemas + ALL data
   storageBuckets: string[];
   edgeFunctions: string[];
+  /**
+   * Tables to EXCLUDE from data sync.
+   *
+   * IMPORTANT: User-related tables should NEVER be synced from dev to prod because:
+   * 1. auth.users has different UUIDs in prod (OAuth creates new users)
+   * 2. users table references auth.users(id) - syncing breaks FK relationship
+   * 3. user_companies, user_modules, etc. reference users(id)
+   *
+   * These tables should start empty in prod and be populated when users sign in.
+   */
+  excludeTables: string[];
 }
 
 const PROJECTS: Record<string, ProjectConfig> = {
@@ -72,6 +83,7 @@ const PROJECTS: Record<string, ProjectConfig> = {
     prodDbUri: process.env.UI_PROD_DB_URI!,
     schemas: ['public'],
     dataTables: [
+      // Reference/config data - safe to sync
       'profiles',
       'permissions',
       'permission_sets',
@@ -83,6 +95,14 @@ const PROJECTS: Record<string, ProjectConfig> = {
     syncAllSchemas: true,
     storageBuckets: [],
     edgeFunctions: [],
+    // User data - NEVER sync (created when users sign in via OAuth)
+    excludeTables: [
+      'users',           // References auth.users(id) - UUIDs differ between envs
+      'user_companies',  // References users(id)
+      'user_modules',    // References users(id)
+      'user_teams',      // References users(id)
+      'user_permission_sets', // References users(id)
+    ],
   },
   salesbot: {
     name: 'Salesbot',
@@ -105,6 +125,12 @@ const PROJECTS: Record<string, ProjectConfig> = {
     syncAllSchemas: true,
     storageBuckets: ['proposals', 'uploads', 'fonts', 'booking_orders', 'thumbnails', 'static'],
     edgeFunctions: [],
+    // Operational data - don't sync (generated at runtime)
+    excludeTables: [
+      'proposals_log',    // User-generated proposals
+      'chat_history',     // User chat sessions
+      'mockup_usage',     // Usage tracking
+    ],
   },
   assetmgmt: {
     name: 'Asset Management',
@@ -119,6 +145,7 @@ const PROJECTS: Record<string, ProjectConfig> = {
     syncAllSchemas: true,
     storageBuckets: ['templates', 'assets', 'mockups'],
     edgeFunctions: ['rename-storage-file', 'move-storage-file'],
+    excludeTables: [], // No user-related tables in asset-management
   },
   videocritique: {
     name: 'Video Critique',
@@ -133,6 +160,12 @@ const PROJECTS: Record<string, ProjectConfig> = {
     syncAllSchemas: true,
     storageBuckets: [],
     edgeFunctions: [],
+    // Operational data - don't sync
+    excludeTables: [
+      'tasks',          // User-assigned tasks
+      'task_assignments', // User assignments
+      'reviews',        // User reviews
+    ],
   },
 };
 
@@ -302,6 +335,10 @@ async function syncDatabase(
   if (dryRun) {
     logWarn(`  [DRY RUN] Would dump schemas: ${schemas.join(', ')}`);
     logWarn(`  [DRY RUN] Would dump ALL data from ALL schemas`);
+    if (project.excludeTables.length > 0) {
+      logWarn(`  [DRY RUN] Would EXCLUDE data from: ${project.excludeTables.join(', ')}`);
+      logInfo(`    (These tables are user/operational data - starts empty in prod)`);
+    }
     logWarn(`  [DRY RUN] Would nuke target and restore`);
     return;
   }
@@ -325,11 +362,19 @@ async function syncDatabase(
     });
   }
 
-  // Dump ALL data from ALL schemas
+  // Dump ALL data from ALL schemas (excluding user/operational tables)
   logInfo(`  Dumping data from all schemas...`);
+  const excludeArgs = project.excludeTables
+    .flatMap((table) => schemas.map((schema) => `--exclude-table-data="${schema}.${table}"`))
+    .join(' ');
+
+  if (project.excludeTables.length > 0) {
+    logInfo(`  Excluding tables from data sync: ${project.excludeTables.join(', ')}`);
+  }
+
   try {
     exec(
-      `pg_dump "${sourceDbUri}" ${schemaArgs} --data-only > "${dataFile}" 2>/dev/null`,
+      `pg_dump "${sourceDbUri}" ${schemaArgs} --data-only ${excludeArgs} > "${dataFile}" 2>/dev/null`,
       { silent: true }
     );
   } catch {
