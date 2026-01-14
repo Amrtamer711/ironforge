@@ -10,7 +10,7 @@ images:
     newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/security-service
     # Deployed image tag is Git-driven (pure GitOps).
     # This is updated by CI via Merge Request (main branch).
-    newTag: 3cf49100
+    newTag: 381f991e
 
 patches:
   - target:
