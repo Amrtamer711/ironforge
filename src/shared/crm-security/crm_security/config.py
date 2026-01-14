@@ -29,7 +29,7 @@ class SecurityConfig(BaseSettings):
     # ENVIRONMENT
     # =========================================================================
 
-    environment: Literal["local", "development", "production"] = Field(
+    environment: Literal["local", "development", "production", "staging"] = Field(
         default="local",
         description="Deployment environment",
     )

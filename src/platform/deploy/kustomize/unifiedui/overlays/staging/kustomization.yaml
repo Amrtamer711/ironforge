@@ -36,4 +36,3 @@ patches:
         value:
           name: SECURITY_SERVICE_URL
           value: http://security-service.backends.svc.cluster.local:8002
-

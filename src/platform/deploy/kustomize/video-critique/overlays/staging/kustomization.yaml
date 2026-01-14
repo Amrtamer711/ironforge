@@ -48,4 +48,3 @@ patches:
             value: http://security-service.backends.svc.cluster.local:8002
           - name: UNIFIED_UI_URL
             value: http://unified-ui.unifiedui.svc.cluster.local
-
