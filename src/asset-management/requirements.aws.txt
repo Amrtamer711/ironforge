@@ -1,0 +1,33 @@
+# =============================================================================
+# Asset Management Service - AWS/EKS Docker Dependencies
+# =============================================================================
+# Used by the AWS/EKS Docker build (src/asset-management/Dockerfile).
+# This keeps Render deployments stable by leaving requirements.render.txt unchanged.
+#
+# Install: pip install -r requirements.aws.txt
+
+# Web Framework
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+
+# Database
+supabase>=2.11.0
+
+# Data Validation
+pydantic==2.10.0
+pydantic-settings==2.11.0
+
+# HTTP Client
+httpx>=0.28.1,<1.0.0
+
+# Utils
+python-dotenv==1.0.0
+python-multipart==0.0.6
+
+# CRM SDKs (vendored into the Docker image at /app/shared/*)
+crm-security[fastapi] @ file:///app/shared/crm-security
+crm-cache[redis] @ file:///app/shared/crm-cache
+
+# Redis (for distributed caching)
+redis>=5.0.0
+

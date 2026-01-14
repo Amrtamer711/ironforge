@@ -11,7 +11,6 @@ FROM python:3.11-slim
 
 # Install system dependencies including LibreOffice and git
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
     libreoffice \
     libreoffice-writer \
     libreoffice-impress \
@@ -30,13 +29,18 @@ RUN which libreoffice && libreoffice --version
 # Set working directory
 WORKDIR /app
 
+# Shared libs (for local installs in requirements.render.txt)
+COPY src/shared/crm-security /app/shared/crm-security
+COPY src/shared/crm-cache /app/shared/crm-cache
+COPY src/shared/crm-llm /app/shared/crm-llm
+COPY src/shared/crm-channels /app/shared/crm-channels
+
 # Copy requirements first for better caching
-# Use requirements.render.txt for production (git-based SDK install)
-COPY requirements.render.txt .
-RUN pip install --no-cache-dir -r requirements.render.txt
+COPY src/sales-module/requirements.aws.txt /app/requirements.aws.txt
+RUN pip install --no-cache-dir -r /app/requirements.aws.txt
 
 # Copy application code
-COPY . .
+COPY src/sales-module/ /app/
 
 # Create directory for fonts
 RUN mkdir -p /usr/share/fonts/truetype/custom
