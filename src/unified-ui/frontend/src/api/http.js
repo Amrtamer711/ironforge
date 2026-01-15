@@ -2,8 +2,8 @@ import { runtimeConfig } from "../lib/runtimeConfig";
 import { clearAuthToken, getAuthToken, setAuthToken } from "../lib/token";
 import { getSupabaseClient } from "../lib/supabaseClient";
 
-// Default request timeout (30 seconds)
-const DEFAULT_TIMEOUT_MS = 30000;
+// Default request timeout (2 minutes)
+const DEFAULT_TIMEOUT_MS = 120000;
 
 // Flag to prevent concurrent refresh attempts
 let isRefreshing = false;

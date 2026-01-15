@@ -25,6 +25,10 @@
 
 - [ ] Pass reference images to AI when generating mockups
 
+- [ ] Save Mockups to be reused later for same request. Implement a cleanup mechanism to cleanup the storage.
+
+- [ ] Load the whole location hierarchy in one call. (Networks, packages, assets types etc everything). This is to optimize the load of services.
+
 
 ### Part 2: Eligibility Service ⏳ PENDING
 
