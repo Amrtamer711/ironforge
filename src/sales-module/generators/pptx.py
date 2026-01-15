@@ -337,10 +337,15 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     col1_width = int(Inches(4.0) * scale_x)
     col2_width = table_width - col1_width
 
-    client_name = financial_data.get("client_name", "").strip()
+    # Format client name properly (title case, clean up)
+    raw_client_name = financial_data.get("client_name", "").strip()
+    client_name = raw_client_name.title() if raw_client_name else ""
     header_text = f"{client_name} Investment Sheet" if client_name else "Investment Sheet"
 
-    location_name = financial_data["location"]
+    # Get location display name from metadata, fallback to location key formatted
+    location_key = financial_data["location"]
+    location_meta = financial_data.get("location_metadata", {})
+    location_name = location_meta.get("display_name") or location_key.replace("_", " ").title()
     durations = financial_data["durations"]
 
     # Handle start_dates array (parallel with durations) vs single start_date
@@ -365,11 +370,15 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
     logger.info(f"[CREATE_FINANCIAL] Durations: {durations}, Net rates: {net_rates}")
     logger.info(f"[CREATE_FINANCIAL] Production fee: {production_fee_str}")
 
-    location_text = build_location_text(location_name, spots)
+    # Build location text with metadata for proper display name and details
+    location_text = build_location_text(location_key, spots, metadata=location_meta)
 
-    # Check if location is static
-    location_meta = config.LOCATION_METADATA.get(location_name.lower(), {})
+    # Check if location is static - use metadata from financial_data first, fallback to global config
     is_static = location_meta.get('display_type', '').lower() == 'static'
+    if not location_meta:
+        # Fallback to global config if no metadata passed
+        global_meta = config.LOCATION_METADATA.get(location_key.lower(), {})
+        is_static = global_meta.get('display_type', '').lower() == 'static'
 
     if is_static and production_fee_str:
         # Use production fee for static locations
@@ -379,8 +388,8 @@ def create_financial_proposal_slide(slide, financial_data: dict, slide_width, sl
         upload_fee = production_fee
         fee_str = _format_fee_in_currency(upload_fee, currency)
     else:
-        # Use upload fee for digital locations
-        upload_fee = config.UPLOAD_FEES_MAPPING.get(location_name.lower(), 3000)
+        # Use upload fee for digital locations - get from metadata or global config
+        upload_fee = location_meta.get('upload_fee') or config.UPLOAD_FEES_MAPPING.get(location_key.lower(), 3000)
         fee_str = _format_fee_in_currency(upload_fee, currency)
         fee_label = "Upload Fee:"
 
@@ -806,7 +815,9 @@ def create_combined_financial_proposal_slide(
     vat = subtotal * 0.05
     total = subtotal + vat
 
-    header_text = f"{client_name.strip()} Investment Sheet" if client_name.strip() else "Investment Sheet"
+    # Format client name properly (title case, clean up)
+    formatted_client = client_name.strip().title() if client_name.strip() else ""
+    header_text = f"{formatted_client} Investment Sheet" if formatted_client else "Investment Sheet"
 
     # Format amounts in target currency
     formatted_net_rate = _format_rate_in_currency(combined_net_rate, currency)

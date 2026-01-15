@@ -185,10 +185,11 @@ class ToolRouter:
         workflow_ctx: WorkflowContext | None = None,
     ) -> tuple[dict[str, dict], list[str]]:
         """
-        Batch validate multiple locations with O(1) per-location lookup.
+        Batch validate multiple locations OR packages with O(1) per-location lookup.
 
         Uses workflow_ctx for O(1) in-memory lookup when available,
         falls back to AssetService batch validation otherwise.
+        Also checks if a key is a package (packages are valid for proposals).
 
         Args:
             location_keys: List of location keys to validate
@@ -197,7 +198,7 @@ class ToolRouter:
 
         Returns:
             Tuple of (location_index, errors)
-            - location_index: Dict mapping location_key -> location_data for valid locations
+            - location_index: Dict mapping location_key -> location_data for valid locations/packages
             - errors: List of error messages for invalid/inaccessible locations
         """
         if not user_companies:
@@ -209,6 +210,10 @@ class ToolRouter:
         valid_locations: dict[str, dict] = {}
         errors: list[str] = []
 
+        # Import PackageExpander for package checking
+        from core.services.mockup_service.package_expander import PackageExpander
+        expander = PackageExpander(user_companies)
+
         # If workflow_ctx available, use O(1) in-memory lookups
         if workflow_ctx is not None:
             for location_key in location_keys:
@@ -217,14 +222,38 @@ class ToolRouter:
                 if location:
                     valid_locations[normalized_key] = location
                 else:
-                    errors.append(
-                        f"Location '{location_key}' not found in your accessible companies."
-                    )
+                    # Check if it's a package (packages are valid for proposals)
+                    package = await expander._find_package(normalized_key)
+                    if package:
+                        # Mark as valid - processor will expand the package
+                        valid_locations[normalized_key] = {"is_package": True, "package_key": normalized_key}
+                    else:
+                        errors.append(
+                            f"Location '{location_key}' not found in your accessible companies."
+                        )
             return valid_locations, errors
 
-        # Fallback to AssetService batch validation
+        # Fallback to AssetService batch validation (also needs package check)
         asset_service = get_asset_service()
-        return await asset_service.validate_locations_batch(location_keys, user_companies)
+        valid, errs = await asset_service.validate_locations_batch(location_keys, user_companies)
+
+        # For any errors, check if they're packages
+        remaining_errors = []
+        for err in errs:
+            # Extract location key from error message
+            import re
+            match = re.search(r"Location '([^']+)'", err)
+            if match:
+                key = match.group(1).lower().strip()
+                package = await expander._find_package(key)
+                if package:
+                    valid[key] = {"is_package": True, "package_key": key}
+                else:
+                    remaining_errors.append(err)
+            else:
+                remaining_errors.append(err)
+
+        return valid, remaining_errors
 
     # =========================================================================
     # MAIN ROUTING METHOD
@@ -407,9 +436,20 @@ class ToolRouter:
             await self._send_tool_message(channel_id=channel, content="❌ **Error:** Combined package requires a combined net rate")
             return
         elif len(proposals_data) < 2:
-            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** Combined package requires at least 2 locations")
-            return
+            # Single item - check if it's a package (packages are allowed alone because they contain multiple locations)
+            from core.services.mockup_service.package_expander import PackageExpander
+            expander = PackageExpander(user_companies)
+            single_location = proposals_data[0].get("location", "").lower().strip()
+            is_package = await expander._find_package(single_location) is not None
+
+            if not is_package:
+                await self._channel.delete_message(channel_id=channel, message_id=status_ts)
+                await self._send_tool_message(
+                    channel_id=channel,
+                    content="❌ **Error:** Combined requires at least 2 locations (or 1 package)"
+                )
+                return
+            # else: it's a package, continue processing
 
         # Batch validate all locations with O(1) lookups
         location_keys = [
@@ -449,12 +489,16 @@ class ToolRouter:
 
             if result.get("is_combined"):
                 logger.info(f"[RESULT] Combined package - PDF: {result.get('pdf_filename')}")
+                # Build comment with optional warning for partial packages
+                combined_comment = f"📦 **Combined Package Proposal**\n📍 Locations: {result['locations']}"
+                if result.get("warning"):
+                    combined_comment += f"\n\n{result['warning']}"
                 await self._channel.upload_file(
                     channel_id=channel,
                     file_path=result["pdf_path"],
                     filename=result["pdf_filename"],
                     title=result["pdf_filename"],
-                    comment=f"📦 **Combined Package Proposal**\n📍 Locations: {self._format_location_list(result['locations'])}"
+                    comment=combined_comment
                 )
                 try:
                     os.unlink(result["pdf_path"])
@@ -478,12 +522,16 @@ class ToolRouter:
                     logger.info(f"[RESULT] Skipping PPTX upload (disabled) - {result['pptx_filename']}")
                 # Always upload PDF (smaller file size)
                 logger.info(f"[RESULT] Uploading PDF: {result['pdf_filename']} from {result['pdf_path']}")
+                # Build comment with optional warning for partial packages
+                pdf_comment = f"📄 **PDF Proposal**\n📍 Location: {result['location']}"
+                if result.get("warning"):
+                    pdf_comment += f"\n\n{result['warning']}"
                 pdf_result = await self._channel.upload_file(
                     channel_id=channel,
                     file_path=result["pdf_path"],
                     filename=result["pdf_filename"],
                     title=result["pdf_filename"],
-                    comment=f"📄 **PDF Proposal**\n📍 Location: {self._format_location_label(result['location'])}"
+                    comment=pdf_comment
                 )
                 logger.info(f"[RESULT] PDF upload result: success={pdf_result.success}, error={pdf_result.error if not pdf_result.success else 'None'}")
                 try:
@@ -728,29 +776,76 @@ class ToolRouter:
 
         asset_service = get_asset_service()
         locations = await asset_service.get_locations_for_companies(user_companies)
+
+        # Fetch packages and company display names
+        from integrations.asset_management import asset_mgmt_client
+        try:
+            packages = await asset_mgmt_client.get_packages(companies=user_companies, active_only=True, include_items=True)
+        except Exception as e:
+            logger.warning(f"[LIST_LOCATIONS] Failed to fetch packages: {e}")
+            packages = []
+
+        # Fetch company display names
+        try:
+            companies_data = await asset_mgmt_client.get_companies(codes=user_companies)
+            company_names = {c.get("code"): c.get("name", c.get("code", "Unknown")) for c in companies_data}
+        except Exception as e:
+            logger.warning(f"[LIST_LOCATIONS] Failed to fetch company names: {e}")
+            company_names = {}
+
         await self._channel.delete_message(channel_id=channel, message_id=status_ts)
 
-        if not locations:
-            await self._send_tool_message(channel_id=channel, content="📍 No locations available for your companies.", permanent=True)
+        if not locations and not packages:
+            await self._send_tool_message(channel_id=channel, content="📍 No locations or packages available for your companies.", permanent=True)
         else:
-            # Group by company
-            by_company: dict[str, list[str]] = {}
+            # Group locations by company (field can be 'company_schema' or 'company')
+            locs_by_company: dict[str, list[str]] = {}
             for loc in locations:
-                company = loc.get("company_schema", "Unknown")
-                if company not in by_company:
-                    by_company[company] = []
+                company = loc.get("company_schema") or loc.get("company", "Unknown")
+                if company not in locs_by_company:
+                    locs_by_company[company] = []
                 display_name = loc.get("display_name", loc.get("location_key", "Unknown"))
-                by_company[company].append(display_name)
+                locs_by_company[company].append(display_name)
 
+            # Group packages by company
+            pkgs_by_company: dict[str, list[dict]] = {}
+            for pkg in packages:
+                company = pkg.get("company_schema") or pkg.get("company", "Unknown")
+                if company not in pkgs_by_company:
+                    pkgs_by_company[company] = []
+                pkg_name = pkg.get("name", pkg.get("package_key", "Unknown"))
+                pkg_key = pkg.get("package_key", "")
+                items = pkg.get("items", [])
+                network_names = [item.get("network_name") or item.get("network_key", "") for item in items]
+                pkgs_by_company[company].append({
+                    "name": pkg_name,
+                    "key": pkg_key,
+                    "networks": network_names,
+                })
+
+            # Build listing
             listing_parts = []
-            for company, names in sorted(by_company.items()):
-                company_display = company.replace("_", " ").title()
+            all_companies = set(locs_by_company.keys()) | set(pkgs_by_company.keys())
+
+            for company in sorted(all_companies):
+                # Use proper display name from database, fallback to string formatting
+                company_display = company_names.get(company, company.replace("_", " ").title())
                 listing_parts.append(f"\n**{company_display}:**")
-                for name in sorted(names):
-                    listing_parts.append(f"• {name}")
+
+                # Locations
+                if company in locs_by_company:
+                    for name in sorted(locs_by_company[company]):
+                        listing_parts.append(f"• {name}")
+
+                # Packages
+                if company in pkgs_by_company:
+                    listing_parts.append(f"\n📦 **Packages:**")
+                    for pkg in pkgs_by_company[company]:
+                        networks_str = ", ".join(pkg["networks"]) if pkg["networks"] else "no locations"
+                        listing_parts.append(f"• {pkg['name']} contains: {networks_str}")
 
             listing = "\n".join(listing_parts)
-            await self._send_tool_message(channel_id=channel, content=f"📍 **Available locations:**{listing}", permanent=True)
+            await self._send_tool_message(channel_id=channel, content=f"📍 **Available locations & packages:**{listing}", permanent=True)
 
     async def _handle_delete_location(self, args: dict, ctx: dict) -> None:
         """Handle delete_location tool call."""

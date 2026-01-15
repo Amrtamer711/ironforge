@@ -187,19 +187,37 @@ class ProposalValidator:
 
             # Match location to canonical key
             matched_key = match_location_key(location, available_locations)
+            is_package = False
+
+            package_data = None
             if not matched_key:
-                self.logger.error(f"[VALIDATOR] No match found for location '{location}'")
-                errors.append(
-                    f"Proposal {idx + 1}: Location '{location}' not found in accessible companies"
-                )
-                continue
+                # Check if it's a package (packages are valid for proposals)
+                from core.services.mockup_service.package_expander import PackageExpander
+                expander = PackageExpander(self.user_companies)
+                package_data = await expander._find_package(location)
+                if package_data:
+                    # It's a package - processor will handle expansion
+                    matched_key = location
+                    is_package = True
+                    self.logger.info(f"[VALIDATOR] '{location}' is a package, will be expanded by processor")
+                else:
+                    self.logger.error(f"[VALIDATOR] No match found for location '{location}'")
+                    errors.append(
+                        f"Proposal {idx + 1}: Location '{location}' not found in accessible companies"
+                    )
+                    continue
 
             self.logger.info(f"[VALIDATOR] Matched '{location}' to '{matched_key}'")
 
             # Get full location metadata using O(1) index lookup
             # Note: Asset-Management returns 'company' field, but internally we use 'company_schema'
-            location_metadata = self.get_location_metadata_fast(matched_key) or {}
-            company_schema = location_metadata.get("company_schema") or location_metadata.get("company")
+            # For packages, get company from package data
+            if is_package and package_data:
+                location_metadata = {}
+                company_schema = package_data.get("company")
+            else:
+                location_metadata = self.get_location_metadata_fast(matched_key) or {}
+                company_schema = location_metadata.get("company_schema") or location_metadata.get("company")
 
             # Validate duration/rate alignment (for separate proposals)
             if net_rates and len(durations) != len(net_rates):
@@ -248,6 +266,7 @@ class ProposalValidator:
                 "spots": int(spots),
                 "filename": template_path,
                 "company_schema": company_schema,  # For O(1) template lookup
+                "is_package": is_package,  # Flag for processor to handle package expansion
                 # Include full location metadata for combined slide generation
                 "location_metadata": {
                     "display_name": location_metadata.get("display_name") or matched_key.replace("_", " ").title(),
@@ -328,6 +347,13 @@ class ProposalValidator:
 
         # Additional validation for combined packages
         if validated and len(validated) < 2:
-            errors.append("Combined package requires at least 2 locations")
+            # Check if the single item is a package (packages are allowed alone)
+            from core.services.mockup_service.package_expander import PackageExpander
+            expander = PackageExpander(self.user_companies)
+            single_location = proposals_data[0].get("location", "").lower().strip()
+            is_package = await expander._find_package(single_location) is not None
+
+            if not is_package:
+                errors.append("Combined requires at least 2 locations (or 1 package)")
 
         return validated, errors
