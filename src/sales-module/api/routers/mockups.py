@@ -48,11 +48,12 @@ async def get_mockup_locations(user: AuthUser = Depends(require_permission("sale
             detail="You don't have access to any company data. Please contact your administrator to be assigned to a company."
         )
 
-    # Query locations from user's accessible company schemas
-    db_locations = db.get_locations_for_companies(user.companies)
+    # Query locations from Asset-Management (source of truth)
+    asset_service = get_asset_service()
+    all_locations = await asset_service.get_locations_for_companies(user.companies)
 
     locations = []
-    for loc in db_locations:
+    for loc in all_locations:
         locations.append({
             "key": loc.get("location_key"),
             "name": loc.get("display_name", loc.get("location_key", "").title()),
@@ -880,8 +881,9 @@ async def delete_mockup_photo(
     photo_filename = sanitize_path_component(photo_filename)
 
     try:
-        # Get the location to find which company schema owns it
-        location_data = db.get_location_by_key(location_key, user.companies)
+        # Get the location from Asset-Management (source of truth)
+        asset_service = get_asset_service()
+        location_data = await asset_service.get_location_by_key(location_key, user.companies)
         if not location_data:
             raise HTTPException(status_code=403, detail=f"Location '{location_key}' not found in your accessible companies")
         company_schema = location_data.get("company") or location_data.get("company_schema")
@@ -994,9 +996,10 @@ async def generate_mockup_api(
             except json.JSONDecodeError:
                 logger.warning("[MOCKUP API] Invalid frame config JSON, ignoring")
 
-        # Validate network exists and user has access
+        # Validate network exists and user has access (query Asset-Management)
         network_key = location_key  # location_key IS the network_key
-        location_data = db.get_location_by_key(network_key, user.companies)
+        asset_service = get_asset_service()
+        location_data = await asset_service.get_location_by_key(network_key, user.companies)
         if not location_data:
             # Fallback: check config.LOCATION_METADATA for backward compatibility
             if network_key not in config.LOCATION_METADATA:

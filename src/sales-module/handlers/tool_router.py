@@ -103,8 +103,8 @@ class ToolRouter:
             )
         return True, ""
 
-    @staticmethod
-    def validate_location_access(
+    async def validate_location_access(
+        self,
         location_key: str,
         user_companies: list[str],
         workflow_ctx: WorkflowContext | None = None,
@@ -116,7 +116,7 @@ class ToolRouter:
         even if they know the location key.
 
         Performance: If workflow_ctx is provided, uses O(1) in-memory lookup.
-        Falls back to database query if context not available.
+        Falls back to asset-management API query if context not available.
 
         Args:
             location_key: The location key to validate
@@ -135,11 +135,12 @@ class ToolRouter:
             if location:
                 logger.debug(f"[TOOL_ROUTER] Location '{location_key}' found in workflow context (O(1))")
 
-        # Fallback to database query if not in context
+        # Fallback to asset-management API query if not in context
         if location is None:
-            location = db.get_location_by_key(location_key, user_companies)
+            asset_service = get_asset_service()
+            location = await asset_service.get_location_by_key(location_key, user_companies)
             if location:
-                logger.debug(f"[TOOL_ROUTER] Location '{location_key}' found via DB query (fallback)")
+                logger.debug(f"[TOOL_ROUTER] Location '{location_key}' found via asset-management API (fallback)")
 
         if location is None:
             return False, (
@@ -700,7 +701,8 @@ class ToolRouter:
             await self._send_tool_message(channel_id=channel, content=error_msg)
             return
 
-        locations = db.get_locations_for_companies(user_companies)
+        asset_service = get_asset_service()
+        locations = await asset_service.get_locations_for_companies(user_companies)
         await self._channel.delete_message(channel_id=channel, message_id=status_ts)
 
         if not locations:
@@ -1132,7 +1134,7 @@ class ToolRouter:
         company_hint = None
         if location_name:
             location_key = location_name.lower().replace(" ", "_")
-            is_valid, loc_error, company_hint = self.validate_location_access(location_key, user_companies, workflow_ctx)
+            is_valid, loc_error, company_hint = await self.validate_location_access(location_key, user_companies, workflow_ctx)
             if not is_valid:
                 await self._channel.delete_message(channel_id=channel, message_id=status_ts)
                 await self._send_tool_message(channel_id=channel, content=loc_error)
@@ -1218,4 +1220,4 @@ async def handle_tool_call(
 
 # Backward compatibility aliases for validation functions
 _validate_company_access = ToolRouter.validate_company_access
-_validate_location_access = ToolRouter.validate_location_access
+# Note: validate_location_access is now an async instance method (uses asset_service)

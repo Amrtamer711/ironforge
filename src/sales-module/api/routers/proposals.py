@@ -190,17 +190,20 @@ class ProposalDownloadResponse(BaseModel):
 # HELPER FUNCTIONS
 # =============================================================================
 
-def _validate_location_access(
+async def _validate_location_access(
     location_key: str,
     user_companies: list[str],
 ) -> tuple[bool, str, str | None]:
     """
     Validate that a location belongs to user's accessible companies.
 
+    Uses AssetService to query asset-management (source of truth).
+
     Returns:
         Tuple of (is_valid, error_message, company_schema)
     """
-    location = db.get_location_by_key(location_key, user_companies)
+    asset_service = get_asset_service()
+    location = await asset_service.get_location_by_key(location_key, user_companies)
     if location is None:
         return False, f"Location '{location_key}' not found in your accessible companies.", None
     company_schema = location.get("company_schema") or location.get("company")
@@ -762,7 +765,7 @@ async def regenerate_proposal(
             # Validate new locations
             for p in request.proposals:
                 location_key = p.location.strip().lower().replace(" ", "_")
-                is_valid, error_msg, _ = _validate_location_access(location_key, user_companies)
+                is_valid, error_msg, _ = await _validate_location_access(location_key, user_companies)
                 if not is_valid:
                     raise HTTPException(status_code=403, detail=error_msg)
 
