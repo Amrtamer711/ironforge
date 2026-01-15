@@ -1746,6 +1746,7 @@ class SupabaseBackend(DatabaseBackend):
                     if network_id:
                         if network_id in networks_map:
                             item["network_name"] = networks_map[network_id].get("name")
+                            item["network_key"] = networks_map[network_id].get("network_key")
                         item["location_count"] = asset_counts.get(network_id, 0)
 
             # Cache the result

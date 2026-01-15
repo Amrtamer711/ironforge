@@ -211,44 +211,6 @@ class DatabaseBackend(ABC):
         pass
 
     # =========================================================================
-    # LOCATIONS
-    # =========================================================================
-
-    @abstractmethod
-    def get_locations_for_companies(
-        self,
-        company_schemas: list[str],
-    ) -> list[dict[str, Any]]:
-        """
-        Get all locations accessible to user from their company schemas.
-
-        Args:
-            company_schemas: List of company schema names user can access
-
-        Returns:
-            List of location dicts with 'company_schema' field
-        """
-        pass
-
-    @abstractmethod
-    def get_location_by_key(
-        self,
-        location_key: str,
-        company_schemas: list[str],
-    ) -> dict[str, Any] | None:
-        """
-        Get a specific location by key from the user's accessible company schemas.
-
-        Args:
-            location_key: The location key to look up
-            company_schemas: List of company schema names user can access
-
-        Returns:
-            Location dict with 'company_schema' field if found, None otherwise
-        """
-        pass
-
-    # =========================================================================
     # MOCKUP FRAMES (Company-scoped)
     # =========================================================================
 

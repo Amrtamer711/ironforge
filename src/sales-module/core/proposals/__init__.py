@@ -93,10 +93,24 @@ async def process_proposals(
     available_locations = await validator._get_available_locations()
     intro_outro = IntroOutroHandler(available_locations)
     template_service = TemplateService(companies=user_companies)
-    processor = ProposalProcessor(validator, renderer, intro_outro, template_service)
+    processor = ProposalProcessor(validator, renderer, intro_outro, template_service, user_companies)
 
     # Route to appropriate processor method
-    if package_type == "combined" and len(proposals_data) > 1:
+    # Combined requires: multiple proposals OR single package (expands to multiple networks)
+    use_combined = False
+    if package_type == "combined":
+        if len(proposals_data) > 1:
+            use_combined = True
+        elif len(proposals_data) == 1:
+            # Single proposal - check if it's a package
+            from core.services.mockup_service.package_expander import PackageExpander
+            expander = PackageExpander(user_companies)
+            single_location = proposals_data[0].get("location", "").lower().strip()
+            is_package = await expander._find_package(single_location) is not None
+            if is_package:
+                use_combined = True
+
+    if use_combined:
         return await processor.process_combined(
             proposals_data,
             combined_net_rate,
@@ -163,7 +177,7 @@ async def process_combined_package(
         available_locations = await validator._get_available_locations()
     intro_outro = IntroOutroHandler(available_locations)
     template_service = TemplateService(companies=user_companies)
-    processor = ProposalProcessor(validator, renderer, intro_outro, template_service)
+    processor = ProposalProcessor(validator, renderer, intro_outro, template_service, user_companies)
 
     return await processor.process_combined(
         proposals_data,

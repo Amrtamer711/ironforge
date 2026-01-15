@@ -42,6 +42,7 @@ class PackageItem(PackageItemBase):
 
     # Optional expanded data
     network_name: str | None = None
+    network_key: str | None = None  # Network key for package expansion
     location_count: int | None = None  # Number of assets in the network
 
     class Config:
@@ -116,13 +117,31 @@ class PackageService:
         self,
         companies: list[str],
         active_only: bool = True,
+        include_items: bool = False,
     ) -> list[Package]:
-        """List packages across companies."""
+        """List packages across companies.
+
+        Args:
+            companies: Company schemas to query
+            active_only: Only return active packages
+            include_items: If True, fetch package items (networks) for each package
+        """
         results = db.list_packages(
             company_schemas=companies,
             include_inactive=not active_only,
         )
-        return [self._dict_to_package(r) for r in results]
+
+        packages = []
+        for r in results:
+            # Fetch items if requested
+            if include_items:
+                company = r.get("company_schema", r.get("company", ""))
+                package_id = r.get("id")
+                if company and package_id:
+                    r["items"] = db.get_package_items(package_id, company)
+            packages.append(self._dict_to_package(r))
+
+        return packages
 
     def get_package(
         self,
@@ -309,5 +328,6 @@ class PackageService:
             network_id=data["network_id"],
             created_at=data.get("created_at"),
             network_name=data.get("network_name"),
+            network_key=data.get("network_key"),
             location_count=data.get("location_count"),
         )

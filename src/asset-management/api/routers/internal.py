@@ -177,6 +177,7 @@ def list_networks_internal(
 def list_packages_internal(
     companies: list[str] = Query(default=None, description="Filter by company schemas"),
     active_only: bool = Query(default=True, description="Only return active packages"),
+    include_items: bool = Query(default=False, description="Include package items (networks)"),
     service: dict = Depends(verify_service_token),
 ) -> list[Package]:
     """
@@ -185,7 +186,7 @@ def list_packages_internal(
     Used by Sales-Module for package eligibility checks.
     """
     caller = service.get("service", "unknown")
-    logger.info(f"[INTERNAL] {caller} fetching packages (companies={companies}, active_only={active_only})")
+    logger.info(f"[INTERNAL] {caller} fetching packages (companies={companies}, active_only={active_only}, include_items={include_items})")
 
     filter_companies = companies or config.COMPANY_SCHEMAS
 
@@ -193,6 +194,7 @@ def list_packages_internal(
         packages = _package_service.list_packages(
             companies=filter_companies,
             active_only=active_only,
+            include_items=include_items,
         )
         logger.info(f"[INTERNAL] Returning {len(packages)} packages to {caller}")
         return packages
@@ -387,6 +389,36 @@ def get_network_asset_types_internal(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve asset types",
+        )
+
+
+@router.get("/companies")
+def list_companies_internal(
+    codes: list[str] = Query(default=None, description="Filter by company codes"),
+    service: dict = Depends(verify_service_token),
+) -> list[dict]:
+    """
+    List companies with their display names.
+
+    Used by Sales-Module to get proper display names for company schemas.
+
+    Returns:
+        List of company dicts with code (schema name) and name (display name)
+    """
+    caller = service.get("service", "unknown")
+    logger.info(f"[INTERNAL] {caller} fetching companies (codes={codes})")
+
+    try:
+        companies = db.get_companies(active_only=True, leaf_only=True)
+        # Filter by codes if specified
+        if codes:
+            companies = [c for c in companies if c.get("code") in codes]
+        return companies
+    except Exception as e:
+        logger.error(f"[INTERNAL] Failed to list companies: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve companies",
         )
 
 

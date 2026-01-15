@@ -6,7 +6,7 @@ build_asset_management:
     # ECR repo is shared with the legacy "asset_library" naming.
     ECR_REPO: "asset_library"
     DOCKERFILE_PATH: "src/asset-management/Dockerfile"
-    BUILD_CONTEXT: "src/asset-management"
+    BUILD_CONTEXT: "."
   rules:
     - if: '$CI_COMMIT_BRANCH == "demo" || $CI_COMMIT_BRANCH == "staging" || $CI_COMMIT_BRANCH == "main"'
       changes:

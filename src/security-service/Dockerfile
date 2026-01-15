@@ -14,19 +14,21 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies (git required for pip to clone SDK repos)
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    git \
     && rm -rf /var/lib/apt/lists/*
 
+# Shared libs (for local installs in requirements.render.txt)
+COPY src/shared/crm-security /app/shared/crm-security
+COPY src/shared/crm-cache /app/shared/crm-cache
+
 # Copy requirements first for better caching
-# Use requirements.render.txt for production (git-based SDK install)
-COPY requirements.render.txt .
-RUN pip install --no-cache-dir -r requirements.render.txt
+COPY src/security-service/requirements.aws.txt /app/requirements.aws.txt
+RUN pip install --no-cache-dir -r /app/requirements.aws.txt
 
 # Copy application code
-COPY . .
+COPY src/security-service/ /app/
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

@@ -298,6 +298,7 @@ class AssetManagementClient:
         self,
         companies: list[str],
         active_only: bool = True,
+        include_items: bool = False,
     ) -> list[dict]:
         """
         Get packages for given companies.
@@ -305,6 +306,7 @@ class AssetManagementClient:
         Args:
             companies: List of company schemas to query
             active_only: Only return active packages
+            include_items: Include package items (networks/locations)
 
         Returns:
             List of package objects
@@ -312,6 +314,7 @@ class AssetManagementClient:
         params = {
             "companies": companies,
             "active_only": active_only,
+            "include_items": include_items,
         }
         return await self._request("GET", "/api/internal/packages", params=params) or []
 
@@ -338,6 +341,28 @@ class AssetManagementClient:
             f"/api/internal/packages/{company}/{package_id}",
             params=params,
         )
+
+    # =========================================================================
+    # COMPANIES
+    # =========================================================================
+
+    async def get_companies(
+        self,
+        codes: list[str] | None = None,
+    ) -> list[dict]:
+        """
+        Get companies with their display names.
+
+        Args:
+            codes: Optional list of company codes to filter by
+
+        Returns:
+            List of company dicts with code (schema name) and name (display name)
+        """
+        params = {}
+        if codes:
+            params["codes"] = codes
+        return await self._request("GET", "/api/internal/companies", params=params) or []
 
     # =========================================================================
     # ELIGIBILITY

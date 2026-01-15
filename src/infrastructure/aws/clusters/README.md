@@ -26,4 +26,4 @@ make infra-production-apply AWS_PROFILE=your-profile
 
 - These stacks intentionally do **not** create shared/global resources like ECR repositories or globally-named S3 buckets. The existing `src/infrastructure/aws` stack still owns those.
 - Argo CD DNS/TLS is not created here (no domains needed for v1). Each cluster can run Argo CD via the default ALB Ingress hostname or `kubectl port-forward`.
-
+- GitLab CI ECR pushes use `AWS_ROLE_ARN` via GitLab OIDC (see `.gitlab-ci.yml`). This IAM role + trust policy is **not** created by the cluster stacks; if `staging` pipelines fail at `AssumeRoleWithWebIdentity`, update the role trust policy to allow the `staging` (and `main`) branch `sub` claim.

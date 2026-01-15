@@ -557,29 +557,6 @@ class SQLiteBackend(DatabaseBackend):
             conn.close()
 
     # =========================================================================
-    # LOCATIONS
-    # =========================================================================
-
-    def get_locations_for_companies(
-        self,
-        company_schemas: list[str],
-    ) -> list[dict[str, Any]]:
-        """SQLite doesn't support multi-company, return empty list."""
-        # SQLite backend doesn't have company-based location tables
-        # This is only used in Supabase multi-tenant setup
-        return []
-
-    def get_location_by_key(
-        self,
-        location_key: str,
-        company_schemas: list[str],
-    ) -> dict[str, Any] | None:
-        """SQLite doesn't support multi-company location lookup."""
-        # SQLite backend doesn't have company-based location tables
-        # This is only used in Supabase multi-tenant setup
-        return None
-
-    # =========================================================================
     # MOCKUP FRAMES (Company-scoped - SQLite ignores schema)
     # =========================================================================
 

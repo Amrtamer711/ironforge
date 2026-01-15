@@ -3,7 +3,7 @@ import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/ui/button";
 import * as mockupApi from "../api/mockup";
 import { getServiceVisibility } from "../api/admin";
-import { useAuth, hasPermission } from "../state/auth";
+import { useAuth, hasPermission, canAccessAdmin } from "../state/auth";
 import { normalizeFrameConfig } from "../lib/utils";
 import * as GenerateTabModule from "./mockup/GenerateTab";
 import * as SetupTabModule from "./mockup/SetupTab";
@@ -33,6 +33,80 @@ const VENUE_TYPES = [
 ];
 
 const VENUE_TYPES_SETUP = VENUE_TYPES.filter((opt) => opt.value !== "all");
+
+const TIME_OF_DAY_LABELS = TIME_OF_DAY.reduce((acc, option) => {
+  acc[option.value] = option.label;
+  return acc;
+}, {});
+
+const SIDE_LABELS = SIDES.reduce((acc, option) => {
+  acc[option.value] = option.label;
+  return acc;
+}, {});
+
+const VENUE_TYPE_LABELS = VENUE_TYPES.reduce((acc, option) => {
+  acc[option.value] = option.label;
+  return acc;
+}, {});
+
+function uniqueValues(values) {
+  return Array.from(new Set(values.filter(Boolean)));
+}
+
+function buildAvailableConfigsFromTemplates(templates = []) {
+  const venueSet = new Set();
+  const timeMap = {};
+  const sideMap = {};
+
+  templates.forEach((template) => {
+    const venue = template?.venue_type || template?.environment;
+    if (!venue) return;
+    venueSet.add(venue);
+
+    if (venue === "indoor") {
+      if (!timeMap[venue]) timeMap[venue] = [];
+      if (!sideMap[venue]) sideMap[venue] = {};
+      return;
+    }
+
+    const timeOfDay = template?.time_of_day || "day";
+    const side = template?.side || "gold";
+    if (!timeMap[venue]) timeMap[venue] = [];
+    timeMap[venue].push(timeOfDay);
+    if (!sideMap[venue]) sideMap[venue] = {};
+    if (!sideMap[venue][timeOfDay]) sideMap[venue][timeOfDay] = [];
+    sideMap[venue][timeOfDay].push(side);
+  });
+
+  const availableTimeOfDays = {};
+  Object.keys(timeMap).forEach((venue) => {
+    availableTimeOfDays[venue] = uniqueValues(timeMap[venue]);
+  });
+
+  const availableSides = {};
+  Object.keys(sideMap).forEach((venue) => {
+    availableSides[venue] = {};
+    Object.keys(sideMap[venue]).forEach((time) => {
+      availableSides[venue][time] = uniqueValues(sideMap[venue][time]);
+    });
+  });
+
+  return {
+    has_frames: templates.length > 0,
+    available_venue_types: uniqueValues(Array.from(venueSet)),
+    available_time_of_days: availableTimeOfDays,
+    available_sides: availableSides,
+  };
+}
+
+function buildOptionsFromValues(values, labels) {
+  const normalized = uniqueValues(values);
+  const withAll = ["all", ...normalized.filter((value) => value !== "all")];
+  return withAll.map((value) => ({
+    value,
+    label: labels?.[value] || (value === "all" ? "All (Default)" : value),
+  }));
+}
 
 const USE_NATIVE_SELECTS = false;
 
@@ -86,6 +160,7 @@ export function MockupPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const canSetup = hasPermission(user, "sales:mockups:setup");
+  const hasAdminAccess = canAccessAdmin(user);
 
   // Fetch service visibility settings
   const visibilityQuery = useQuery({
@@ -95,7 +170,7 @@ export function MockupPage() {
   });
 
   const showGenerate = visibilityQuery.data?.mockup_generate !== false;
-  const showSetup = visibilityQuery.data?.mockup_setup !== false;
+  const showSetup = visibilityQuery.data?.mockup_setup !== false && hasAdminAccess;
 
   // Determine initial mode based on visibility
   const getInitialMode = () => {
@@ -131,8 +206,8 @@ export function MockupPage() {
   // Clear time/side when switching to indoor
   useEffect(() => {
     if (venueType === "indoor") {
-      if (timeOfDay) setTimeOfDay("");
-      if (side) setSide("");
+      if (timeOfDay !== "all") setTimeOfDay("all");
+      if (side !== "all") setSide("all");
     }
   }, [venueType]);
 
@@ -148,7 +223,6 @@ export function MockupPage() {
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [editingTemplateLoading, setEditingTemplateLoading] = useState(false);
   const [setupDragActive, setSetupDragActive] = useState(false);
-  const [creativeDragActive, setCreativeDragActive] = useState(false);
   const [setupHint, setSetupHint] = useState(
     "Select one or more locations, upload a billboard photo, then click four corners to define the frame."
   );
@@ -242,13 +316,8 @@ export function MockupPage() {
   });
 
   const generateTemplatesQuery = useQuery({
-    queryKey: ["mockup", "templates", primaryLocation, effectiveTimeOfDay, side, venueType],
-    queryFn: () =>
-      mockupApi.getTemplates(primaryLocation, {
-        timeOfDay: effectiveTimeOfDay,
-        side,
-        venueType,
-      }),
+    queryKey: ["mockup", "templates", primaryLocation, "generate"],
+    queryFn: () => mockupApi.getTemplates(primaryLocation),
     enabled: mode === "generate" && Boolean(primaryLocation),
   });
 
@@ -336,11 +405,92 @@ export function MockupPage() {
     return data?.asset_types || data?.types || [];
   }, [assetTypesQuery.data]);
 
+  const generateTemplateResponse = generateTemplatesQuery.data;
+
+  const generateTemplateOptionsRaw = useMemo(() => {
+    if (Array.isArray(generateTemplateResponse)) return generateTemplateResponse;
+    return generateTemplateResponse?.templates || [];
+  }, [generateTemplateResponse]);
+
+  const generateAvailableConfigs = useMemo(() => {
+    if (generateTemplateResponse?.available_configs) return generateTemplateResponse.available_configs;
+    return buildAvailableConfigsFromTemplates(generateTemplateOptionsRaw);
+  }, [generateTemplateResponse, generateTemplateOptionsRaw]);
+
+  const generateVenueTypeOptions = useMemo(() => {
+    const available = generateAvailableConfigs?.available_venue_types || [];
+    if (!available.length) return VENUE_TYPES;
+    return buildOptionsFromValues(available, VENUE_TYPE_LABELS);
+  }, [generateAvailableConfigs]);
+
+  const generateTimeOfDayOptions = useMemo(() => {
+    const available = generateAvailableConfigs?.available_time_of_days;
+    if (!available) return TIME_OF_DAY;
+    let values = [];
+    if (venueType && venueType !== "all") {
+      values = available[venueType] || [];
+    } else {
+      values = uniqueValues(Object.values(available).flat());
+    }
+    if (!values.length) return TIME_OF_DAY;
+    return buildOptionsFromValues(values, TIME_OF_DAY_LABELS);
+  }, [generateAvailableConfigs, venueType]);
+
+  const generateSideOptions = useMemo(() => {
+    const available = generateAvailableConfigs?.available_sides;
+    if (!available) return SIDES;
+    let values = [];
+    if (venueType && venueType !== "all") {
+      const venueSides = available[venueType] || {};
+      if (timeOfDay && timeOfDay !== "all") {
+        values = venueSides[timeOfDay] || [];
+      } else {
+        values = uniqueValues(Object.values(venueSides).flat());
+      }
+    } else {
+      const allSides = Object.values(available).flatMap((venueSides) => Object.values(venueSides));
+      values = uniqueValues(allSides.flat());
+    }
+    if (!values.length) return SIDES;
+    return buildOptionsFromValues(values, SIDE_LABELS);
+  }, [generateAvailableConfigs, venueType, timeOfDay]);
+
   const generateTemplateOptions = useMemo(() => {
-    const data = generateTemplatesQuery.data;
-    if (Array.isArray(data)) return data;
-    return data?.templates || [];
-  }, [generateTemplatesQuery.data]);
+    let templates = generateTemplateOptionsRaw;
+    if (venueType && venueType !== "all") {
+      templates = templates.filter(
+        (template) => (template.environment || template.venue_type) === venueType
+      );
+    }
+    if (timeOfDay && timeOfDay !== "all") {
+      templates = templates.filter((template) => template.time_of_day === timeOfDay);
+    }
+    if (side && side !== "all") {
+      templates = templates.filter((template) => template.side === side);
+    }
+    return templates;
+  }, [generateTemplateOptionsRaw, venueType, timeOfDay, side]);
+
+  useEffect(() => {
+    if (mode !== "generate") return;
+    if (!generateVenueTypeOptions.some((option) => option.value === venueType)) {
+      setVenueType("all");
+    }
+  }, [mode, generateVenueTypeOptions, venueType]);
+
+  useEffect(() => {
+    if (mode !== "generate" || timeOfDayDisabled) return;
+    if (!generateTimeOfDayOptions.some((option) => option.value === timeOfDay)) {
+      setTimeOfDay("all");
+    }
+  }, [mode, timeOfDayDisabled, generateTimeOfDayOptions, timeOfDay]);
+
+  useEffect(() => {
+    if (mode !== "generate" || sideDisabled) return;
+    if (!generateSideOptions.some((option) => option.value === side)) {
+      setSide("all");
+    }
+  }, [mode, sideDisabled, generateSideOptions, side]);
 
   const setupTemplateOptions = useMemo(() => {
     const data = setupTemplatesQuery.data;
@@ -384,7 +534,7 @@ export function MockupPage() {
 
   useEffect(() => {
     if (venueType === "indoor" && timeOfDay) {
-      setTimeOfDay("");
+      setTimeOfDay("all");
     }
   }, [timeOfDay, venueType]);
 
@@ -746,6 +896,7 @@ export function MockupPage() {
     setSetupError("");
     setSetupMessage("");
     setSetupPhoto(null);
+    clearTestPreviewState();
 
     try {
       const nextVenueType = template.venue_type || template.environment || "outdoor";
@@ -1788,25 +1939,6 @@ export function MockupPage() {
     }
   }
 
-  function handleCreativeDragOver(event) {
-    event.preventDefault();
-    setCreativeDragActive(true);
-  }
-
-  function handleCreativeDragLeave(event) {
-    event.preventDefault();
-    setCreativeDragActive(false);
-  }
-
-  function handleCreativeDrop(event) {
-    event.preventDefault();
-    setCreativeDragActive(false);
-    const file = event.dataTransfer?.files?.[0];
-    if (file) {
-      setCreativeFile(file);
-    }
-  }
-
   return (
     <div className="h-full min-h-0 flex flex-col">
       <div className="flex-1 min-h-0 flex flex-col gap-4">
@@ -1849,18 +1981,14 @@ export function MockupPage() {
               sideDisabled={sideDisabled}
               side={side}
               setSide={setSide}
-              timeOfDayOptions={TIME_OF_DAY}
-              sideOptions={SIDES}
-              venueTypeOptions={VENUE_TYPES}
+              timeOfDayOptions={generateTimeOfDayOptions}
+              sideOptions={generateSideOptions}
+              venueTypeOptions={generateVenueTypeOptions}
               templateOptions={generateTemplateOptions}
               templatesQuery={generateTemplatesQuery}
               templateThumbs={templateThumbs}
               getTemplateKey={getTemplateKey}
               defaultFrameConfig={DEFAULT_FRAME_CONFIG}
-              creativeDragActive={creativeDragActive}
-              handleCreativeDragOver={handleCreativeDragOver}
-              handleCreativeDragLeave={handleCreativeDragLeave}
-              handleCreativeDrop={handleCreativeDrop}
               useNativeSelects={USE_NATIVE_SELECTS}
             />
           </div>

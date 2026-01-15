@@ -36,6 +36,74 @@ export function ChatPage() {
   const currentRequestRef = useRef(null);  // Track current request for resume
   const eventIndexRef = useRef(0);  // Track event index for resume
   const didInitialScrollRef = useRef(false);
+  const typingRef = useRef(new Map());
+  const typingDisabledRef = useRef(new Set());
+
+  const startTyping = useCallback((messageId) => {
+    const entry = typingRef.current.get(messageId);
+    if (!entry || entry.timer) return;
+
+    const timer = window.setInterval(() => {
+      const current = typingRef.current.get(messageId);
+      if (!current) {
+        window.clearInterval(timer);
+        return;
+      }
+
+      const { target, currentText } = current;
+      if (currentText.length >= target.length) {
+        window.clearInterval(timer);
+        typingRef.current.set(messageId, { ...current, currentText: target, timer: null });
+        return;
+      }
+
+      const nextLength = Math.min(target.length, currentText.length + 3);
+      const nextText = target.slice(0, nextLength);
+      typingRef.current.set(messageId, { ...current, currentText: nextText, timer });
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, status: null, content: nextText } : m))
+      );
+    }, 20);
+
+    typingRef.current.set(messageId, { ...entry, timer });
+  }, []);
+
+  const queueTyping = useCallback(
+    (messageId, targetText) => {
+      if (!messageId) return;
+      const nextTarget = targetText || "";
+      const entry = typingRef.current.get(messageId);
+      if (!entry) {
+        typingRef.current.set(messageId, { target: nextTarget, currentText: "", timer: null });
+        startTyping(messageId);
+        return;
+      }
+      typingRef.current.set(messageId, { ...entry, target: nextTarget });
+      if (!entry.timer) startTyping(messageId);
+    },
+    [startTyping]
+  );
+
+  const flushTyping = useCallback((messageId, finalText) => {
+    if (!messageId) return;
+    const entry = typingRef.current.get(messageId);
+    if (entry?.timer) window.clearInterval(entry.timer);
+    typingRef.current.delete(messageId);
+    if (finalText != null) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === messageId ? { ...m, status: null, content: finalText } : m))
+      );
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      typingRef.current.forEach((entry) => {
+        if (entry?.timer) window.clearInterval(entry.timer);
+      });
+      typingRef.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (!getAuthToken()) return;
@@ -163,6 +231,7 @@ export function ChatPage() {
 
       // Add messages to state
       setMessages(prev => [...prev, userMsg, assistantMsg]);
+      typingDisabledRef.current.delete(assistantMsgId);
       setStreaming(true);
 
       // Attempt resume
@@ -178,6 +247,7 @@ export function ChatPage() {
           }
 
           if (evt?.error) {
+            flushTyping(assistantMsgId, `Error: ${evt.error}`);
             setMessages(prev => prev.map(m =>
               m.id === assistantMsgId ? { ...m, status: null, content: `Error: ${evt.error}` } : m
             ));
@@ -208,17 +278,29 @@ export function ChatPage() {
 
           if ((evt?.type === "chunk" || evt?.type === "content") && evt.content) {
             fullContent = evt.type === "content" ? evt.content : fullContent + evt.content;
-            setMessages(prev => prev.map(m =>
-              m.id === assistantMsgId ? { ...m, status: null, content: fullContent } : m
-            ));
+            if (typingDisabledRef.current.has(assistantMsgId)) {
+              setMessages(prev => prev.map(m =>
+                m.id === assistantMsgId
+                  ? { ...m, status: null, content: normalizeBackendText(fullContent) }
+                  : m
+              ));
+            } else {
+              queueTyping(assistantMsgId, normalizeBackendText(fullContent));
+            }
             return;
           }
 
           if (evt?.content && !evt.type) {
             fullContent += evt.content;
-            setMessages(prev => prev.map(m =>
-              m.id === assistantMsgId ? { ...m, status: null, content: fullContent } : m
-            ));
+            if (typingDisabledRef.current.has(assistantMsgId)) {
+              setMessages(prev => prev.map(m =>
+                m.id === assistantMsgId
+                  ? { ...m, status: null, content: normalizeBackendText(fullContent) }
+                  : m
+              ));
+            } else {
+              queueTyping(assistantMsgId, normalizeBackendText(fullContent));
+            }
             return;
           }
 
@@ -237,6 +319,10 @@ export function ChatPage() {
             }]);
             const fileComment = fileObj.comment || evt.comment || "";
             if (fileComment) fullContent = fileComment;
+            if (fileComment) {
+              flushTyping(assistantMsgId, normalizeBackendText(fileComment));
+            }
+            typingDisabledRef.current.add(assistantMsgId);
             setMessages(prev => prev.map(m =>
               m.id === assistantMsgId ? {
                 ...m,
@@ -250,20 +336,30 @@ export function ChatPage() {
         onDone: () => {
           console.log("[ChatPage] Resume completed successfully");
           sessionStorage.removeItem("pendingChatRequest");
+          if (fullContent && !typingDisabledRef.current.has(assistantMsgId)) {
+            // NOTE: If backend starts true token streaming, replace this with flushTyping().
+            queueTyping(assistantMsgId, normalizeBackendText(fullContent));
+          } else if (fullContent) {
+            flushTyping(assistantMsgId, normalizeBackendText(fullContent));
+          }
+          const hasTypedContent = Boolean(fullContent || typingRef.current.get(assistantMsgId)?.target);
           setMessages(prev => prev.map(m =>
-            m.id === assistantMsgId && !m.content && !m.files?.length
+            m.id === assistantMsgId && !hasTypedContent && !m.content && !m.files?.length
               ? { ...m, status: null, content: "I'm ready to help. What would you like to do?" }
               : m.id === assistantMsgId ? { ...m, status: null } : m
           ));
+          typingDisabledRef.current.delete(assistantMsgId);
           setStreaming(false);
           setResuming(false);
         },
         onError: (err) => {
           console.error("[ChatPage] Resume failed:", err);
           sessionStorage.removeItem("pendingChatRequest");
+          flushTyping(assistantMsgId, "Failed to resume previous request. Please try again.");
           setMessages(prev => prev.map(m =>
             m.id === assistantMsgId ? { ...m, status: null, content: "Failed to resume previous request. Please try again." } : m
           ));
+          typingDisabledRef.current.delete(assistantMsgId);
           setStreaming(false);
           setResuming(false);
         },
@@ -272,6 +368,7 @@ export function ChatPage() {
           sessionStorage.removeItem("pendingChatRequest");
           // Remove the placeholder messages since there's nothing to resume
           setMessages(prev => prev.filter(m => m.id !== userMsgId && m.id !== assistantMsgId));
+          typingDisabledRef.current.delete(assistantMsgId);
           setStreaming(false);
           setResuming(false);
         },
@@ -350,6 +447,7 @@ export function ChatPage() {
     };
 
     setMessages(m => [...m, userMsg, assistantMsg]);
+    typingDisabledRef.current.delete(assistantMsgId);
     setValue("");
     setPendingFiles([]);
     setUploadError("");
@@ -431,6 +529,7 @@ export function ChatPage() {
           }
 
           if (evt?.error) {
+            flushTyping(assistantMsgId, `Error: ${evt.error}`);
             setMessages(prev => prev.map(m =>
               m.id === assistantMsgId ? { ...m, status: null, content: `Error: ${evt.error}` } : m
             ));
@@ -464,21 +563,29 @@ export function ChatPage() {
 
           if ((evt?.type === "chunk" || evt?.type === "content") && evt.content) {
             fullContent = evt.type === "content" ? evt.content : fullContent + evt.content;
-            setMessages(prev => prev.map(m =>
-              m.id === assistantMsgId
-                ? { ...m, status: null, content: normalizeBackendText(fullContent) }
-                : m
-            ));
+            if (typingDisabledRef.current.has(assistantMsgId)) {
+              setMessages(prev => prev.map(m =>
+                m.id === assistantMsgId
+                  ? { ...m, status: null, content: normalizeBackendText(fullContent) }
+                  : m
+              ));
+            } else {
+              queueTyping(assistantMsgId, normalizeBackendText(fullContent));
+            }
             return;
           }
 
           if (evt?.content && !evt.type) {
             fullContent += evt.content;
-            setMessages(prev => prev.map(m =>
-              m.id === assistantMsgId
-                ? { ...m, status: null, content: normalizeBackendText(fullContent) }
-                : m
-            ));
+            if (typingDisabledRef.current.has(assistantMsgId)) {
+              setMessages(prev => prev.map(m =>
+                m.id === assistantMsgId
+                  ? { ...m, status: null, content: normalizeBackendText(fullContent) }
+                  : m
+              ));
+            } else {
+              queueTyping(assistantMsgId, normalizeBackendText(fullContent));
+            }
             return;
           }
 
@@ -502,6 +609,10 @@ export function ChatPage() {
             // Get comment from nested file object or top level
             const fileComment = fileObj.comment || evt.comment || "";
             if (fileComment) fullContent = fileComment;
+            if (fileComment) {
+              flushTyping(assistantMsgId, normalizeBackendText(fileComment));
+            }
+            typingDisabledRef.current.add(assistantMsgId);
             setMessages(prev => prev.map(m =>
               m.id === assistantMsgId ? {
                 ...m,
@@ -513,6 +624,13 @@ export function ChatPage() {
           }
         },
         onDone: () => {
+          if (fullContent && !typingDisabledRef.current.has(assistantMsgId)) {
+            // NOTE: If backend starts true token streaming, replace this with flushTyping().
+            queueTyping(assistantMsgId, normalizeBackendText(fullContent));
+          } else if (fullContent) {
+            flushTyping(assistantMsgId, normalizeBackendText(fullContent));
+          }
+          const hasTypedContent = Boolean(fullContent || typingRef.current.get(assistantMsgId)?.target);
           // Clear pending request from sessionStorage - stream completed successfully
           sessionStorage.removeItem("pendingChatRequest");
           currentRequestRef.current = null;
@@ -521,10 +639,11 @@ export function ChatPage() {
           // Always clear status when streaming ends
           // Show default message only if no content AND no files
           setMessages(prev => prev.map(m =>
-            m.id === assistantMsgId && !m.content && !m.files?.length
+            m.id === assistantMsgId && !hasTypedContent && !m.content && !m.files?.length
               ? { ...m, status: null, content: "I'm ready to help. What would you like to do?" }
               : m.id === assistantMsgId ? { ...m, status: null } : m
           ));
+          typingDisabledRef.current.delete(assistantMsgId);
         },
       });
     } catch (e) {
@@ -533,9 +652,11 @@ export function ChatPage() {
       currentRequestRef.current = null;
       eventIndexRef.current = 0;
 
+      flushTyping(assistantMsgId, e?.message || "Failed to get response");
       setMessages(prev => prev.map(m =>
         m.id === assistantMsgId ? { ...m, status: null, content: e?.message || "Failed to get response" } : m
       ));
+      typingDisabledRef.current.delete(assistantMsgId);
     } finally {
       setStreaming(false);
     }

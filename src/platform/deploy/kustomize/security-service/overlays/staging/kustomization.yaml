@@ -10,7 +10,7 @@ images:
     newName: 018881300778.dkr.ecr.eu-north-1.amazonaws.com/security-service
     # Deployed image tag is Git-driven (pure GitOps).
     # This is updated by CI via Merge Request (staging branch).
-    newTag: 3cf49100
+    newTag: d68186ee
 
 patches:
   - target:
@@ -42,4 +42,3 @@ patches:
             value: staging
           - name: SERVICE_NAME
             value: security-service
-

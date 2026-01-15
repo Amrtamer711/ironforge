@@ -45,6 +45,8 @@ patches:
         server.insecure: "true"
   # When `server.insecure=true`, Argo CD serves plain HTTP on 8080.
   # Avoid exposing a misleading 443 port on the Service.
+  # We expose both 80 and 8080 so `kubectl port-forward svc/argocd-server 8080`
+  # works without needing an explicit `:80` mapping.
   - target:
       kind: Service
       name: argocd-server
@@ -54,5 +56,9 @@ patches:
         value:
           - name: http
             port: 80
+            protocol: TCP
+            targetPort: 8080
+          - name: http-8080
+            port: 8080
             protocol: TCP
             targetPort: 8080

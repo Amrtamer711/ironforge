@@ -13,6 +13,7 @@ spec:
       values: |-
         clusterName: mmg-staging-cluster-1-t588
         region: eu-north-1
+        vpcId: vpc-08d8d0c66d62e3971
 
         serviceAccount:
           create: true
@@ -28,4 +29,3 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=false
-

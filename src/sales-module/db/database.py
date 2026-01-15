@@ -180,23 +180,6 @@ class _DatabaseNamespace:
         return self._backend.export_booking_orders_to_excel()
 
     # =========================================================================
-    # LOCATIONS
-    # =========================================================================
-
-    def get_locations_for_companies(
-        self,
-        company_schemas: list[str],
-    ) -> list[dict[str, Any]]:
-        return self._backend.get_locations_for_companies(company_schemas)
-
-    def get_location_by_key(
-        self,
-        location_key: str,
-        company_schemas: list[str],
-    ) -> dict[str, Any] | None:
-        return self._backend.get_location_by_key(location_key, company_schemas)
-
-    # =========================================================================
     # MOCKUP FRAMES (Company-scoped)
     # =========================================================================
 

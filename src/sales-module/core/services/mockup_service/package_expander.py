@@ -175,11 +175,19 @@ class PackageExpander:
 
             if not package_detail or not package_detail.get("items"):
                 self.logger.warning(f"[PACKAGE_EXPANDER] Package {package_id} has no items")
+                self.logger.warning(f"[PACKAGE_EXPANDER] DEBUG package_detail keys: {package_detail.keys() if package_detail else 'None'}")
                 return targets
+
+            # DEBUG: Log the items to see what's being returned
+            items = package_detail.get("items", [])
+            self.logger.info(f"[PACKAGE_EXPANDER] DEBUG: Got {len(items)} items from API")
+            for idx, item in enumerate(items):
+                self.logger.info(f"[PACKAGE_EXPANDER] DEBUG item[{idx}]: network_id={item.get('network_id')}, network_key={item.get('network_key')}, keys={list(item.keys())}")
 
             for item in package_detail.get("items", []):
                 network_key = item.get("network_key")
                 if not network_key:
+                    self.logger.warning(f"[PACKAGE_EXPANDER] Skipping item with no network_key: {item}")
                     continue
 
                 # Get storage info for this network

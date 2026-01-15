@@ -46,6 +46,7 @@ class ProposalProcessor:
         renderer: ProposalRenderer,
         intro_outro_handler: IntroOutroHandler,
         template_service: TemplateService,
+        user_companies: list[str] | None = None,
     ):
         """
         Initialize processor with dependencies.
@@ -55,6 +56,7 @@ class ProposalProcessor:
             renderer: ProposalRenderer instance
             intro_outro_handler: IntroOutroHandler instance
             template_service: TemplateService instance (required)
+            user_companies: List of company schemas for package expansion
         """
         self.validator = validator
         self.renderer = renderer
@@ -66,6 +68,192 @@ class ProposalProcessor:
         # Avoids re-extracting pages from the same PDF within a single request
         # Maps: pdf_name -> (intro_pdf_path, outro_pdf_path)
         self._extracted_slides_cache: dict[str, tuple[str, str]] = {}
+
+        # User companies for package expansion
+        self._user_companies = user_companies
+
+    async def _check_if_package(self, location_key: str) -> tuple[bool, list[str]]:
+        """
+        Check if location_key is a package and return its network keys.
+
+        Args:
+            location_key: Location key to check
+
+        Returns:
+            Tuple of (is_package, network_keys)
+            e.g., (True, ["dna01", "dna02", "dna03", "dna04"])
+        """
+        if not self._user_companies:
+            return False, []
+
+        from core.services.mockup_service.package_expander import PackageExpander
+
+        expander = PackageExpander(self._user_companies)
+        package_data = await expander._find_package(location_key.lower().strip())
+
+        if package_data:
+            targets = await expander._expand_package(package_data)
+            network_keys = [t.network_key for t in targets]
+            self.logger.info(f"[PROCESSOR] Package '{location_key}' expands to: {network_keys}")
+            return True, network_keys
+
+        return False, []
+
+    async def _process_package_networks_pdf(
+        self,
+        network_keys: list[str],
+        proposal: dict,
+        company_hint: str | None = None
+    ) -> tuple[str | None, list[str]]:
+        """
+        Process all networks in a package using PDF-first strategy.
+
+        Downloads PDF for each network, extracts content (strips intro/outro),
+        and merges them into a single PDF. Continues with available networks
+        if some are missing.
+
+        Args:
+            network_keys: List of network keys in the package
+            proposal: The original proposal data
+            company_hint: Company schema hint for template lookup
+
+        Returns:
+            Tuple of (merged_pdf_path, missing_networks):
+            - merged_pdf_path: Path to merged PDF, or None if ALL networks unavailable
+            - missing_networks: List of network keys that had no templates
+        """
+        loop = asyncio.get_event_loop()
+        network_pdfs = []
+        missing_networks = []
+
+        for network_key in network_keys:
+            pdf_path = await self.template_service.download_to_temp(
+                network_key, company_hint=company_hint, format="pdf"
+            )
+
+            if not pdf_path:
+                # Track missing network but continue with others
+                self.logger.warning(f"[PROCESSOR] PDF template not found for network: {network_key}")
+                missing_networks.append(network_key)
+                continue
+
+            # Extract content pages (strip first and last for intro/outro)
+            reader = PdfReader(pdf_path)
+            total_pages = len(reader.pages)
+
+            if total_pages > 2:
+                # Keep middle pages (content only)
+                content_pdf = self._extract_pages_from_pdf(pdf_path, list(range(1, total_pages - 1)))
+            elif total_pages == 2:
+                # Just 2 pages, keep the second (likely content)
+                content_pdf = self._extract_pages_from_pdf(pdf_path, [1])
+            else:
+                # Single page, keep it
+                content_pdf = pdf_path
+                pdf_path = None  # Don't delete below
+
+            if pdf_path:
+                try:
+                    os.unlink(pdf_path)
+                except OSError:
+                    pass
+
+            network_pdfs.append(content_pdf)
+
+        # If no networks had PDFs, return None to trigger PPTX fallback
+        if not network_pdfs:
+            return None, missing_networks
+
+        # Merge all network PDFs into one
+        if len(network_pdfs) == 1:
+            return network_pdfs[0], missing_networks
+
+        from generators.pdf import merge_pdfs
+        merged_pdf = await loop.run_in_executor(None, merge_pdfs, network_pdfs)
+
+        # Clean up individual network PDFs
+        for pdf in network_pdfs:
+            try:
+                os.unlink(pdf)
+            except OSError:
+                pass
+
+        return merged_pdf, missing_networks
+
+    async def _process_package_networks_pptx(
+        self,
+        network_keys: list[str],
+        proposal: dict,
+        company_hint: str | None = None,
+        already_missing: list[str] | None = None
+    ) -> tuple[str | None, list[str]]:
+        """
+        Process all networks in a package using PPTX fallback strategy.
+
+        Downloads PPTX for each network, converts to PDF (strips intro/outro),
+        and merges them into a single PDF. Continues with available networks
+        if some are missing.
+
+        Args:
+            network_keys: List of network keys in the package
+            proposal: The original proposal data
+            company_hint: Company schema hint for template lookup
+            already_missing: Networks already known to be missing (from PDF attempt)
+
+        Returns:
+            Tuple of (merged_pdf_path, missing_networks):
+            - merged_pdf_path: Path to merged PDF, or None if ALL networks unavailable
+            - missing_networks: List of network keys that had no templates
+        """
+        from generators.pdf import remove_slides_and_convert_to_pdf, merge_pdfs
+
+        network_pdfs = []
+        missing_networks = list(already_missing) if already_missing else []
+
+        for network_key in network_keys:
+            # Skip networks already known to be missing
+            if network_key in missing_networks:
+                continue
+
+            pptx_path = await self.template_service.download_to_temp(
+                network_key, company_hint=company_hint, format="pptx"
+            )
+
+            if not pptx_path:
+                # Track missing network but continue with others
+                self.logger.warning(f"[PROCESSOR] PPTX template not found for network: {network_key}")
+                missing_networks.append(network_key)
+                continue
+
+            # Convert to PDF, removing intro (first) and outro (last) slides
+            pdf_path = await remove_slides_and_convert_to_pdf(str(pptx_path), remove_first=True, remove_last=True)
+
+            try:
+                os.unlink(pptx_path)
+            except OSError:
+                pass
+
+            network_pdfs.append(pdf_path)
+
+        # If no networks had templates, return None
+        if not network_pdfs:
+            return None, missing_networks
+
+        # Merge all network PDFs into one
+        if len(network_pdfs) == 1:
+            return network_pdfs[0], missing_networks
+
+        loop = asyncio.get_event_loop()
+        merged_pdf = await loop.run_in_executor(None, merge_pdfs, network_pdfs)
+
+        # Clean up individual network PDFs
+        for pdf in network_pdfs:
+            try:
+                os.unlink(pdf)
+            except OSError:
+                pass
+
+        return merged_pdf, missing_networks
 
     @staticmethod
     def _generate_timestamp_code() -> str:
@@ -307,6 +495,8 @@ class ProposalProcessor:
 
         # Build financial data helper
         def build_financial_data(proposal: dict) -> dict:
+            # Get location metadata for display name
+            location_meta = proposal.get("location_metadata", {})
             financial_data = {
                 "location": proposal["location"],
                 "durations": proposal["durations"],
@@ -314,6 +504,7 @@ class ProposalProcessor:
                 "spots": proposal.get("spots", 1),
                 "client_name": client_name,
                 "payment_terms": payment_terms,
+                "location_metadata": location_meta,  # Pass metadata for display name
             }
             if "start_dates" in proposal and proposal["start_dates"]:
                 financial_data["start_dates"] = proposal["start_dates"]
@@ -432,6 +623,92 @@ class ProposalProcessor:
 
         async def process_proposal(idx: int, proposal: dict) -> dict:
             """Process a proposal: try PDF-first, fall back to PPTX if needed."""
+            location_key = proposal.get("location", "").lower().strip()
+            company_hint = proposal.get("company_schema")
+
+            # Check if this is a package (bundle of multiple networks)
+            is_package, network_keys = await self._check_if_package(location_key)
+
+            if is_package:
+                self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PACKAGE with {len(network_keys)} networks: {network_keys}")
+
+                # Guardrail: Package must have at least one network
+                if not network_keys:
+                    self.logger.error(f"[PROCESSOR] Package '{location_key}' has no networks - cannot generate proposal")
+                    return {
+                        "idx": idx,
+                        "error": f"Package '{location_key}' has no networks configured. Contact admin.",
+                        "location": location_key,
+                    }
+
+                single_start = time.time()
+                missing_networks = []
+
+                # Try PDF-first for package
+                merged_content_pdf, pdf_missing = await self._process_package_networks_pdf(
+                    network_keys, proposal, company_hint
+                )
+
+                if merged_content_pdf is None:
+                    # Fallback to PPTX, passing networks already known to be missing
+                    self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - Package PDF not available, using PPTX fallback")
+                    merged_content_pdf, pptx_missing = await self._process_package_networks_pptx(
+                        network_keys, proposal, company_hint, already_missing=pdf_missing
+                    )
+                    missing_networks = pptx_missing
+                else:
+                    missing_networks = pdf_missing
+
+                # If ALL networks are missing, return error
+                if merged_content_pdf is None:
+                    missing_str = ", ".join(missing_networks)
+                    self.logger.error(f"[PROCESSOR] Package '{location_key}' has no available templates - all networks missing: {missing_str}")
+                    return {
+                        "idx": idx,
+                        "error": f"No templates available for package '{location_key}'. Missing networks: {missing_str}. Contact administrator.",
+                        "location": location_key,
+                    }
+
+                # Log if some networks were missing
+                if missing_networks:
+                    self.logger.warning(f"[PROCESSOR] Package '{location_key}' generated with partial content. Missing networks: {missing_networks}")
+
+                # Build financial data and create standalone financial slide
+                financial_data = build_financial_data(proposal)
+                financial_pptx_path, vat_amounts, total_amounts = await loop.run_in_executor(
+                    None,
+                    self.renderer.create_standalone_financial_slide,
+                    financial_data,
+                    currency,
+                    None,
+                    None,
+                )
+
+                # Convert financial slide to PDF
+                financial_pdf = await loop.run_in_executor(None, convert_pptx_to_pdf, financial_pptx_path)
+
+                # Clean up financial PPTX
+                try:
+                    os.unlink(financial_pptx_path)
+                except OSError:
+                    pass
+
+                self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PACKAGE TOTAL: {(time.time() - single_start)*1000:.0f}ms")
+
+                return {
+                    "location": proposal["location"].title(),
+                    "filename": f"{proposal['location'].title()}_Proposal.pptx",
+                    "totals": total_amounts,
+                    "idx": idx,
+                    "pdf_template_path": merged_content_pdf,
+                    "financial_pdf": financial_pdf,
+                    "is_pdf_first": True,
+                    "is_package": True,
+                    "network_keys": network_keys,
+                    "missing_networks": missing_networks,  # Track for warning message
+                }
+
+            # Normal flow for non-packages
             result = await process_separate_pdf_first(idx, proposal)
             if result is None:
                 result = await process_separate_pptx_fallback(idx, proposal)
@@ -448,6 +725,9 @@ class ProposalProcessor:
         for idx, result in enumerate(results):
             if isinstance(result, Exception):
                 return {"success": False, "error": f"Error processing proposal {idx + 1}: {str(result)}"}
+            # Check for error dicts (e.g., from package with no networks)
+            if isinstance(result, dict) and result.get("error"):
+                return {"success": False, "error": result["error"]}
 
         # Sort by original index
         sorted_results = sorted(results, key=lambda x: x["idx"])
@@ -460,11 +740,73 @@ class ProposalProcessor:
             client_prefix = client_name.replace(" ", "_") if client_name else "Client"
 
             if result.get("is_pdf_first"):
-                # PDF-first flow: merge template PDF with financial slide PDF
+                # PDF-first flow: insert financial slide BEFORE outro (last slide)
                 t0 = time.time()
-                pdf_path = await loop.run_in_executor(
-                    None, merge_pdfs, [result["pdf_template_path"], result["financial_pdf"]]
-                )
+
+                # Check if this is a package - packages need special handling
+                # because their content PDF has NO intro/outro (stripped from each network)
+                if result.get("is_package"):
+                    # Get intro/outro from first network in the package
+                    network_keys = result.get("network_keys", [])
+                    if network_keys:
+                        first_network = network_keys[0]
+                        synthetic_proposal = {"location": first_network}
+                        package_intro_outro_info = self.intro_outro_handler.get_intro_outro_location([synthetic_proposal])
+
+                        if package_intro_outro_info:
+                            self.logger.info(f"[INTRO_OUTRO] Package using intro/outro from network: {first_network}")
+                            intro_pdf, outro_pdf = await self._create_intro_outro_slides(package_intro_outro_info)
+                            # Merge: intro + content + financial + outro
+                            pdf_path = await loop.run_in_executor(
+                                None, merge_pdfs, [intro_pdf, result["pdf_template_path"], result["financial_pdf"], outro_pdf]
+                            )
+                            # Clean up intro/outro PDFs
+                            try:
+                                os.unlink(intro_pdf)
+                                os.unlink(outro_pdf)
+                            except OSError:
+                                pass
+                        else:
+                            # No intro/outro found - just merge content + financial
+                            self.logger.warning(f"[INTRO_OUTRO] No intro/outro found for package, merging without")
+                            pdf_path = await loop.run_in_executor(
+                                None, merge_pdfs, [result["pdf_template_path"], result["financial_pdf"]]
+                            )
+                    else:
+                        # No network keys - just merge content + financial
+                        pdf_path = await loop.run_in_executor(
+                            None, merge_pdfs, [result["pdf_template_path"], result["financial_pdf"]]
+                        )
+                else:
+                    # Regular location - last page is outro
+                    reader = PdfReader(result["pdf_template_path"])
+                    total_pages = len(reader.pages)
+
+                    if total_pages > 1:
+                        # Extract content (all pages except last/outro)
+                        content_pdf = self._extract_pages_from_pdf(
+                            result["pdf_template_path"], list(range(0, total_pages - 1))
+                        )
+                        # Extract outro (last page)
+                        outro_pdf = self._extract_pages_from_pdf(
+                            result["pdf_template_path"], [total_pages - 1]
+                        )
+                        # Merge: content + financial + outro
+                        pdf_path = await loop.run_in_executor(
+                            None, merge_pdfs, [content_pdf, result["financial_pdf"], outro_pdf]
+                        )
+                        # Clean up extracted PDFs
+                        try:
+                            os.unlink(content_pdf)
+                            os.unlink(outro_pdf)
+                        except OSError:
+                            pass
+                    else:
+                        # Single page template - just append financial
+                        pdf_path = await loop.run_in_executor(
+                            None, merge_pdfs, [result["pdf_template_path"], result["financial_pdf"]]
+                        )
+
                 self.logger.info(f"[TIMING] Single proposal PDF merge: {(time.time() - t0)*1000:.0f}ms")
 
                 # Clean up temp files
@@ -486,6 +828,13 @@ class ProposalProcessor:
                 self.logger.info(f"[TIMING] ========== SEPARATE PROPOSAL COMPLETE ==========")
                 self.logger.info(f"[TIMING] Total time: {total_time:.0f}ms ({total_time/1000:.1f}s)")
 
+                # Build warning message if some networks were missing
+                warning = None
+                missing = result.get("missing_networks", [])
+                if missing:
+                    missing_str = ", ".join(missing)
+                    warning = f"⚠️ Note: Some networks in this package are missing templates ({missing_str}). The proposal was generated with available content only. Please contact administrator to add missing templates."
+
                 return {
                     "success": True,
                     "is_single": True,
@@ -494,6 +843,7 @@ class ProposalProcessor:
                     "location": result["location"],
                     "pptx_filename": None,
                     "pdf_filename": f"{client_prefix}_{timestamp_code}.pdf",
+                    "warning": warning,
                 }
             else:
                 # PPTX fallback flow: convert PPTX to PDF
@@ -535,8 +885,12 @@ class ProposalProcessor:
                 reader = PdfReader(result["pdf_template_path"])
                 total_pages = len(reader.pages)
 
-                # Determine which pages to keep (skip first/last for intro/outro)
-                if intro_outro_info:
+                # For packages, content is already stripped (no intro/outro) - keep all pages
+                # For regular locations, skip first/last for intro/outro
+                if result.get("is_package"):
+                    # Package content is already clean - keep all pages
+                    pages_to_keep = list(range(total_pages))
+                elif intro_outro_info:
                     pages_to_keep = list(range(1, total_pages - 1)) if total_pages > 2 else list(range(total_pages))
                 else:
                     idx = result["idx"]
@@ -709,6 +1063,21 @@ class ProposalProcessor:
         intro_outro_info = self.intro_outro_handler.get_intro_outro_location(validated_proposals)
         self.logger.info(f"[TIMING] Intro/outro info: {(time.time() - t0)*1000:.0f}ms")
 
+        # If intro_outro_info is None, check if any proposal is a package
+        # If so, expand it and use the first network for intro/outro
+        if intro_outro_info is None:
+            for proposal in validated_proposals:
+                location_key = proposal.get("location", "").lower().strip()
+                is_package, network_keys = await self._check_if_package(location_key)
+                if is_package and network_keys:
+                    self.logger.info(f"[INTRO_OUTRO] Package '{location_key}' detected, using first network '{network_keys[0]}' for intro/outro")
+                    # Create a synthetic proposal with the first network for intro/outro lookup
+                    synthetic_proposal = {"location": network_keys[0]}
+                    intro_outro_info = self.intro_outro_handler.get_intro_outro_location([synthetic_proposal])
+                    if intro_outro_info:
+                        self.logger.info(f"[INTRO_OUTRO] Found intro/outro from package network: {intro_outro_info.get('key')}")
+                    break
+
         # Deduplicate deck slides (same location can have multiple durations)
         seen_locations = set()
         unique_proposals_for_deck = []
@@ -827,6 +1196,50 @@ class ProposalProcessor:
 
         async def process_location(idx: int, proposal: dict) -> dict:
             """Process a location: try PDF-first, fall back to PPTX if needed."""
+            location_key = proposal.get("location", "").lower().strip()
+            company_hint = proposal.get("company_schema")
+
+            # Check if this is a package (bundle of multiple networks)
+            is_package, network_keys = await self._check_if_package(location_key)
+
+            if is_package:
+                self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PACKAGE with {len(network_keys)} networks: {network_keys}")
+                single_start = time.time()
+                missing_networks = []
+
+                # Try PDF-first for package (already strips intro/outro from each network)
+                merged_content_pdf, pdf_missing = await self._process_package_networks_pdf(
+                    network_keys, proposal, company_hint
+                )
+
+                if merged_content_pdf is None:
+                    # Fallback to PPTX, passing networks already known to be missing
+                    self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - Package PDF not available, using PPTX fallback")
+                    merged_content_pdf, pptx_missing = await self._process_package_networks_pptx(
+                        network_keys, proposal, company_hint, already_missing=pdf_missing
+                    )
+                    missing_networks = pptx_missing
+                else:
+                    missing_networks = pdf_missing
+
+                # If ALL networks are missing, return error
+                if merged_content_pdf is None:
+                    missing_str = ", ".join(missing_networks)
+                    self.logger.error(f"[PROCESSOR] Package '{location_key}' has no available templates - all networks missing: {missing_str}")
+                    return {
+                        "idx": idx,
+                        "error": f"No templates available for package '{location_key}'. Missing networks: {missing_str}. Contact administrator.",
+                    }
+
+                # Log if some networks were missing
+                if missing_networks:
+                    self.logger.warning(f"[PROCESSOR] Package '{location_key}' generated with partial content. Missing networks: {missing_networks}")
+
+                self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PACKAGE TOTAL: {(time.time() - single_start)*1000:.0f}ms")
+
+                return {"pdf_path": merged_content_pdf, "idx": idx, "is_package": True, "network_keys": network_keys, "missing_networks": missing_networks}
+
+            # Normal flow for non-packages
             result = await process_combined_single_pdf_first(idx, proposal)
             if result is None:
                 result = await process_combined_single_pptx_fallback(idx, proposal)
@@ -843,10 +1256,20 @@ class ProposalProcessor:
         for idx, result in enumerate(results):
             if isinstance(result, Exception):
                 return {"success": False, "error": f"Error processing proposal {idx + 1}: {str(result)}"}
+            # Check for error dicts (e.g., from package with no networks)
+            if isinstance(result, dict) and result.get("error"):
+                return {"success": False, "error": result["error"]}
 
         # Sort by original index and extract PDFs
         sorted_results = sorted(results, key=lambda x: x["idx"])
         pdf_files = [r["pdf_path"] for r in sorted_results]
+
+        # Aggregate missing networks from all results
+        all_missing_networks = []
+        for r in sorted_results:
+            missing = r.get("missing_networks", [])
+            if missing:
+                all_missing_networks.extend(missing)
 
         # Create standalone combined financial slide
         t0 = time.time()
@@ -928,6 +1351,12 @@ class ProposalProcessor:
         self.logger.info(f"[TIMING] Total time: {total_time:.0f}ms ({total_time/1000:.1f}s)")
         self.logger.info(f"[TIMING] Locations: {locations_str}")
 
+        # Build warning message if some networks were missing
+        warning = None
+        if all_missing_networks:
+            missing_str = ", ".join(all_missing_networks)
+            warning = f"⚠️ Note: Some networks in this package are missing templates ({missing_str}). The proposal was generated with available content only. Please contact administrator to add missing templates."
+
         return {
             "success": True,
             "is_combined": True,
@@ -935,4 +1364,5 @@ class ProposalProcessor:
             "pdf_path": merged_pdf,
             "locations": locations_str,
             "pdf_filename": f"{client_prefix}_{timestamp_code}.pdf",
+            "warning": warning,
         }
