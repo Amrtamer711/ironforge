@@ -885,8 +885,12 @@ class ProposalProcessor:
                 reader = PdfReader(result["pdf_template_path"])
                 total_pages = len(reader.pages)
 
-                # Determine which pages to keep (skip first/last for intro/outro)
-                if intro_outro_info:
+                # For packages, content is already stripped (no intro/outro) - keep all pages
+                # For regular locations, skip first/last for intro/outro
+                if result.get("is_package"):
+                    # Package content is already clean - keep all pages
+                    pages_to_keep = list(range(total_pages))
+                elif intro_outro_info:
                     pages_to_keep = list(range(1, total_pages - 1)) if total_pages > 2 else list(range(total_pages))
                 else:
                     idx = result["idx"]

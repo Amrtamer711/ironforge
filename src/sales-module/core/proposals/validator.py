@@ -356,4 +356,50 @@ class ProposalValidator:
             if not is_package:
                 errors.append("Combined requires at least 2 locations (or 1 package)")
 
+        # Check for package + network-inside-package overlap
+        # This would result in duplicate content which is not allowed for combined
+        if validated and len(validated) >= 2:
+            from core.services.mockup_service.package_expander import PackageExpander
+            expander = PackageExpander(self.user_companies)
+
+            # Collect packages with their network keys and display names
+            # package_key -> {name: display_name, networks: {network_key: display_name}}
+            package_info: dict[str, dict] = {}
+            non_package_locations: dict[str, str] = {}  # location_key -> display_name
+
+            for proposal in validated:
+                location_key = proposal.get("location", "").lower().strip()
+                if proposal.get("is_package"):
+                    # Expand package to get its network keys and display names
+                    package_data = await expander._find_package(location_key)
+                    if package_data:
+                        targets = await expander._expand_package(package_data)
+                        package_info[location_key] = {
+                            "name": package_data.get("name", location_key.replace("_", " ").title()),
+                            "networks": {
+                                t.network_key.lower(): t.display_name or t.network_key.replace("_", " ").title()
+                                for t in targets
+                            }
+                        }
+                else:
+                    # Get display name from location metadata
+                    display_name = proposal.get("location_metadata", {}).get("display_name")
+                    if not display_name:
+                        display_name = location_key.replace("_", " ").title()
+                    non_package_locations[location_key] = display_name
+
+            # Check for overlap: any non-package location that's inside a package
+            for package_key, pkg_data in package_info.items():
+                network_keys = set(pkg_data["networks"].keys())
+                overlaps = set(non_package_locations.keys()).intersection(network_keys)
+                if overlaps:
+                    # Use display names for user-friendly error message
+                    overlap_display_names = [non_package_locations[k] for k in overlaps]
+                    overlap_str = ", ".join(overlap_display_names)
+                    package_name = pkg_data["name"]
+                    errors.append(
+                        f"Cannot combine {package_name} package with networks inside it ({overlap_str}). "
+                        f"Either use just the package, or select individual networks instead."
+                    )
+
         return validated, errors

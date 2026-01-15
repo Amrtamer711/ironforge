@@ -56,6 +56,7 @@ class ToolRouter:
         channel_id: str,
         content: str,
         permanent: bool = False,
+        is_error: bool = False,
         **kwargs
     ) -> Any:
         """
@@ -67,13 +68,16 @@ class ToolRouter:
             permanent: If True, message is shown in permanent chat (default: False).
                        Use permanent=True for informational responses like listings,
                        confirmations, and results the user might want to reference.
-                       Use permanent=False (default) for transient status/error messages.
+            is_error: If True, message is treated as an error and shown in permanent chat.
+                      Error messages should always persist so users can see what went wrong.
             **kwargs: Additional args passed to send_message
         """
+        # Errors should always be permanent (shown in chat)
+        show_in_chat = permanent or is_error
         return await self._channel.send_message(
             channel_id=channel_id,
             content=content,
-            is_tool_response=not permanent,  # permanent=True means show in chat
+            is_tool_response=not show_in_chat,
             **kwargs
         )
 
@@ -355,7 +359,7 @@ class ToolRouter:
         has_access, error_msg = self.validate_company_access(user_companies)
         if not has_access:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content=error_msg)
+            await self._send_tool_message(channel_id=channel, content=error_msg, is_error=True)
             return
 
         proposals_data = args.get("proposals", [])
@@ -372,7 +376,7 @@ class ToolRouter:
 
         if not proposals_data:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** No proposals data provided")
+            await self._send_tool_message(channel_id=channel, content="❌ **Error:** No proposals data provided", is_error=True)
             return
 
         # Batch validate all locations with O(1) lookups
@@ -389,7 +393,7 @@ class ToolRouter:
                 f"{validation_errors[0]} "
                 f"Use 'list locations' to see available locations."
             )
-            await self._send_tool_message(channel_id=channel, content=error_msg)
+            await self._send_tool_message(channel_id=channel, content=error_msg, is_error=True)
             return
 
         # Update status
@@ -410,7 +414,7 @@ class ToolRouter:
         has_access, error_msg = self.validate_company_access(user_companies)
         if not has_access:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content=error_msg)
+            await self._send_tool_message(channel_id=channel, content=error_msg, is_error=True)
             return
 
         proposals_data = args.get("proposals", [])
@@ -429,11 +433,11 @@ class ToolRouter:
 
         if not proposals_data:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** No proposals data provided")
+            await self._send_tool_message(channel_id=channel, content="❌ **Error:** No proposals data provided", is_error=True)
             return
         elif not combined_net_rate:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** Combined package requires a combined net rate")
+            await self._send_tool_message(channel_id=channel, content="❌ **Error:** Combined package requires a combined net rate", is_error=True)
             return
         elif len(proposals_data) < 2:
             # Single item - check if it's a package (packages are allowed alone because they contain multiple locations)
@@ -446,7 +450,8 @@ class ToolRouter:
                 await self._channel.delete_message(channel_id=channel, message_id=status_ts)
                 await self._send_tool_message(
                     channel_id=channel,
-                    content="❌ **Error:** Combined requires at least 2 locations (or 1 package)"
+                    content="❌ **Error:** Combined requires at least 2 locations (or 1 package)",
+                    is_error=True
                 )
                 return
             # else: it's a package, continue processing
@@ -465,7 +470,7 @@ class ToolRouter:
                 f"{validation_errors[0]} "
                 f"Use 'list locations' to see available locations."
             )
-            await self._send_tool_message(channel_id=channel, content=error_msg)
+            await self._send_tool_message(channel_id=channel, content=error_msg, is_error=True)
             return
 
         # Update status
@@ -584,7 +589,7 @@ class ToolRouter:
             error_msg = result.get('error') or '; '.join(result.get('errors', ['Unknown error']))
             logger.error(f"[RESULT] Error: {error_msg}")
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** {error_msg}")
+            await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** {error_msg}", is_error=True)
 
     # =========================================================================
     # TEMPLATE/LOCATION HANDLERS
@@ -609,14 +614,14 @@ class ToolRouter:
         # Admin permission gate
         if not config.is_admin(user_id):
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** You need admin privileges to add locations.")
+            await self._send_tool_message(channel_id=channel, content="❌ **Error:** You need admin privileges to add locations.", is_error=True)
             return
 
         # Validate company parameter
         target_company = args.get("company", "").strip().lower()
         if not target_company:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** Company is required. Please specify which company to add the location to.")
+            await self._send_tool_message(channel_id=channel, content="❌ **Error:** Company is required. Please specify which company to add the location to.", is_error=True)
             return
 
         # Check user has access to the target company
@@ -625,14 +630,15 @@ class ToolRouter:
             available = ", ".join(user_companies) if user_companies else "none"
             await self._send_tool_message(
                 channel_id=channel,
-                content=f"❌ **Error:** You don't have access to company `{target_company}`. Your available companies: {available}"
+                content=f"❌ **Error:** You don't have access to company `{target_company}`. Your available companies: {available}",
+                is_error=True
             )
             return
 
         location_key = args.get("location_key", "").strip().lower().replace(" ", "_")
         if not location_key:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** Location key is required.")
+            await self._send_tool_message(channel_id=channel, content="❌ **Error:** Location key is required.", is_error=True)
             return
 
         # Check if location already exists
@@ -668,11 +674,11 @@ class ToolRouter:
                 spot_duration = int(spot_str)
                 if spot_duration <= 0:
                     await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-                    await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** Spot duration must be greater than 0 seconds. Got: {spot_duration}")
+                    await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** Spot duration must be greater than 0 seconds. Got: {spot_duration}", is_error=True)
                     return
             except ValueError:
                 await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-                await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** Invalid spot duration '{spot_duration}'. Please provide a number in seconds (e.g., 10, 12, 16).")
+                await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** Invalid spot duration '{spot_duration}'. Please provide a number in seconds (e.g., 10, 12, 16).", is_error=True)
                 return
 
         if loop_duration is not None:
@@ -682,11 +688,11 @@ class ToolRouter:
                 loop_duration = int(loop_str)
                 if loop_duration <= 0:
                     await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-                    await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** Loop duration must be greater than 0 seconds. Got: {loop_duration}")
+                    await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** Loop duration must be greater than 0 seconds. Got: {loop_duration}", is_error=True)
                     return
             except ValueError:
                 await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-                await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** Invalid loop duration '{loop_duration}'. Please provide a number in seconds (e.g., 96, 100).")
+                await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** Invalid loop duration '{loop_duration}'. Please provide a number in seconds (e.g., 96, 100).", is_error=True)
                 return
 
         # Validate required fields
@@ -714,7 +720,7 @@ class ToolRouter:
 
         if missing:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** Missing required fields: {', '.join(missing)}")
+            await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** Missing required fields: {', '.join(missing)}", is_error=True)
             return
 
         # Store pending location data
@@ -771,7 +777,7 @@ class ToolRouter:
         has_access, error_msg = self.validate_company_access(user_companies)
         if not has_access:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content=error_msg)
+            await self._send_tool_message(channel_id=channel, content=error_msg, is_error=True)
             return
 
         asset_service = get_asset_service()
@@ -856,13 +862,13 @@ class ToolRouter:
         # Admin permission gate
         if not config.is_admin(user_id):
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** You need admin privileges to delete locations.")
+            await self._send_tool_message(channel_id=channel, content="❌ **Error:** You need admin privileges to delete locations.", is_error=True)
             return
 
         location_input = args.get("location_key", "").strip()
         if not location_input:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** Please specify which location to delete.")
+            await self._send_tool_message(channel_id=channel, content="❌ **Error:** Please specify which location to delete.", is_error=True)
             return
 
         # Find the actual location key
@@ -884,7 +890,8 @@ class ToolRouter:
             available = ", ".join(config.available_location_names())
             await self._send_tool_message(
                 channel_id=channel,
-                content=f"❌ **Error:** Location '{location_input}' not found.\n\n**Available locations:** {available}"
+                content=f"❌ **Error:** Location '{location_input}' not found.\n\n**Available locations:** {available}",
+                is_error=True
             )
             return
 
@@ -922,7 +929,7 @@ class ToolRouter:
 
         if not is_admin_user:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** You need admin privileges to export the database.")
+            await self._send_tool_message(channel_id=channel, content="❌ **Error:** You need admin privileges to export the database.", is_error=True)
             return
 
         logger.info("[EXCEL_EXPORT] User requested Excel export")
@@ -959,7 +966,7 @@ class ToolRouter:
         except Exception as e:
             logger.error(f"[EXCEL_EXPORT] Error: {e}", exc_info=True)
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** Failed to export database to Excel. Please try again.")
+            await self._send_tool_message(channel_id=channel, content="❌ **Error:** Failed to export database to Excel. Please try again.", is_error=True)
 
     async def _handle_export_booking_orders(self, args: dict, ctx: dict) -> None:
         """Handle export_booking_orders_to_excel tool call."""
@@ -973,7 +980,7 @@ class ToolRouter:
 
         if not is_admin_user:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** You need admin privileges to export booking orders.")
+            await self._send_tool_message(channel_id=channel, content="❌ **Error:** You need admin privileges to export booking orders.", is_error=True)
             return
 
         logger.info("[BO_EXPORT] User requested booking orders Excel export")
@@ -1010,7 +1017,7 @@ class ToolRouter:
         except Exception as e:
             logger.error(f"[BO_EXPORT] Error: {e}", exc_info=True)
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** Failed to export booking orders to Excel. Please try again.")
+            await self._send_tool_message(channel_id=channel, content="❌ **Error:** Failed to export booking orders to Excel. Please try again.", is_error=True)
 
     # =========================================================================
     # BOOKING ORDER HANDLERS
@@ -1028,7 +1035,7 @@ class ToolRouter:
 
         if not is_admin_user:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** You need admin privileges to fetch booking orders.")
+            await self._send_tool_message(channel_id=channel, content="❌ **Error:** You need admin privileges to fetch booking orders.", is_error=True)
             return
 
         bo_number = args.get("bo_number")
@@ -1047,7 +1054,8 @@ class ToolRouter:
                 await self._channel.delete_message(channel_id=channel, message_id=status_ts)
                 await self._send_tool_message(
                     channel_id=channel,
-                    content=f"❌ **Booking Order Not Found**\n\nBO Number: `{bo_number}` does not exist in the database."
+                    content=f"❌ **Booking Order Not Found**\n\nBO Number: `{bo_number}` does not exist in the database.",
+                    is_error=True
                 )
                 return
 
@@ -1112,7 +1120,8 @@ class ToolRouter:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
             await self._send_tool_message(
                 channel_id=channel,
-                content=f"❌ **Error:** Failed to fetch booking order `{bo_number}`. Error: {str(e)}"
+                content=f"❌ **Error:** Failed to fetch booking order `{bo_number}`. Error: {str(e)}",
+                is_error=True
             )
 
     async def _handle_revise_booking_order(self, args: dict, ctx: dict) -> None:
@@ -1127,7 +1136,7 @@ class ToolRouter:
 
         if not is_admin_user:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** You need admin privileges to revise booking orders.")
+            await self._send_tool_message(channel_id=channel, content="❌ **Error:** You need admin privileges to revise booking orders.", is_error=True)
             return
 
         bo_number = args.get("bo_number")
@@ -1143,7 +1152,8 @@ class ToolRouter:
                 await self._channel.delete_message(channel_id=channel, message_id=status_ts)
                 await self._send_tool_message(
                     channel_id=channel,
-                    content=f"❌ **Booking Order Not Found**\n\nBO Number: `{bo_number}` does not exist in the database."
+                    content=f"❌ **Booking Order Not Found**\n\nBO Number: `{bo_number}` does not exist in the database.",
+                    is_error=True
                 )
                 return
 
@@ -1167,7 +1177,8 @@ class ToolRouter:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
             await self._send_tool_message(
                 channel_id=channel,
-                content=f"❌ **Error:** Failed to start revision workflow. Error: {str(e)}"
+                content=f"❌ **Error:** Failed to start revision workflow. Error: {str(e)}",
+                is_error=True
             )
 
     async def _handle_parse_booking_order(self, args: dict, ctx: dict) -> None:
@@ -1246,7 +1257,7 @@ class ToolRouter:
         has_access, error_msg = self.validate_company_access(user_companies)
         if not has_access:
             await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content=error_msg)
+            await self._send_tool_message(channel_id=channel, content=error_msg, is_error=True)
             return
 
         # Validate the requested location
@@ -1257,7 +1268,7 @@ class ToolRouter:
             is_valid, loc_error, company_hint = await self.validate_location_access(location_key, user_companies, workflow_ctx)
             if not is_valid:
                 await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-                await self._send_tool_message(channel_id=channel, content=loc_error)
+                await self._send_tool_message(channel_id=channel, content=loc_error, is_error=True)
                 return
 
         # Delegate to extracted mockup handler
