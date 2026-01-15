@@ -148,6 +148,8 @@ class SupabaseBackend(DatabaseBackend):
         _run_async(self._cache_delete_pattern("asset_types:*"))
         _run_async(self._cache_delete_pattern("asset_type:*"))
         _run_async(self._cache_delete_pattern("packages:*"))
+        _run_async(self._cache_delete_pattern("package:*"))
+        _run_async(self._cache_delete_pattern("package_items:*"))
         _run_async(self._cache_delete_pattern("frames:*"))
         logger.info("[CACHE] Invalidated asset caches")
 

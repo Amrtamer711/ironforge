@@ -1015,5 +1015,35 @@ class AssetManagementClient:
         )
 
 
+    # =========================================================================
+    # CACHE MANAGEMENT
+    # =========================================================================
+
+    async def invalidate_cache(
+        self,
+        pattern: str = "all",
+    ) -> dict | None:
+        """
+        Invalidate asset-management caches.
+
+        Used to clear stale cache entries after database updates.
+
+        Args:
+            pattern: Cache pattern to invalidate:
+                - 'all': All asset-related caches
+                - 'packages': Package and package_items caches
+                - 'networks': Network caches
+                - 'locations': Location caches
+
+        Returns:
+            Result dict with status and message
+        """
+        return await self._request(
+            "POST",
+            "/api/internal/cache/invalidate",
+            params={"pattern": pattern},
+        )
+
+
 # Singleton instance for convenience
 asset_mgmt_client = AssetManagementClient()

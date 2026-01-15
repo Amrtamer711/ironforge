@@ -438,3 +438,62 @@ def internal_health_check(
         "caller": caller,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@router.post("/cache/invalidate")
+def invalidate_cache_internal(
+    pattern: str = Query(default="all", description="Cache pattern to invalidate: 'all', 'packages', 'networks', 'locations'"),
+    service: dict = Depends(verify_service_token),
+) -> dict:
+    """
+    Invalidate asset caches.
+
+    Used to clear stale cache entries after database updates.
+
+    Patterns:
+    - 'all': Clear all asset-related caches
+    - 'packages': Clear package and package_items caches
+    - 'networks': Clear network caches
+    - 'locations': Clear location caches
+    """
+    caller = service.get("service", "unknown")
+    logger.info(f"[INTERNAL] {caller} invalidating cache (pattern={pattern})")
+
+    try:
+        if pattern == "all":
+            db.invalidate_asset_caches()
+            # Also clear package_items which isn't in the standard method
+            from db.backends.supabase import _run_async
+            _run_async(db._cache_delete_pattern("package_items:*"))
+            return {"status": "ok", "message": "All asset caches invalidated"}
+        elif pattern == "packages":
+            from db.backends.supabase import _run_async
+            _run_async(db._cache_delete_pattern("packages:*"))
+            _run_async(db._cache_delete_pattern("package:*"))
+            _run_async(db._cache_delete_pattern("package_items:*"))
+            return {"status": "ok", "message": "Package caches invalidated"}
+        elif pattern == "networks":
+            from db.backends.supabase import _run_async
+            _run_async(db._cache_delete_pattern("networks:*"))
+            _run_async(db._cache_delete_pattern("network:*"))
+            _run_async(db._cache_delete_pattern("network_key:*"))
+            return {"status": "ok", "message": "Network caches invalidated"}
+        elif pattern == "locations":
+            from db.backends.supabase import _run_async
+            _run_async(db._cache_delete_pattern("locations:*"))
+            _run_async(db._cache_delete_pattern("location:*"))
+            _run_async(db._cache_delete_pattern("location_id:*"))
+            return {"status": "ok", "message": "Location caches invalidated"}
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid pattern: {pattern}. Use 'all', 'packages', 'networks', or 'locations'"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[INTERNAL] Failed to invalidate cache: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to invalidate cache: {str(e)}",
+        )
