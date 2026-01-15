@@ -896,6 +896,7 @@ export function MockupPage() {
     setSetupError("");
     setSetupMessage("");
     setSetupPhoto(null);
+    clearTestPreviewState();
 
     try {
       const nextVenueType = template.venue_type || template.environment || "outdoor";

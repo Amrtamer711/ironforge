@@ -29,6 +29,14 @@
 
 - [ ] Load the whole location hierarchy in one call. (Networks, packages, assets types etc everything). This is to optimize the load of services.
 
+- [ ] Add streaming support for chat messages like chat gpt.
+
+- [ ] Clear chat button to clear the chat history when llm hallucinates.
+
+- [ ] Separate cache for Localhost and dev.
+
+- [ ] Function to clear the cache.
+
 
 ### Part 2: Eligibility Service ⏳ PENDING
 
