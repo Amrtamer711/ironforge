@@ -1,5 +1,10 @@
 # Frontend Requirements for Amr
 
+-Finish Propopsal logic for packages
+-Give them go ahead for Abu dhabi
+-Finalize Mockup Page - asset type
+-Cache while edit, delete, add in mockup setup.
+
 ---
 
 ## DEV TO-DO: Unified Asset Management
@@ -23,6 +28,9 @@
 - [ ] Expand to Abu Dhabi, Fix existing proposals and mockups.
 
 - [ ] Even if we activate Mockup setup, it should only be available for Admins
+
+- [ ] Pass reference images to AI when generating mockups
+
 
 ### Part 2: Eligibility Service ⏳ PENDING
 

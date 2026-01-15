@@ -166,6 +166,9 @@ export function AppShell() {
   const getItemVisibility = (item) => {
     const visibility = visibilityQuery.data;
     const toolKey = Object.keys(TOOL_INFO).find((key) => TOOL_INFO[key].to === item.to);
+    if (toolKey === "mockup" && !canAccessAdmin(user)) {
+      return visibility?.mockup_generate !== false;
+    }
     return isToolVisible(toolKey, visibility);
   };
 

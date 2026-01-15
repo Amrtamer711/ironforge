@@ -3,7 +3,7 @@ import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "../components/ui/button";
 import * as mockupApi from "../api/mockup";
 import { getServiceVisibility } from "../api/admin";
-import { useAuth, hasPermission } from "../state/auth";
+import { useAuth, hasPermission, canAccessAdmin } from "../state/auth";
 import { normalizeFrameConfig } from "../lib/utils";
 import * as GenerateTabModule from "./mockup/GenerateTab";
 import * as SetupTabModule from "./mockup/SetupTab";
@@ -160,6 +160,7 @@ export function MockupPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const canSetup = hasPermission(user, "sales:mockups:setup");
+  const hasAdminAccess = canAccessAdmin(user);
 
   // Fetch service visibility settings
   const visibilityQuery = useQuery({
@@ -169,7 +170,7 @@ export function MockupPage() {
   });
 
   const showGenerate = visibilityQuery.data?.mockup_generate !== false;
-  const showSetup = visibilityQuery.data?.mockup_setup !== false;
+  const showSetup = visibilityQuery.data?.mockup_setup !== false && hasAdminAccess;
 
   // Determine initial mode based on visibility
   const getInitialMode = () => {
