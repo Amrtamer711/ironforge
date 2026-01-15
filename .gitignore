@@ -105,3 +105,7 @@ docs/TESTING_MCP.md
 
 # MCP config (may contain tokens)
 .mcp.json
+
+# Local dev tools (root level)
+package.json
+package-lock.json

@@ -460,11 +460,37 @@ class ProposalProcessor:
             client_prefix = client_name.replace(" ", "_") if client_name else "Client"
 
             if result.get("is_pdf_first"):
-                # PDF-first flow: merge template PDF with financial slide PDF
+                # PDF-first flow: insert financial slide BEFORE outro (last slide)
                 t0 = time.time()
-                pdf_path = await loop.run_in_executor(
-                    None, merge_pdfs, [result["pdf_template_path"], result["financial_pdf"]]
-                )
+
+                reader = PdfReader(result["pdf_template_path"])
+                total_pages = len(reader.pages)
+
+                if total_pages > 1:
+                    # Extract content (all pages except last/outro)
+                    content_pdf = self._extract_pages_from_pdf(
+                        result["pdf_template_path"], list(range(0, total_pages - 1))
+                    )
+                    # Extract outro (last page)
+                    outro_pdf = self._extract_pages_from_pdf(
+                        result["pdf_template_path"], [total_pages - 1]
+                    )
+                    # Merge: content + financial + outro
+                    pdf_path = await loop.run_in_executor(
+                        None, merge_pdfs, [content_pdf, result["financial_pdf"], outro_pdf]
+                    )
+                    # Clean up extracted PDFs
+                    try:
+                        os.unlink(content_pdf)
+                        os.unlink(outro_pdf)
+                    except OSError:
+                        pass
+                else:
+                    # Single page template - just append financial
+                    pdf_path = await loop.run_in_executor(
+                        None, merge_pdfs, [result["pdf_template_path"], result["financial_pdf"]]
+                    )
+
                 self.logger.info(f"[TIMING] Single proposal PDF merge: {(time.time() - t0)*1000:.0f}ms")
 
                 # Clean up temp files
