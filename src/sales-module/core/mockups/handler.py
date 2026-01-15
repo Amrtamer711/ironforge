@@ -16,6 +16,24 @@ from .coordinator import MockupCoordinator
 logger = config.logger
 
 
+def format_location_label(location_value: str) -> str:
+    value = (location_value or "").strip()
+    if not value:
+        return ""
+
+    location_key = value.lower().replace(" ", "_")
+    if location_key in config.LOCATION_METADATA:
+        display_name = config.LOCATION_METADATA[location_key].get("display_name") or value
+        return f"{display_name}"
+
+    key_from_display = config.get_location_key_from_display_name(value)
+    if key_from_display:
+        display_name = config.LOCATION_METADATA.get(key_from_display, {}).get("display_name") or value
+        return f"{display_name}"
+
+    return value
+
+
 async def handle_mockup_generation(
     location_name: str,
     time_of_day: str,
@@ -125,7 +143,7 @@ async def handle_mockup_generation(
 
     # Build upload message based on mode
     mode = metadata.get("mode", "unknown")
-    location_display = location_name
+    location_display = format_location_label(location_name)
     num_frames = metadata.get("num_frames", 1)
 
     variation_info = ""
@@ -135,7 +153,7 @@ async def handle_mockup_generation(
     frames_info = f" ({num_frames} frame(s))" if num_frames > 1 else ""
 
     if mode == "followup":
-        previous_location = metadata.get("previous_location", "unknown")
+        previous_location = format_location_label(metadata.get("previous_location", "unknown"))
         comment = (
             f"🎨 **Billboard Mockup Generated** (Follow-up)\n\n"
             f"📍 New Location: {location_display}{variation_info}\n"

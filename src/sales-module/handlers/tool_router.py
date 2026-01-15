@@ -77,6 +77,31 @@ class ToolRouter:
             **kwargs
         )
 
+    def _format_location_label(self, location_value: str) -> str:
+        value = (location_value or "").strip()
+        if not value:
+            return ""
+
+        location_key = value.lower().replace(" ", "_")
+        if location_key in config.LOCATION_METADATA:
+            display_name = config.LOCATION_METADATA[location_key].get("display_name") or value
+            return f"{display_name}"
+
+        key_from_display = config.get_location_key_from_display_name(value)
+        if key_from_display:
+            display_name = config.LOCATION_METADATA.get(key_from_display, {}).get("display_name") or value
+            return f"{display_name}"
+
+        return value
+
+    def _format_location_list(self, locations: str) -> str:
+        if not locations:
+            return ""
+        parts = [part.strip() for part in locations.split(",") if part.strip()]
+        if not parts:
+            return locations
+        return ", ".join(self._format_location_label(part) for part in parts)
+
     # =========================================================================
     # VALIDATION HELPERS
     # =========================================================================
@@ -429,7 +454,7 @@ class ToolRouter:
                     file_path=result["pdf_path"],
                     filename=result["pdf_filename"],
                     title=result["pdf_filename"],
-                    comment=f"📦 **Combined Package Proposal**\n📍 Locations: {result['locations']}"
+                    comment=f"📦 **Combined Package Proposal**\n📍 Locations: {self._format_location_list(result['locations'])}"
                 )
                 try:
                     os.unlink(result["pdf_path"])
@@ -446,7 +471,7 @@ class ToolRouter:
                         file_path=result["pptx_path"],
                         filename=result["pptx_filename"],
                         title=result["pptx_filename"],
-                        comment=f"📊 **PowerPoint Proposal**\n📍 Location: {result['location']}"
+                        comment=f"📊 **PowerPoint Proposal**\n📍 Location: {self._format_location_label(result['location'])}"
                     )
                     logger.info(f"[RESULT] PPTX upload result: success={pptx_result.success}, error={pptx_result.error if not pptx_result.success else 'None'}")
                 else:
@@ -458,7 +483,7 @@ class ToolRouter:
                     file_path=result["pdf_path"],
                     filename=result["pdf_filename"],
                     title=result["pdf_filename"],
-                    comment=f"📄 **PDF Proposal**\n📍 Location: {result['location']}"
+                    comment=f"📄 **PDF Proposal**\n📍 Location: {self._format_location_label(result['location'])}"
                 )
                 logger.info(f"[RESULT] PDF upload result: success={pdf_result.success}, error={pdf_result.error if not pdf_result.success else 'None'}")
                 try:
@@ -480,7 +505,7 @@ class ToolRouter:
                             file_path=f["path"],
                             filename=f["filename"],
                             title=f["filename"],
-                            comment=f"📊 **PowerPoint Proposal**\n📍 Location: {f['location']}"
+                            comment=f"📊 **PowerPoint Proposal**\n📍 Location: {self._format_location_label(f['location'])}"
                         )
                 else:
                     logger.info(f"[RESULT] Skipping {len(result.get('individual_files', []))} PPTX uploads (disabled)")
@@ -491,7 +516,7 @@ class ToolRouter:
                     file_path=result["merged_pdf_path"],
                     filename=result["merged_pdf_filename"],
                     title=result["merged_pdf_filename"],
-                    comment=f"📄 **Combined PDF**\n📍 All Locations: {result['locations']}"
+                    comment=f"📄 **Combined PDF**\n📍 All Locations: {self._format_location_list(result['locations'])}"
                 )
                 try:
                     for f in result["individual_files"]:

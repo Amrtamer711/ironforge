@@ -8,9 +8,21 @@
 
 # - [ ] Lazy Load Chat Messages so that the user is not stuck with loading conversations after login (Clarify if reducing the no of chats loaded will have positive impact).
 
-- [ ] Chat history displaying the First 500 messages only, not the latest messages.
+# - [ ] Chat history displaying the First 500 messages only, not the latest messages.
 
 - [ ] Issue with the proposal series matching.
+
+- [ ] Check the admin panel and how the user auth is handled.
+
+- [ ] Relation between network/Location and Asset types
+
+- [ ] Ensure support for Packages and locations in proposals
+
+- [ ] AI based Mockups
+
+- [ ] Expand to Abu Dhabi, Fix existing proposals and mockups.
+
+- [ ] Even if we activate Mockup setup, it should only be available for Admins
 
 ### Part 2: Eligibility Service ⏳ PENDING
 

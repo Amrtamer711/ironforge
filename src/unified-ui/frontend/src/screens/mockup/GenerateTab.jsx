@@ -320,6 +320,9 @@ export function GenerateTab({
               placeholder="Select a location"
               onChange={(nextValue) => {
                 setLocations(nextValue ? [nextValue] : []);
+                setVenueType("all");
+                setTimeOfDay("all");
+                setSide("all");
                 setTemplateKey("");
               }}
               useNativeSelect={useNativeSelects}
@@ -387,9 +390,6 @@ export function GenerateTab({
                 const key = getTemplateKey(t);
                 const isSelected = key === templateKey;
                 const thumb = templateThumbs[key];
-                const displayVenueType = t.environment || venueType || "all";
-                const displayTimeOfDay = t.time_of_day || (timeOfDayDisabled ? "all" : timeOfDay) || "all";
-                const displaySide = t.side || (sideDisabled ? "all" : side) || "all";
                 return (
                   <div
                     key={key}
@@ -415,13 +415,6 @@ export function GenerateTab({
                             <LoadingEllipsis text="Loading" className="text-xs text-black/50 dark:text-white/60" />
                           </div>
                         )}
-                      </div>
-                      <div className="mt-auto pt-2 space-y-1">
-                        <div className="font-semibold truncate">{t.photo}</div>
-                        <div className="text-xs text-black/55 dark:text-white/60">
-                          {displayVenueType}/{displayTimeOfDay}/{displaySide} - {t.frame_count} frame
-                          {t.frame_count > 1 ? "s" : ""}
-                        </div>
                       </div>
                     </button>
                     <div className="pt-2">
@@ -519,9 +512,11 @@ export function GenerateTab({
               }}
             />
             <div className="mt-2 text-xs text-black/55 dark:text-white/60">
-              {frameCountHint
+              {frameCountHint && frameCountHint > 1
                 ? `Upload 1 image to reuse across ${frameCountHint} frames, or upload exactly ${frameCountHint} images (one per frame).`
-                : "Upload 1 image to reuse across frames, or select a template to upload multiple images."}
+                : frameCountHint === 1
+                  ? "Upload 1 image."
+                  : "Upload 1 image to reuse across frames, or select a template to upload multiple images."}
             </div>
             {multiCreativeError ? (
               <div className="mt-2 text-xs text-red-600 dark:text-red-300">{multiCreativeError}</div>
