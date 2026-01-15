@@ -161,7 +161,7 @@ services:
     plan: pro_plus
     branch: main
     rootDir: src/sales-module
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./render/Dockerfile
     dockerContext: .
     healthCheckPath: /health
     autoDeploy: true
