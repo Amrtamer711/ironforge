@@ -78,7 +78,7 @@ services:
     plan: starter
     branch: main
     rootDir: src/security-service
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./render/Dockerfile
     dockerContext: .
     healthCheckPath: /health
     autoDeploy: true
@@ -121,7 +121,7 @@ services:
     plan: pro
     branch: main
     rootDir: src/asset-management
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./render/Dockerfile
     dockerContext: .
     healthCheckPath: /health
     autoDeploy: true
@@ -211,7 +211,7 @@ services:
     plan: starter
     branch: main
     rootDir: src/video-critique
-    dockerfilePath: ./Dockerfile
+    dockerfilePath: ./render/Dockerfile
     dockerContext: .
     healthCheckPath: /health
     autoDeploy: true
