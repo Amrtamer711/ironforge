@@ -9,12 +9,6 @@
 
 ## DEV TO-DO: Unified Asset Management
 
-# - [ ] Make the changes to mockup and proposal generation LLM chats with new location structure.
-
-# - [ ] Lazy Load Chat Messages so that the user is not stuck with loading conversations after login (Clarify if reducing the no of chats loaded will have positive impact).
-
-# - [ ] Chat history displaying the First 500 messages only, not the latest messages.
-
 - [ ] Issue with the proposal series matching.
 
 - [ ] Check the admin panel and how the user auth is handled.
@@ -27,7 +21,7 @@
 
 - [ ] Expand to Abu Dhabi, Fix existing proposals and mockups.
 
-- [ ] Even if we activate Mockup setup, it should only be available for Admins
+# - [ ] Even if we activate Mockup setup, it should only be available for Admins
 
 - [ ] Pass reference images to AI when generating mockups
 
@@ -83,10 +77,6 @@ Chief Revenue Officer
 3. **User - multiple Permission sets** - Assign multiple permission sets per user
 4. **Profile to Permission-Set relation** - Link profiles to permission sets
 
-# 5. **Hide unused tabs** - Hide teams, sharing rules etc. that are not in use
-
-# 6. **Add Location UI** - List out the locations for admins
-
 ### Mockups
 
 1. **Template thumbnails** - Save `xxxx_n_thumb.png` alongside templates for faster loading. Include in response as `thumbnail` field
@@ -94,12 +84,7 @@ Chief Revenue Officer
 3. **Mockup frame edit endpoint** - Endpoint to get frame details/config for editing existing templates
    - **Answer**: Yes, use `GET /api/mockup-frames/{company}/{location_key}/frame?time_of_day=day&finish=gold` to get frame data
 
-# 4. 502 bad gateway while generating the test preview on render deployment. Not in local.
-
-# 5. company_schema : "unknown" in api/locations endpoint
-
 6. Save the mockups generated with details in the Generate Page and to be available as links in a history endpoint just like proposal history.
-7. Generate and Setup shows different list of Locations.
 
 
 - Cache Situation - mockup template create/update/delete does not reflect immediately in template list;
@@ -108,5 +93,3 @@ Repro (create): create indoor template for Galleria Extension Indoor and outdoor
 Repro (create): DNA04 outdoor/day/gold not present → create and save → immediate re‑fetch with same params still returns empty; later (after navigating elsewhere) DNA04 template appears, but Galleria templates still missing even after waiting.
 Logs: save calls return success; subsequent templates calls return empty array; no errors in logs.
 Delete behavior: deletions are delayed/inconsistent; dna02_01.jpg remains after delete; later delete attempt removes dna02_04.jpg instead; still no errors in logs.
-
-Multiple file upload to Mockup generate Generate 
