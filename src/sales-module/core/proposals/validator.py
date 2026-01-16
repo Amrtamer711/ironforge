@@ -377,7 +377,7 @@ class ProposalValidator:
                         package_info[location_key] = {
                             "name": package_data.get("name", location_key.replace("_", " ").title()),
                             "networks": {
-                                t.network_key.lower(): t.display_name or t.network_key.replace("_", " ").title()
+                                t.network_key.lower(): t.network_name or t.network_key.replace("_", " ").title()
                                 for t in targets
                             }
                         }
