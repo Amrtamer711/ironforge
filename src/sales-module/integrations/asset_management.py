@@ -447,6 +447,31 @@ class AssetManagementClient:
 
         return await self._request("GET", "/api/asset-types", params=params) or []
 
+    async def get_asset_types_by_network_key(
+        self,
+        network_key: str,
+        companies: list[str],
+        active_only: bool = True,
+    ) -> list[dict]:
+        """
+        Get asset types for a specific network by network_key.
+
+        Args:
+            network_key: The network key (e.g., 'alqana', 'galleria_extension_outdoor')
+            companies: List of company schemas to search
+            active_only: Only return active types
+
+        Returns:
+            List of asset type objects for the network
+        """
+        params: dict[str, Any] = {
+            "companies": companies,
+            "active_only": active_only,
+        }
+        return await self._request(
+            "GET", f"/api/internal/asset-types/{network_key}", params=params
+        ) or []
+
     # =========================================================================
     # STORAGE - Templates & Mockups from Asset-Management
     # =========================================================================

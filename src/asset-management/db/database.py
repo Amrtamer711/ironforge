@@ -257,6 +257,17 @@ class _DatabaseNamespace:
     ) -> bool:
         return self._backend.delete_asset_type(type_id, company_schema, hard_delete)
 
+    def get_asset_types_by_network_key(
+        self,
+        network_key: str,
+        company_schemas: list[str],
+        include_inactive: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Get asset types for a specific network by network_key."""
+        return self._backend.get_asset_types_by_network_key(
+            network_key, company_schemas, include_inactive
+        )
+
     # =========================================================================
     # LOCATIONS
     # =========================================================================

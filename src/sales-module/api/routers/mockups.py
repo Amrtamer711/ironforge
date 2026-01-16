@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 
 import config
 from core.services.asset_service import get_asset_service
-from core.services.mockup_frame_service import MockupFrameService
+from core.services.mockup_frame_service import MockupFrameService, invalidate_mockup_caches
 from core.utils import sanitize_path_component  # ✅ Use shared utility (removed duplicate)
 from crm_security import require_permission_user as require_permission, AuthUser
 from api.schemas import (
@@ -61,6 +61,33 @@ async def get_mockup_locations(user: AuthUser = Depends(require_permission("sale
         })
 
     return {"locations": sorted(locations, key=lambda x: x["name"])}
+
+
+@router.post("/api/mockup/cache/invalidate")
+async def invalidate_cache(
+    location_key: str | None = None,
+    user: AuthUser = Depends(require_permission("sales:mockups:setup"))
+):
+    """Invalidate mockup frame caches.
+
+    Call this after save/update/delete operations to ensure fresh data.
+    Invalidates both local in-memory cache and remote Redis cache.
+
+    Args:
+        location_key: Optional - invalidate only this location's cache.
+                     If not provided, invalidates all mockup caches.
+
+    Requires: sales:mockups:setup permission
+    """
+    try:
+        await invalidate_mockup_caches(location_key=location_key)
+        return {
+            "status": "ok",
+            "message": f"Cache invalidated{f' for {location_key}' if location_key else ''}",
+        }
+    except Exception as e:
+        logger.error(f"[MOCKUP API] Error invalidating cache: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to invalidate cache: {str(e)}")
 
 
 @router.get("/api/mockup/asset-types/{network_key}")

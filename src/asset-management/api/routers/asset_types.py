@@ -43,6 +43,33 @@ def list_asset_types(
     )
 
 
+@router.get("/by-network/{network_key}")
+def get_asset_types_by_network_key(
+    network_key: str,
+    companies: list[str] = Query(default=None, description="Company schemas to search"),
+    active_only: bool = Query(default=True, description="Only return active types"),
+    user: TrustedUserContext = Depends(require_permission("assets:asset_types:read")),
+) -> list[AssetType]:
+    """
+    Get asset types for a specific network by network_key.
+
+    Requires: assets:asset_types:read
+
+    This endpoint looks up the network by key and returns its asset types.
+    For standalone networks, returns an empty list (no asset types).
+    """
+    # Filter to user's accessible companies
+    user_companies = user.get("companies", [])
+    requested = companies or user_companies
+    accessible = [c for c in requested if c in user_companies] if user_companies else requested
+
+    return _service.get_asset_types_by_network_key(
+        network_key=network_key,
+        companies=accessible or config.COMPANY_SCHEMAS,
+        active_only=active_only,
+    )
+
+
 @router.get("/{company}/{type_id}")
 def get_asset_type(
     company: str,

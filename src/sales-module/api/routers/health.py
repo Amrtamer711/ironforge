@@ -262,7 +262,7 @@ async def metrics(user: AuthUser = Depends(require_auth)):
     import psutil
 
     import config
-    from db.cache import pending_location_additions, user_history
+    from db.cache import user_history
     from generators.pdf import _CONVERT_SEMAPHORE
 
     process = psutil.Process(os.getpid())
@@ -289,7 +289,6 @@ async def metrics(user: AuthUser = Depends(require_auth)):
         },
         "cache_sizes": {
             "user_histories": len(user_history),
-            "pending_locations": len(pending_location_additions),
             "templates_cached": len(config.get_location_mapping()),
         },
         "timestamp": get_uae_time().isoformat()

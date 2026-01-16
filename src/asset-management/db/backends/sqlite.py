@@ -559,6 +559,46 @@ class SQLiteBackend(DatabaseBackend):
         finally:
             conn.close()
 
+    def get_asset_types_by_network_key(
+        self,
+        network_key: str,
+        company_schemas: list[str],
+        include_inactive: bool = False,
+    ) -> list[dict[str, Any]]:
+        """Get asset types for a specific network by network_key."""
+        # First find the network by key
+        network = self.get_network_by_key(network_key, company_schemas)
+        if not network:
+            return []
+
+        network_id = network.get("id")
+        company_schema = network.get("company_schema")
+
+        if not network_id or not company_schema:
+            return []
+
+        # Get asset types for this network
+        conn = self._connect()
+        try:
+            active_filter = "" if include_inactive else "AND is_active = 1"
+            cursor = conn.execute(
+                f"""
+                SELECT * FROM asset_types
+                WHERE network_id = ? AND company = ? {active_filter}
+                ORDER BY name
+                """,
+                (network_id, company_schema),
+            )
+            results = self._rows_to_list(cursor.fetchall())
+            for r in results:
+                r["company_schema"] = r.pop("company", None)
+                r["specs"] = json.loads(r.get("specs", "{}"))
+                r["network_key"] = network_key
+                r["network_name"] = network.get("name")
+            return results
+        finally:
+            conn.close()
+
     def update_asset_type(
         self,
         type_id: int,

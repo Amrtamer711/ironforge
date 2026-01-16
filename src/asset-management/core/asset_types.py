@@ -96,6 +96,25 @@ class AssetTypeService:
         )
         return [self._dict_to_asset_type(r) for r in results]
 
+    def get_asset_types_by_network_key(
+        self,
+        network_key: str,
+        companies: list[str],
+        active_only: bool = True,
+    ) -> list[AssetType]:
+        """
+        Get asset types for a specific network by network_key.
+
+        This is useful when you have the network_key but not the network_id.
+        For standalone networks, returns an empty list (no asset types).
+        """
+        results = db.get_asset_types_by_network_key(
+            network_key=network_key,
+            company_schemas=companies,
+            include_inactive=not active_only,
+        )
+        return [self._dict_to_asset_type(r) for r in results]
+
     def get_asset_type(
         self,
         company: str,

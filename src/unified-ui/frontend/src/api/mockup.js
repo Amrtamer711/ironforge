@@ -10,6 +10,16 @@ export async function getAssetTypes() {
   return apiRequest("/api/assets/asset-types");
 }
 
+/**
+ * Get asset types for a specific network by network key.
+ * Returns empty array for standalone networks (no asset types).
+ * @param {string} networkKey - The network key to fetch asset types for
+ */
+export async function getAssetTypesByNetworkKey(networkKey) {
+  if (!networkKey) return [];
+  return apiRequest(`/api/assets/asset-types/by-network/${encodeURIComponent(networkKey)}`);
+}
+
 export async function getTemplates(location, { timeOfDay, side, venueType } = {}) {
   const params = new URLSearchParams();
   if (timeOfDay) params.set("time_of_day", timeOfDay);
@@ -24,6 +34,17 @@ export async function getTemplates(location, { timeOfDay, side, venueType } = {}
 export async function saveSetupPhoto(formData) {
   //return apiRequest("/api/sales/mockup/setup/save", { method: "POST", body: formData });
   return apiRequest("/api/sales/mockup/save-frame", { method: "POST", body: formData });
+}
+
+/**
+ * Invalidate mockup frame caches.
+ * Call after save/update/delete operations to ensure fresh data.
+ * @param {string} locationKey - Optional location key to invalidate specific cache
+ */
+export async function invalidateMockupCache(locationKey) {
+  const params = new URLSearchParams();
+  if (locationKey) params.set("location_key", locationKey);
+  return apiRequest(`/api/sales/mockup/cache/invalidate?${params.toString()}`, { method: "POST" });
 }
 
 export async function updateSetupPhoto(formData) {

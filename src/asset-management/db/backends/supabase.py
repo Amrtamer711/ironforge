@@ -823,6 +823,65 @@ class SupabaseBackend(DatabaseBackend):
 
         return results
 
+    def get_asset_types_by_network_key(
+        self,
+        network_key: str,
+        company_schemas: list[str],
+        include_inactive: bool = False,
+    ) -> list[dict[str, Any]]:
+        """
+        Get asset types for a specific network by network_key.
+
+        Args:
+            network_key: The network key (e.g., 'alqana', 'galleria_extension_outdoor')
+            company_schemas: List of company schemas to search in
+            include_inactive: Include inactive asset types
+
+        Returns:
+            List of asset type dicts for the network
+        """
+        # First find the network by key
+        network = self.get_network_by_key(network_key, company_schemas)
+        if not network:
+            logger.debug(f"[SUPABASE] Network not found: {network_key}")
+            return []
+
+        network_id = network.get("id")
+        company_schema = network.get("company_schema")
+
+        if not network_id or not company_schema:
+            return []
+
+        # Get asset types for this network
+        filters = {"network_id": network_id}
+        if not include_inactive:
+            filters["is_active"] = True
+
+        client = self._get_client()
+        try:
+            response = (
+                client.schema(company_schema)
+                .table("asset_types")
+                .select("*")
+                .match(filters)
+                .order("name")
+                .execute()
+            )
+
+            results = []
+            for row in response.data or []:
+                row["company_schema"] = company_schema
+                row["network_key"] = network_key
+                row["network_name"] = network.get("name")
+                results.append(row)
+
+            logger.debug(f"[SUPABASE] Found {len(results)} asset types for network {network_key}")
+            return results
+
+        except Exception as e:
+            logger.error(f"[SUPABASE] Error getting asset types for network {network_key}: {e}")
+            return []
+
     def update_asset_type(
         self,
         type_id: int,

@@ -72,7 +72,7 @@ async def periodic_cleanup():
         await asyncio.sleep(300)  # Every 5 minutes
         try:
             # Clean up old user histories
-            from db.cache import pending_location_additions, user_history
+            from db.cache import user_history
 
             # Clean user histories older than 1 hour
             cutoff = get_uae_time() - timedelta(hours=1)
@@ -93,18 +93,6 @@ async def periodic_cleanup():
 
             if expired_users:
                 logger.info(f"[CLEANUP] Removed {len(expired_users)} old user histories")
-
-            # Clean pending locations older than 10 minutes
-            location_cutoff = get_uae_time() - timedelta(minutes=10)
-            expired_locations = [
-                uid for uid, data in pending_location_additions.items()
-                if data.get("timestamp", get_uae_time()) < location_cutoff
-            ]
-            for uid in expired_locations:
-                del pending_location_additions[uid]
-
-            if expired_locations:
-                logger.info(f"[CLEANUP] Removed {len(expired_locations)} pending locations")
 
             # Clean up old temporary files
             import os

@@ -123,42 +123,9 @@ def get_base_tools() -> list[ToolDefinition | RawTool]:
             }
         ),
         ToolDefinition(
-            name="add_location",
-            description="Add a new location to a specific company. Admin must provide ALL required metadata upfront. Digital locations require: sov, spot_duration, loop_duration, upload_fee. Static locations don't need these fields. ADMIN ONLY.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "company": {"type": "string", "description": "Company to add the location to (e.g., 'backlite_dubai', 'viola'). Must be a company the user has access to."},
-                    "location_key": {"type": "string", "description": "Folder/key name (lowercase, underscores for spaces, e.g., 'dubai_gateway')"},
-                    "display_name": {"type": "string", "description": "Display name shown to users (e.g., 'The Dubai Gateway')"},
-                    "display_type": {"type": "string", "enum": ["Digital", "Static"], "description": "Display type - determines which fields are required"},
-                    "height": {"type": "string", "description": "Height with unit (e.g., '6m', '14m')"},
-                    "width": {"type": "string", "description": "Width with unit (e.g., '12m', '7m')"},
-                    "number_of_faces": {"type": "integer", "description": "Number of display faces (e.g., 1, 2, 4, 6)", "default": 1},
-                    "series": {"type": "string", "description": "Series name (e.g., 'The Landmark Series', 'Digital Icons')"},
-                    "sov": {"type": "string", "description": "Share of voice percentage - REQUIRED for Digital only (e.g., '16.6%', '12.5%')"},
-                    "spot_duration": {"type": "integer", "description": "Duration of each spot in seconds - REQUIRED for Digital only (e.g., 10, 12, 16)"},
-                    "loop_duration": {"type": "integer", "description": "Total loop duration in seconds - REQUIRED for Digital only (e.g., 96, 100)"},
-                    "upload_fee": {"type": "integer", "description": "Upload fee in AED - REQUIRED for Digital only (e.g., 1000, 1500, 2000, 3000)"}
-                },
-                "required": ["company", "location_key", "display_name", "display_type", "height", "width", "series"]
-            }
-        ),
-        ToolDefinition(
             name="list_locations",
             description="ONLY call this when user explicitly asks to SEE or LIST available locations (e.g., 'what locations do you have?', 'show me locations', 'list all locations'). DO NOT call this when user mentions specific location names in a proposal request.",
             parameters={"type": "object", "properties": {}}
-        ),
-        ToolDefinition(
-            name="delete_location",
-            description="Delete an existing location (admin only, requires confirmation). ADMIN ONLY.",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "location_key": {"type": "string", "description": "The location key or display name to delete"}
-                },
-                "required": ["location_key"]
-            }
         ),
         ToolDefinition(
             name="export_proposals_to_excel",

@@ -361,6 +361,26 @@ class DatabaseBackend(ABC):
         pass
 
     @abstractmethod
+    def get_asset_types_by_network_key(
+        self,
+        network_key: str,
+        company_schemas: list[str],
+        include_inactive: bool = False,
+    ) -> list[dict[str, Any]]:
+        """
+        Get asset types for a specific network by network_key.
+
+        Args:
+            network_key: The network key (e.g., 'alqana', 'galleria_extension_outdoor')
+            company_schemas: List of company schemas to search in
+            include_inactive: Include inactive asset types
+
+        Returns:
+            List of asset type dicts for the network
+        """
+        pass
+
+    @abstractmethod
     def update_asset_type(
         self,
         type_id: int,

@@ -3,7 +3,6 @@ import { ChevronDown } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { FormField } from "../../components/ui/form-field";
-import { MultiSelect } from "../../components/ui/multi-select";
 import { ConfirmModal } from "../../components/ui/modal";
 import { SoftCard } from "../../components/ui/soft-card";
 import { LoadingEllipsis } from "../../components/ui/loading-ellipsis";
@@ -148,18 +147,22 @@ export function SetupTab({
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
               <FormField label="Location">
-                <MultiSelect
-                  value={locations}
-                  onChange={(next) => {
-                    setLocations(next);
+                <SelectDropdown
+                  value={locations[0] || ""}
+                  onChange={(nextValue) => {
+                    setLocations(nextValue ? [nextValue] : []);
                     setTemplateKey("");
                   }}
-                  options={locationOptions.map((loc) => {
-                    const value = loc?.key ?? loc?.id ?? loc?.value ?? loc;
-                    const label = loc?.name ?? loc?.label ?? value;
-                    return { value, label };
-                  })}
-                  placeholder="Select locations"
+                  options={[
+                    { value: "", label: "Select a location" },
+                    ...locationOptions.map((loc) => {
+                      const value = loc?.key ?? loc?.id ?? loc?.value ?? loc;
+                      const label = loc?.name ?? loc?.label ?? value;
+                      return { value, label };
+                    }),
+                  ]}
+                  placeholder="Select a location"
+                  useNativeSelect={useNativeSelects}
                 />
                 {locationsQuery.isLoading ? (
                   <div className="mt-1 text-xs text-black/50 dark:text-white/60">
@@ -168,31 +171,33 @@ export function SetupTab({
                 ) : null}
               </FormField>
 
-              <FormField label="Asset Type">
-                <SelectDropdown
-                  value={assetType}
-                  options={[
-                    { value: "", label: "All asset types" },
-                    ...assetTypeOptions.map((type) => {
-                      if (typeof type === "string") {
-                        return { value: type, label: type };
-                      }
-                      return {
-                        value: type?.type_key ?? type?.key ?? type?.id ?? type?.value ?? "",
-                        label: type?.name ?? type?.label ?? type?.type_key ?? "Unknown",
-                      };
-                    }),
-                  ]}
-                  placeholder="Select asset type"
-                  onChange={(nextValue) => setAssetType(nextValue)}
-                  useNativeSelect={useNativeSelects}
-                />
-                {assetTypesQuery?.isLoading ? (
-                  <div className="mt-1 text-xs text-black/50 dark:text-white/60">
-                    <LoadingEllipsis text="Loading asset types" />
-                  </div>
-                ) : null}
-              </FormField>
+              {locations.length > 0 && assetTypeOptions.length > 0 && (
+                <FormField label="Asset Type">
+                  <SelectDropdown
+                    value={assetType}
+                    options={[
+                      { value: "", label: "All asset types" },
+                      ...assetTypeOptions.map((type) => {
+                        if (typeof type === "string") {
+                          return { value: type, label: type };
+                        }
+                        return {
+                          value: type?.type_key ?? type?.key ?? type?.id ?? type?.value ?? "",
+                          label: type?.name ?? type?.label ?? type?.type_key ?? "Unknown",
+                        };
+                      }),
+                    ]}
+                    placeholder="Select asset type"
+                    onChange={(nextValue) => setAssetType(nextValue)}
+                    useNativeSelect={useNativeSelects}
+                  />
+                  {assetTypesQuery?.isLoading ? (
+                    <div className="mt-1 text-xs text-black/50 dark:text-white/60">
+                      <LoadingEllipsis text="Loading asset types" />
+                    </div>
+                  ) : null}
+                </FormField>
+              )}
 
               <FormField label="Venue Type">
                 <SelectDropdown
@@ -258,7 +263,7 @@ export function SetupTab({
                     <div className="text-xs text-black/55 dark:text-white/60">
                       {locations.length
                         ? `${templateOptions.length} template${templateOptions.length === 1 ? "" : "s"}`
-                        : "Select at least one location to load templates."}
+                        : "Select a location to load templates."}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 text-xs text-black/50 dark:text-white/55">

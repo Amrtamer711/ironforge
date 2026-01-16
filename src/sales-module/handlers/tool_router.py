@@ -13,7 +13,6 @@ import config
 from core.proposals import process_proposals
 from core.services.asset_service import get_asset_service
 from core.workflow_context import WorkflowContext
-from db.cache import pending_location_additions
 from db.database import db
 from integrations.llm import ToolCall
 from core.utils import sanitize_filename
@@ -323,9 +322,7 @@ class ToolRouter:
             "get_separate_proposals": self._handle_separate_proposals,
             "get_combined_proposal": self._handle_combined_proposal,
             "refresh_templates": self._handle_refresh_templates,
-            "add_location": self._handle_add_location,
             "list_locations": self._handle_list_locations,
-            "delete_location": self._handle_delete_location,
             "export_proposals_to_excel": self._handle_export_proposals,
             "export_booking_orders_to_excel": self._handle_export_booking_orders,
             "fetch_booking_order": self._handle_fetch_booking_order,
@@ -604,169 +601,6 @@ class ToolRouter:
         await self._channel.delete_message(channel_id=channel, message_id=status_ts)
         await self._send_tool_message(channel_id=channel, content="✅ Templates refreshed successfully.", permanent=True)
 
-    async def _handle_add_location(self, args: dict, ctx: dict) -> None:
-        """Handle add_location tool call."""
-        channel = ctx["channel"]
-        user_id = ctx["user_id"]
-        status_ts = ctx["status_ts"]
-        user_companies = ctx["user_companies"]
-
-        # Admin permission gate
-        if not config.is_admin(user_id):
-            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** You need admin privileges to add locations.", is_error=True)
-            return
-
-        # Validate company parameter
-        target_company = args.get("company", "").strip().lower()
-        if not target_company:
-            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** Company is required. Please specify which company to add the location to.", is_error=True)
-            return
-
-        # Check user has access to the target company
-        if not user_companies or target_company not in user_companies:
-            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            available = ", ".join(user_companies) if user_companies else "none"
-            await self._send_tool_message(
-                channel_id=channel,
-                content=f"❌ **Error:** You don't have access to company `{target_company}`. Your available companies: {available}",
-                is_error=True
-            )
-            return
-
-        location_key = args.get("location_key", "").strip().lower().replace(" ", "_")
-        if not location_key:
-            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** Location key is required.", is_error=True)
-            return
-
-        # Check if location already exists
-        from core.services.template_service import TemplateService
-        template_service = TemplateService(companies=user_companies)
-        template_exists, _ = await template_service.exists(location_key)
-        mapping = config.get_location_mapping()
-
-        if template_exists or location_key in mapping:
-            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            if template_exists:
-                logger.warning(f"[SECURITY] Duplicate location attempt blocked - storage check: {location_key}")
-            await self._send_tool_message(channel_id=channel, content=f"⚠️ Location `{location_key}` already exists. Please use a different key.")
-            return
-
-        # Extract and validate metadata
-        display_name = args.get("display_name")
-        display_type = args.get("display_type")
-        height = args.get("height")
-        width = args.get("width")
-        number_of_faces = args.get("number_of_faces", 1)
-        sov = args.get("sov")
-        series = args.get("series")
-        spot_duration = args.get("spot_duration")
-        loop_duration = args.get("loop_duration")
-        upload_fee = args.get("upload_fee")
-
-        # Clean duration values
-        if spot_duration is not None:
-            spot_str = str(spot_duration).strip()
-            spot_str = spot_str.rstrip('s"').rstrip('sec').rstrip('seconds').strip()
-            try:
-                spot_duration = int(spot_str)
-                if spot_duration <= 0:
-                    await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-                    await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** Spot duration must be greater than 0 seconds. Got: {spot_duration}", is_error=True)
-                    return
-            except ValueError:
-                await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-                await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** Invalid spot duration '{spot_duration}'. Please provide a number in seconds (e.g., 10, 12, 16).", is_error=True)
-                return
-
-        if loop_duration is not None:
-            loop_str = str(loop_duration).strip()
-            loop_str = loop_str.rstrip('s"').rstrip('sec').rstrip('seconds').strip()
-            try:
-                loop_duration = int(loop_str)
-                if loop_duration <= 0:
-                    await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-                    await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** Loop duration must be greater than 0 seconds. Got: {loop_duration}", is_error=True)
-                    return
-            except ValueError:
-                await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-                await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** Invalid loop duration '{loop_duration}'. Please provide a number in seconds (e.g., 96, 100).", is_error=True)
-                return
-
-        # Validate required fields
-        missing = []
-        if not display_name:
-            missing.append("display_name")
-        if not display_type:
-            missing.append("display_type")
-        if not height:
-            missing.append("height")
-        if not width:
-            missing.append("width")
-        if not series:
-            missing.append("series")
-
-        if display_type == "Digital":
-            if not sov:
-                missing.append("sov")
-            if not spot_duration:
-                missing.append("spot_duration")
-            if not loop_duration:
-                missing.append("loop_duration")
-            if upload_fee is None:
-                missing.append("upload_fee")
-
-        if missing:
-            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content=f"❌ **Error:** Missing required fields: {', '.join(missing)}", is_error=True)
-            return
-
-        # Store pending location data
-        pending_location_additions[user_id] = {
-            "location_key": location_key,
-            "company": target_company,
-            "display_name": display_name,
-            "display_type": display_type,
-            "height": height,
-            "width": width,
-            "number_of_faces": number_of_faces,
-            "sov": sov,
-            "series": series,
-            "spot_duration": spot_duration,
-            "loop_duration": loop_duration,
-            "upload_fee": upload_fee,
-            "timestamp": datetime.now(),
-        }
-
-        logger.info(f"[LOCATION_ADD] Stored pending location for user {user_id}: {location_key}")
-        logger.info(f"[LOCATION_ADD] Current pending additions: {list(pending_location_additions.keys())}")
-
-        # Build summary text
-        summary_text = (
-            f"✅ **Location metadata validated for `{location_key}`**\n\n"
-            f"📋 **Summary:**\n"
-            f"• Display Name: {display_name}\n"
-            f"• Display Type: {display_type}\n"
-            f"• Dimensions: {width} x {height}\n"
-            f"• Faces: {number_of_faces}\n"
-            f"• Series: {series}\n"
-        )
-
-        if display_type == "Digital":
-            summary_text += (
-                f"• SOV: {sov}\n"
-                f"• Spot Duration: {spot_duration}s\n"
-                f"• Loop Duration: {loop_duration}s\n"
-                f"• Upload Fee: AED {upload_fee}\n"
-            )
-
-        summary_text += "\n📎 **Please upload the PDF template file now.** (Will be converted to PowerPoint at maximum quality)\n\n⏱️ _You have 10 minutes to upload the file._"
-
-        await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-        await self._send_tool_message(channel_id=channel, content=summary_text, permanent=True)
-
     async def _handle_list_locations(self, args: dict, ctx: dict) -> None:
         """Handle list_locations tool call."""
         channel = ctx["channel"]
@@ -852,66 +686,6 @@ class ToolRouter:
 
             listing = "\n".join(listing_parts)
             await self._send_tool_message(channel_id=channel, content=f"📍 **Available locations & packages:**{listing}", permanent=True)
-
-    async def _handle_delete_location(self, args: dict, ctx: dict) -> None:
-        """Handle delete_location tool call."""
-        channel = ctx["channel"]
-        user_id = ctx["user_id"]
-        status_ts = ctx["status_ts"]
-
-        # Admin permission gate
-        if not config.is_admin(user_id):
-            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** You need admin privileges to delete locations.", is_error=True)
-            return
-
-        location_input = args.get("location_key", "").strip()
-        if not location_input:
-            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            await self._send_tool_message(channel_id=channel, content="❌ **Error:** Please specify which location to delete.", is_error=True)
-            return
-
-        # Find the actual location key
-        location_key = None
-        display_name = None
-
-        if location_input.lower().replace(" ", "_") in config.LOCATION_METADATA:
-            location_key = location_input.lower().replace(" ", "_")
-            display_name = config.LOCATION_METADATA[location_key].get('display_name', location_key)
-        else:
-            for key, meta in config.LOCATION_METADATA.items():
-                if meta.get('display_name', '').lower() == location_input.lower():
-                    location_key = key
-                    display_name = meta.get('display_name', key)
-                    break
-
-        if not location_key:
-            await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-            available = ", ".join(config.available_location_names())
-            await self._send_tool_message(
-                channel_id=channel,
-                content=f"❌ **Error:** Location '{location_input}' not found.\n\n**Available locations:** {available}",
-                is_error=True
-            )
-            return
-
-        meta = config.LOCATION_METADATA[location_key]
-        confirmation_text = (
-            f"⚠️ **CONFIRM LOCATION DELETION**\n\n"
-            f"📍 **Location:** {display_name} (`{location_key}`)\n"
-            f"📊 **Type:** {meta.get('display_type', 'Unknown')}\n"
-            f"📐 **Size:** {meta.get('width')} x {meta.get('height')}\n"
-            f"🎯 **Series:** {meta.get('series', 'Unknown')}\n\n"
-            f"🚨 **WARNING:** This will permanently delete:\n"
-            f"• PowerPoint template file\n"
-            f"• Location metadata\n"
-            f"• Remove location from all future proposals\n\n"
-            f"❓ **To confirm deletion, reply with:** `confirm delete {location_key}`\n"
-            f"❓ **To cancel, reply with:** `cancel` or ignore this message"
-        )
-
-        await self._channel.delete_message(channel_id=channel, message_id=status_ts)
-        await self._send_tool_message(channel_id=channel, content=confirmation_text, permanent=True)
 
     # =========================================================================
     # EXPORT HANDLERS

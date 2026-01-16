@@ -211,6 +211,11 @@ export function MockupPage() {
     }
   }, [venueType]);
 
+  // Clear asset type when primary location changes (asset types are per-network)
+  useEffect(() => {
+    setAssetType("");
+  }, [primaryLocation]);
+
   const prevModeRef = useRef(mode);
 
   const [setupPhoto, setSetupPhoto] = useState(null);
@@ -224,7 +229,7 @@ export function MockupPage() {
   const [editingTemplateLoading, setEditingTemplateLoading] = useState(false);
   const [setupDragActive, setSetupDragActive] = useState(false);
   const [setupHint, setSetupHint] = useState(
-    "Select one or more locations, upload a billboard photo, then click four corners to define the frame."
+    "Select a location, upload a billboard photo, then click four corners to define the frame."
   );
   const [setupFrameConfig, setSetupFrameConfig] = useState(DEFAULT_FRAME_CONFIG);
   const [greenscreenColor, setGreenscreenColor] = useState("#1CFF1C");
@@ -310,9 +315,9 @@ export function MockupPage() {
   });
 
   const assetTypesQuery = useQuery({
-    queryKey: ["mockup", "asset-types"],
-    queryFn: mockupApi.getAssetTypes,
-    enabled: mode === "setup",
+    queryKey: ["mockup", "asset-types", primaryLocation],
+    queryFn: () => mockupApi.getAssetTypesByNetworkKey(primaryLocation),
+    enabled: mode === "setup" && Boolean(primaryLocation),
   });
 
   const generateTemplatesQuery = useQuery({
@@ -726,6 +731,9 @@ export function MockupPage() {
         setSetupMessage("Saved frames successfully");
       }
 
+      // Invalidate server-side caches so new templates appear immediately
+      await mockupApi.invalidateMockupCache();
+
       clearAllFrames(true);
       setEditingTemplate(null);
       setEditingTemplateLoading(false);
@@ -775,6 +783,8 @@ export function MockupPage() {
           side: template.side,
         });
       }
+      // Invalidate server-side caches so deleted templates disappear immediately
+      await mockupApi.invalidateMockupCache();
       queryClient.invalidateQueries({ queryKey: ["mockup", "templates"] });
       queryClient.refetchQueries({ queryKey: ["mockup", "templates"], type: "active" });
     } catch (err) {
@@ -1358,7 +1368,7 @@ export function MockupPage() {
 
   function updateHintForPhoto() {
     if (!previewImgRef.current) {
-      setSetupHint("Select one or more locations, upload a billboard photo, then click four corners to define the frame.");
+      setSetupHint("Select a location, upload a billboard photo, then click four corners to define the frame.");
       return;
     }
     setSetupHint("Click and drag to draw a box. Use +/Fit to zoom; Shift+drag or middle mouse pans; pinch to zoom.");
@@ -1915,7 +1925,7 @@ export function MockupPage() {
     syncFrameCount();
     setFramesJson("[]");
     setFramesJsonDirty(false);
-    setSetupHint("Select one or more locations, upload a billboard photo, then click four corners to define the frame.");
+    setSetupHint("Select a location, upload a billboard photo, then click four corners to define the frame.");
     drawPreview();
   }
 

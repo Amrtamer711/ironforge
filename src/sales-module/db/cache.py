@@ -14,17 +14,12 @@ from core.utils.memory import cleanup_memory
 
 # Cache TTL settings (in seconds)
 USER_HISTORY_TTL = 3600  # 1 hour
-PENDING_LOCATION_TTL = 1800  # 30 minutes
 PENDING_BOOKING_ORDER_TTL = 3600  # 1 hour
 MAX_CACHE_SIZE = 1000  # Max entries per cache to prevent memory exhaustion
 
 # Global for user conversation history
 # Structure: {user_id: {"history": list, "timestamp": float}}
 user_history: dict[str, dict[str, Any]] = {}
-
-# Global for pending location additions (waiting for PPT upload)
-# Structure: {user_id: {"data": dict, "timestamp": float}}
-pending_location_additions: dict[str, dict[str, Any]] = {}
 
 # Global for mockup history (30-minute memory per user)
 # Structure: {user_id: {"creative_paths": List[Path], "metadata": dict, "timestamp": datetime}}
@@ -56,15 +51,6 @@ def cleanup_stale_caches():
         del user_history[k]
         cleaned_count += 1
 
-    # Clean pending_location_additions
-    stale_keys = [
-        k for k, v in pending_location_additions.items()
-        if now - v.get("timestamp", 0) > PENDING_LOCATION_TTL
-    ]
-    for k in stale_keys:
-        del pending_location_additions[k]
-        cleaned_count += 1
-
     # Clean pending_booking_orders
     stale_keys = [
         k for k, v in pending_booking_orders.items()
@@ -89,12 +75,6 @@ def _ensure_cache_size():
         for k in sorted_keys[:len(user_history) - MAX_CACHE_SIZE]:
             del user_history[k]
         config.logger.warning(f"[CACHE] Evicted {len(sorted_keys[:len(user_history) - MAX_CACHE_SIZE])} oldest user_history entries")
-
-    # Similar for other caches
-    if len(pending_location_additions) > MAX_CACHE_SIZE:
-        sorted_keys = sorted(pending_location_additions.keys(), key=lambda k: pending_location_additions[k].get("timestamp", 0))
-        for k in sorted_keys[:len(pending_location_additions) - MAX_CACHE_SIZE]:
-            del pending_location_additions[k]
 
     if len(pending_booking_orders) > MAX_CACHE_SIZE:
         sorted_keys = sorted(pending_booking_orders.keys(), key=lambda k: pending_booking_orders[k].get("timestamp", 0))

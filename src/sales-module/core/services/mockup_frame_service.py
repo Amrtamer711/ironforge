@@ -61,9 +61,73 @@ class MockupFrameCache:
         """Get cached frames for location."""
         return self._frames.get(company, {}).get(location_key)
 
+    async def invalidate(self, company: str | None = None, location_key: str | None = None) -> None:
+        """Invalidate cache entries.
+
+        Args:
+            company: If provided, only invalidate for this company. Otherwise all companies.
+            location_key: If provided, only invalidate this location. Otherwise all locations.
+        """
+        async with self._lock:
+            if company is None:
+                # Clear all
+                self._frames.clear()
+                self._last_refresh.clear()
+            elif location_key is None:
+                # Clear all for company
+                if company in self._frames:
+                    del self._frames[company]
+                if company in self._last_refresh:
+                    del self._last_refresh[company]
+            else:
+                # Clear specific location
+                normalized_key = location_key.lower().strip()
+                if company in self._frames and normalized_key in self._frames[company]:
+                    del self._frames[company][normalized_key]
+
 
 # Global cache instance
 _frame_cache = MockupFrameCache()
+
+
+def invalidate_bulk_locations_cache() -> None:
+    """Invalidate the global bulk locations cache."""
+    global _bulk_locations_cache, _bulk_locations_cache_time
+    _bulk_locations_cache = None
+    _bulk_locations_cache_time = 0
+
+
+async def invalidate_mockup_caches(
+    company: str | None = None,
+    location_key: str | None = None,
+    invalidate_remote: bool = True,
+) -> None:
+    """Invalidate mockup frame caches (local and optionally remote).
+
+    Args:
+        company: If provided, only invalidate for this company
+        location_key: If provided, only invalidate this location
+        invalidate_remote: If True, also invalidate asset-management Redis cache
+    """
+    from integrations.asset_management import asset_mgmt_client
+
+    # Invalidate local in-memory caches
+    await _frame_cache.invalidate(company, location_key)
+    invalidate_bulk_locations_cache()
+
+    # Invalidate remote Redis cache in asset-management
+    if invalidate_remote:
+        try:
+            # If we have a specific location, invalidate just frames cache
+            # Otherwise invalidate all asset caches
+            pattern = "all" if location_key is None else "locations"
+            await asset_mgmt_client.invalidate_cache(pattern)
+        except Exception as e:
+            # Log but don't fail - local cache was already invalidated
+            import logging
+            logging.getLogger("sales-module").warning(
+                f"[MOCKUP_CACHE] Failed to invalidate remote cache: {e}"
+            )
 
 
 class MockupFrameService:
