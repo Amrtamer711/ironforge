@@ -1,5 +1,4 @@
 # Chat prompts - Main LLM chat system prompt
-import os
 from datetime import datetime
 
 
@@ -207,8 +206,6 @@ def get_main_system_prompt(
         f"═══════════════════════════════════════════════════════════════════\n"
         f"🎨 MOCKUP GENERATION\n"
         f"═══════════════════════════════════════════════════════════════════\n\n"
-        f"MOCKUP SETUP WEBSITE: {os.getenv('RENDER_EXTERNAL_URL', 'http://localhost:3000')}/mockup\n"
-        f"(Share this URL when users ask about setting up mockup frames or uploading billboard photos)\n\n"
         f"You can GENERATE MOCKUPS: Create billboard mockups with uploaded or AI-generated creatives:\n"
         f"  TWO MODES (everything must be in ONE message):\n"
         f"  A) USER UPLOAD MODE (requires image attachment):\n"
