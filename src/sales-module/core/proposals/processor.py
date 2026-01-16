@@ -559,9 +559,10 @@ class ProposalProcessor:
             except OSError:
                 pass
 
+            display_name = proposal.get("location_metadata", {}).get("display_name") or proposal["location"].replace("_", " ").title()
             result = {
-                "location": proposal["location"].title(),
-                "filename": f"{proposal['location'].title()}_Proposal.pptx",
+                "location": display_name,
+                "filename": f"{proposal['location'].replace('_', ' ').title()}_Proposal.pptx",
                 "totals": total_amounts,
                 "idx": idx,
                 "pdf_template_path": pdf_template_path,
@@ -609,10 +610,11 @@ class ProposalProcessor:
             except OSError:
                 pass
 
+            display_name = proposal.get("location_metadata", {}).get("display_name") or proposal["location"].replace("_", " ").title()
             result = {
                 "path": pptx_path,
-                "location": proposal["location"].title(),
-                "filename": f"{proposal['location'].title()}_Proposal.pptx",
+                "location": display_name,
+                "filename": f"{proposal['location'].replace('_', ' ').title()}_Proposal.pptx",
                 "totals": total_amounts,
                 "idx": idx,
                 "is_pdf_first": False,
@@ -695,9 +697,10 @@ class ProposalProcessor:
 
                 self.logger.info(f"[TIMING] [{idx+1}/{total_proposals}] {location_key} - PACKAGE TOTAL: {(time.time() - single_start)*1000:.0f}ms")
 
+                display_name = proposal.get("location_metadata", {}).get("display_name") or proposal["location"].replace("_", " ").title()
                 return {
-                    "location": proposal["location"].title(),
-                    "filename": f"{proposal['location'].title()}_Proposal.pptx",
+                    "location": display_name,
+                    "filename": f"{proposal['location'].replace('_', ' ').title()}_Proposal.pptx",
                     "totals": total_amounts,
                     "idx": idx,
                     "pdf_template_path": merged_content_pdf,
@@ -1332,8 +1335,11 @@ class ProposalProcessor:
             vat = subtotal * 0.05
             total_combined = f"AED {subtotal + vat:,.0f}"
 
-        # Log to database
-        locations_str = ", ".join([p["location"].title() for p in validated_proposals])
+        # Log to database - use display names, not location keys
+        locations_str = ", ".join([
+            p.get("location_metadata", {}).get("display_name") or p["location"].replace("_", " ").title()
+            for p in validated_proposals
+        ])
 
         db.log_proposal(
             submitted_by=submitted_by,
