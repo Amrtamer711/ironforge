@@ -27,6 +27,7 @@ export function ChatPage() {
   const [uploadError, setUploadError] = useState("");
   const [loading, setLoading] = useState(true);
   const [streaming, setStreaming] = useState(false);
+  const [clearingContext, setClearingContext] = useState(false);
   const [conversationId, setConversationId] = useState(null);
   const [resuming, setResuming] = useState(false);
 
@@ -118,6 +119,17 @@ export function ChatPage() {
       }),
     ]);
   }, [queryClient]);
+
+  const clearContext = useCallback(async () => {
+    if (clearingContext) return;
+    setClearingContext(true);
+    try {
+      // TODO: Update once backend finalizes the clear-context endpoint/response.
+      await chatApi.clearContext({ conversationId });
+    } finally {
+      setClearingContext(false);
+    }
+  }, [clearingContext, conversationId]);
 
   // Load history on mount - messages load fast, URLs load lazily in background
   useEffect(() => {
@@ -753,8 +765,17 @@ export function ChatPage() {
           </Button>
         </div>
 
-        <div className="mt-2 text-xs text-black/45 dark:text-white/55">
-          AI can make mistakes. Verify important information.
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-black/45 dark:text-white/55">
+          <span>AI can make mistakes. Verify important information.</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-5 rounded-full px-2 py-0.5 text-[10px] font-semibold leading-none shadow-none ring-1 ring-[rgb(var(--brand-accent)/0.28)] text-[rgb(var(--brand-accent))] bg-[rgb(var(--brand-accent)/0.12)] hover:bg-[rgb(var(--brand-accent)/0.2)]"
+            disabled={clearingContext}
+            onClick={clearContext}
+          >
+            {clearingContext ? "Clearing..." : "Clear Context"}
+          </Button>
         </div>
       </Card>
     </div>

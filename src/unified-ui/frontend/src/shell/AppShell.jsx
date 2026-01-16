@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LayoutGrid, MessageSquare, PanelsTopLeft, Shield, Menu, LogOut, Settings, Video, Package } from "lucide-react";
 
 import { Logo } from "../components/Logo";
@@ -19,7 +19,7 @@ import {
 } from "../components/ui/dropdown-menu";
 import { useAuth, canAccessAdmin, hasPermission } from "../state/auth";
 import { cn } from "../lib/utils";
-import { modulesApi } from "../api";
+import { adminApi, modulesApi } from "../api";
 import { getServiceVisibility } from "../api/admin";
 
 // Map tool keys to their visibility setting keys
@@ -140,6 +140,7 @@ export function AppShell() {
   const { user, logout, authReady } = useAuth();
   const loc = useLocation();
   const nav = useNavigate();
+  const queryClient = useQueryClient();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -154,6 +155,15 @@ export function AppShell() {
     queryFn: getServiceVisibility,
     staleTime: 30000, // Cache for 30 seconds
   });
+
+  useEffect(() => {
+    if (!canAccessAdmin(user)) return;
+    queryClient.prefetchQuery({
+      queryKey: ["admin", "companies"],
+      queryFn: adminApi.getCompanyHierarchy,
+      staleTime: 5 * 60 * 1000,
+    });
+  }, [queryClient, user]);
 
   const initials = useMemo(() => {
     const n = user?.name || "User";

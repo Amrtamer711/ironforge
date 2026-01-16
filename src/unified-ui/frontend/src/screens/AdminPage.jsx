@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button";
 import { adminApi } from "../api";
 import { useAuth, canAccessAdmin } from "../state/auth";
-import { parsePermissionParts } from "../lib/utils";
+import { buildCompanyTreeOptions, parsePermissionParts } from "../lib/utils";
 import * as UsersTabModule from "./admin/UsersTab";
 import * as CompaniesTabModule from "./admin/CompaniesTab";
 import * as ProfilesTabModule from "./admin/ProfilesTab";
@@ -60,7 +60,8 @@ export function AdminPage() {
 
   const companiesQuery = useQuery({
     queryKey: ["admin", "companies"],
-    queryFn: adminApi.getCompanies,
+    queryFn: adminApi.getCompanyHierarchy,
+    staleTime: 5 * 60 * 1000,
   });
 
   const permissionSetsQuery = useQuery({
@@ -123,29 +124,38 @@ export function AdminPage() {
     updateVisibilityMutation.mutate(newVisibility);
   }, [serviceVisibility, updateVisibilityMutation]);
 
+  const companyCodeById = useMemo(() => {
+    const raw = companiesQuery.data?.hierarchy;
+    if (!Array.isArray(raw)) return new Map();
+    const map = new Map();
+    raw.forEach((company) => {
+      if (company.id != null && company.code) {
+        map.set(company.id, company.code);
+      }
+    });
+    return map;
+  }, [companiesQuery.data]);
+
   const users = useMemo(() => {
-    const list = usersQuery.data?.users || usersQuery.data || [];
+    const list = usersQuery.data?.users || [];
     const needle = q.trim().toLowerCase();
     return list.filter((u) => {
-      const profileName = Array.isArray(u.profiles)
-        ? u.profiles.map((p) => p?.display_name || p?.name || p).filter(Boolean).join(" ")
-        : u.profiles?.display_name || u.profiles?.name || u.profile || u.profile_name || "";
+      const profileName = u.profiles?.display_name || u.profiles?.name || "";
       const s = `${u.email || ""} ${u.name || ""} ${profileName}`.toLowerCase();
       if (needle && !s.includes(needle)) return false;
-      const companyValue = u.company?.code || u.company_code || u.company_id || "";
+      const companyValue =
+        companyCodeById.get(u.primary_company_id) || "";
       if (userCompanyFilter && companyValue !== userCompanyFilter) return false;
       if (userProfileFilter) {
-        const profileValues = Array.isArray(u.profiles)
-          ? u.profiles.map((p) => p?.name || p?.display_name || p).filter(Boolean)
-          : [u.profiles?.name || u.profiles?.display_name || u.profile || u.profile_name].filter(Boolean);
+        const profileValues = u.profiles?.name ? [u.profiles.name] : [];
         if (!profileValues.includes(userProfileFilter)) return false;
       }
       return true;
     });
-  }, [usersQuery.data, q, userCompanyFilter, userProfileFilter]);
+  }, [usersQuery.data, q, userCompanyFilter, userProfileFilter, companyCodeById]);
 
   const hasNext = useMemo(() => {
-    const list = usersQuery.data?.users || usersQuery.data || [];
+    const list = usersQuery.data?.users || [];
     return list.length === PAGE_SIZE;
   }, [usersQuery.data]);
 
@@ -158,11 +168,10 @@ export function AdminPage() {
     setPermissionActionFilter("");
   }, [permissionServiceFilter]);
   const profileOptions = useMemo(() => {
-    const raw = profilesQuery.data?.profiles ?? profilesQuery.data;
-    return Array.isArray(raw) ? raw : [];
+    return Array.isArray(profilesQuery.data) ? profilesQuery.data : [];
   }, [profilesQuery.data]);
   const permissionTree = useMemo(() => {
-    const raw = permissionsQuery.data?.permissions ?? permissionsQuery.data;
+    const raw = Array.isArray(permissionsQuery.data) ? permissionsQuery.data : [];
     const moduleMap = new Map();
     const descriptions = {};
 
@@ -256,16 +265,11 @@ export function AdminPage() {
       ? permissionTree.actionsByService[`${permissionModuleFilter}:${permissionServiceFilter}`] || []
       : permissionTree.allActions;
   const companyList = useMemo(() => {
-    const raw = companiesQuery.data?.companies ?? companiesQuery.data;
+    const raw = companiesQuery.data?.hierarchy;
     return Array.isArray(raw) ? raw : [];
   }, [companiesQuery.data]);
   const permissionSetList = useMemo(() => {
-    const raw =
-      permissionSetsQuery.data?.permission_sets ??
-      permissionSetsQuery.data?.permissionSets ??
-      permissionSetsQuery.data;
-    if (!Array.isArray(raw)) return [];
-    return raw.map((set) => (typeof set === "string" ? { name: set } : set));
+    return Array.isArray(permissionSetsQuery.data) ? permissionSetsQuery.data : [];
   }, [permissionSetsQuery.data]);
   const filteredCompanyList = useMemo(() => {
     const needle = companySearch.trim().toLowerCase();
@@ -319,14 +323,7 @@ export function AdminPage() {
     permissionActionFilter,
   ]);
 
-  const companyFilterOptions = useMemo(() => {
-    return companyList
-      .map((company) => ({
-        value: company.code || company.id || "",
-        label: company.name || company.code || company.id || "—",
-      }))
-      .filter((opt) => opt.value);
-  }, [companyList]);
+  const companyTreeOptions = useMemo(() => buildCompanyTreeOptions(companyList), [companyList]);
 
   const profileFilterOptions = useMemo(() => {
     return profileOptions
@@ -351,8 +348,9 @@ export function AdminPage() {
   const companyLookup = useMemo(() => {
     const map = new Map();
     companyList.forEach((company) => {
-      const key = company.code || company.id;
-      if (key) map.set(key, company.name || company.code || key);
+      const name = company.name || company.code || company.id;
+      if (company.code) map.set(company.code, name);
+      if (company.id != null) map.set(company.id, name);
     });
     return map;
   }, [companyList]);
@@ -412,13 +410,13 @@ export function AdminPage() {
             users={users}
             user={user}
             companyLookup={companyLookup}
+            companyCodeById={companyCodeById}
             userCompanyFilter={userCompanyFilter}
             setUserCompanyFilter={setUserCompanyFilter}
             userProfileFilter={userProfileFilter}
             setUserProfileFilter={setUserProfileFilter}
-            companyFilterOptions={companyFilterOptions}
+            companyTreeOptions={companyTreeOptions}
             profileFilterOptions={profileFilterOptions}
-            companyList={companyList}
             profileOptions={profileOptions}
             profileValues={profileValues}
             permissionSetList={permissionSetList}

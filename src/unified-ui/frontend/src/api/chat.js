@@ -26,6 +26,14 @@ export async function deleteConversation(id) {
   return apiRequest(`/api/sales/chat/conversation/${id}`, { method: "DELETE" });
 }
 
+// TODO: Replace this endpoint/params once backend provides the clear-context API contract.
+export async function clearContext({ conversationId } = {}) {
+  return apiRequest("/api/sales/chat/clear-context", {
+    method: "POST",
+    body: JSON.stringify({ conversation_id: conversationId }),
+  });
+}
+
 /**
  * Fetch chat history with optional pagination.
  * @param {Object} options - Pagination options

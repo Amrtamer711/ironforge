@@ -38,9 +38,7 @@ function buildPermissionSetPermissionsMap(permissionSetList) {
   (permissionSetList || []).forEach((set) => {
     const key = getValue(set);
     if (!key) return;
-    const perms = (set.permissions || set.permission_list || set.permissionList || [])
-      .map(getPermissionValue)
-      .filter(Boolean);
+    const perms = (set.permissions || []).map(getPermissionValue).filter(Boolean);
     map.set(key, new Set(perms));
   });
   return map;
@@ -51,9 +49,7 @@ function buildProfilePermissionSetsMap(profileOptions) {
   (profileOptions || []).forEach((profile) => {
     const key = profile.name || profile.id;
     if (!key) return;
-    const sets = (profile.permission_sets || profile.permissionSets || profile.permission_set_names || [])
-      .map(getValue)
-      .filter(Boolean);
+    const sets = (profile.permission_sets || []).map(getValue).filter(Boolean);
     map.set(key, new Set(sets));
   });
   return map;
@@ -84,12 +80,12 @@ export function UsersTab({
   setUserCompanyFilter,
   userProfileFilter,
   setUserProfileFilter,
-  companyFilterOptions,
+  companyTreeOptions,
   profileFilterOptions,
 }) {
-  const companySelectOptions = useMemo(
-    () => [{ value: "", label: "All companies" }, ...companyFilterOptions.map((opt) => ({ ...opt }))],
-    [companyFilterOptions]
+  const companyTreeWithAll = useMemo(
+    () => [{ value: "", label: "All companies" }, ...(companyTreeOptions || [])],
+    [companyTreeOptions]
   );
   const profileSelectOptions = useMemo(
     () => [{ value: "", label: "All profiles" }, ...profileFilterOptions.map((opt) => ({ ...opt }))],
@@ -122,7 +118,7 @@ export function UsersTab({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <SelectDropdown
           value={userCompanyFilter}
-          options={companySelectOptions}
+          treeOptions={companyTreeWithAll}
           onChange={setUserCompanyFilter}
         />
         <SelectDropdown
@@ -149,25 +145,17 @@ export function UsersTab({
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {users.map((u) => {
-                const profileLabels = Array.isArray(u.profiles)
-                  ? u.profiles.map((p) => p?.display_name || p?.name || p).filter(Boolean)
-                  : [u.profiles?.display_name || u.profiles?.name || u.profile || u.profile_name].filter(Boolean);
-                const profileText = profileLabels.length
-                  ? profileLabels.length > 2
-                    ? `${profileLabels[0]}, +${profileLabels.length - 1}`
-                    : profileLabels.join(", ")
-                  : "—";
+                const profileText = u.profiles?.display_name || u.profiles?.name || "—";
                 const isSelfCard = Boolean(
                   (u.id && user?.id && u.id === user.id) ||
-                    (u.user_id && user?.user_id && u.user_id === user.user_id) ||
                     (u.email && user?.email && u.email === user.email)
                 );
-                const rawActive = u.is_active ?? u.isActive ?? u.active;
+                const rawActive = u.is_active;
                 const hasActiveFlag = typeof rawActive === "boolean";
                 const isActive = hasActiveFlag ? rawActive : true;
                 const deactivateLabel = isActive ? "Deactivate" : "Reactivate";
                 return (
-                  <SoftCard key={u.id || u.user_id || u.email} className="p-4 space-y-2">
+                  <SoftCard key={u.id || u.email} className="p-4 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
@@ -190,7 +178,7 @@ export function UsersTab({
                             setConfirmDelete({
                               open: true,
                               type: "user",
-                              payload: { id: u.id || u.user_id, isActive },
+                              payload: { id: u.id, isActive },
                               label: `${deactivateLabel} user "${u.email}"?`,
                             })
                           }
@@ -213,7 +201,7 @@ export function UsersTab({
                     <div className="text-sm text-black/55 dark:text-white/60">
                       Company:{" "}
                       <span className="font-semibold">
-                        {u.company?.name || companyLookup.get(u.company?.code || u.company_code || u.company_id) || "—"}
+                        {companyLookup.get(u.primary_company_id) || "—"}
                       </span>
                     </div>
                   </SoftCard>
@@ -234,13 +222,13 @@ export function UsersPanel({
   users,
   user,
   companyLookup,
+  companyCodeById,
   userCompanyFilter,
   setUserCompanyFilter,
   userProfileFilter,
   setUserProfileFilter,
-  companyFilterOptions,
+  companyTreeOptions,
   profileFilterOptions,
-  companyList,
   profileOptions,
   profileValues,
   permissionSetList,
@@ -286,13 +274,19 @@ export function UsersPanel({
     toggleUserPermissionSet,
     selectAllUserPermissionSets,
     clearUserPermissionSets,
-  } = useUserActions({ permissionList, profileValues, permissionSetValues, profileOptions, permissionSetList });
+  } = useUserActions({
+    permissionList,
+    profileValues,
+    permissionSetValues,
+    profileOptions,
+    permissionSetList,
+    companyCodeById,
+  });
   const [confirmDelete, setConfirmDelete] = useState({ open: false, type: "", payload: null, label: "" });
 
   const isSelfUser = Boolean(
     selectedUser &&
       ((selectedUser.id && user?.id && selectedUser.id === user?.id) ||
-        (selectedUser.user_id && user?.user_id && selectedUser.user_id === user?.user_id) ||
         (selectedUser.email && user?.email && selectedUser.email === user?.email))
   );
 
@@ -306,7 +300,7 @@ export function UsersPanel({
       const payload = confirmDelete.payload;
       const targetId = payload?.id ?? payload;
       if (!targetId) return;
-      if ((user?.id && targetId === user.id) || (user?.user_id && targetId === user.user_id)) {
+      if (user?.id && targetId === user.id) {
         return;
       }
       await deleteUser(payload);
@@ -331,7 +325,7 @@ export function UsersPanel({
         setUserCompanyFilter={setUserCompanyFilter}
         userProfileFilter={userProfileFilter}
         setUserProfileFilter={setUserProfileFilter}
-        companyFilterOptions={companyFilterOptions}
+        companyTreeOptions={companyTreeOptions}
         profileFilterOptions={profileFilterOptions}
       />
 
@@ -352,7 +346,7 @@ export function UsersPanel({
         selectedUser={selectedUser}
         userForm={userForm}
         setUserForm={setUserForm}
-        companyList={companyList}
+        companyTreeOptions={companyTreeOptions}
         profileOptions={profileOptions}
         profileValues={profileValues}
         userProfilesOpen={userProfilesOpen}
@@ -395,7 +389,14 @@ export function UsersPanel({
   );
 }
 
-function useUserActions({ permissionList, profileValues, permissionSetValues, profileOptions, permissionSetList }) {
+function useUserActions({
+  permissionList,
+  profileValues,
+  permissionSetValues,
+  profileOptions,
+  permissionSetList,
+  companyCodeById,
+}) {
   const qc = useQueryClient();
   const [selectedUser, setSelectedUser] = useState(null);
   const [userForm, setUserForm] = useState({
@@ -536,24 +537,19 @@ function useUserActions({ permissionList, profileValues, permissionSetValues, pr
     setUserProfilesOpen(false);
     setUserPermissionSetsOpen(false);
     setUserPermissionsOpen(false);
-    const profileValuesLocal = Array.isArray(u.profiles)
-      ? u.profiles.map((p) => p?.name || p?.id || p).filter(Boolean)
-      : [u.profiles?.name || u.profile || u.profile_name].filter(Boolean);
-    const permissionSetValuesLocal =
-      (u.permission_sets || u.permissionSets || u.permission_set_names || [])
-        .map((set) => (typeof set === "string" ? set : set?.name || set?.id))
-        .filter(Boolean);
+    const profileValuesLocal = u.profiles?.name ? [u.profiles.name] : [];
+    const permissionSetValuesLocal = [];
     setUserForm({
       name: u.name || "",
       email: u.email || "",
       profiles: profileValuesLocal,
       permissionSets: permissionSetValuesLocal,
-      company: u.company?.code || u.company_code || u.company_id || "",
+      company: companyCodeById?.get(u.primary_company_id) || "",
       is_active: u.is_active !== false,
       permissionsText: "",
     });
 
-    const userId = u.id || u.user_id;
+    const userId = u.id;
     if (userId) {
       try {
         const perms = await adminApi.getUserPermissions(userId);
@@ -594,7 +590,7 @@ function useUserActions({ permissionList, profileValues, permissionSetValues, pr
     if (userModalMode === "edit" && !selectedUser) return;
     setSavingUser(true);
     setPermissionsMessage("");
-    const userId = selectedUser?.id || selectedUser?.user_id;
+    const userId = selectedUser?.id;
     if (userModalMode === "edit" && !userId) {
       setSavingUser(false);
       setPermissionsMessage("Missing user id");
@@ -615,7 +611,7 @@ function useUserActions({ permissionList, profileValues, permissionSetValues, pr
     try {
       if (userModalMode === "add") {
         const created = await adminApi.createUser(payload);
-        const createdId = created?.id || created?.user_id || created?.user?.id || created?.user?.user_id;
+        const createdId = created?.id || created?.user?.id;
         if (createdId != null) {
           await adminApi.setUserPermissions(createdId, permissions);
         }
@@ -873,7 +869,7 @@ export function UsersModal({
   selectedUser,
   userForm,
   setUserForm,
-  companyList,
+  companyTreeOptions,
   profileOptions,
   profileValues,
   userProfilesOpen,
@@ -905,15 +901,10 @@ export function UsersModal({
   saveUser,
   savingUser,
 }) {
-  const companySelectOptions = useMemo(() => {
-    const options = companyList
-      .map((company) => {
-        const value = company.code || company.id || "";
-        return { value, label: company.name || company.code || value || "—" };
-      })
-      .filter((opt) => opt.value);
-    return [{ value: "", label: "Select company" }, ...options];
-  }, [companyList]);
+  const companyTreeSelectOptions = useMemo(
+    () => [{ value: "", label: "Select company" }, ...(companyTreeOptions || [])],
+    [companyTreeOptions]
+  );
   const statusOptions = useMemo(
     () => [
       { value: "active", label: "Active" },
@@ -956,7 +947,7 @@ export function UsersModal({
             <FormField label="Company">
               <SelectDropdown
                 value={userForm.company || ""}
-                options={companySelectOptions}
+                treeOptions={companyTreeSelectOptions}
                 onChange={(nextValue) => setUserForm((f) => ({ ...f, company: nextValue }))}
               />
             </FormField>
@@ -1253,8 +1244,7 @@ export function UsersModal({
                 variant="ghost"
                 className={cn(
                   "rounded-2xl",
-                  typeof (selectedUser?.is_active ?? selectedUser?.isActive ?? selectedUser?.active) === "boolean" &&
-                    !(selectedUser?.is_active ?? selectedUser?.isActive ?? selectedUser?.active)
+                  typeof selectedUser?.is_active === "boolean" && !selectedUser?.is_active
                     ? "text-emerald-600 hover:text-emerald-700 dark:text-emerald-300"
                     : "text-red-600 hover:text-red-700 dark:text-red-300"
                 )}
@@ -1263,15 +1253,15 @@ export function UsersModal({
                     open: true,
                     type: "user",
                     payload: {
-                      id: selectedUser?.id || selectedUser?.user_id,
+                      id: selectedUser?.id,
                       isActive:
-                        typeof (selectedUser?.is_active ?? selectedUser?.isActive ?? selectedUser?.active) === "boolean"
-                          ? selectedUser?.is_active ?? selectedUser?.isActive ?? selectedUser?.active
+                        typeof selectedUser?.is_active === "boolean"
+                          ? selectedUser?.is_active
                           : true,
                     },
                     label: `${
-                      typeof (selectedUser?.is_active ?? selectedUser?.isActive ?? selectedUser?.active) === "boolean"
-                        ? selectedUser?.is_active ?? selectedUser?.isActive ?? selectedUser?.active
+                      typeof selectedUser?.is_active === "boolean"
+                        ? selectedUser?.is_active
                           ? "Deactivate"
                           : "Reactivate"
                         : "Deactivate"
@@ -1280,8 +1270,8 @@ export function UsersModal({
                 }
                 disabled={isSelfUser}
               >
-                {typeof (selectedUser?.is_active ?? selectedUser?.isActive ?? selectedUser?.active) === "boolean"
-                  ? selectedUser?.is_active ?? selectedUser?.isActive ?? selectedUser?.active
+                {typeof selectedUser?.is_active === "boolean"
+                  ? selectedUser?.is_active
                     ? "Deactivate"
                     : "Reactivate"
                   : "Deactivate"}

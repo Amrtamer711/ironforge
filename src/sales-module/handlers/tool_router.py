@@ -174,16 +174,16 @@ class ToolRouter:
         if location is None:
             return False, (
                 f"❌ **Location Not Found**\n\n"
-                f"Location `{location_key}` was not found in your accessible companies. "
-                f"Use 'list locations' to see available locations."
+                f"Location `{self._format_location_label(location_key)}` was not found in your accessible companies. "
+                f"You can ask me to list locations to see the available locations for you."
             ), None
 
         # Handle both field names: Asset-Management returns 'company', internal code uses 'company_schema'
         company_schema = location.get("company_schema") or location.get("company")
         return True, "", company_schema
 
-    @staticmethod
     async def validate_locations_batch(
+        self,
         location_keys: list[str],
         user_companies: list[str],
         workflow_ctx: WorkflowContext | None = None,
@@ -233,7 +233,7 @@ class ToolRouter:
                         valid_locations[normalized_key] = {"is_package": True, "package_key": normalized_key}
                     else:
                         errors.append(
-                            f"Location '{location_key}' not found in your accessible companies."
+                            f"Location `{self._format_location_label(location_key)}` not found in your accessible companies."
                         )
             return valid_locations, errors
 
@@ -391,7 +391,7 @@ class ToolRouter:
             error_msg = (
                 f"❌ **Location Not Found**\n\n"
                 f"{validation_errors[0]} "
-                f"Use 'list locations' to see available locations."
+                f"You can ask me to list locations to see the available locations for you."
             )
             await self._send_tool_message(channel_id=channel, content=error_msg, is_error=True)
             return
@@ -468,7 +468,7 @@ class ToolRouter:
             error_msg = (
                 f"❌ **Location Not Found**\n\n"
                 f"{validation_errors[0]} "
-                f"Use 'list locations' to see available locations."
+                f"You can ask me to list locations to see the available locations for you."
             )
             await self._send_tool_message(channel_id=channel, content=error_msg, is_error=True)
             return

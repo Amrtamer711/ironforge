@@ -260,7 +260,7 @@ function useProfileActions({ permissionList, permissionSetValues, permissionSetL
     (permissionSetList || []).forEach((set) => {
       const key = set.name || set.id;
       if (!key) return;
-      const perms = (set.permissions || set.permission_list || set.permissionList || [])
+      const perms = (set.permissions || [])
         .map((entry) => (typeof entry === "string" ? entry : entry?.name || entry?.value || entry?.permission))
         .filter(Boolean);
       map.set(key, new Set(perms));
@@ -294,7 +294,7 @@ function useProfileActions({ permissionList, permissionSetValues, permissionSetL
           .map((perm) => (typeof perm === "string" ? perm : perm?.name))
           .filter(Boolean)
           .join("\n"),
-        permissionSets: (profile.permission_sets || profile.permissionSets || profile.permission_set_names || [])
+        permissionSets: (profile.permission_sets || [])
           .map((set) => (typeof set === "string" ? set : set?.name || set?.id))
           .filter(Boolean),
       });
@@ -321,7 +321,7 @@ function useProfileActions({ permissionList, permissionSetValues, permissionSetL
         .map((perm) => (typeof perm === "string" ? perm : perm?.name))
         .filter(Boolean)
         .join("\n"),
-      permissionSets: (profile.permission_sets || profile.permissionSets || profile.permission_set_names || [])
+      permissionSets: (profile.permission_sets || [])
         .map((set) => (typeof set === "string" ? set : set?.name || set?.id))
         .filter(Boolean),
     });
